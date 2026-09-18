@@ -30,7 +30,7 @@ jobs:
           node-version: "22"
 
       - name: Install development checks
-        run: python -m pip install --upgrade build hatchling ruff
+        run: python -m pip install --upgrade build hatchling packaging ruff
 
       - name: Check repository portability
         run: python scripts/check_portability.py

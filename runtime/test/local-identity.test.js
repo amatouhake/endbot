@@ -71,6 +71,45 @@ function concurrentWorkers (kind, filename, count = 12) {
   })
 }
 
+function waitForFile (filename, timeoutMilliseconds = 15_000) {
+  const deadline = Date.now() + timeoutMilliseconds
+  return new Promise((resolve, reject) => {
+    const poll = () => {
+      if (fs.existsSync(filename)) return resolve()
+      if (Date.now() >= deadline) return reject(new Error(`Timed out waiting for ${filename}`))
+      setTimeout(poll, 5)
+    }
+    poll()
+  })
+}
+
+async function interruptPublisherBeforeCommit (kind, filename) {
+  const marker = `${filename}.pause-marker`
+  const child = fork(workerPath, [kind, filename, marker], {
+    silent: true,
+    env: { ...process.env, ENDBOT_TEST_PAUSE_BEFORE_PUBLISH: '1' }
+  })
+  let stderr = ''
+  child.stderr.on('data', (chunk) => { stderr += chunk })
+  const exited = new Promise((resolve) => child.once('exit', resolve))
+  const ready = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Interrupted publisher did not become ready: ${stderr}`)), 15_000)
+    child.on('message', (message) => {
+      if (!message.ready) return
+      clearTimeout(timeout)
+      resolve()
+    })
+    child.once('error', reject)
+  })
+
+  await ready
+  child.send({ start: true })
+  await waitForFile(marker)
+  child.kill()
+  await exited
+  fs.rmSync(marker, { force: true })
+}
+
 function createSymlinkOrSkip (t, target, link) {
   try {
     fs.symlinkSync(target, link, process.platform === 'win32' ? 'file' : undefined)
@@ -120,6 +159,20 @@ test('concurrent processes converge on one persisted owner key', async () => {
   assert.deepEqual(fs.readdirSync(directory), ['owner-private.pem'])
 })
 
+test('interrupted owner-key publication never exposes a partial final file', async () => {
+  const directory = temporaryDirectory('endbot-key-interrupted-')
+  const filename = path.join(directory, 'owner-private.pem')
+  await interruptPublisherBeforeCommit('owner-key', filename)
+  assert.equal(fs.existsSync(filename), false)
+
+  const keys = loadOrCreateOwnerKeyPair(filename)
+  const persistedPrivateKey = crypto.createPrivateKey(fs.readFileSync(filename))
+  const persistedPublicKey = crypto.createPublicKey(persistedPrivateKey)
+    .export({ type: 'spki', format: 'der' }).toString('base64')
+  assert.equal(keys.publicKeyDerBase64, persistedPublicKey)
+  assert.deepEqual(fs.readdirSync(directory), ['owner-private.pem'])
+})
+
 test('refuses to replace a corrupt owner key', () => {
   const directory = temporaryDirectory('endbot-key-corrupt-')
   const filename = path.join(directory, 'owner-private.pem')
@@ -145,6 +198,17 @@ test('concurrent processes converge on one persisted identity UUID', async () =>
 
   assert.deepEqual(new Set(results.map(({ value }) => value)), new Set([persistedIdentity]))
   assert.match(persistedIdentity, /^[0-9a-f-]{36}$/)
+  assert.deepEqual(fs.readdirSync(directory), ['bot.uuid'])
+})
+
+test('interrupted identity publication never exposes a partial final file', async () => {
+  const directory = temporaryDirectory('endbot-identity-interrupted-')
+  const filename = path.join(directory, 'bot.uuid')
+  await interruptPublisherBeforeCommit('identity-id', filename)
+  assert.equal(fs.existsSync(filename), false)
+
+  const identityId = loadOrCreateIdentityId(filename)
+  assert.equal(identityId, fs.readFileSync(filename, 'utf8').trim())
   assert.deepEqual(fs.readdirSync(directory), ['bot.uuid'])
 })
 
@@ -224,6 +288,44 @@ test('authflow emits fresh tokens with one stable hidden identity', async () => 
   assert.equal(profile.claims.extraData.displayName, 'FlowBot')
   assert.equal(profile.claims.extraData.identity, auth.identityId)
   assert.equal(profile.claims.extraData.XUID, undefined)
+})
+
+test('rejects normalized private/public key path overlap without damaging the private key', () => {
+  const directory = temporaryDirectory('endbot-key-overlap-')
+  const privateKeyPath = path.join(directory, 'owner.pem')
+  const nested = path.join(directory, 'nested')
+  fs.mkdirSync(nested)
+  const original = loadOrCreateOwnerKeyPair(privateKeyPath)
+  const originalPem = fs.readFileSync(privateKeyPath)
+
+  assert.throws(() => createLocalOwnerbotAuth({
+    username: 'OverlapBot',
+    identityId: '63572362-0c83-5f0a-8cec-e1b788101798',
+    privateKeyPath,
+    publicKeyPath: path.join(nested, '..', 'owner.pem')
+  }), /private-key and public-key paths must be different/)
+
+  assert.deepEqual(fs.readFileSync(privateKeyPath), originalPem)
+  assert.equal(loadOrCreateOwnerKeyPair(privateKeyPath).publicKeyDerBase64, original.publicKeyDerBase64)
+})
+
+test('rejects private/public key hard-link aliases without damaging the private key', () => {
+  const directory = temporaryDirectory('endbot-key-hardlink-overlap-')
+  const privateKeyPath = path.join(directory, 'owner.pem')
+  const publicKeyPath = path.join(directory, 'owner-public.pem')
+  const original = loadOrCreateOwnerKeyPair(privateKeyPath)
+  const originalPem = fs.readFileSync(privateKeyPath)
+  fs.linkSync(privateKeyPath, publicKeyPath)
+
+  assert.throws(() => createLocalOwnerbotAuth({
+    username: 'HardLinkBot',
+    identityId: '63572362-0c83-5f0a-8cec-e1b788101798',
+    privateKeyPath,
+    publicKeyPath
+  }), /must not refer to the same file/)
+
+  assert.deepEqual(fs.readFileSync(privateKeyPath), originalPem)
+  assert.equal(loadOrCreateOwnerKeyPair(privateKeyPath).publicKeyDerBase64, original.publicKeyDerBase64)
 })
 
 test('rejects invalid identity inputs before signing', () => {

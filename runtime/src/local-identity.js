@@ -22,14 +22,6 @@ function assertUuid (value, field) {
   if (!pattern.test(value)) throw new TypeError(`${field} must be an RFC 4122 UUID`)
 }
 
-const publicationWait = new Int32Array(new SharedArrayBuffer(4))
-const publicationRetryLimit = 200
-const publicationRetryMilliseconds = 5
-
-function waitForPublication () {
-  Atomics.wait(publicationWait, 0, 0, publicationRetryMilliseconds)
-}
-
 function regularFileExists (filename, description) {
   let metadata
   try {
@@ -54,25 +46,34 @@ function loadExistingArtifact (filename, description, loadAndValidate) {
   return { exists: true, value: loadAndValidate(filename) }
 }
 
-function loadPublishedWinner (filename, description, loadAndValidate) {
-  let lastError
-  // COPYFILE_EXCL reserves the destination before its contents are necessarily
-  // visible in full. A loser may therefore need to wait for the winner's copy.
-  for (let attempt = 0; attempt < publicationRetryLimit; attempt += 1) {
-    try {
-      const loaded = loadExistingArtifact(filename, description, loadAndValidate)
-      if (loaded.exists) return loaded.value
-    } catch (error) {
-      lastError = error
-    }
-    waitForPublication()
+function cleanupTemporaryArtifacts (filename) {
+  const directory = path.dirname(filename)
+  const prefix = `${path.basename(filename)}.`
+  let entries
+  try {
+    entries = fs.readdirSync(directory)
+  } catch {
+    // Cleanup is best-effort and must not make a valid artifact unusable.
+    return
   }
-  throw new Error(`Concurrent ${description} publication did not produce a valid artifact`, { cause: lastError })
+  for (const entry of entries) {
+    if (!entry.startsWith(prefix)) continue
+    const suffix = entry.slice(prefix.length)
+    if (!/^\d+\.[0-9a-f]{12}\.tmp$/.test(suffix)) continue
+    try {
+      fs.rmSync(path.join(directory, entry), { force: true })
+    } catch {
+      // A concurrent process may still have its candidate open on Windows.
+    }
+  }
 }
 
 function loadOrCreatePersistentArtifact (filename, create, loadAndValidate, description) {
   const existing = loadExistingArtifact(filename, description, loadAndValidate)
-  if (existing.exists) return { value: existing.value, created: false }
+  if (existing.exists) {
+    cleanupTemporaryArtifacts(filename)
+    return { value: existing.value, created: false }
+  }
 
   fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 })
   const temporary = `${filename}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
@@ -86,17 +87,26 @@ function loadOrCreatePersistentArtifact (filename, create, loadAndValidate, desc
     }
 
     try {
-      fs.copyFileSync(temporary, filename, fs.constants.COPYFILE_EXCL)
+      // The hard link exposes the already-complete inode atomically and fails
+      // rather than replacing a concurrently published destination.
+      fs.linkSync(temporary, filename)
     } catch (error) {
-      if (error.code !== 'EEXIST') throw error
+      // Another process may remove this candidate after publishing its winner.
+      // In either case, a valid final artifact is the only acceptable outcome.
+      if (!['EEXIST', 'ENOENT'].includes(error.code)) throw error
+      const winner = loadExistingArtifact(filename, description, loadAndValidate)
+      if (!winner.exists) throw error
+      cleanupTemporaryArtifacts(filename)
       return {
-        value: loadPublishedWinner(filename, description, loadAndValidate),
+        value: winner.value,
         created: false
       }
     }
     applyPrivateMode(filename)
+    const persisted = loadExistingArtifact(filename, description, loadAndValidate)
+    cleanupTemporaryArtifacts(filename)
     return {
-      value: loadExistingArtifact(filename, description, loadAndValidate).value,
+      value: persisted.value,
       created: true
     }
   } finally {
@@ -132,6 +142,44 @@ export function loadOrCreateOwnerKeyPair (privateKeyPath) {
 export function writePublicKey (publicKeyPath, publicKeyPem) {
   fs.mkdirSync(path.dirname(publicKeyPath), { recursive: true })
   fs.writeFileSync(publicKeyPath, publicKeyPem, { mode: 0o644 })
+}
+
+function comparablePath (filename) {
+  const resolved = path.resolve(filename)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function fileMetadata (filename) {
+  try {
+    return fs.statSync(filename, { bigint: true })
+  } catch (error) {
+    if (error.code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+function assertDistinctOwnerKeyPaths (privateKeyPath, publicKeyPath) {
+  if (!publicKeyPath) return
+  if (comparablePath(privateKeyPath) === comparablePath(publicKeyPath)) {
+    throw new Error('Local Endbot private-key and public-key paths must be different')
+  }
+
+  try {
+    const metadata = fs.lstatSync(publicKeyPath)
+    if (metadata.isSymbolicLink()) {
+      throw new Error('Local Endbot public-key path must not be a symlink')
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+
+  const privateMetadata = fileMetadata(privateKeyPath)
+  const publicMetadata = fileMetadata(publicKeyPath)
+  if (privateMetadata && publicMetadata &&
+      (privateMetadata.dev !== 0n || privateMetadata.ino !== 0n) &&
+      privateMetadata.dev === publicMetadata.dev && privateMetadata.ino === publicMetadata.ino) {
+    throw new Error('Local Endbot private-key and public-key paths must not refer to the same file')
+  }
 }
 
 export function loadOrCreateIdentityId (identityPath) {
@@ -239,8 +287,12 @@ export function createLocalOwnerbotAuth ({
 }) {
   assertName(username)
   assertUuid(identityId, 'identityId')
+  assertDistinctOwnerKeyPaths(privateKeyPath, publicKeyPath)
   const keys = loadOrCreateOwnerKeyPair(privateKeyPath)
-  if (publicKeyPath) writePublicKey(publicKeyPath, keys.publicKeyPem)
+  if (publicKeyPath) {
+    assertDistinctOwnerKeyPaths(privateKeyPath, publicKeyPath)
+    writePublicKey(publicKeyPath, keys.publicKeyPem)
+  }
 
   const authflow = {
     async getMinecraftBedrockToken (clientPublicKey) {

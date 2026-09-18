@@ -2,10 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import crypto from 'node:crypto'
+import fs from 'node:fs'
 
 import { loadOrCreateIdentityId, loadOrCreateOwnerKeyPair } from '../src/local-identity.js'
 
-const [kind, filename] = process.argv.slice(2)
+const [kind, filename, pauseMarker] = process.argv.slice(2)
+
+if (process.env.ENDBOT_TEST_PAUSE_BEFORE_PUBLISH === '1') {
+  fs.linkSync = () => {
+    fs.writeFileSync(pauseMarker, 'candidate complete\n')
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0)
+  }
+}
 
 function fingerprint (publicKeyDerBase64) {
   return crypto.createHash('sha256').update(Buffer.from(publicKeyDerBase64, 'base64')).digest('hex')

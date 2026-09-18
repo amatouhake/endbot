@@ -1,5 +1,6 @@
 """Thin Endstone adapter for Endbot commands."""
 
+from pathlib import Path
 from typing import ClassVar
 
 from endstone.command import Command, CommandSender
@@ -8,6 +9,33 @@ from endstone.plugin import Plugin
 
 from endstone_endbot.authorization import AllowedPlayers
 from endstone_endbot.commands import BotCommandService
+from endstone_endbot.control import RuntimeControlClient
+from endstone_endbot.world import EndstoneWorld
+
+
+COMMAND_USAGES = [
+    "/bot",
+    "/bot ping",
+    "/bot help [topic: string]",
+    "/bot list",
+    "/bot <name: string> status",
+    "/bot <name: string> spawn",
+    "/bot <name: string> spawn at <position: pos> [tail: message]",
+    "/bot <name: string> resume",
+    "/bot <name: string> reconnect",
+    "/bot <name: string> despawn",
+    "/bot <name: string> forget",
+    "/bot <name: string> rename <new_name: string>",
+    "/bot <name: string> tp <destination: message>",
+    "/bot <name: string> move <direction: string>",
+    "/bot <name: string> look <rotation: message>",
+    "/bot <name: string> jump [mode: message]",
+    "/bot <name: string> attack [mode: message]",
+    "/bot <name: string> use [mode: message]",
+    "/bot <name: string> sprint <state: string>",
+    "/bot <name: string> sneak <state: string>",
+    "/bot <name: string> stop",
+]
 
 
 class EndbotPlugin(Plugin):
@@ -19,7 +47,7 @@ class EndbotPlugin(Plugin):
     commands: ClassVar[dict[str, dict[str, object]]] = {
         "bot": {
             "description": "Control Endbot fake players.",
-            "usages": ["/bot ping"],
+            "usages": COMMAND_USAGES,
             "permissions": ["endbot.command.control"],
         }
     }
@@ -34,12 +62,25 @@ class EndbotPlugin(Plugin):
         super().__init__()
         self._bot_commands = BotCommandService()
         self._allowed_players = AllowedPlayers()
+        self._world = None
 
     def on_load(self) -> None:
         self.save_default_config()
         self._allowed_players = AllowedPlayers.from_config(self.config.get("authorization", {}))
 
     def on_enable(self) -> None:
+        runtime = self.config.get("runtime", {})
+        token_file = Path(str(runtime.get("token-file", "control.token")))
+        if not token_file.is_absolute():
+            token_file = self.data_folder / token_file
+        control = RuntimeControlClient(
+            host=str(runtime.get("host", "127.0.0.1")),
+            port=int(runtime.get("port", 19142)),
+            token_file=token_file,
+            timeout=float(runtime.get("timeout-seconds", 0.75)),
+        )
+        self._world = EndstoneWorld(self.server)
+        self._bot_commands = BotCommandService(control, self._world)
         self.register_events(self)
 
     @event_handler
@@ -47,11 +88,13 @@ class EndbotPlugin(Plugin):
         player = event.player
         if self._allowed_players.allows(str(player.unique_id), str(player.xuid)):
             player.add_attachment(self, "endbot.command.control", True)
+        if self._world is not None:
+            self._world.apply_pending_placement(player)
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         if command.name != "bot":
             return False
-        result = self._bot_commands.execute(args)
-        if result.message is not None:
-            sender.send_message(result.message)
+        result = self._bot_commands.execute(args, sender)
+        for message in result.messages:
+            sender.send_message(message)
         return result.handled

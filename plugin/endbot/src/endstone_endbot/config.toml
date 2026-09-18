@@ -3,3 +3,10 @@
 allowed-uuids = []
 allowed-xuids = []
 
+[runtime]
+# The runtime creates this shared secret. Relative paths are resolved from the
+# Endbot plugin data directory. Keep the file outside source control.
+token-file = "control.token"
+host = "127.0.0.1"
+port = 19142
+timeout-seconds = 0.75

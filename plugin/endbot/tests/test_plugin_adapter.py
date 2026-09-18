@@ -27,17 +27,20 @@ class PluginAdapterTests(unittest.TestCase):
         endstone = types.ModuleType("endstone")
         command = types.ModuleType("endstone.command")
         event = types.ModuleType("endstone.event")
+        level = types.ModuleType("endstone.level")
         plugin = types.ModuleType("endstone.plugin")
         command.Command = FakeCommand
         command.CommandSender = FakeSender
         event.PlayerJoinEvent = type("PlayerJoinEvent", (), {})
         event.event_handler = lambda function: function
+        level.Location = type("Location", (), {})
         plugin.Plugin = FakePlugin
         sys.modules.update(
             {
                 "endstone": endstone,
                 "endstone.command": command,
                 "endstone.event": event,
+                "endstone.level": level,
                 "endstone.plugin": plugin,
             }
         )
@@ -46,7 +49,8 @@ class PluginAdapterTests(unittest.TestCase):
     def test_metadata_registers_narrow_command_and_permission(self) -> None:
         plugin_class = self.module.EndbotPlugin
         self.assertEqual(plugin_class.api_version, "0.11")
-        self.assertEqual(plugin_class.commands["bot"]["usages"], ["/bot ping"])
+        self.assertIn("/bot ping", plugin_class.commands["bot"]["usages"])
+        self.assertIn("/bot <name: string> reconnect", plugin_class.commands["bot"]["usages"])
         self.assertEqual(plugin_class.commands["bot"]["permissions"], ["endbot.command.control"])
         self.assertIs(plugin_class.permissions["endbot.command.control"]["default"], False)
 

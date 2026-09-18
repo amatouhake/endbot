@@ -34,6 +34,7 @@ export class BedrockSession extends EventEmitter {
     this.spawned = false
     this.respawnPending = false
     this.respawnReadySent = false
+    this.disconnectPromise = undefined
   }
 
   async connect () {
@@ -108,9 +109,34 @@ export class BedrockSession extends EventEmitter {
   applyInputs (inputs) { this.inputs = inputs }
 
   disconnect (reason = 'Endbot disconnect') {
+    if (this.disconnectPromise) return this.disconnectPromise
     this.disconnecting = true
     clearInterval(this.timer)
-    if (this.client) this.client.disconnect(reason)
+    if (!this.client) return Promise.resolve()
+    this.disconnectPromise = new Promise((resolve, reject) => {
+      let settled = false
+      const finish = error => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        this.client.off('close', closed)
+        if (error) reject(error)
+        else resolve()
+      }
+      const closed = () => finish()
+      const timeout = setTimeout(() => {
+        this.client.close('Endbot disconnect timeout')
+        finish(new Error('Timed out waiting for the Bedrock session to close'))
+      }, 5000)
+      timeout.unref?.()
+      this.client.once('close', closed)
+      try {
+        this.client.disconnect(reason)
+      } catch (error) {
+        finish(error)
+      }
+    })
+    return this.disconnectPromise
   }
 
   #wireClient () {

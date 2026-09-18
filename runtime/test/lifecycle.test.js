@@ -81,6 +81,33 @@ test('rename preserves identity, updates lookup, and reconnects an online bot', 
   assert.equal(sessions[1].profile.name, 'Builder')
 })
 
+test('session replacement waits for the old transport to close', async () => {
+  let releaseDisconnect
+  class DelayedDisconnectSession extends FakeSession {
+    async disconnect (reason) {
+      this.disconnects.push(reason)
+      await new Promise(resolve => { releaseDisconnect = resolve })
+    }
+  }
+  const { lifecycle, sessions } = fixture({
+    sessionFactory: profile => {
+      const session = new DelayedDisconnectSession(profile)
+      sessions.push(session)
+      return session
+    }
+  })
+  await lifecycle.spawn('Alice')
+  await turn()
+
+  const reconnect = lifecycle.reconnectBot('Alice')
+  await turn()
+  assert.equal(sessions.length, 1)
+  releaseDisconnect()
+  await reconnect
+  await turn()
+  assert.equal(sessions.length, 2)
+})
+
 test('forget fails safe for live bots and releases an offline name', async () => {
   const { lifecycle } = fixture()
   await lifecycle.spawn('Alice')

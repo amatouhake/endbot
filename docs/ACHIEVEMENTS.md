@@ -8,7 +8,7 @@ Two claims must remain separate:
   APIs/GameTest, no required packs, and no recorded creative/experiment history. This configuration and zeroed history
   were preserved in the validated baseline with ten concurrent external bots.
 - **Observed Xbox achievement unlock:** a signed-in Bedrock client actually unlocks a previously unearned Xbox
-  achievement in the test world. This has not yet been completed as an Endbot release gate.
+  achievement in the test world. This was completed for the current baseline in the M0 record below.
 
 `scripts/preflight.py` robustly checks only the two relevant `server.properties` values. M1 deliberately does not ship a
 partial `level.dat` parser: format/version ambiguity would turn unknown state into a false safety claim. Without the
@@ -25,8 +25,9 @@ locked. Record the Endbot revision and the generated compatibility manifest.
    checkout or release bundle.
 3. Before the validation world is created, set `online-mode=true` and `allow-cheats=false` in `server.properties`.
    Leave experiments, Beta APIs, GameTest, behavior packs, and resource packs unused.
-4. Keep `[local-bot-auth].enabled = false` for the command-only M0 probe. This isolates slash-command behavior from bot
-   login behavior.
+4. For a command-only probe, keep `[local-bot-auth].enabled = false`. For an integrated M0/M1 probe with local auth
+   enabled, record its exact configuration and prove that the human login used the original Microsoft/Xbox path rather
+   than the local identity path.
 5. Start once with the plugin installed so it writes `plugins/endbot/config.toml`, then stop cleanly. Add the real
    tester's UUID or decimal XUID to exactly one `[authorization]` allowlist. Do not make the tester an operator and do
    not grant vanilla command permissions. Restart the server.
@@ -42,6 +43,24 @@ locked. Record the Endbot revision and the generated compatibility manifest.
     Xbox profile/account result, including client/BDS versions and timestamps. A command response or green CI is not a
     substitute for this observation.
 
-Until steps 7–10 are completed and reviewed, report `/bot ping` as automatically registered/unit-tested but manually
-unvalidated under the full achievement requirement.
+Until steps 7–10 are completed and reviewed for a baseline, report `/bot ping` as automatically registered/unit-tested
+but manually unvalidated under the full achievement requirement.
 
+## Completed M0 record
+
+On 2026-09-18 JST, Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97` was tested with patched Endstone
+`0.11.11+endbot.1` on official BDS `1.26.51.1` build `51061372`, protocol `2193`.
+
+- A Windows Bedrock client joined through normal Microsoft/Xbox authentication with the explicitly allowlisted XUID.
+  Server logs contained the populated Xbox identity and no local-ownerbot acceptance entry.
+- `/bot` appeared in client slash-command completion and `/bot ping` returned exactly `Endbot: pong` without granting
+  operator or vanilla command permissions.
+- The world settings UI showed no achievement-disabled warning. In the same world/session, the previously locked
+  vanilla Xbox achievement `「毛刈り日和」` unlocked successfully.
+- A post-session save still reported survival game type, commands disabled, no creative history, no experiment history,
+  no locked behavior/resource packs, and no required texture packs. The server pack stack was empty.
+- The operator retained a local client recording outside the repository. No video, player identity, world, private key,
+  token, credential, or machine-local path is committed as evidence.
+
+This establishes the M0 result for the exact baseline above. It does not establish compatibility for a later
+Endstone/BDS pair, prove every Xbox achievement, or replace the repeatable release gate for future compatibility bumps.

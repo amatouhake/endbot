@@ -17,8 +17,9 @@ Discord, blueprints, web UI, and AI behavior are not implemented.
   and audience, unused token ID, valid UUID/name, and client-public-key binding.
 - BDS is downloaded by Endstone's normal bootstrap and is never bundled here.
 
-These settings preserve an achievement-compatible configuration and world state in the validated baseline. An actual
-Xbox achievement unlock has **not** yet been observed as an Endbot release gate; see [achievement validation](docs/ACHIEVEMENTS.md).
+These settings preserve an achievement-compatible configuration and world state in the validated baseline. The M0
+manual gate has also observed an actual Xbox achievement unlock after `/bot ping` from a normally authenticated
+Bedrock client; see [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and remaining caveats.
 
 ## Compatibility
 

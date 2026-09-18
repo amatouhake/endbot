@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,6 +13,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWheelContractTests(unittest.TestCase):
+    def test_manifest_records_completed_m0_achievement_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "compatibility-manifest.json"
+            completed = subprocess.run(
+                (sys.executable, "scripts/generate_compatibility_manifest.py", str(output)),
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            manifest = json.loads(output.read_text(encoding="utf-8"))
+            self.assertTrue(manifest["tested_safety_conditions"]["actual_xbox_achievement_unlock_observed"])
+
     def test_release_candidate_repairs_and_inspects_endstone_wheel(self) -> None:
         workflow = (ROOT / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
         self.assertIn("python scripts/build_endstone_wheel.py", workflow)

@@ -12,7 +12,10 @@ substituting official unpatched `0.11.11` while leaving the upstream compatibili
 
 The local-auth behavior was live-tested at this baseline with ten concurrent external bots while online mode remained
 enabled, cheats and commands remained disabled, experiments/packs were absent, and creative/experiment history stayed
-zero. That migration evidence does not prove a future pair and does not replace the outstanding Xbox unlock gate.
+zero. M0 was subsequently completed at Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97`: a normally
+Microsoft/Xbox-authenticated client executed `/bot ping`, received `Endbot: pong`, and unlocked a previously locked
+vanilla Xbox achievement in the same survival world. Post-session world-history fields remained zero. This evidence
+does not prove a future Endstone/BDS pair.
 
 ## Compatibility change gate
 

@@ -53,7 +53,7 @@ def main() -> int:
             "online_mode": True,
             "allow_cheats": False,
             "experiments_required": False,
-            "actual_xbox_achievement_unlock_observed": False,
+            "actual_xbox_achievement_unlock_observed": True,
         },
         "bds_binary_included": False,
     }

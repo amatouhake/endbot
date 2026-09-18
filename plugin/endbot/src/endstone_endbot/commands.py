@@ -6,6 +6,8 @@ import math
 import shlex
 from dataclasses import dataclass, field
 
+from endstone_endbot.control import RuntimeControlError
+
 
 class CommandSyntaxError(ValueError):
     pass
@@ -209,11 +211,19 @@ class BotCommandService:
                 fields.append(f"error={status['lastError']}")
             return CommandResult(True, ("Endbot: " + " | ".join(fields),))
         if command.operation == "spawn":
+            existing = None
+            try:
+                existing = self.control.request("status", name=command.name)
+            except RuntimeControlError as error:
+                if error.code != "not_found":
+                    raise
             placement = command.parameters or self.world.default_spawn(sender)
+            placement = self.world.resolve_spawn_placement(placement, sender)
+            self.world.assert_name_available(command.name, existing.get("identityId") if existing else None)
             result = self.control.request("spawn", name=command.name)
             if result.get("alreadyOnline"):
                 return CommandResult(True, (f"Endbot: {result['name']} is already online",))
-            self.world.queue_spawn_placement(result["identityId"], placement, sender)
+            self.world.queue_spawn_placement(result["identityId"], placement)
             verb = "created and connecting" if result.get("created") else "connecting"
             return CommandResult(True, (f"Endbot: {result['name']} {verb}",))
         if command.operation == "teleport":

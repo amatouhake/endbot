@@ -38,6 +38,10 @@ placement. `resume` reconnects an existing profile without relocation, allowing 
 cancels automatic reconnect. `forget` requires an offline profile and removes only Endbot registration; it does not
 purge BDS player data. A live rename preserves UUID and reconnects automatically so the login name changes.
 
+Spawn resolves coordinates and verifies the destination dimension before creating or starting a profile. A first spawn
+also rejects an active real-player name; an existing Bot may reuse its own UUID/name. Invalid placement therefore has no
+lifecycle side effect.
+
 Names use 1–16 ASCII letters, digits, or underscores. Collisions are case-insensitive. The plugin rejects names of
 online real players. Endstone does not expose a reliable complete offline GamerTag-history index, so an operator must
 avoid known offline real-player names.
@@ -55,8 +59,8 @@ avoid known offline real-player names.
 ```
 
 `overworld`, `nether`, and `end` map to their Minecraft namespaced IDs; a raw namespaced ID is also accepted. `~`
-relative coordinates are resolved against the player command source. Teleport uses `Actor.teleport`; it never dispatches
-vanilla `/tp` and does not require cheat-command permission.
+relative destination and `facing` coordinates are both resolved from the same command-source snapshot. Teleport uses
+`Actor.teleport`; it never dispatches vanilla `/tp` and does not require cheat-command permission.
 
 ## Inputs and actions
 

@@ -1,6 +1,7 @@
 import unittest
 
 from endstone_endbot.commands import BotCommandService
+from endstone_endbot.control import RuntimeControlError
 
 
 class FakeControl:
@@ -14,8 +15,12 @@ class FakeControl:
         if operation == "list":
             return list(self.bots.values())
         if operation == "status":
+            if name not in self.bots:
+                raise RuntimeControlError("not_found", f"Bot {name} does not exist")
             return self.bots[name]
         if operation == "spawn":
+            if name in self.bots:
+                return {**self.bots[name], "alreadyOnline": True, "created": False}
             value = {
                 "identityId": f"00000000-0000-4000-8000-00000000000{len(self.bots) + 1}",
                 "name": name,
@@ -37,19 +42,27 @@ class FakeControl:
 class FakeWorld:
     def __init__(self) -> None:
         self.placements = []
-        self.collisions = set()
+        self.collisions = {}
+        self.invalid_dimensions = set()
 
     def default_spawn(self, sender):
         return {"coordinates": [1, 2, 3], "dimension": "minecraft:overworld", "rotation": [0, 0]}
 
-    def queue_spawn_placement(self, identity_id, placement, sender):
+    def resolve_spawn_placement(self, placement, sender):
+        if placement.get("dimension") in self.invalid_dimensions:
+            raise ValueError("Unknown dimension")
+        if sender is None and "dimension" not in placement:
+            raise ValueError("A dimension is required")
+        return {**placement, "resolved": True}
+
+    def queue_spawn_placement(self, identity_id, placement):
         self.placements.append((identity_id, placement))
 
     def observe(self, identity_id):
         return None
 
-    def assert_name_available(self, name):
-        if name in self.collisions:
+    def assert_name_available(self, name, identity_id=None):
+        if name in self.collisions and self.collisions[name] != identity_id:
             raise ValueError("online player collision")
 
 
@@ -62,7 +75,7 @@ class CommandServiceTests(unittest.TestCase):
     def test_spawn_queues_world_placement_after_profile_creation(self) -> None:
         result = self.service.execute(["Alice", "spawn"], object())
         self.assertIn("created and connecting", result.message)
-        self.assertEqual(self.control.calls[0][0], "spawn")
+        self.assertEqual([call[0] for call in self.control.calls], ["status", "spawn"])
         self.assertEqual(self.world.placements[0][1]["coordinates"], [1, 2, 3])
 
     def test_commands_target_independent_names(self) -> None:
@@ -73,10 +86,37 @@ class CommandServiceTests(unittest.TestCase):
 
     def test_rename_checks_online_player_before_runtime_update(self) -> None:
         self.service.execute(["Alice", "spawn"], object())
-        self.world.collisions.add("Steve")
+        self.world.collisions = {"Steve": "human-uuid"}
         result = self.service.execute(["Alice", "rename", "Steve"], object())
         self.assertIn("collision", result.message)
         self.assertNotIn("rename", [call[0] for call in self.control.calls])
+
+    def test_first_spawn_rejects_active_human_before_profile_creation(self) -> None:
+        self.world.collisions = {"Steve": "human-uuid"}
+        result = self.service.execute(["Steve", "spawn"], object())
+        self.assertIn("collision", result.message)
+        self.assertNotIn("spawn", [call[0] for call in self.control.calls])
+
+    def test_existing_bot_may_reuse_its_own_online_name(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        identity_id = self.control.bots["Alice"]["identityId"]
+        self.world.collisions = {"Alice": identity_id}
+        result = self.service.execute(["Alice", "spawn"], object())
+        self.assertIn("already online", result.message)
+
+    def test_invalid_console_placement_has_no_lifecycle_side_effect(self) -> None:
+        result = self.service.execute(["Alice", "spawn", "at", "1", "64", "2"], None)
+        self.assertIn("dimension is required", result.message)
+        self.assertNotIn("spawn", [call[0] for call in self.control.calls])
+
+    def test_invalid_dimension_has_no_lifecycle_side_effect(self) -> None:
+        self.world.invalid_dimensions.add("missing:dimension")
+        result = self.service.execute(
+            ["Alice", "spawn", "at", "1", "64", "2", "in", "missing:dimension"],
+            object(),
+        )
+        self.assertIn("Unknown dimension", result.message)
+        self.assertNotIn("spawn", [call[0] for call in self.control.calls])
 
 
 if __name__ == "__main__":

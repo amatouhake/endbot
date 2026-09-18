@@ -40,9 +40,14 @@ class EndstoneWorld:
             raise ValueError("Console spawn requires: spawn at <x> <y> <z> [in <dimension>]")
         return self._snapshot(sender.location)
 
-    def queue_spawn_placement(self, identity_id: str, placement: dict[str, object], sender) -> None:
-        reference = sender.location if self._is_player(sender) else None
-        self._pending_placements[UUID(identity_id)] = self._resolve_destination(placement, reference)
+    def resolve_spawn_placement(self, placement: dict[str, object], sender) -> dict[str, object]:
+        reference = self._snapshot(sender.location) if self._is_player(sender) else None
+        resolved = self._resolve_destination(placement, reference)
+        self._location(resolved)
+        return resolved
+
+    def queue_spawn_placement(self, identity_id: str, placement: dict[str, object]) -> None:
+        self._pending_placements[UUID(identity_id)] = placement
 
     def apply_pending_placement(self, player) -> bool:
         placement = self._pending_placements.pop(player.unique_id, None)
@@ -82,7 +87,7 @@ class EndstoneWorld:
                 raise RuntimeError("Endstone rejected the teleport")
             location = target.location
         else:
-            reference = sender.location if self._is_player(sender) else None
+            reference = self._snapshot(sender.location) if self._is_player(sender) else None
             destination = self._resolve_destination(
                 parameters,
                 reference,
@@ -94,7 +99,7 @@ class EndstoneWorld:
                     raise ValueError(f"Player {parameters['facingTarget']} is not online")
                 destination["rotation"] = self._facing(destination["coordinates"], self._coordinates(target.location))
             elif "facingCoordinates" in parameters:
-                facing = self._resolve_coordinates(parameters["facingCoordinates"], bot.location)
+                facing = self._resolve_coordinates(parameters["facingCoordinates"], reference)
                 destination["rotation"] = self._facing(destination["coordinates"], facing)
             location = self._location(destination)
             if not bot.teleport(location):
@@ -108,27 +113,32 @@ class EndstoneWorld:
         target = self._resolve_coordinates(coordinates, player.location)
         return self._facing(self._coordinates(player.location), target)
 
-    def assert_name_available(self, name: str) -> None:
-        if self.server.get_player(name) is not None:
+    def assert_name_available(self, name: str, identity_id: str | None = None) -> None:
+        player = self.server.get_player(name)
+        if player is not None and (identity_id is None or str(player.unique_id) != str(identity_id)):
             raise ValueError(f"An online player named {name} already exists")
 
     def _resolve_destination(self, parameters, reference=None, default_dimension=None):
         coordinates = self._resolve_coordinates(parameters["coordinates"], reference)
-        dimension = str(parameters.get("dimension") or default_dimension or getattr(reference.dimension, "name", ""))
+        reference_dimension = reference.get("dimension", "") if isinstance(reference, dict) else ""
+        dimension = str(parameters.get("dimension") or default_dimension or reference_dimension)
         if not dimension:
             raise ValueError("A dimension is required for this command source")
         result = {"coordinates": coordinates, "dimension": DIMENSIONS.get(dimension.lower(), dimension)}
         if "rotation" in parameters:
             result["rotation"] = list(parameters["rotation"])
         elif reference is not None:
-            result["rotation"] = [float(reference.yaw), float(reference.pitch)]
+            result["rotation"] = list(reference["rotation"])
         else:
             result["rotation"] = [0.0, 0.0]
         return result
 
     def _resolve_coordinates(self, values, reference):
         resolved = []
-        current = self._coordinates(reference) if reference is not None else None
+        if isinstance(reference, dict):
+            current = reference["coordinates"]
+        else:
+            current = self._coordinates(reference) if reference is not None else None
         for index, value in enumerate(values):
             if isinstance(value, (list, tuple)) and value[0] == "relative":
                 if current is None:

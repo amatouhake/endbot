@@ -91,11 +91,35 @@ class WorldTests(unittest.TestCase):
 
     def test_pending_spawn_placement_targets_uuid_only(self):
         placement = self.world.default_spawn(self.steve)
-        self.world.queue_spawn_placement(str(self.alice.unique_id), placement, self.steve)
+        placement = self.world.resolve_spawn_placement(placement, self.steve)
+        self.world.queue_spawn_placement(str(self.alice.unique_id), placement)
         unrelated = FakePlayer("00000000-0000-4000-8000-000000000003", "Bob", self.steve.location)
         self.assertFalse(self.world.apply_pending_placement(unrelated))
         self.assertTrue(self.world.apply_pending_placement(self.alice))
         self.assertEqual(self.alice.location.x, self.steve.location.x)
+
+    def test_spawn_resolution_rejects_missing_and_unknown_console_dimensions(self):
+        with self.assertRaisesRegex(ValueError, "dimension is required"):
+            self.world.resolve_spawn_placement({"coordinates": [1, 64, 2]}, None)
+        with self.assertRaisesRegex(ValueError, "Unknown dimension"):
+            self.world.resolve_spawn_placement(
+                {"coordinates": [1, 64, 2], "dimension": "missing:dimension"},
+                None,
+            )
+
+    def test_relative_facing_uses_the_command_source_reference(self):
+        self.world.teleport(
+            str(self.alice.unique_id),
+            {
+                "coordinates": [100.0, 64.0, 100.0],
+                "facingCoordinates": [("relative", 1), ("relative", 0), ("relative", 0)],
+            },
+            self.steve,
+        )
+        location = self.alice.teleports[-1]
+        expected = self.world._facing([100.0, 64.0, 100.0], [9.0, 70.0, 9.0])
+        self.assertAlmostEqual(location.yaw, expected[0])
+        self.assertAlmostEqual(location.pitch, expected[1])
 
 
 if __name__ == "__main__":

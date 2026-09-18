@@ -12,11 +12,23 @@ export const MINECRAFT_DATA_URL = 'https://github.com/amatouhake/minecraft-data.
 export const MINECRAFT_DATA_COMMIT = '7c1fe886dd92837c0550e8eff91440361c7d677f'
 export const MINECRAFT_VERSION = '1.26.50'
 export const MINECRAFT_PROTOCOL = 2193
+export const ENDBOT_SCHEMA_REVISION = 4
 
 const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const packageRoot = path.join(runtimeRoot, 'node_modules', 'minecraft-data')
 const installedData = path.join(packageRoot, 'minecraft-data', 'data')
 const marker = path.join(packageRoot, '.endbot-minecraft-data-revision')
+const markerValue = `${MINECRAFT_DATA_COMMIT}:endbot-schema-${ENDBOT_SCHEMA_REVISION}`
+
+export function patchPinnedProtocolSchema (protocolPath) {
+  const protocol = JSON.parse(fs.readFileSync(protocolPath, 'utf8'))
+  const standaloneLegacy = structuredClone(protocol.types.TransactionLegacy)
+  const legacySlots = standaloneLegacy[1].find(value => value.name === 'legacy_transactions')
+  legacySlots.type = ['option', legacySlots.type[1].default]
+  protocol.types.TransactionLegacyStandalone = standaloneLegacy
+  protocol.types.Transaction[1].find(value => value.name === 'legacy').type = 'TransactionLegacyStandalone'
+  fs.writeFileSync(protocolPath, `${JSON.stringify(protocol, null, 2)}\n`)
+}
 
 function run (command, commandArguments, options = {}) {
   const result = spawnSync(command, commandArguments, { stdio: 'inherit', ...options })
@@ -34,7 +46,7 @@ export function prepareMinecraftData () {
       'utf8'
     ))
     if (
-      fs.readFileSync(marker, 'utf8').trim() === MINECRAFT_DATA_COMMIT &&
+      fs.readFileSync(marker, 'utf8').trim() === markerValue &&
       installedVersion.minecraftVersion === MINECRAFT_VERSION &&
       installedVersion.version === MINECRAFT_PROTOCOL
     ) return
@@ -56,6 +68,7 @@ export function prepareMinecraftData () {
     fs.cpSync(path.join(temporary, 'data'), installedData, { recursive: true })
     const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
     run(npm, ['run', 'generate:data'], { cwd: packageRoot })
+    patchPinnedProtocolSchema(path.join(installedData, 'bedrock', MINECRAFT_VERSION, 'protocol.json'))
     const preparedVersion = JSON.parse(fs.readFileSync(
       path.join(installedData, 'bedrock', MINECRAFT_VERSION, 'version.json'),
       'utf8'
@@ -64,7 +77,7 @@ export function prepareMinecraftData () {
       preparedVersion.minecraftVersion !== MINECRAFT_VERSION ||
       preparedVersion.version !== MINECRAFT_PROTOCOL
     ) throw new Error('Prepared minecraft-data revision does not contain the pinned BDS protocol schema')
-    fs.writeFileSync(marker, `${MINECRAFT_DATA_COMMIT}\n`)
+    fs.writeFileSync(marker, `${markerValue}\n`)
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true })
   }

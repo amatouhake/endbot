@@ -8,6 +8,7 @@ import { createLocalOwnerbotAuth, loadOrCreatePersistentArtifact } from './local
 import {
   addJumpInputFlags,
   createAttackTransaction,
+  createEntityMouseOver,
   createUseTransaction,
   EMPTY_ITEM,
   hasUsableHeldItem,
@@ -28,6 +29,7 @@ export class BedrockSession extends EventEmitter {
     this.disconnecting = false
     this.heldItem = EMPTY_ITEM
     this.hotbarSlot = 0
+    this.inventory = []
     this.closeEmitted = false
     this.spawned = false
     this.respawnPending = false
@@ -112,6 +114,9 @@ export class BedrockSession extends EventEmitter {
   }
 
   #wireClient () {
+    this.client.on('packet_violation_warning', packet => {
+      this.#fail(new Error(`BDS rejected a malformed protocol packet: ${packet.reason}`))
+    })
     this.client.on('start_game', packet => {
       this.position = vector(packet.player_position)
       this.groundY = this.position.y
@@ -139,6 +144,7 @@ export class BedrockSession extends EventEmitter {
     for (const event of ['add_player', 'add_entity']) {
       this.client.on(event, packet => this.entities.set(String(packet.runtime_id), {
         runtimeId: packet.runtime_id,
+        uniqueId: packet.unique_id,
         position: vector(packet.position),
         type: packet.entity_type ?? 'minecraft:player'
       }))
@@ -147,7 +153,27 @@ export class BedrockSession extends EventEmitter {
       const entity = this.entities.get(String(packet.runtime_entity_id))
       if (entity) entity.position = vector(packet.position)
     })
-    this.client.on('remove_entity', packet => this.entities.delete(String(packet.entity_id_self)))
+    this.client.on('remove_entity', packet => {
+      const uniqueId = String(packet.entity_id_self)
+      for (const [runtimeId, entity] of this.entities) {
+        if (String(entity.uniqueId) === uniqueId) this.entities.delete(runtimeId)
+      }
+    })
+    this.client.on('inventory_content', packet => {
+      if (!this.#isPlayerInventory(packet.window_id)) return
+      this.inventory = packet.input
+      this.#selectHeldItem()
+    })
+    this.client.on('inventory_slot', packet => {
+      if (!this.#isPlayerInventory(packet.window_id)) return
+      this.inventory[packet.slot] = packet.item
+      if (packet.slot === this.hotbarSlot) this.#selectHeldItem()
+    })
+    this.client.on('player_hotbar', packet => {
+      if (!this.#isPlayerInventory(packet.window_id)) return
+      this.hotbarSlot = packet.selected_slot
+      this.#selectHeldItem()
+    })
     this.client.on('mob_equipment', packet => {
       if (String(packet.runtime_entity_id) !== String(this.client.entityId)) return
       this.heldItem = packet.item
@@ -258,14 +284,13 @@ export class BedrockSession extends EventEmitter {
     }
     addJumpInputFlags(inputData, { started: startedJump, airborne: Boolean(this.verticalVelocity) })
     if (state.triggered.includes('attack')) this.#attack(inputData, state)
-    let transaction
     if (state.triggered.includes('use') && hasUsableHeldItem(this.heldItem)) {
-      inputData.push('perform_item_interaction')
-      transaction = createUseTransaction({
+      inputData.push('start_using_item')
+      this.client.queue('inventory_transaction', createUseTransaction({
         hotbarSlot: this.hotbarSlot,
         heldItem: this.heldItem,
         position: this.position
-      })
+      }))
     }
     this.client.queue('player_auth_input', {
       pitch: state.pitch,
@@ -280,7 +305,7 @@ export class BedrockSession extends EventEmitter {
       interact_rotation: { x: state.pitch, z: state.yaw },
       tick: this.tick,
       delta: { x: this.position.x - previous.x, y: this.position.y - previous.y, z: this.position.z - previous.z },
-      transaction,
+      transaction: undefined,
       item_stack_request: undefined,
       block_action: undefined,
       vehicle_rotation: undefined,
@@ -305,12 +330,27 @@ export class BedrockSession extends EventEmitter {
       this.client.queue('animate', { action_id: 'swing_arm', runtime_entity_id: this.client.entityId, data: 0, has_swing_source: false })
       return
     }
+    this.client.queue('interact', createEntityMouseOver(target.runtimeId))
     this.client.queue('inventory_transaction', createAttackTransaction({
       runtimeId: target.runtimeId,
       hotbarSlot: this.hotbarSlot,
       heldItem: this.heldItem,
       position: this.position
     }))
+    this.client.queue('animate', {
+      action_id: 'swing_arm',
+      runtime_entity_id: this.client.entityId,
+      data: 0,
+      has_swing_source: false
+    })
+  }
+
+  #isPlayerInventory (windowId) {
+    return windowId === 0 || windowId === 'inventory'
+  }
+
+  #selectHeldItem () {
+    this.heldItem = this.inventory[this.hotbarSlot] ?? EMPTY_ITEM
   }
 
   #target (state) {

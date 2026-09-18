@@ -42,7 +42,7 @@ class FakeServer:
     def __init__(self):
         self.dimensions = {
             name: SimpleNamespace(name=name)
-            for name in ("minecraft:overworld", "minecraft:nether", "minecraft:the_end")
+            for name in ("Overworld", "Nether", "TheEnd")
         }
         self.level = SimpleNamespace(get_dimension=lambda name: self.dimensions.get(name))
         self.players = {}
@@ -60,7 +60,7 @@ class WorldTests(unittest.TestCase):
     def setUp(self):
         world_module.Location = FakeLocation
         self.server = FakeServer()
-        overworld = self.server.dimensions["minecraft:overworld"]
+        overworld = self.server.dimensions["Overworld"]
         self.alice = FakePlayer("00000000-0000-4000-8000-000000000001", "Alice", FakeLocation(overworld, 0, 64, 0))
         self.steve = FakePlayer("00000000-0000-4000-8000-000000000002", "Steve", FakeLocation(overworld, 8, 70, 9, 20, 30))
         for player in (self.alice, self.steve):
@@ -70,7 +70,7 @@ class WorldTests(unittest.TestCase):
 
     def test_tp_player_uses_actor_api_not_vanilla_command(self):
         result = self.world.teleport(str(self.alice.unique_id), {"target": "Steve"}, self.steve)
-        self.assertIn("minecraft:overworld", result)
+        self.assertIn("Overworld", result)
         self.assertIs(self.alice.teleports[-1], self.steve)
         self.assertEqual(self.server.dispatched, [])
 
@@ -81,9 +81,9 @@ class WorldTests(unittest.TestCase):
             self.steve,
         )
         location = self.alice.teleports[-1]
-        self.assertEqual((location.dimension.name, location.x, location.y, location.z), ("minecraft:nether", 10.0, 80.0, -3.0))
+        self.assertEqual((location.dimension.name, location.x, location.y, location.z), ("Nether", 10.0, 80.0, -3.0))
         self.assertEqual((location.yaw, location.pitch), (90, 10))
-        self.assertIn("minecraft:nether", result)
+        self.assertIn("Nether", result)
 
     def test_pending_spawn_placement_targets_uuid_only(self):
         placement = self.world.default_spawn(self.steve)

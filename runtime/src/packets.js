@@ -3,6 +3,20 @@
 
 export const EMPTY_ITEM = { network_id: 0 }
 
+export function hasUsableHeldItem (item) {
+  return item != null && Number(item.network_id) !== 0
+}
+
+export function serverRotation (packet) {
+  if (!Number.isFinite(packet?.yaw) || !Number.isFinite(packet?.pitch)) return undefined
+  return { yaw: packet.yaw, pitch: packet.pitch }
+}
+
+export function addJumpInputFlags (inputData, { started, airborne }) {
+  if (started) inputData.push('jump_down', 'start_jumping')
+  if (airborne) inputData.push('jumping')
+}
+
 export function createUseTransaction ({ hotbarSlot, heldItem, position }) {
   return {
     legacy: { legacy_request_id: 0 },

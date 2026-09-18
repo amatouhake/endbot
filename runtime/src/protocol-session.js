@@ -5,7 +5,14 @@ import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 
 import { createLocalOwnerbotAuth, loadOrCreatePersistentArtifact } from './local-identity.js'
-import { createAttackTransaction, createUseTransaction, EMPTY_ITEM } from './packets.js'
+import {
+  addJumpInputFlags,
+  createAttackTransaction,
+  createUseTransaction,
+  EMPTY_ITEM,
+  hasUsableHeldItem,
+  serverRotation
+} from './packets.js'
 
 function vector (value) { return { x: value.x, y: value.y, z: value.z } }
 
@@ -119,6 +126,9 @@ export class BedrockSession extends EventEmitter {
     this.client.on('move_player', packet => {
       if (String(packet.runtime_id) === String(this.client.entityId)) {
         this.position = vector(packet.position)
+        if (!this.verticalVelocity) this.groundY = this.position.y
+        const rotation = serverRotation(packet)
+        if (rotation) this.inputs?.setLook(rotation.yaw, rotation.pitch)
         const next = BigInt(packet.tick) + 1n
         if (next > this.tick) this.tick = next
       } else {
@@ -234,8 +244,8 @@ export class BedrockSession extends EventEmitter {
     if (move.x > 0) inputData.push('right')
     if (state.sprint) inputData.push('sprinting')
     if (state.sneak) inputData.push('sneaking')
-    if (state.triggered.includes('jump')) {
-      inputData.push('jump_down', 'start_jumping', 'jumping')
+    const startedJump = state.triggered.includes('jump')
+    if (startedJump) {
       this.verticalVelocity = this.verticalVelocity || 0.42
     }
     if (this.verticalVelocity) {
@@ -244,12 +254,13 @@ export class BedrockSession extends EventEmitter {
       if (this.position.y <= this.groundY && this.verticalVelocity < 0) {
         this.position.y = this.groundY
         this.verticalVelocity = 0
-      } else inputData.push('jumping')
+      }
     }
+    addJumpInputFlags(inputData, { started: startedJump, airborne: Boolean(this.verticalVelocity) })
     if (state.triggered.includes('attack')) this.#attack(inputData, state)
     let transaction
-    if (state.triggered.includes('use')) {
-      inputData.push('item_interact', 'start_using_item')
+    if (state.triggered.includes('use') && hasUsableHeldItem(this.heldItem)) {
+      inputData.push('perform_item_interaction')
       transaction = createUseTransaction({
         hotbarSlot: this.hotbarSlot,
         heldItem: this.heldItem,

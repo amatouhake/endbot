@@ -9,9 +9,13 @@ from endstone.level import Location
 
 
 DIMENSIONS = {
-    "overworld": "minecraft:overworld",
-    "nether": "minecraft:nether",
-    "end": "minecraft:the_end",
+    "overworld": "Overworld",
+    "minecraft:overworld": "Overworld",
+    "nether": "Nether",
+    "minecraft:nether": "Nether",
+    "end": "TheEnd",
+    "the_end": "TheEnd",
+    "minecraft:the_end": "TheEnd",
 }
 
 

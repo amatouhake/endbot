@@ -40,9 +40,10 @@ ADVANCED_HELP = (
 
 
 def _tokens(arguments: list[str]) -> list[str]:
-    if len(arguments) == 1 and any(character.isspace() for character in arguments[0]):
-        return shlex.split(arguments[0])
-    return arguments
+    tokens: list[str] = []
+    for argument in arguments:
+        tokens.extend(shlex.split(argument) if any(character.isspace() for character in argument) else [argument])
+    return tokens
 
 
 def _number(value: str, label: str) -> float:

@@ -38,6 +38,13 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertEqual(command.parameters["dimension"], "end")
         self.assertEqual(command.parameters["facingCoordinates"], [0.0, 80.0, 10.0])
 
+    def test_endstone_greedy_message_arguments_are_flattened(self) -> None:
+        spawn = parse_command(["Alice", "spawn", "at 1 64 2 facing 90 5 in nether"])
+        self.assertEqual(spawn.parameters["rotation"], [90.0, 5.0])
+        self.assertEqual(spawn.parameters["dimension"], "nether")
+        teleport = parse_command(["Alice", "tp", "1 64 2 facing Steve"])
+        self.assertEqual(teleport.parameters["facingTarget"], "Steve")
+
 
 if __name__ == "__main__":
     unittest.main()

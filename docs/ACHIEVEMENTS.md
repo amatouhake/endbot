@@ -59,8 +59,12 @@ On 2026-09-18 JST, Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97` wa
   vanilla Xbox achievement `「毛刈り日和」` unlocked successfully.
 - A post-session save still reported survival game type, commands disabled, no creative history, no experiment history,
   no locked behavior/resource packs, and no required texture packs. The server pack stack was empty.
-- The operator retained a local client recording outside the repository. No video, player identity, world, private key,
-  token, credential, or machine-local path is committed as evidence.
+- An [unlisted YouTube recording](https://youtu.be/QfCVA7I9Y1w) provides a convenient view of `/bot ping` returning
+  `Endbot: pong` and the achievement unlocking in the same session. The retained source recording is the integrity
+  reference: 96,830,900 bytes, 76.966016 seconds, created 2026-09-18 20:11:35 JST, SHA-256
+  `9b9790db2835674f96505f1b7353f85c03cf26c1d2ade50fff8d13a569c94925`. The upload is a transcoded convenience copy,
+  not a replacement for that source digest.
+- No video, player identity, world, private key, token, credential, or machine-local path is committed as evidence.
 
 This establishes the M0 result for the exact baseline above. It does not establish compatibility for a later
 Endstone/BDS pair, prove every Xbox achievement, or replace the repeatable release gate for future compatibility bumps.

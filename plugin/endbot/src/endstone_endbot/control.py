@@ -57,5 +57,8 @@ class RuntimeControlClient:
             raise RuntimeControlError("protocol", "runtime response did not match the request")
         if not decoded.get("ok"):
             detail = decoded.get("error", {})
-            raise RuntimeControlError(str(detail.get("code", "runtime_error")), str(detail.get("message", "runtime error")))
+            raise RuntimeControlError(
+                str(detail.get("code", "runtime_error")),
+                str(detail.get("message", "runtime error")),
+            )
         return decoded.get("result")

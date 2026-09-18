@@ -5,11 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "plugin" / "endbot" / "src"))
 
-from endstone_endbot.control import RuntimeControlClient  # noqa: E402
+from endstone_endbot.control import RuntimeControlClient
 
 
 class M2ControlIntegrationTests(unittest.TestCase):

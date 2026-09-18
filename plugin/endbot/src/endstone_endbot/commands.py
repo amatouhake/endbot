@@ -155,7 +155,11 @@ def parse_command(arguments: list[str]) -> BotCommand:
     }:
         return BotCommand(operation, name, {"direction": remaining[0].lower()})
     if operation == "look" and len(remaining) == 2:
-        return BotCommand(operation, name, {"yaw": _number(remaining[0], "yaw"), "pitch": _number(remaining[1], "pitch")})
+        return BotCommand(
+            operation,
+            name,
+            {"yaw": _number(remaining[0], "yaw"), "pitch": _number(remaining[1], "pitch")},
+        )
     if operation == "look" and len(remaining) == 4 and remaining[0].lower() == "at":
         return BotCommand(operation, name, {"targetCoordinates": [_coordinate(value) for value in remaining[1:]]})
     if operation in {"jump", "attack", "use"}:
@@ -190,7 +194,8 @@ class BotCommandService:
             bots = self.control.request("list")
             if not bots:
                 return CommandResult(True, ("Endbot: no Bot profiles",))
-            return CommandResult(True, ("Endbot: " + ", ".join(f"{bot['name']} [{bot['connectionState']}]" for bot in bots),))
+            summary = ", ".join(f"{bot['name']} [{bot['connectionState']}]" for bot in bots)
+            return CommandResult(True, ("Endbot: " + summary,))
         if command.operation == "status":
             status = self.control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
@@ -223,4 +228,6 @@ class BotCommandService:
             result = self.control.request("rename", name=command.name, **command.parameters)
         else:
             result = self.control.request(command.operation, name=command.name, **command.parameters)
-        return CommandResult(True, (f"Endbot: {result.get('name', command.name)} {result.get('connectionState', command.operation)}",))
+        name = result.get("name", command.name)
+        state = result.get("connectionState", command.operation)
+        return CommandResult(True, (f"Endbot: {name} {state}",))

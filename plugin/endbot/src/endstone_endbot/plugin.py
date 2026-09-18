@@ -12,7 +12,6 @@ from endstone_endbot.commands import BotCommandService
 from endstone_endbot.control import RuntimeControlClient
 from endstone_endbot.world import EndstoneWorld
 
-
 COMMAND_USAGES = [
     "/bot",
     "/bot ping",

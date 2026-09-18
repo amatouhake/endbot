@@ -1,6 +1,6 @@
-import unittest
 import sys
 import types
+import unittest
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -62,7 +62,11 @@ class WorldTests(unittest.TestCase):
         self.server = FakeServer()
         overworld = self.server.dimensions["Overworld"]
         self.alice = FakePlayer("00000000-0000-4000-8000-000000000001", "Alice", FakeLocation(overworld, 0, 64, 0))
-        self.steve = FakePlayer("00000000-0000-4000-8000-000000000002", "Steve", FakeLocation(overworld, 8, 70, 9, 20, 30))
+        self.steve = FakePlayer(
+            "00000000-0000-4000-8000-000000000002",
+            "Steve",
+            FakeLocation(overworld, 8, 70, 9, 20, 30),
+        )
         for player in (self.alice, self.steve):
             self.server.players[str(player.unique_id)] = player
             self.server.players[player.name.casefold()] = player

@@ -12,7 +12,12 @@ class Handler(socketserver.StreamRequestHandler):
     def handle(self):
         request = json.loads(self.rfile.readline())
         if request["token"] != self.server.token:
-            response = {"version": 1, "id": request["id"], "ok": False, "error": {"code": "unauthorized", "message": "Unauthorized"}}
+            response = {
+                "version": 1,
+                "id": request["id"],
+                "ok": False,
+                "error": {"code": "unauthorized", "message": "Unauthorized"},
+            }
         else:
             response = {"version": 1, "id": request["id"], "ok": True, "result": request["params"]}
         self.wfile.write(json.dumps(response).encode() + b"\n")

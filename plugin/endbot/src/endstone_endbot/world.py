@@ -7,7 +7,6 @@ from uuid import UUID
 
 from endstone.level import Location
 
-
 DIMENSIONS = {
     "overworld": "Overworld",
     "minecraft:overworld": "Overworld",
@@ -84,7 +83,11 @@ class EndstoneWorld:
             location = target.location
         else:
             reference = sender.location if self._is_player(sender) else None
-            destination = self._resolve_destination(parameters, reference, default_dimension=bot.location.dimension.name)
+            destination = self._resolve_destination(
+                parameters,
+                reference,
+                default_dimension=bot.location.dimension.name,
+            )
             if "facingTarget" in parameters:
                 target = self.server.get_player(str(parameters["facingTarget"]))
                 if target is None:

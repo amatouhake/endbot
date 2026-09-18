@@ -68,7 +68,7 @@ function cleanupTemporaryArtifacts (filename) {
   }
 }
 
-function loadOrCreatePersistentArtifact (filename, create, loadAndValidate, description) {
+export function loadOrCreatePersistentArtifact (filename, create, loadAndValidate, description) {
   const existing = loadExistingArtifact(filename, description, loadAndValidate)
   if (existing.exists) {
     cleanupTemporaryArtifacts(filename)
@@ -112,6 +112,19 @@ function loadOrCreatePersistentArtifact (filename, create, loadAndValidate, desc
   } finally {
     fs.rmSync(temporary, { force: true })
   }
+}
+
+export function loadOrCreateControlToken (tokenPath) {
+  return loadOrCreatePersistentArtifact(
+    tokenPath,
+    () => `${crypto.randomBytes(32).toString('base64url')}\n`,
+    (filename) => {
+      const token = fs.readFileSync(filename, 'utf8').trim()
+      if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new Error('Endbot control token is invalid')
+      return token
+    },
+    'Endbot control token'
+  ).value
 }
 
 export function loadOrCreateOwnerKeyPair (privateKeyPath) {

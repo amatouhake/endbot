@@ -3,14 +3,19 @@
   "version": "0.1.0-dev",
   "private": true,
   "description": "Headless Bedrock runtime foundation for Endbot",
+  "bin": {
+    "endbot-runtime": "src/cli.js"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/local-identity.js"
+    "check": "node --check src/*.js"
+  },
+  "dependencies": {
+    "bedrock-protocol": "https://github.com/amatouhake/bedrock-protocol/archive/fb0af8e388127724c323fd46800e47ba004b1c55.tar.gz"
   },
   "license": "Apache-2.0"
 }
-

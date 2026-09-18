@@ -1,0 +1,21 @@
+{
+  "dataDirectory": "./data",
+  "controlTokenPath": "./secrets/control.token",
+  "ownerPrivateKeyPath": "./secrets/owner-private.pem",
+  "ownerPublicKeyPath": "./secrets/owner-public.pem",
+  "serverIdentityPinPath": "./secrets/bds-nethernet.pin",
+  "controlHost": "127.0.0.1",
+  "controlPort": 19142,
+  "serverHost": "127.0.0.1",
+  "serverPort": 19132,
+  "gameVersion": "1.26.50",
+  "protocol": 2193,
+  "connectTimeoutMs": 15000,
+  "localAuthIssuer": "ownerbot://local",
+  "localAuthAudience": "endstone://local-ownerbot",
+  "reconnect": {
+    "initialDelayMs": 1000,
+    "maximumDelayMs": 30000,
+    "maximumAttempts": 8
+  }
+}

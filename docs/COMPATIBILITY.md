@@ -6,6 +6,10 @@ The only pinned baseline is Endstone `v0.11.11` at
 `37b395378d91d6d20f1c52bf9d79dbd20e152458`, with BDS `1.26.51.1` build `51061372` and protocol `2193`.
 `endstone.lock` is the machine-readable authority.
 
+The modified wheel uses the separate package version `0.11.11+endbot.1`. Preparation creates that exact local tag on
+the disposable patched commit for `setuptools_scm`; the plugin requires the same exact version. This prevents pip from
+substituting official unpatched `0.11.11` while leaving the upstream compatibility baseline unambiguous.
+
 The local-auth behavior was live-tested at this baseline with ten concurrent external bots while online mode remained
 enabled, cheats and commands remained disabled, experiments/packs were absent, and creative/experiment history stayed
 zero. That migration evidence does not prove a future pair and does not replace the outstanding Xbox unlock gate.
@@ -32,4 +36,3 @@ A future release workflow may package the modified Endstone artifact, Endbot plu
 configuration, checksums, generated compatibility manifest, Endbot license, and third-party notices. It must not package
 the official BDS binary. `scripts/generate_compatibility_manifest.py` binds metadata to the current Endbot Git revision
 and SHA-256 of the ordered patch series; no workflow in M1 publishes a production release.
-

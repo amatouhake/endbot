@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -36,13 +37,16 @@ def run(*args: str, cwd: Path | None = None, capture: bool = False, env: dict[st
 def load_lock() -> dict:
     lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
     endstone = lock.get("endstone", {})
-    required = ("upstream_url", "version", "tag", "commit")
+    required = ("upstream_url", "version", "tag", "commit", "package_version")
     missing = [key for key in required if not endstone.get(key)]
     if missing:
         raise PreparationError(f"endstone.lock is missing: {', '.join(missing)}")
     commit = endstone["commit"]
     if len(commit) != 40 or any(character not in "0123456789abcdef" for character in commit):
         raise PreparationError("endstone.lock contains an invalid commit SHA")
+    package_version = endstone["package_version"]
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){2}\+endbot\.[0-9]+", package_version):
+        raise PreparationError("endstone.lock contains an invalid Endbot-local package version")
     return lock
 
 
@@ -163,6 +167,11 @@ def prepare(cache: Path, output: Path, offline: bool) -> dict[str, str | int]:
         subprocess.run(("git", "am", "--abort"), cwd=output, check=False)
         raise PreparationError("Endbot patch series did not apply cleanly") from error
 
+    # setuptools_scm reads this exact local tag when building the wheel. Keeping
+    # it in the lock decouples the package contract from the number of patches.
+    package_tag = f"v{endstone['package_version']}"
+    run("git", "tag", package_tag, cwd=output)
+
     status = run("git", "status", "--porcelain", cwd=output, capture=True)
     if status:
         raise PreparationError(f"prepared checkout is unexpectedly dirty:\n{status}")
@@ -172,6 +181,7 @@ def prepare(cache: Path, output: Path, offline: bool) -> dict[str, str | int]:
         "patched_commit": run("git", "rev-parse", "HEAD", cwd=output, capture=True),
         "patch_revision": patch_revision(patches),
         "patch_count": len(patches),
+        "package_version": endstone["package_version"],
         "output": str(output),
     }
 

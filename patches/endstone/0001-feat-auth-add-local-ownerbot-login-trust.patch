@@ -131,7 +131,7 @@ index 87389155ee69370b1ddc95b776df45b40fe634a3..6f235f6397c441c149c7180812cb4dc3
      target_link_libraries(endstone_runtime PRIVATE dbghelp.lib ws2_32.lib)
      target_link_options(endstone_runtime PRIVATE /DEBUG /INCREMENTAL:NO /OPT:REF /OPT:ICF)
 diff --git a/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp b/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
-index a53c5beab19d1b3bf12615110883e6dd965bac1e..5e4cd786fdcd035a5261873569e6d04fca08e8e0 100644
+index a53c5beab19d1b3bf12615110883e6dd965bac1e..b3440dd3671123380b675bca4ede7126f1d9b7d1 100644
 --- a/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
 +++ b/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
 @@ -16,6 +16,8 @@
@@ -173,7 +173,7 @@ index a53c5beab19d1b3bf12615110883e6dd965bac1e..5e4cd786fdcd035a5261873569e6d04f
  
  void ServerNetworkHandler::disconnectClientWithMessage(const NetworkIdentifier &id, const SubClientId sub_id,
                                                         const Connection::DisconnectFailReason reason,
-@@ -148,10 +173,40 @@ std::optional<PlayerAuthenticationInfo> ServerNetworkHandler::_validateLoginPack
+@@ -148,10 +173,45 @@ std::optional<PlayerAuthenticationInfo> ServerNetworkHandler::_validateLoginPack
          return std::nullopt;
      }
  
@@ -214,6 +214,11 @@ index a53c5beab19d1b3bf12615110883e6dd965bac1e..5e4cd786fdcd035a5261873569e6d04f
      if (!auth_info) {
 -        return auth_info;
 +        auth_info = ENDSTONE_HOOK_CALL_ORIGINAL(&ServerNetworkHandler::_validateLoginPacket, this, source, packet);
++        // A rejected remote Login has already been disconnected by the stock validator.
++        // Preserve upstream's early return before any code dereferences auth_info.
++        if (!auth_info) {
++            return auth_info;
++        }
      }
  
      const auto &info = *auth_info;

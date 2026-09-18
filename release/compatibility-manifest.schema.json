@@ -26,10 +26,11 @@
     },
     "endstone": {
       "type": "object",
-      "required": ["tag", "commit"],
+      "required": ["tag", "commit", "package_version"],
       "properties": {
         "tag": { "type": "string", "minLength": 1 },
-        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "package_version": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+){2}\\+endbot\\.[0-9]+$" }
       },
       "additionalProperties": false
     },
@@ -63,4 +64,3 @@
     "bds_binary_included": { "const": false }
   }
 }
-

@@ -25,6 +25,7 @@ Xbox achievement unlock has **not** yet been observed as an Endbot release gate;
 | Component | Pinned baseline |
 | --- | --- |
 | Endstone | `v0.11.11` / `37b395378d91d6d20f1c52bf9d79dbd20e152458` |
+| Patched Endstone package | `0.11.11+endbot.1` |
 | BDS | `1.26.51.1` (build `51061372`) |
 | Bedrock protocol | `2193` |
 
@@ -62,9 +63,9 @@ python3 scripts/check_portability.py
 ```
 
 The first command verifies `v0.11.11` resolves to the exact locked commit, keeps a bare upstream cache under `.cache/`,
-clones a disposable tree to `build/endstone-patched`, and applies the ordered patch series with `git am`. It refuses to
-overwrite an existing output directory. To reuse a populated cache without network access, choose a new output and add
-`--offline`.
+clones a disposable tree to `build/endstone-patched`, applies the ordered patch series with `git am`, and tags that
+patched commit with the locked Endbot-local package version. It refuses to overwrite an existing output directory. To
+reuse a populated cache without network access, choose a new output and add `--offline`.
 
 To build and run all patched upstream tests on Linux:
 
@@ -82,8 +83,9 @@ ctest --preset conan-relwithdebinfo --output-on-failure
 
 Endstone's Linux build requires its documented Clang/libc++ toolchain. CI installs and tests that toolchain explicitly.
 
-Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it into the same Python environment as the
-patched Endstone package. The plugin registers `/bot ping`, returns `Endbot: pong`, and uses
+Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it together with the patched Endstone
+wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official unpatched
+`0.11.11` wheel. The plugin registers `/bot ping`, returns `Endbot: pong`, and uses
 `endbot.command.control`. The permission defaults to false and is attached only to player UUIDs/XUIDs explicitly listed
 in the generated plugin `config.toml`; it does not grant operator or vanilla command rights.
 
@@ -108,4 +110,3 @@ The acknowledgement names the check's boundary; it does not certify world histor
 Read [AGENTS.md](AGENTS.md), keep the auth patch narrow, add tests with each behavior change, and run both fast test
 suites plus the patch preparation check. Do not commit secrets, BDS binaries, generated worlds, or machine-local paths.
 The project is licensed under Apache-2.0.
-

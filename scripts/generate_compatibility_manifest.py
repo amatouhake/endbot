@@ -45,6 +45,7 @@ def main() -> int:
         "endstone": {
             "tag": lock["endstone"]["tag"],
             "commit": lock["endstone"]["commit"],
+            "package_version": lock["endstone"]["package_version"],
         },
         "bds": lock["bds"],
         "endbot_patch_revision": patch_revision(),

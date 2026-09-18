@@ -135,7 +135,7 @@ export class BedrockSession extends EventEmitter {
       } catch (error) {
         finish(error)
       }
-    })
+    }).finally(() => { this.disconnectPromise = undefined })
     return this.disconnectPromise
   }
 

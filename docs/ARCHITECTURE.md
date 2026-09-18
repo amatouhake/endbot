@@ -36,6 +36,10 @@ contains an unguessable token loaded from a private file. Both endpoints reject 
 are size/time bounded, errors are returned explicitly, and the token is never logged. The plugin command service and
 runtime lifecycle are transport-independent and use fake adapters in tests.
 
+With shipped settings, session closure is bounded at 5 seconds, replacement delay is 1 second, the runtime control
+socket deadline is 8 seconds, and the plugin response deadline is 10 seconds. Thus a normal synchronous replacement
+either returns its result/error before either transport deadline; it does not report an early timeout and finish later.
+
 The protocol is intentionally local operator IPC, not a remote API. It conveys desired lifecycle and input operations;
 authoritative world operations stay in the plugin. In particular, teleport never dispatches the vanilla `/tp` command.
 
@@ -51,6 +55,12 @@ bounded exponential reconnect sequence and never creates a second concurrent ses
 sequence. Intentional replacement waits for the prior Bedrock transport to close before opening the next connection;
 if closure cannot be confirmed, the operation fails instead of risking two sessions. Status exposes connecting,
 online, reconnecting, offline, and failed states plus the last error.
+
+Lifecycle mutations are serialized per immutable UUID. Every possible session start carries a generation and rechecks
+profile existence, desired state, and generation after asynchronous closure/delay/connect boundaries. A newer despawn
+or forget therefore invalidates stale starts. A failed close retains the session reference in `failed` state so forget
+remains blocked and a later lifecycle command can retry closure before any replacement. Explicit spawn, resume, and
+reconnect reset the retry budget; attempts within one automatic reconnect sequence preserve bounded backoff state.
 
 ## World-state authority
 

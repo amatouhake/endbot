@@ -15,13 +15,14 @@ function tokensEqual (left, right) {
 }
 
 export class ControlServer {
-  constructor ({ host = '127.0.0.1', port = 19142, token, lifecycle }) {
+  constructor ({ host = '127.0.0.1', port = 19142, token, lifecycle, requestTimeoutMs = 8_000 }) {
     if (!LOOPBACK.has(host)) throw new Error('Endbot control server must bind to loopback')
     if (typeof token !== 'string' || token.length < 32) throw new Error('Endbot control token is invalid')
     this.host = host
     this.port = port
     this.token = token
     this.lifecycle = lifecycle
+    this.requestTimeoutMs = requestTimeoutMs
     this.sockets = new Set()
   }
 
@@ -47,7 +48,7 @@ export class ControlServer {
   #connection (socket) {
     this.sockets.add(socket)
     socket.once('close', () => this.sockets.delete(socket))
-    socket.setTimeout(5000, () => socket.destroy())
+    socket.setTimeout(this.requestTimeoutMs, () => socket.destroy())
     let body = ''
     socket.setEncoding('utf8')
     socket.on('data', chunk => {

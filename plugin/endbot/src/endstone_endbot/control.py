@@ -15,7 +15,7 @@ class RuntimeControlError(RuntimeError):
 
 
 class RuntimeControlClient:
-    def __init__(self, host: str, port: int, token_file: Path, timeout: float = 0.75) -> None:
+    def __init__(self, host: str, port: int, token_file: Path, timeout: float = 10.0) -> None:
         if host not in {"127.0.0.1", "::1", "localhost"}:
             raise ValueError("Endbot runtime control must use loopback")
         self.host = host

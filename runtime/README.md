@@ -21,8 +21,12 @@ configured in patched Endstone.
 
 The control service refuses non-loopback binds and authenticates every request with the generated token. Unexpected
 disconnects retry with bounded exponential backoff. An intentional `despawn` disables reconnect; `resume` reenables it.
-Replacement sessions wait for confirmed closure of the prior transport. The NetherNet server identity pin fails closed
-if BDS presents a different identity; rotate the pin only after independently verifying an intentional server restart.
+Per-profile lifecycle transitions are serialized, and a newer lifecycle intent invalidates delayed connection starts.
+Replacement sessions wait for confirmed closure of the prior transport; a failed close is visible and retryable without
+opening a second session. Operator-initiated starts reset the retry budget while one automatic reconnect sequence retains
+its bounded attempt count. The default 8-second runtime request deadline covers the bounded 5-second close plus 1-second
+replacement delay and is shorter than the plugin's 10-second response deadline. The NetherNet server identity pin fails
+closed if BDS presents a different identity; rotate the pin only after independently verifying an intentional restart.
 
 Private keys, tokens, server pins, and UUID artifacts use complete-before-publish creation and reject corrupt existing
 files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux

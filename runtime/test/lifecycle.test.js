@@ -36,6 +36,7 @@ function fixture (options = {}) {
 }
 
 const turn = () => new Promise(resolve => setImmediate(resolve))
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
 test('implicit spawn creates once, isolates multiple bots, and despawn disables reconnect', async () => {
   const { lifecycle, sessions } = fixture()
@@ -81,6 +82,17 @@ test('rename preserves identity, updates lookup, and reconnects an online bot', 
   assert.equal(sessions[1].profile.name, 'Builder')
 })
 
+test('rename validates profile-name conflicts before disconnecting', async () => {
+  const { lifecycle, sessions } = fixture()
+  await lifecycle.spawn('Alice')
+  await lifecycle.spawn('Bob')
+  await turn()
+  await assert.rejects(lifecycle.rename('Alice', 'Bob'), error => error.code === 'name_conflict')
+  await assert.rejects(lifecycle.rename('Alice', 'bad-name'), error => error.code === 'invalid_name')
+  assert.deepEqual(sessions[0].disconnects, [])
+  assert.equal(lifecycle.status('Alice').connectionState, 'online')
+})
+
 test('session replacement waits for the old transport to close', async () => {
   let releaseDisconnect
   class DelayedDisconnectSession extends FakeSession {
@@ -117,4 +129,137 @@ test('forget fails safe for live bots and releases an offline name', async () =>
   const result = await lifecycle.forget('Alice')
   assert.equal(result.forgotten, true)
   assert.equal((await lifecycle.spawn('Alice')).created, true)
+})
+
+test('despawn during replacement delay cancels reconnect and permits forget', async () => {
+  const { lifecycle, sessions } = fixture({
+    reconnect: { initialDelayMs: 5, maximumDelayMs: 10, maximumAttempts: 2, sessionReplacementDelayMs: 30 }
+  })
+  await lifecycle.spawn('Alice')
+  await turn()
+
+  const reconnect = lifecycle.reconnectBot('Alice')
+  await turn()
+  const despawn = lifecycle.despawn('Alice')
+  await Promise.all([reconnect, despawn])
+  await wait(40)
+
+  assert.equal(sessions.length, 1)
+  assert.equal(lifecycle.status('Alice').desiredState, 'offline')
+  assert.equal(lifecycle.status('Alice').connectionState, 'offline')
+  assert.equal((await lifecycle.forget('Alice')).forgotten, true)
+  await wait(40)
+  assert.equal(sessions.length, 1)
+  assert.throws(() => lifecycle.status('Alice'), error => error.code === 'not_found')
+})
+
+test('disconnect failure is observable, retryable, and does not start a replacement', async () => {
+  let failures = 1
+  class RetryableDisconnectSession extends FakeSession {
+    async disconnect (reason) {
+      this.disconnects.push(reason)
+      if (failures-- > 0) throw new Error('transport close timed out')
+    }
+  }
+  const { lifecycle, sessions } = fixture({
+    sessionFactory: profile => {
+      const session = new RetryableDisconnectSession(profile)
+      sessions.push(session)
+      return session
+    }
+  })
+  await lifecycle.spawn('Alice')
+  await turn()
+
+  await assert.rejects(lifecycle.rename('Alice', 'Builder'), error => error.code === 'disconnect_failed')
+  assert.equal(sessions.length, 1)
+  assert.equal(lifecycle.status('Alice').connectionState, 'failed')
+  assert.match(lifecycle.status('Alice').lastError, /transport close timed out/)
+  assert.throws(() => lifecycle.status('Builder'), error => error.code === 'not_found')
+
+  const renamed = await lifecycle.rename('Alice', 'Builder')
+  await turn()
+  assert.equal(renamed.identityId, lifecycle.status('Builder').identityId)
+  assert.equal(lifecycle.status('Builder').connectionState, 'online')
+  assert.equal(sessions.length, 2)
+})
+
+test('despawn disconnect failure remains forget-safe and can be retried', async () => {
+  let failures = 1
+  class RetryableDisconnectSession extends FakeSession {
+    async disconnect (reason) {
+      this.disconnects.push(reason)
+      if (failures-- > 0) throw new Error('close rejected')
+    }
+  }
+  const { lifecycle, sessions } = fixture({
+    sessionFactory: profile => {
+      const session = new RetryableDisconnectSession(profile)
+      sessions.push(session)
+      return session
+    }
+  })
+  await lifecycle.spawn('Alice')
+  await turn()
+
+  await assert.rejects(lifecycle.despawn('Alice'), error => error.code === 'disconnect_failed')
+  assert.equal(lifecycle.status('Alice').desiredState, 'offline')
+  assert.equal(lifecycle.status('Alice').connectionState, 'failed')
+  await assert.rejects(lifecycle.forget('Alice'), error => error.code === 'online')
+
+  await lifecycle.despawn('Alice')
+  assert.equal(lifecycle.status('Alice').connectionState, 'offline')
+  assert.equal((await lifecycle.forget('Alice')).forgotten, true)
+})
+
+test('resume after failed despawn closes the retained session before replacing it', async () => {
+  let failures = 1
+  class RetryableDisconnectSession extends FakeSession {
+    async disconnect (reason) {
+      this.disconnects.push(reason)
+      if (failures-- > 0) throw new Error('close rejected')
+    }
+  }
+  const { lifecycle, sessions } = fixture({
+    sessionFactory: profile => {
+      const session = new RetryableDisconnectSession(profile)
+      sessions.push(session)
+      return session
+    }
+  })
+  await lifecycle.spawn('Alice')
+  await turn()
+  await assert.rejects(lifecycle.despawn('Alice'), error => error.code === 'disconnect_failed')
+
+  await lifecycle.resume('Alice')
+  await turn()
+  assert.equal(sessions.length, 2)
+  assert.equal(sessions[0].disconnects.length, 2)
+  assert.equal(lifecycle.status('Alice').connectionState, 'online')
+})
+
+test('operator resume resets an exhausted automatic reconnect budget', async () => {
+  let connectAttempts = 0
+  class FailingSession extends FakeSession {
+    async connect () {
+      connectAttempts += 1
+      if (connectAttempts <= 4) throw new Error(`connect failure ${connectAttempts}`)
+    }
+  }
+  const { lifecycle } = fixture({
+    sessionFactory: profile => new FailingSession(profile),
+    reconnect: { initialDelayMs: 3, maximumDelayMs: 3, maximumAttempts: 2, sessionReplacementDelayMs: 0 }
+  })
+  await lifecycle.spawn('Alice')
+  await wait(20)
+  assert.equal(lifecycle.status('Alice').connectionState, 'failed')
+  assert.equal(lifecycle.status('Alice').reconnectAttempt, 3)
+
+  await lifecycle.resume('Alice')
+  await turn()
+  assert.equal(lifecycle.status('Alice').connectionState, 'reconnecting')
+  assert.equal(lifecycle.status('Alice').reconnectAttempt, 1)
+  await wait(10)
+  assert.equal(lifecycle.status('Alice').connectionState, 'online')
+  assert.equal(lifecycle.status('Alice').reconnectAttempt, 0)
 })

@@ -41,6 +41,7 @@ class ControlClientTests(unittest.TestCase):
 
     def test_authenticated_request_round_trip(self) -> None:
         client = RuntimeControlClient("127.0.0.1", self.server.server_address[1], self.token_file)
+        self.assertEqual(client.timeout, 10.0)
         self.assertEqual(client.request("spawn", name="Alice"), {"name": "Alice"})
 
     def test_bad_token_is_rejected(self) -> None:

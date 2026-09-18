@@ -9,4 +9,6 @@ allowed-xuids = []
 token-file = "control.token"
 host = "127.0.0.1"
 port = 19142
-timeout-seconds = 0.75
+# Covers the bounded 5-second session close plus the default 1-second
+# replacement delay. Keep this above the runtime's controlRequestTimeoutMs.
+timeout-seconds = 10.0

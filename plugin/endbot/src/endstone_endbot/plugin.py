@@ -75,7 +75,7 @@ class EndbotPlugin(Plugin):
             host=str(runtime.get("host", "127.0.0.1")),
             port=int(runtime.get("port", 19142)),
             token_file=token_file,
-            timeout=float(runtime.get("timeout-seconds", 0.75)),
+            timeout=float(runtime.get("timeout-seconds", 10.0)),
         )
         self._world = EndstoneWorld(self.server)
         self._bot_commands = BotCommandService(control, self._world)

@@ -16,6 +16,7 @@ export function loadConfig (filename) {
     serverIdentityPinPath: resolve('serverIdentityPinPath'),
     controlHost: value.controlHost ?? '127.0.0.1',
     controlPort: value.controlPort ?? 19142,
+    controlRequestTimeoutMs: value.controlRequestTimeoutMs ?? 8_000,
     serverHost: value.serverHost ?? '127.0.0.1',
     serverPort: value.serverPort ?? 19132,
     gameVersion: value.gameVersion ?? '1.26.50',

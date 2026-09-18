@@ -26,6 +26,13 @@ class ReleaseWheelContractTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             manifest = json.loads(output.read_text(encoding="utf-8"))
             self.assertTrue(manifest["tested_safety_conditions"]["actual_xbox_achievement_unlock_observed"])
+            self.assertEqual(
+                manifest["tested_safety_conditions"]["actual_xbox_achievement_unlock_scope"],
+                "m0_bot_ping",
+            )
+            self.assertFalse(
+                manifest["tested_safety_conditions"]["m2_actual_xbox_achievement_unlock_observed"]
+            )
 
     def test_release_candidate_repairs_and_inspects_endstone_wheel(self) -> None:
         workflow = (ROOT / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")

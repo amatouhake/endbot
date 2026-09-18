@@ -6,6 +6,9 @@ Generate metadata only from a clean, reviewed release commit:
 python3 scripts/generate_compatibility_manifest.py dist/compatibility-manifest.json --endbot-version X.Y.Z
 ```
 
+The safety metadata scopes the completed Xbox-achievement observation to the M0 `/bot ping` gate and reports the M2
+achievement gate separately. Do not infer M2 completion from the preserved M0 evidence.
+
 Release-candidate workflow input must exactly match `runtime/package.json`; the Python plugin version must be its
 PEP 440-equivalent form. `scripts/check_release_version.py` enforces that contract before any candidate is assembled.
 

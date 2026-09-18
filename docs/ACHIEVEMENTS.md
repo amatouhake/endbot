@@ -77,3 +77,8 @@ the observed Xbox-achievement claim to all M2 operations. Before calling the M2 
 in a fresh Survival validation world, exercise representative spawn, teleport, input, reconnect, rename, and despawn
 operations, inspect world history, then unlock a still-locked achievement from a normally authenticated human client.
 Do not alter world flags to make that test pass.
+
+The Linux runtime/server smoke described in [`M2_VALIDATION.md`](M2_VALIDATION.md) kept `online-mode=true`,
+`allow-cheats=false`, an empty pack stack, and the pinned official BDS. Its scoped property preflight passed. That test
+did not include the authenticated Windows command operator, a version-aware post-test history read, or a new Xbox
+achievement unlock, so the M2 achievement gate remains open.

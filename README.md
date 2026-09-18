@@ -123,6 +123,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)
 - [Compatibility and release gates](docs/COMPATIBILITY.md)
 - [M2 commands and operation](docs/COMMANDS.md)
+- [M2 validation record](docs/M2_VALIDATION.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Contributing

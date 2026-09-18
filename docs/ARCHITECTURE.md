@@ -48,7 +48,9 @@ the same UUID profile and reconnects a live session so the Bedrock login name ch
 
 The runtime distinguishes desired state from connection state. Unexpected loss while desired state is online enters a
 bounded exponential reconnect sequence and never creates a second concurrent session. Intentional despawn cancels that
-sequence. Status exposes connecting, online, reconnecting, offline, and failed states plus the last error.
+sequence. Intentional replacement waits for the prior Bedrock transport to close before opening the next connection;
+if closure cannot be confirmed, the operation fails instead of risking two sessions. Status exposes connecting,
+online, reconnecting, offline, and failed states plus the last error.
 
 ## World-state authority
 
@@ -56,6 +58,10 @@ BDS remains authoritative for dimension, position, rotation, inventory, health, 
 with the stable UUID. Endbot persists only identity and desired lifecycle/control state. `resume` and `reconnect` do not
 send a placement; BDS therefore restores its native state. `spawn`, by contrast, explicitly requests placement and the
 plugin applies it when the UUID joins. This avoids a second location database.
+
+The pinned protocol data is also prepared reproducibly. Endbot applies one narrowly tested schema correction that
+separates the standalone `InventoryTransaction` legacy-slot optional from the distinct `PlayerAuthInput` layout. This
+is required for BDS 1.26.51 to accept entity attack and held-item use without changing the pinned protocol baseline.
 
 ## Patch lifecycle
 

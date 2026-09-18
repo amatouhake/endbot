@@ -72,7 +72,8 @@ vanilla `/tp` and does not require cheat-command permission.
 
 Omitting an action mode means `once`. Continuous actions run each 20 Hz input tick; interval actions accept 1–72000
 ticks. Movement behaves as held input. Global `stop` clears movement, scheduled actions, sprint, and sneak while keeping
-the session connected. `look` remains at its last rotation after stop.
+the session connected. `look` remains at its last rotation after stop. `use` sends the held item's normal Bedrock
+interaction; with an empty hand it is a safe no-op. Endbot does not invent an item or issue a server command.
 
 ## Operational states
 
@@ -84,3 +85,6 @@ the session connected. `look` remains at its last rotation after stop.
 
 One Bot's generation/reconnect timer and inputs are independent of every other Bot. An unexpected disconnect retains
 the profile UUID and retries with exponential backoff capped at 30 seconds, stopping after the configured attempt limit.
+Explicit reconnect and live rename wait for the old transport to close before replacement, so a new session cannot race
+the old one. A changed NetherNet server identity fails closed and is reported in status; an operator must deliberately
+remove the saved pin after verifying an intentional BDS identity rotation.

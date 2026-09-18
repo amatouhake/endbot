@@ -54,6 +54,8 @@ def main() -> int:
             "allow_cheats": False,
             "experiments_required": False,
             "actual_xbox_achievement_unlock_observed": True,
+            "actual_xbox_achievement_unlock_scope": "m0_bot_ping",
+            "m2_actual_xbox_achievement_unlock_observed": False,
         },
         "bds_binary_included": False,
     }

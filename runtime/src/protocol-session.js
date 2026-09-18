@@ -32,14 +32,25 @@ export class BedrockSession extends EventEmitter {
     this.hotbarSlot = 0
     this.inventory = []
     this.closeEmitted = false
+    this.transportClosed = false
     this.spawned = false
     this.respawnPending = false
     this.respawnReadySent = false
     this.disconnectPromise = undefined
+    this.connectPromise = undefined
   }
 
-  async connect () {
-    const protocolModule = await import('bedrock-protocol')
+  connect () {
+    if (!this.connectPromise) this.connectPromise = this.#connect()
+    return this.connectPromise
+  }
+
+  async #connect () {
+    if (this.disconnecting) throw new Error('Bedrock session connection was canceled')
+    const protocolModule = await (this.options.protocolLoader?.() ?? import('bedrock-protocol'))
+    // Dynamic module loading cannot be aborted. Recheck ownership immediately
+    // after it settles so a concurrent disconnect cannot create a late client.
+    if (this.disconnecting) throw new Error('Bedrock session connection was canceled')
     const protocol = protocolModule.default ?? protocolModule
     const auth = createLocalOwnerbotAuth({
       username: this.profile.name,
@@ -113,8 +124,19 @@ export class BedrockSession extends EventEmitter {
     if (this.disconnectPromise) return this.disconnectPromise
     this.disconnecting = true
     clearInterval(this.timer)
-    if (!this.client) return Promise.resolve()
-    this.disconnectPromise = new Promise((resolve, reject) => {
+    this.disconnectPromise = this.#disconnect(reason).finally(() => { this.disconnectPromise = undefined })
+    return this.disconnectPromise
+  }
+
+  async #disconnect (reason) {
+    // A disconnect issued while connect() is loading its protocol dependency
+    // owns that initialization until it observes cancellation. Do not report a
+    // closed session while initialization can still create a transport.
+    if (!this.client && this.connectPromise) {
+      try { await this.connectPromise } catch {}
+    }
+    if (!this.client || this.transportClosed) return
+    await new Promise((resolve, reject) => {
       let settled = false
       const finish = error => {
         if (settled) return
@@ -136,8 +158,7 @@ export class BedrockSession extends EventEmitter {
       } catch (error) {
         finish(error)
       }
-    }).finally(() => { this.disconnectPromise = undefined })
-    return this.disconnectPromise
+    })
   }
 
   #wireClient () {
@@ -223,6 +244,7 @@ export class BedrockSession extends EventEmitter {
     })
     this.client.on('close', reason => {
       clearInterval(this.timer)
+      this.transportClosed = true
       this.#emitClose(new Error(`Connection closed: ${reason || 'unknown reason'}`))
     })
   }

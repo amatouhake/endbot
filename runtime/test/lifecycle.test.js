@@ -58,6 +58,7 @@ test('unexpected disconnect reconnects with the same identity', async () => {
   const spawned = await lifecycle.spawn('Alice')
   await turn()
   sessions[0].emit('close', new Error('network gone'))
+  sessions[0].emit('close', new Error('duplicate transport close'))
   assert.equal(lifecycle.status('Alice').connectionState, 'reconnecting')
   await new Promise(resolve => setTimeout(resolve, 15))
   assert.equal(sessions.length, 2)

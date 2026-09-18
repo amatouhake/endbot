@@ -166,7 +166,8 @@ export class BotLifecycle extends EventEmitter {
       reconnectAttempt: previous.reconnectAttempt ?? 0,
       nextReconnectAt: previous.nextReconnectAt ?? null,
       lastError: previous.lastError ?? null,
-      timer: previous.timer
+      timer: previous.timer,
+      handledGeneration: previous.handledGeneration
     }
   }
 
@@ -191,6 +192,7 @@ export class BotLifecycle extends EventEmitter {
     const state = this.#newState(reconnecting ? 'reconnecting' : 'connecting', previous ?? {})
     state.timer = undefined
     state.nextReconnectAt = null
+    state.handledGeneration = undefined
     this.sessions.set(profile.identityId, state)
     this.emit('state', this.#status(profile))
     try {
@@ -217,6 +219,8 @@ export class BotLifecycle extends EventEmitter {
     const profile = this.store.getById(identityId)
     if (!profile) return
     const state = this.sessions.get(identityId) ?? this.#newState('offline')
+    if (state.handledGeneration === generation) return
+    state.handledGeneration = generation
     state.session = undefined
     state.lastError = error ? String(error.message ?? error) : 'Connection closed unexpectedly'
     if (!profile.desiredOnline) {

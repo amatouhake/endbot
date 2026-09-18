@@ -22,6 +22,7 @@ export class ControlServer {
     this.port = port
     this.token = token
     this.lifecycle = lifecycle
+    this.sockets = new Set()
   }
 
   listen () {
@@ -39,10 +40,13 @@ export class ControlServer {
 
   close () {
     if (!this.server) return Promise.resolve()
+    for (const socket of this.sockets) socket.destroy()
     return new Promise((resolve, reject) => this.server.close(error => error ? reject(error) : resolve()))
   }
 
   #connection (socket) {
+    this.sockets.add(socket)
+    socket.once('close', () => this.sockets.delete(socket))
     socket.setTimeout(5000, () => socket.destroy())
     let body = ''
     socket.setEncoding('utf8')
@@ -50,7 +54,7 @@ export class ControlServer {
       body += chunk
       if (Buffer.byteLength(body) > MAX_REQUEST_BYTES) socket.destroy()
       if (!body.includes('\n')) return
-      socket.pause()
+      socket.removeAllListeners('data')
       void this.#respond(socket, body.slice(0, body.indexOf('\n')))
     })
   }

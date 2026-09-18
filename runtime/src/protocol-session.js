@@ -3,9 +3,8 @@
 
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
-import path from 'node:path'
 
-import { createLocalOwnerbotAuth } from './local-identity.js'
+import { createLocalOwnerbotAuth, loadOrCreatePersistentArtifact } from './local-identity.js'
 
 function vector (value) { return { x: value.x, y: value.y, z: value.z } }
 const EMPTY_ITEM = { network_id: 0 }
@@ -22,6 +21,7 @@ export class BedrockSession extends EventEmitter {
     this.disconnecting = false
     this.heldItem = EMPTY_ITEM
     this.hotbarSlot = 0
+    this.closeEmitted = false
   }
 
   async connect () {
@@ -51,9 +51,17 @@ export class BedrockSession extends EventEmitter {
       nethernetServerKeyPin: pin || undefined,
       onNetherNetServerTrust: identity => {
         if (!['127.0.0.1', 'localhost', '::1'].includes(this.options.serverHost)) return false
-        fs.mkdirSync(path.dirname(this.options.serverIdentityPinPath), { recursive: true, mode: 0o700 })
-        fs.writeFileSync(this.options.serverIdentityPinPath, `${identity.pin}\n`, { mode: 0o600, flag: 'wx' })
-        return true
+        const winner = loadOrCreatePersistentArtifact(
+          this.options.serverIdentityPinPath,
+          () => `${identity.pin}\n`,
+          filename => {
+            const value = fs.readFileSync(filename, 'utf8').trim()
+            if (!value) throw new Error('BDS NetherNet server identity pin is empty')
+            return value
+          },
+          'BDS NetherNet server identity pin'
+        ).value
+        return winner === identity.pin
       },
       connectTimeout: this.options.connectTimeoutMs
     })
@@ -126,15 +134,21 @@ export class BedrockSession extends EventEmitter {
       this.hotbarSlot = packet.selected_slot
     })
     this.client.on('error', error => {
-      if (!this.disconnecting) this.emit('close', error)
+      this.#emitClose(error)
     })
     this.client.on('kick', packet => {
-      if (!this.disconnecting) this.emit('close', new Error(`Kicked: ${packet.message}`))
+      this.#emitClose(new Error(`Kicked: ${packet.message}`))
     })
     this.client.on('close', reason => {
       clearInterval(this.timer)
-      if (!this.disconnecting) this.emit('close', new Error(`Connection closed: ${reason || 'unknown reason'}`))
+      this.#emitClose(new Error(`Connection closed: ${reason || 'unknown reason'}`))
     })
+  }
+
+  #emitClose (error) {
+    if (this.disconnecting || this.closeEmitted) return
+    this.closeEmitted = true
+    this.emit('close', error)
   }
 
   #sendTick () {

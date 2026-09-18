@@ -1,0 +1,577 @@
+From 240d809aa32314d3c0359e30df80c355705d72a1 Mon Sep 17 00:00:00 2001
+From: amatouhake <60422818+amatouhake@users.noreply.github.com>
+Date: Thu, 17 Sep 2026 13:21:13 +0900
+Subject: [PATCH 1/2] feat(auth): add local ownerbot login trust
+
+---
+ conanfile.py                                  |   1 +
+ endstone/config/endstone.default.toml         |  10 +
+ src/bedrock/certificates/web_token.cpp        |  15 +
+ src/bedrock/certificates/web_token.h          |   3 +
+ .../network/base_connection_request.cpp       |   5 +
+ src/endstone/runtime/CMakeLists.txt           |  10 +-
+ .../bedrock_hooks/server_network_handler.cpp  |  61 +++-
+ src/endstone/runtime/local_ownerbot_auth.cpp  | 279 ++++++++++++++++++
+ src/endstone/runtime/local_ownerbot_auth.h    |  67 +++++
+ 9 files changed, 447 insertions(+), 4 deletions(-)
+ create mode 100644 src/endstone/runtime/local_ownerbot_auth.cpp
+ create mode 100644 src/endstone/runtime/local_ownerbot_auth.h
+
+diff --git a/conanfile.py b/conanfile.py
+index b5703adee6950c7cc9afc769367ee740cbfcf30f..6e241b64b3412a65cbbd6df4011a1fb3b7b05d94 100644
+--- a/conanfile.py
++++ b/conanfile.py
+@@ -61,6 +61,7 @@ class EndstoneRecipe(ConanFile):
+         self.requires("magic_enum/0.9.7")
+         self.requires("ms-gsl/4.2.2")
+         self.requires("nlohmann_json/3.12.0")
++        self.requires("openssl/3.6.4")
+         self.requires("pybind11/3.0.1")
+         self.requires("raknet/4.081-mojang")
+         self.requires("replxx/0.0.4")
+diff --git a/endstone/config/endstone.default.toml b/endstone/config/endstone.default.toml
+index 174ba791d2160186a1b411b5d9d8ed79e9b719e2..a50ab40e1ea3c6d764e7308176556860b774ddf6 100644
+--- a/endstone/config/endstone.default.toml
++++ b/endstone/config/endstone.default.toml
+@@ -13,3 +13,13 @@ allow-client-packs = false
+ # Disabled by default: the server exits when it cannot bind that port, and many
+ # hosts and containers have no IPv6 at all.
+ ipv6 = false
++
++[local-bot-auth]
++# Add a server-owner trust path for explicitly signed external bots. Tokens
++# outside this configured issuer continue through the stock BDS validator.
++enabled = false
++issuer = "ownerbot://local"
++audience = "endstone://local-ownerbot"
++public-key-file = "ownerbot-public.pem"
++clock-skew-seconds = 5
++max-token-lifetime-seconds = 120
+diff --git a/src/bedrock/certificates/web_token.cpp b/src/bedrock/certificates/web_token.cpp
+index e1ea3ef6449fb572684addd46d9382d7a8481e06..c55daf42ac4a2173226bf45526320f2959a50248 100644
+--- a/src/bedrock/certificates/web_token.cpp
++++ b/src/bedrock/certificates/web_token.cpp
+@@ -23,3 +23,18 @@ const Json::Value &WebToken::getData() const
+ {
+     return data_info_;
+ }
++
++const std::string &WebToken::getEncodedHeader() const
++{
++    return header_;
++}
++
++const std::string &WebToken::getEncodedData() const
++{
++    return data_;
++}
++
++const std::string &WebToken::getEncodedSignature() const
++{
++    return signature_;
++}
+diff --git a/src/bedrock/certificates/web_token.h b/src/bedrock/certificates/web_token.h
+index 58e212eb2632f34fed28d649c74ff76907095b73..98bd72c11e472502b826aeea07d6ab334149ce0b 100644
+--- a/src/bedrock/certificates/web_token.h
++++ b/src/bedrock/certificates/web_token.h
+@@ -22,6 +22,9 @@ public:
+     explicit WebToken() = default;
+     [[nodiscard]] const Json::Value &getHeader() const;
+     [[nodiscard]] const Json::Value &getData() const;
++    [[nodiscard]] const std::string &getEncodedHeader() const;
++    [[nodiscard]] const std::string &getEncodedData() const;
++    [[nodiscard]] const std::string &getEncodedSignature() const;
+ 
+ private:
+     std::string header_;       // +0
+diff --git a/src/bedrock/network/base_connection_request.cpp b/src/bedrock/network/base_connection_request.cpp
+index b01351f132024eded1e65c43b4d8ff3bcda79aa6..73cc34c5d555952d98fb22f85b8465fe0d3f38cf 100644
+--- a/src/bedrock/network/base_connection_request.cpp
++++ b/src/bedrock/network/base_connection_request.cpp
+@@ -26,6 +26,11 @@ const WebToken &BaseConnectionRequest::_getRawRequest() const
+     return *raw_token_;
+ }
+ 
++const RawGameServerToken &BaseConnectionRequest::_getGameServerToken() const
++{
++    return unverified_game_server_token_;
++}
++
+ std::string BaseConnectionRequest::getThirdPartyName() const
+ {
+     return getData("ThirdPartyName").asString();
+diff --git a/src/endstone/runtime/CMakeLists.txt b/src/endstone/runtime/CMakeLists.txt
+index 87389155ee69370b1ddc95b776df45b40fe634a3..6f235f6397c441c149c7180812cb4dc3b2a44551 100644
+--- a/src/endstone/runtime/CMakeLists.txt
++++ b/src/endstone/runtime/CMakeLists.txt
+@@ -4,8 +4,16 @@ project(endstone_runtime LANGUAGES CXX)
+ set(PYBIND11_FINDPYTHON ON)
+ find_package(pybind11 CONFIG REQUIRED)
+ find_package(funchook CONFIG REQUIRED)
++find_package(nlohmann_json REQUIRED)
++find_package(OpenSSL REQUIRED)
+ find_package(tomlplusplus REQUIRED)
+ 
++add_library(endstone_local_ownerbot_auth STATIC
++        local_ownerbot_auth.cpp
++)
++target_include_directories(endstone_local_ownerbot_auth PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../)
++target_link_libraries(endstone_local_ownerbot_auth PUBLIC nlohmann_json::nlohmann_json OpenSSL::Crypto tomlplusplus::tomlplusplus)
++
+ add_library(endstone_runtime SHARED
+         bedrock_hooks/actor.cpp
+         bedrock_hooks/batched_network_peer.cpp
+@@ -52,7 +60,7 @@ add_library(endstone_runtime SHARED
+ )
+ add_library(endstone::runtime ALIAS endstone_runtime)
+ set_target_properties(endstone_runtime PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+-target_link_libraries(endstone_runtime PRIVATE endstone::core funchook::funchook pybind11::embed tomlplusplus::tomlplusplus)
++target_link_libraries(endstone_runtime PRIVATE endstone::core endstone_local_ownerbot_auth funchook::funchook pybind11::embed tomlplusplus::tomlplusplus)
+ if (MSVC)
+     target_link_libraries(endstone_runtime PRIVATE dbghelp.lib ws2_32.lib)
+     target_link_options(endstone_runtime PRIVATE /DEBUG /INCREMENTAL:NO /OPT:REF /OPT:ICF)
+diff --git a/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp b/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
+index a53c5beab19d1b3bf12615110883e6dd965bac1e..5e4cd786fdcd035a5261873569e6d04fca08e8e0 100644
+--- a/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
++++ b/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
+@@ -16,6 +16,8 @@
+ 
+ #include <magic_enum/magic_enum.hpp>
+ 
++#include <mutex>
++
+ #include "bedrock/locale/i18n.h"
+ #include "bedrock/network/packet/disconnect_packet.h"
+ #include "bedrock/server/server_instance.h"
+@@ -26,6 +28,29 @@
+ #include "endstone/event/player/player_kick_event.h"
+ #include "endstone/event/player/player_login_event.h"
+ #include "endstone/runtime/hook.h"
++#include "endstone/runtime/local_ownerbot_auth.h"
++
++namespace {
++endstone::runtime::ownerbot::Verifier *getOwnerbotVerifier()
++{
++    static std::unique_ptr<endstone::runtime::ownerbot::Verifier> verifier;
++    static std::once_flag once;
++    std::call_once(once, [] {
++        auto config = endstone::runtime::ownerbot::loadConfig();
++        if (config.enabled) {
++            verifier = std::make_unique<endstone::runtime::ownerbot::Verifier>(std::move(config));
++            endstone::core::EndstoneServer::getInstance().getLogger().info(
++                "Local ownerbot authentication is enabled for issuer '{}'.", verifier->getConfig().issuer);
++        }
++    });
++    return verifier.get();
++}
++
++std::string getCompactClientDataToken(const WebToken &token)
++{
++    return token.getEncodedHeader() + "." + token.getEncodedData() + "." + token.getEncodedSignature();
++}
++}  // namespace
+ 
+ void ServerNetworkHandler::disconnectClientWithMessage(const NetworkIdentifier &id, const SubClientId sub_id,
+                                                        const Connection::DisconnectFailReason reason,
+@@ -148,10 +173,40 @@ std::optional<PlayerAuthenticationInfo> ServerNetworkHandler::_validateLoginPack
+         return std::nullopt;
+     }
+ 
+-    // Run the original logics first so invalid login attempts will be rejected right away.
+-    auto auth_info = ENDSTONE_HOOK_CALL_ORIGINAL(&ServerNetworkHandler::_validateLoginPacket, this, source, packet);
++    std::optional<PlayerAuthenticationInfo> auth_info;
++    try {
++        if (auto *verifier = getOwnerbotVerifier()) {
++            const auto &request = *packet.payload.connection_request;
++            const auto verification = verifier->verify(request._getGameServerToken().value,
++                                                       getCompactClientDataToken(request._getRawRequest()));
++            if (verification.accepted) {
++                const auto &identity = verification.identity;
++                PlayerAuthenticationInfo local_info{};
++                local_info.xbox_live_name = identity.name;
++                local_info.best_display_name = identity.name;
++                local_info.public_key = identity.client_public_key;
++                local_info.authenticated_uuid = mce::UUID::fromString(identity.subject);
++                local_info.is_host = false;
++                local_info.is_local = true;
++                server.getLogger().info("Accepted local ownerbot '{}' ({}) from issuer '{}'.", identity.name,
++                                        identity.subject, identity.issuer);
++                auth_info = std::move(local_info);
++            }
++            else if (verification.candidate) {
++                server.getLogger().info("Local ownerbot Login rejected: {}.", verification.error);
++            }
++        }
++    }
++    catch (const std::exception &error) {
++        server.getLogger().error("Local ownerbot authentication configuration failed: {}", error.what());
++    }
++
++    // The stock validator sends a disconnect as part of rejecting a Login, so
++    // an accepted local token must be routed before that destructive failure
++    // path. Every non-local or invalid token still takes the complete vanilla
++    // Microsoft validation path unchanged.
+     if (!auth_info) {
+-        return auth_info;
++        auth_info = ENDSTONE_HOOK_CALL_ORIGINAL(&ServerNetworkHandler::_validateLoginPacket, this, source, packet);
+     }
+ 
+     const auto &info = *auth_info;
+diff --git a/src/endstone/runtime/local_ownerbot_auth.cpp b/src/endstone/runtime/local_ownerbot_auth.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..f8f99b021e467a4237b66dfc4a333f255af57115
+--- /dev/null
++++ b/src/endstone/runtime/local_ownerbot_auth.cpp
+@@ -0,0 +1,279 @@
++// Copyright (c) 2026, The Endstone Project contributors.
++// SPDX-License-Identifier: Apache-2.0
++
++#include "endstone/runtime/local_ownerbot_auth.h"
++
++#include <algorithm>
++#include <array>
++#include <fstream>
++#include <limits>
++#include <regex>
++#include <stdexcept>
++#include <string_view>
++#include <vector>
++
++#include <nlohmann/json.hpp>
++#include <openssl/bio.h>
++#include <openssl/bn.h>
++#include <openssl/core_names.h>
++#include <openssl/ec.h>
++#include <openssl/evp.h>
++#include <openssl/pem.h>
++#include <openssl/x509.h>
++#include <toml++/toml.h>
++
++namespace endstone::runtime::ownerbot {
++namespace {
++
++using Json = nlohmann::json;
++using BioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
++using MdCtxPtr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
++using EcdsaSigPtr = std::unique_ptr<ECDSA_SIG, decltype(&ECDSA_SIG_free)>;
++
++struct Jwt {
++    std::string encoded_header;
++    std::string encoded_payload;
++    std::vector<unsigned char> signature;
++    Json header;
++    Json payload;
++};
++
++std::vector<unsigned char> decodeBase64Url(std::string value)
++{
++    for (auto &c : value) {
++        if (c == '-') c = '+';
++        else if (c == '_') c = '/';
++    }
++    if (value.size() % 4 == 1) throw std::invalid_argument("invalid base64url length");
++    while (value.size() % 4 != 0) value.push_back('=');
++
++    std::vector<unsigned char> decoded((value.size() / 4) * 3);
++    const auto length = EVP_DecodeBlock(decoded.data(), reinterpret_cast<const unsigned char *>(value.data()),
++                                        static_cast<int>(value.size()));
++    if (length < 0) throw std::invalid_argument("invalid base64url data");
++    auto padding = 0;
++    if (!value.empty() && value.back() == '=') ++padding;
++    if (value.size() > 1 && value[value.size() - 2] == '=') ++padding;
++    decoded.resize(static_cast<std::size_t>(length - padding));
++    return decoded;
++}
++
++Jwt parseJwt(const std::string &compact)
++{
++    const auto first = compact.find('.');
++    const auto second = first == std::string::npos ? std::string::npos : compact.find('.', first + 1);
++    if (first == std::string::npos || second == std::string::npos || compact.find('.', second + 1) != std::string::npos ||
++        first == 0 || second == first + 1 || second + 1 == compact.size()) {
++        throw std::invalid_argument("token must have three non-empty compact JWS parts");
++    }
++    Jwt result;
++    result.encoded_header = compact.substr(0, first);
++    result.encoded_payload = compact.substr(first + 1, second - first - 1);
++    result.signature = decodeBase64Url(compact.substr(second + 1));
++    const auto header = decodeBase64Url(result.encoded_header);
++    const auto payload = decodeBase64Url(result.encoded_payload);
++    result.header = Json::parse(header.begin(), header.end());
++    result.payload = Json::parse(payload.begin(), payload.end());
++    if (!result.header.is_object() || !result.payload.is_object()) {
++        throw std::invalid_argument("token header and payload must be JSON objects");
++    }
++    return result;
++}
++
++bool isP384(EVP_PKEY *key)
++{
++    if (!key || !EVP_PKEY_is_a(key, "EC")) return false;
++    std::array<char, 32> group{};
++    std::size_t length = 0;
++    return EVP_PKEY_get_utf8_string_param(key, OSSL_PKEY_PARAM_GROUP_NAME, group.data(), group.size(), &length) == 1 &&
++           std::string_view(group.data(), length) == "secp384r1";
++}
++
++std::unique_ptr<EVP_PKEY, Verifier::PkeyDeleter> readPublicKey(const std::string &path)
++{
++    BioPtr bio(BIO_new_file(path.c_str(), "r"), BIO_free);
++    if (!bio) throw std::runtime_error("could not open public key file: " + path);
++    std::unique_ptr<EVP_PKEY, Verifier::PkeyDeleter> key(PEM_read_bio_PUBKEY(bio.get(), nullptr, nullptr, nullptr));
++    if (!isP384(key.get())) throw std::runtime_error("owner public key must be an EC P-384 PEM public key");
++    return key;
++}
++
++std::unique_ptr<EVP_PKEY, Verifier::PkeyDeleter> readDerPublicKey(const std::string &encoded)
++{
++    const auto der = decodeBase64Url(encoded);
++    const unsigned char *position = der.data();
++    std::unique_ptr<EVP_PKEY, Verifier::PkeyDeleter> key(
++        d2i_PUBKEY(nullptr, &position, static_cast<long>(der.size())));
++    if (!key || position != der.data() + der.size() || !isP384(key.get())) {
++        throw std::invalid_argument("cpk must be a base64 DER EC P-384 public key");
++    }
++    return key;
++}
++
++std::vector<unsigned char> rawEcdsaToDer(const std::vector<unsigned char> &raw)
++{
++    if (raw.size() != 96) throw std::invalid_argument("ES384 signature must contain 96 raw bytes");
++    EcdsaSigPtr signature(ECDSA_SIG_new(), ECDSA_SIG_free);
++    if (!signature) throw std::runtime_error("could not allocate ECDSA signature");
++    auto *r = BN_bin2bn(raw.data(), 48, nullptr);
++    auto *s = BN_bin2bn(raw.data() + 48, 48, nullptr);
++    if (!r || !s || ECDSA_SIG_set0(signature.get(), r, s) != 1) {
++        BN_free(r);
++        BN_free(s);
++        throw std::runtime_error("could not decode ECDSA signature");
++    }
++    const auto length = i2d_ECDSA_SIG(signature.get(), nullptr);
++    if (length <= 0) throw std::runtime_error("could not encode ECDSA signature");
++    std::vector<unsigned char> der(static_cast<std::size_t>(length));
++    auto *position = der.data();
++    if (i2d_ECDSA_SIG(signature.get(), &position) != length) throw std::runtime_error("could not encode ECDSA signature");
++    return der;
++}
++
++bool verifySignature(const Jwt &jwt, EVP_PKEY *key)
++{
++    if (jwt.header.value("alg", "") != "ES384") return false;
++    const auto signing_input = jwt.encoded_header + "." + jwt.encoded_payload;
++    const auto signature = rawEcdsaToDer(jwt.signature);
++    MdCtxPtr context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
++    if (!context || EVP_DigestVerifyInit(context.get(), nullptr, EVP_sha384(), nullptr, key) != 1) {
++        throw std::runtime_error("could not initialize ES384 verification");
++    }
++    return EVP_DigestVerify(context.get(), signature.data(), signature.size(),
++                            reinterpret_cast<const unsigned char *>(signing_input.data()), signing_input.size()) == 1;
++}
++
++std::int64_t integerClaim(const Json &payload, const char *name)
++{
++    const auto it = payload.find(name);
++    if (it == payload.end() || !it->is_number_integer()) throw std::invalid_argument(std::string("missing integer claim: ") + name);
++    return it->get<std::int64_t>();
++}
++
++std::string stringClaim(const Json &payload, const char *name)
++{
++    const auto it = payload.find(name);
++    if (it == payload.end() || !it->is_string()) throw std::invalid_argument(std::string("missing string claim: ") + name);
++    return it->get<std::string>();
++}
++
++bool audienceMatches(const Json &payload, const std::string &audience)
++{
++    const auto it = payload.find("aud");
++    if (it == payload.end()) return false;
++    if (it->is_string()) return it->get<std::string>() == audience;
++    if (!it->is_array()) return false;
++    return std::ranges::any_of(*it, [&](const Json &value) { return value.is_string() && value == audience; });
++}
++
++bool validUuid(const std::string &value)
++{
++    static const std::regex pattern(
++        R"(^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$)");
++    return std::regex_match(value, pattern);
++}
++
++}  // namespace
++
++Config loadConfig(const std::string &path)
++{
++    Config config;
++    const auto table = toml::parse_file(path);
++    config.enabled = table.at_path("local-bot-auth.enabled").value_or(false);
++    config.issuer = table.at_path("local-bot-auth.issuer").value_or(config.issuer);
++    config.audience = table.at_path("local-bot-auth.audience").value_or(config.audience);
++    config.public_key_file = table.at_path("local-bot-auth.public-key-file").value_or(config.public_key_file);
++    config.clock_skew_seconds = table.at_path("local-bot-auth.clock-skew-seconds").value_or(config.clock_skew_seconds);
++    config.max_token_lifetime_seconds =
++        table.at_path("local-bot-auth.max-token-lifetime-seconds").value_or(config.max_token_lifetime_seconds);
++    if (config.issuer.empty() || config.audience.empty() || config.public_key_file.empty()) {
++        throw std::invalid_argument("local-bot-auth issuer, audience, and public-key-file must be non-empty");
++    }
++    if (config.clock_skew_seconds < 0 || config.clock_skew_seconds > 300 || config.max_token_lifetime_seconds < 1 ||
++        config.max_token_lifetime_seconds > 3600) {
++        throw std::invalid_argument("local-bot-auth time limits are outside their safe ranges");
++    }
++    return config;
++}
++
++void Verifier::PkeyDeleter::operator()(EVP_PKEY *key) const
++{
++    EVP_PKEY_free(key);
++}
++
++Verifier::Verifier(Config config) : config_(std::move(config))
++{
++    if (config_.enabled) owner_key_ = readPublicKey(config_.public_key_file);
++}
++
++Verifier::~Verifier() = default;
++
++VerificationResult Verifier::verify(const std::string &identity_token, const std::string &client_data_token,
++                                    std::chrono::system_clock::time_point now)
++{
++    VerificationResult result;
++    if (!config_.enabled) {
++        result.error = "local-bot-auth is disabled";
++        return result;
++    }
++    try {
++        const auto token = parseJwt(identity_token);
++        const auto issuer = stringClaim(token.payload, "iss");
++        if (issuer != config_.issuer) throw std::invalid_argument("issuer does not match local-bot-auth configuration");
++        result.candidate = true;
++        if (!verifySignature(token, owner_key_.get())) throw std::invalid_argument("owner signature is invalid");
++        if (token.header.contains("x5u")) throw std::invalid_argument("local identity must not carry an x5u issuer assertion");
++        if (!audienceMatches(token.payload, config_.audience)) throw std::invalid_argument("audience does not match local-bot-auth configuration");
++        if (token.payload.contains("xid") || token.payload.contains("xuid") || token.payload.contains("XUID")) {
++            throw std::invalid_argument("local identity must not contain Microsoft XUID claims");
++        }
++
++        const auto subject = stringClaim(token.payload, "sub");
++        const auto name = stringClaim(token.payload, "xname");
++        const auto cpk = stringClaim(token.payload, "cpk");
++        const auto token_id = stringClaim(token.payload, "jti");
++        const auto issued_at = integerClaim(token.payload, "iat");
++        const auto not_before = integerClaim(token.payload, "nbf");
++        const auto expires_at = integerClaim(token.payload, "exp");
++        const auto now_seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
++        if (!validUuid(subject)) throw std::invalid_argument("subject must be a non-nil RFC 4122 UUID");
++        if (!validUuid(token_id)) throw std::invalid_argument("jti must be a non-nil RFC 4122 UUID");
++        if (name.empty() || name.size() > 64) throw std::invalid_argument("xname must contain between 1 and 64 bytes");
++        if (issued_at > now_seconds + config_.clock_skew_seconds || not_before > now_seconds + config_.clock_skew_seconds) {
++            throw std::invalid_argument("local identity is not yet valid");
++        }
++        if (expires_at <= now_seconds - config_.clock_skew_seconds) throw std::invalid_argument("local identity has expired");
++        if (expires_at <= issued_at || expires_at - issued_at > config_.max_token_lifetime_seconds) {
++            throw std::invalid_argument("local identity lifetime exceeds configured maximum");
++        }
++
++        auto client_key = readDerPublicKey(cpk);
++        const auto client_data = parseJwt(client_data_token);
++        if (!verifySignature(client_data, client_key.get())) throw std::invalid_argument("client-data cpk signature is invalid");
++        if (stringClaim(client_data.payload, "ThirdPartyName") != name) {
++            throw std::invalid_argument("client-data name is not bound to the local identity");
++        }
++        if (stringClaim(client_data.payload, "SelfSignedId") != subject) {
++            throw std::invalid_argument("client-data SelfSignedId is not bound to the local identity");
++        }
++
++        {
++            std::lock_guard lock(replay_mutex_);
++            for (auto it = used_token_ids_.begin(); it != used_token_ids_.end();) {
++                if (it->second <= now_seconds - config_.clock_skew_seconds) it = used_token_ids_.erase(it);
++                else ++it;
++            }
++            if (used_token_ids_.contains(token_id)) throw std::invalid_argument("local identity token was already used");
++            used_token_ids_.emplace(token_id, expires_at);
++        }
++
++        result.accepted = true;
++        result.identity = {issuer, subject, name, cpk, token_id, expires_at};
++    }
++    catch (const std::exception &error) {
++        result.error = error.what();
++    }
++    return result;
++}
++
++}  // namespace endstone::runtime::ownerbot
+diff --git a/src/endstone/runtime/local_ownerbot_auth.h b/src/endstone/runtime/local_ownerbot_auth.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..88b53b882ebc94ef4eae741c6a94b49f89149074
+--- /dev/null
++++ b/src/endstone/runtime/local_ownerbot_auth.h
+@@ -0,0 +1,67 @@
++// Copyright (c) 2026, The Endstone Project contributors.
++// SPDX-License-Identifier: Apache-2.0
++
++#pragma once
++
++#include <chrono>
++#include <cstdint>
++#include <memory>
++#include <mutex>
++#include <string>
++#include <unordered_map>
++
++typedef struct evp_pkey_st EVP_PKEY;
++
++namespace endstone::runtime::ownerbot {
++
++struct Config {
++    bool enabled{false};
++    std::string issuer{"ownerbot://local"};
++    std::string audience{"endstone://local-ownerbot"};
++    std::string public_key_file{"ownerbot-public.pem"};
++    std::int64_t clock_skew_seconds{5};
++    std::int64_t max_token_lifetime_seconds{120};
++};
++
++struct Identity {
++    std::string issuer;
++    std::string subject;
++    std::string name;
++    std::string client_public_key;
++    std::string token_id;
++    std::int64_t expires_at{};
++};
++
++struct VerificationResult {
++    bool candidate{false};
++    bool accepted{false};
++    Identity identity;
++    std::string error;
++};
++
++[[nodiscard]] Config loadConfig(const std::string &path = "endstone.toml");
++
++class Verifier {
++public:
++    struct PkeyDeleter {
++        void operator()(EVP_PKEY *key) const;
++    };
++
++    explicit Verifier(Config config);
++    ~Verifier();
++    Verifier(const Verifier &) = delete;
++    Verifier &operator=(const Verifier &) = delete;
++
++    [[nodiscard]] const Config &getConfig() const { return config_; }
++    [[nodiscard]] VerificationResult verify(const std::string &identity_token, const std::string &client_data_token,
++                                            std::chrono::system_clock::time_point now =
++                                                std::chrono::system_clock::now());
++
++private:
++    Config config_;
++    std::unique_ptr<EVP_PKEY, PkeyDeleter> owner_key_;
++    std::mutex replay_mutex_;
++    std::unordered_map<std::string, std::int64_t> used_token_ids_;
++};
++
++}  // namespace endstone::runtime::ownerbot

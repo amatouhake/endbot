@@ -1,0 +1,278 @@
+From 6d38b50cb699ec87d390f251ffddfdf51f69deb0 Mon Sep 17 00:00:00 2001
+From: amatouhake <60422818+amatouhake@users.noreply.github.com>
+Date: Thu, 17 Sep 2026 13:21:22 +0900
+Subject: [PATCH 2/2] test(auth): cover local ownerbot verification
+
+---
+ tests/CMakeLists.txt               |   5 +-
+ tests/test_local_ownerbot_auth.cpp | 234 +++++++++++++++++++++++++++++
+ 2 files changed, 237 insertions(+), 2 deletions(-)
+ create mode 100644 tests/test_local_ownerbot_auth.cpp
+
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..cab9f2d9d65c6ce59390225655d242477fa7075d 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -23,6 +23,7 @@ add_executable(endstone_test
+         test_command_usage_parser.cpp
+         test_cpp_plugin_loader.cpp
+         test_logger_factory.cpp
++        test_local_ownerbot_auth.cpp
+         test_player_ban_list.cpp
+         test_scheduler.cpp
+         test_service_manager.cpp
+@@ -31,11 +32,11 @@ add_executable(endstone_test
+         test_vector.cpp
+ )
+ add_dependencies(endstone_test test_plugin)
+-target_link_libraries(endstone_test PRIVATE endstone::core GTest::gtest_main GTest::gmock_main)
++target_link_libraries(endstone_test PRIVATE endstone::core endstone_local_ownerbot_auth GTest::gtest_main GTest::gmock_main)
+ # CppPluginLoaderTest cases share the plugins/.local shadow-copy dir, whose
+ # cleanup races when ctest runs them in parallel; serialize just those.
+ gtest_discover_tests(endstone_test
+         TEST_FILTER "CppPluginLoaderTest.*"
+         PROPERTIES RESOURCE_LOCK cpp_plugin_loader_local)
+ gtest_discover_tests(endstone_test
+-        TEST_FILTER "-CppPluginLoaderTest.*")
+\ No newline at end of file
++        TEST_FILTER "-CppPluginLoaderTest.*")
+diff --git a/tests/test_local_ownerbot_auth.cpp b/tests/test_local_ownerbot_auth.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca302d4a9e4
+--- /dev/null
++++ b/tests/test_local_ownerbot_auth.cpp
+@@ -0,0 +1,234 @@
++// Copyright (c) 2026, The Endstone Project contributors.
++// SPDX-License-Identifier: Apache-2.0
++
++#include <chrono>
++#include <filesystem>
++#include <fstream>
++#include <memory>
++#include <string>
++#include <vector>
++
++#include <gtest/gtest.h>
++#include <nlohmann/json.hpp>
++#include <openssl/bn.h>
++#include <openssl/ec.h>
++#include <openssl/evp.h>
++#include <openssl/pem.h>
++#include <openssl/x509.h>
++
++#include "endstone/runtime/local_ownerbot_auth.h"
++
++namespace {
++
++using Json = nlohmann::json;
++using PkeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
++using MdCtxPtr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
++using EcdsaSigPtr = std::unique_ptr<ECDSA_SIG, decltype(&ECDSA_SIG_free)>;
++constexpr auto kNow = 1'800'000'000;
++
++PkeyPtr makeKey()
++{
++    auto *context = EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr);
++    EXPECT_NE(context, nullptr);
++    EXPECT_EQ(EVP_PKEY_keygen_init(context), 1);
++    EXPECT_EQ(EVP_PKEY_CTX_set_group_name(context, "secp384r1"), 1);
++    EVP_PKEY *key = nullptr;
++    EXPECT_EQ(EVP_PKEY_generate(context, &key), 1);
++    EVP_PKEY_CTX_free(context);
++    return {key, EVP_PKEY_free};
++}
++
++std::string base64Url(const unsigned char *data, std::size_t length)
++{
++    std::string encoded(4 * ((length + 2) / 3), '\0');
++    const auto size = EVP_EncodeBlock(reinterpret_cast<unsigned char *>(encoded.data()), data, static_cast<int>(length));
++    encoded.resize(size);
++    while (!encoded.empty() && encoded.back() == '=') encoded.pop_back();
++    for (auto &c : encoded) {
++        if (c == '+') c = '-';
++        else if (c == '/') c = '_';
++    }
++    return encoded;
++}
++
++std::string publicKeyBase64(EVP_PKEY *key)
++{
++    const auto size = i2d_PUBKEY(key, nullptr);
++    std::vector<unsigned char> der(size);
++    auto *position = der.data();
++    EXPECT_EQ(i2d_PUBKEY(key, &position), size);
++    return base64Url(der.data(), der.size());
++}
++
++std::string signJwt(const Json &payload, EVP_PKEY *key)
++{
++    const auto header = base64Url(reinterpret_cast<const unsigned char *>(R"({"alg":"ES384","kid":"ownerbot-local"})"),
++                                  std::string_view(R"({"alg":"ES384","kid":"ownerbot-local"})").size());
++    const auto body_text = payload.dump();
++    const auto body = base64Url(reinterpret_cast<const unsigned char *>(body_text.data()), body_text.size());
++    const auto input = header + "." + body;
++
++    MdCtxPtr context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
++    EXPECT_EQ(EVP_DigestSignInit(context.get(), nullptr, EVP_sha384(), nullptr, key), 1);
++    std::size_t der_size = 0;
++    EXPECT_EQ(EVP_DigestSign(context.get(), nullptr, &der_size,
++                             reinterpret_cast<const unsigned char *>(input.data()), input.size()), 1);
++    std::vector<unsigned char> der(der_size);
++    EXPECT_EQ(EVP_DigestSign(context.get(), der.data(), &der_size,
++                             reinterpret_cast<const unsigned char *>(input.data()), input.size()), 1);
++    der.resize(der_size);
++    const unsigned char *position = der.data();
++    EcdsaSigPtr signature(d2i_ECDSA_SIG(nullptr, &position, static_cast<long>(der.size())), ECDSA_SIG_free);
++    EXPECT_NE(signature, nullptr);
++    const BIGNUM *r = nullptr;
++    const BIGNUM *s = nullptr;
++    ECDSA_SIG_get0(signature.get(), &r, &s);
++    std::vector<unsigned char> raw(96);
++    EXPECT_EQ(BN_bn2binpad(r, raw.data(), 48), 48);
++    EXPECT_EQ(BN_bn2binpad(s, raw.data() + 48, 48), 48);
++    return input + "." + base64Url(raw.data(), raw.size());
++}
++
++struct Fixture {
++    Fixture()
++        : owner(makeKey()), client(makeKey()), alternate(makeKey()),
++          directory(std::filesystem::temp_directory_path() /
++                    ("endstone-ownerbot-" + std::to_string(reinterpret_cast<std::uintptr_t>(this)))),
++          public_key_path(directory / "owner-public.pem")
++    {
++        std::filesystem::create_directories(directory);
++        auto *file = fopen(public_key_path.c_str(), "w");
++        EXPECT_NE(file, nullptr);
++        EXPECT_EQ(PEM_write_PUBKEY(file, owner.get()), 1);
++        fclose(file);
++    }
++
++    ~Fixture() { std::filesystem::remove_all(directory); }
++
++    endstone::runtime::ownerbot::Config config(bool enabled = true) const
++    {
++        endstone::runtime::ownerbot::Config result;
++        result.enabled = enabled;
++        result.public_key_file = public_key_path.string();
++        return result;
++    }
++
++    Json identityPayload(std::string cpk = {}) const
++    {
++        return {
++            {"iss", "ownerbot://local"},
++            {"aud", "endstone://local-ownerbot"},
++            {"sub", "63572362-0c83-5f0a-8cec-e1b788101798"},
++            {"xname", "CppBot"},
++            {"cpk", cpk.empty() ? publicKeyBase64(client.get()) : cpk},
++            {"jti", "526290d1-a78e-4a18-b32e-8c0d14e10850"},
++            {"iat", kNow},
++            {"nbf", kNow - 1},
++            {"exp", kNow + 60},
++        };
++    }
++
++    Json clientPayload() const
++    {
++        return {{"ThirdPartyName", "CppBot"}, {"SelfSignedId", "63572362-0c83-5f0a-8cec-e1b788101798"}};
++    }
++
++    std::chrono::system_clock::time_point now() const { return std::chrono::system_clock::time_point(std::chrono::seconds(kNow)); }
++
++    PkeyPtr owner;
++    PkeyPtr client;
++    PkeyPtr alternate;
++    std::filesystem::path directory;
++    std::filesystem::path public_key_path;
++};
++
++TEST(LocalOwnerbotAuthTest, AcceptsValidIdentityAndRejectsReplay)
++{
++    Fixture fixture;
++    endstone::runtime::ownerbot::Verifier verifier(fixture.config());
++    const auto identity = signJwt(fixture.identityPayload(), fixture.owner.get());
++    const auto client_data = signJwt(fixture.clientPayload(), fixture.client.get());
++    const auto first = verifier.verify(identity, client_data, fixture.now());
++    EXPECT_TRUE(first.candidate);
++    ASSERT_TRUE(first.accepted) << first.error;
++    EXPECT_EQ(first.identity.name, "CppBot");
++    EXPECT_EQ(first.identity.subject, "63572362-0c83-5f0a-8cec-e1b788101798");
++    const auto replay = verifier.verify(identity, client_data, fixture.now());
++    EXPECT_FALSE(replay.accepted);
++    EXPECT_EQ(replay.error, "local identity token was already used");
++}
++
++TEST(LocalOwnerbotAuthTest, RejectsWrongOwnerSignature)
++{
++    Fixture fixture;
++    endstone::runtime::ownerbot::Verifier verifier(fixture.config());
++    const auto result = verifier.verify(signJwt(fixture.identityPayload(), fixture.alternate.get()),
++                                        signJwt(fixture.clientPayload(), fixture.client.get()), fixture.now());
++    EXPECT_FALSE(result.accepted);
++    EXPECT_TRUE(result.candidate);
++    EXPECT_EQ(result.error, "owner signature is invalid");
++}
++
++TEST(LocalOwnerbotAuthTest, RejectsWrongIssuerAndExpiredToken)
++{
++    Fixture fixture;
++    auto wrong_issuer = fixture.identityPayload();
++    wrong_issuer["iss"] = "ownerbot://wrong";
++    endstone::runtime::ownerbot::Verifier issuer_verifier(fixture.config());
++    auto result = issuer_verifier.verify(signJwt(wrong_issuer, fixture.owner.get()),
++                                         signJwt(fixture.clientPayload(), fixture.client.get()), fixture.now());
++    EXPECT_FALSE(result.accepted);
++    EXPECT_FALSE(result.candidate);
++    EXPECT_EQ(result.error, "issuer does not match local-bot-auth configuration");
++
++    auto expired = fixture.identityPayload();
++    expired["iat"] = kNow - 300;
++    expired["nbf"] = kNow - 300;
++    expired["exp"] = kNow - 180;
++    endstone::runtime::ownerbot::Verifier expiry_verifier(fixture.config());
++    result = expiry_verifier.verify(signJwt(expired, fixture.owner.get()),
++                                    signJwt(fixture.clientPayload(), fixture.client.get()), fixture.now());
++    EXPECT_FALSE(result.accepted);
++    EXPECT_TRUE(result.candidate);
++    EXPECT_EQ(result.error, "local identity has expired");
++}
++
++TEST(LocalOwnerbotAuthTest, RejectsClientKeyAndClaimBindingFailures)
++{
++    Fixture fixture;
++    endstone::runtime::ownerbot::Verifier key_verifier(fixture.config());
++    auto result = key_verifier.verify(signJwt(fixture.identityPayload(publicKeyBase64(fixture.alternate.get())),
++                                              fixture.owner.get()),
++                                      signJwt(fixture.clientPayload(), fixture.client.get()), fixture.now());
++    EXPECT_FALSE(result.accepted);
++    EXPECT_EQ(result.error, "client-data cpk signature is invalid");
++
++    auto wrong_name = fixture.clientPayload();
++    wrong_name["ThirdPartyName"] = "OtherBot";
++    endstone::runtime::ownerbot::Verifier name_verifier(fixture.config());
++    result = name_verifier.verify(signJwt(fixture.identityPayload(), fixture.owner.get()),
++                                  signJwt(wrong_name, fixture.client.get()), fixture.now());
++    EXPECT_FALSE(result.accepted);
++    EXPECT_EQ(result.error, "client-data name is not bound to the local identity");
++}
++
++TEST(LocalOwnerbotAuthTest, DisabledConfigurationCannotAuthorize)
++{
++    Fixture fixture;
++    endstone::runtime::ownerbot::Verifier verifier(fixture.config(false));
++    const auto result = verifier.verify("not-a-token", "not-a-token", fixture.now());
++    EXPECT_FALSE(result.accepted);
++    EXPECT_EQ(result.error, "local-bot-auth is disabled");
++}
++
++TEST(LocalOwnerbotAuthTest, MalformedTokenIsNotRoutedAsLocal)
++{
++    Fixture fixture;
++    endstone::runtime::ownerbot::Verifier verifier(fixture.config());
++    const auto result = verifier.verify("not-a-token", "not-a-token", fixture.now());
++    EXPECT_FALSE(result.candidate);
++    EXPECT_FALSE(result.accepted);
++    EXPECT_EQ(result.error, "token must have three non-empty compact JWS parts");
++}
++
++}  // namespace

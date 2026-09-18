@@ -1,0 +1,14 @@
+.cache/
+.coverage
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+build/
+dist/
+*.egg-info/
+*.py[cod]
+node_modules/
+*.pem
+*.key
+.env
+

@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import assert from 'node:assert/strict'
+import { fork } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import {
   createLocalIdentityToken,
@@ -31,6 +33,57 @@ function verifyCompact (token, publicKey) {
   return { valid, header: JSON.parse(Buffer.from(header, 'base64url')), claims: JSON.parse(Buffer.from(payload, 'base64url')) }
 }
 
+const workerPath = fileURLToPath(new URL('../test-support/persistent-artifact-worker.js', import.meta.url))
+
+function concurrentWorkers (kind, filename, count = 12) {
+  const children = Array.from({ length: count }, () => {
+    const child = fork(workerPath, [kind, filename], { silent: true })
+    let stderr = ''
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+
+    let readyResolve
+    const ready = new Promise((resolve) => { readyResolve = resolve })
+    const result = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        child.kill()
+        reject(new Error(`Persistent artifact worker timed out: ${stderr}`))
+      }, 15_000)
+      child.on('message', (message) => {
+        if (message.ready) {
+          readyResolve()
+        } else {
+          clearTimeout(timeout)
+          if (message.ok) resolve(message)
+          else reject(new Error(message.error))
+        }
+      })
+      child.on('error', reject)
+      child.on('exit', (code) => {
+        if (code !== 0) reject(new Error(`Persistent artifact worker exited ${code}: ${stderr}`))
+      })
+    }).finally(() => child.disconnect())
+    return { child, ready, result }
+  })
+
+  return Promise.all(children.map(({ ready }) => ready)).then(() => {
+    for (const { child } of children) child.send({ start: true })
+    return Promise.all(children.map(({ result }) => result))
+  })
+}
+
+function createSymlinkOrSkip (t, target, link) {
+  try {
+    fs.symlinkSync(target, link, process.platform === 'win32' ? 'file' : undefined)
+    return true
+  } catch (error) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
+      t.skip('Creating symlinks requires Windows Developer Mode or elevated privileges')
+      return false
+    }
+    throw error
+  }
+}
+
 test('generates and reuses a mode-0600 P-384 owner key', () => {
   const directory = temporaryDirectory('endbot-key-')
   const filename = path.join(directory, 'owner-private.pem')
@@ -44,13 +97,35 @@ test('generates and reuses a mode-0600 P-384 owner key', () => {
   assert.equal(first.privateKey.asymmetricKeyDetails.namedCurve, 'secp384r1')
 })
 
-test('refuses a symlink as a private-key path', () => {
+test('refuses a symlink as a private-key path', (t) => {
   const directory = temporaryDirectory('endbot-key-link-')
   const real = path.join(directory, 'real.pem')
   loadOrCreateOwnerKeyPair(real)
   const link = path.join(directory, 'linked.pem')
-  fs.symlinkSync(real, link)
+  if (!createSymlinkOrSkip(t, real, link)) return
   assert.throws(() => loadOrCreateOwnerKeyPair(link), /regular file, not a symlink/)
+})
+
+test('concurrent processes converge on one persisted owner key', async () => {
+  const directory = temporaryDirectory('endbot-key-race-')
+  const filename = path.join(directory, 'owner-private.pem')
+  const results = await concurrentWorkers('owner-key', filename)
+
+  const persistedPrivateKey = crypto.createPrivateKey(fs.readFileSync(filename))
+  const persistedPublicKey = crypto.createPublicKey(persistedPrivateKey)
+    .export({ type: 'spki', format: 'der' })
+  const persistedFingerprint = crypto.createHash('sha256').update(persistedPublicKey).digest('hex')
+  assert.deepEqual(new Set(results.map(({ value }) => value)), new Set([persistedFingerprint]))
+  assert.equal(results.filter(({ created }) => created).length, 1)
+  assert.deepEqual(fs.readdirSync(directory), ['owner-private.pem'])
+})
+
+test('refuses to replace a corrupt owner key', () => {
+  const directory = temporaryDirectory('endbot-key-corrupt-')
+  const filename = path.join(directory, 'owner-private.pem')
+  fs.writeFileSync(filename, 'not a private key\n')
+  assert.throws(() => loadOrCreateOwnerKeyPair(filename))
+  assert.equal(fs.readFileSync(filename, 'utf8'), 'not a private key\n')
 })
 
 test('persists an identity UUID independently from the user-visible name', () => {
@@ -59,6 +134,35 @@ test('persists an identity UUID independently from the user-visible name', () =>
   const identityId = loadOrCreateIdentityId(filename)
   assert.equal(loadOrCreateIdentityId(filename), identityId)
   assert.match(identityId, /^[0-9a-f-]{36}$/)
+  if (process.platform !== 'win32') assert.equal(fs.statSync(filename).mode & 0o777, 0o600)
+})
+
+test('concurrent processes converge on one persisted identity UUID', async () => {
+  const directory = temporaryDirectory('endbot-identity-race-')
+  const filename = path.join(directory, 'bot.uuid')
+  const results = await concurrentWorkers('identity-id', filename)
+  const persistedIdentity = fs.readFileSync(filename, 'utf8').trim()
+
+  assert.deepEqual(new Set(results.map(({ value }) => value)), new Set([persistedIdentity]))
+  assert.match(persistedIdentity, /^[0-9a-f-]{36}$/)
+  assert.deepEqual(fs.readdirSync(directory), ['bot.uuid'])
+})
+
+test('refuses to replace a corrupt identity UUID', () => {
+  const directory = temporaryDirectory('endbot-identity-corrupt-')
+  const filename = path.join(directory, 'bot.uuid')
+  fs.writeFileSync(filename, 'not-a-uuid\n')
+  assert.throws(() => loadOrCreateIdentityId(filename), /RFC 4122 UUID/)
+  assert.equal(fs.readFileSync(filename, 'utf8'), 'not-a-uuid\n')
+})
+
+test('refuses a symlink as an identity path', (t) => {
+  const directory = temporaryDirectory('endbot-identity-link-')
+  const real = path.join(directory, 'real.uuid')
+  loadOrCreateIdentityId(real)
+  const link = path.join(directory, 'linked.uuid')
+  if (!createSymlinkOrSkip(t, real, link)) return
+  assert.throws(() => loadOrCreateIdentityId(link), /regular file, not a symlink/)
 })
 
 test('creates a valid ES384 local identity bound to the client key', () => {

@@ -22,44 +22,110 @@ function assertUuid (value, field) {
   if (!pattern.test(value)) throw new TypeError(`${field} must be an RFC 4122 UUID`)
 }
 
-function atomicPrivateWrite (filename, contents) {
+const publicationWait = new Int32Array(new SharedArrayBuffer(4))
+const publicationRetryLimit = 200
+const publicationRetryMilliseconds = 5
+
+function waitForPublication () {
+  Atomics.wait(publicationWait, 0, 0, publicationRetryMilliseconds)
+}
+
+function regularFileExists (filename, description) {
+  let metadata
+  try {
+    metadata = fs.lstatSync(filename)
+  } catch (error) {
+    if (error.code === 'ENOENT') return false
+    throw error
+  }
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    throw new Error(`${description} path must be a regular file, not a symlink`)
+  }
+  return true
+}
+
+function applyPrivateMode (filename) {
+  if (process.platform !== 'win32') fs.chmodSync(filename, 0o600)
+}
+
+function loadExistingArtifact (filename, description, loadAndValidate) {
+  if (!regularFileExists(filename, description)) return { exists: false }
+  applyPrivateMode(filename)
+  return { exists: true, value: loadAndValidate(filename) }
+}
+
+function loadPublishedWinner (filename, description, loadAndValidate) {
+  let lastError
+  // COPYFILE_EXCL reserves the destination before its contents are necessarily
+  // visible in full. A loser may therefore need to wait for the winner's copy.
+  for (let attempt = 0; attempt < publicationRetryLimit; attempt += 1) {
+    try {
+      const loaded = loadExistingArtifact(filename, description, loadAndValidate)
+      if (loaded.exists) return loaded.value
+    } catch (error) {
+      lastError = error
+    }
+    waitForPublication()
+  }
+  throw new Error(`Concurrent ${description} publication did not produce a valid artifact`, { cause: lastError })
+}
+
+function loadOrCreatePersistentArtifact (filename, create, loadAndValidate, description) {
+  const existing = loadExistingArtifact(filename, description, loadAndValidate)
+  if (existing.exists) return { value: existing.value, created: false }
+
   fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 })
   const temporary = `${filename}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
-  const descriptor = fs.openSync(temporary, 'wx', 0o600)
   try {
-    fs.writeFileSync(descriptor, contents)
+    const descriptor = fs.openSync(temporary, 'wx', 0o600)
+    try {
+      fs.writeFileSync(descriptor, create())
+      fs.fsyncSync(descriptor)
+    } finally {
+      fs.closeSync(descriptor)
+    }
+
+    try {
+      fs.copyFileSync(temporary, filename, fs.constants.COPYFILE_EXCL)
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error
+      return {
+        value: loadPublishedWinner(filename, description, loadAndValidate),
+        created: false
+      }
+    }
+    applyPrivateMode(filename)
+    return {
+      value: loadExistingArtifact(filename, description, loadAndValidate).value,
+      created: true
+    }
   } finally {
-    fs.closeSync(descriptor)
+    fs.rmSync(temporary, { force: true })
   }
-  fs.renameSync(temporary, filename)
-  fs.chmodSync(filename, 0o600)
 }
 
 export function loadOrCreateOwnerKeyPair (privateKeyPath) {
-  let privateKey
-  let created = false
-  if (fs.existsSync(privateKeyPath)) {
-    const metadata = fs.lstatSync(privateKeyPath)
-    if (!metadata.isFile() || metadata.isSymbolicLink()) {
-      throw new Error('Local Endbot private key path must be a regular file, not a symlink')
-    }
-    fs.chmodSync(privateKeyPath, 0o600)
-    privateKey = crypto.createPrivateKey(fs.readFileSync(privateKeyPath))
-  } else {
-    privateKey = crypto.generateKeyPairSync('ec', { namedCurve: 'secp384r1' }).privateKey
-    atomicPrivateWrite(privateKeyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }))
-    created = true
-  }
-  if (privateKey.asymmetricKeyType !== 'ec' || privateKey.asymmetricKeyDetails?.namedCurve !== 'secp384r1') {
-    throw new Error('Local Endbot key must be an EC P-384 private key')
-  }
+  const result = loadOrCreatePersistentArtifact(
+    privateKeyPath,
+    () => crypto.generateKeyPairSync('ec', { namedCurve: 'secp384r1' }).privateKey
+      .export({ type: 'pkcs8', format: 'pem' }),
+    (filename) => {
+      const privateKey = crypto.createPrivateKey(fs.readFileSync(filename))
+      if (privateKey.asymmetricKeyType !== 'ec' || privateKey.asymmetricKeyDetails?.namedCurve !== 'secp384r1') {
+        throw new Error('Local Endbot key must be an EC P-384 private key')
+      }
+      return privateKey
+    },
+    'Local Endbot private key'
+  )
+  const privateKey = result.value
   const publicKey = crypto.createPublicKey(privateKey)
   return {
     privateKey,
     publicKey,
     publicKeyPem: publicKey.export({ type: 'spki', format: 'pem' }),
     publicKeyDerBase64: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
-    created
+    created: result.created
   }
 }
 
@@ -69,18 +135,16 @@ export function writePublicKey (publicKeyPath, publicKeyPem) {
 }
 
 export function loadOrCreateIdentityId (identityPath) {
-  if (fs.existsSync(identityPath)) {
-    const metadata = fs.lstatSync(identityPath)
-    if (!metadata.isFile() || metadata.isSymbolicLink()) {
-      throw new Error('Local Endbot identity path must be a regular file, not a symlink')
-    }
-    const identityId = fs.readFileSync(identityPath, 'utf8').trim()
-    assertUuid(identityId, 'identityId')
-    return identityId
-  }
-  const identityId = crypto.randomUUID()
-  atomicPrivateWrite(identityPath, `${identityId}\n`)
-  return identityId
+  return loadOrCreatePersistentArtifact(
+    identityPath,
+    () => `${crypto.randomUUID()}\n`,
+    (filename) => {
+      const identityId = fs.readFileSync(filename, 'utf8').trim()
+      assertUuid(identityId, 'identityId')
+      return identityId
+    },
+    'Local Endbot identity'
+  ).value
 }
 
 export function signCompact (payload, privateKey, header = {}) {

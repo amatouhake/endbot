@@ -1,0 +1,91 @@
+name: Build release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Endbot candidate version (no publication occurs)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install LLVM 20 and libc++
+        env:
+          LLVM_VERSION: "20"
+        run: |
+          sudo apt-get update -y -q
+          sudo apt-get install -y -q build-essential lsb-release wget software-properties-common gnupg
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "$LLVM_VERSION"
+          sudo apt-get install -y -q libc++-20-dev libc++abi-20-dev clang-tools-20
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-20 200
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-20 200
+          sudo update-alternatives --install /usr/bin/ld ld /usr/bin/ld.lld-20 100
+
+      - name: Install packaging tools
+        run: python -m pip install --upgrade build conan hatchling
+
+      - name: Verify source and prepare Endstone
+        env:
+          PYTHONPATH: plugin/endbot/src
+        run: |
+          python scripts/check_portability.py
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s plugin/endbot/tests -v
+          npm test --prefix runtime
+          python scripts/prepare_endstone.py
+
+      - name: Build and test patched Endstone
+        working-directory: build/endstone-patched
+        run: |
+          conan install . --build=missing
+          . build/RelWithDebInfo/generators/conanbuild.sh
+          cmake --preset conan-relwithdebinfo -DENDSTONE_GENERATE_STUBS=OFF
+          cmake --build --preset conan-relwithdebinfo
+          ctest --preset conan-relwithdebinfo --output-on-failure
+
+      - name: Assemble candidate artifacts
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$CANDIDATE_VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]]; then
+            echo "candidate version contains unsupported characters"
+            exit 1
+          fi
+          mkdir -p dist
+          python -m build --wheel --outdir dist build/endstone-patched
+          python -m build --wheel --outdir dist plugin/endbot
+          tar -czf "dist/endbot-runtime-${CANDIDATE_VERSION}.tar.gz" -C runtime package.json README.md src
+          tar -czf "dist/endbot-config-${CANDIDATE_VERSION}.tar.gz" config LICENSE THIRD_PARTY_NOTICES.md
+          cp build/endstone-patched/LICENSE dist/ENDSTONE_LICENSE
+          python scripts/generate_compatibility_manifest.py dist/compatibility-manifest.json --endbot-version "$CANDIDATE_VERSION"
+          cd dist
+          sha256sum ./* > SHA256SUMS
+
+      - name: Upload candidate (never publish)
+        uses: actions/upload-artifact@v4
+        with:
+          name: endbot-${{ inputs.version }}-candidate
+          path: dist/
+          if-no-files-found: error

@@ -1,0 +1,90 @@
+name: Patched Endstone validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "endstone.lock"
+      - "patches/endstone/**"
+      - "scripts/prepare_endstone.py"
+      - ".github/workflows/full-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "endstone.lock"
+      - "patches/endstone/**"
+      - "scripts/prepare_endstone.py"
+      - ".github/workflows/full-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: endstone-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install LLVM 20 and libc++
+        env:
+          LLVM_VERSION: "20"
+        run: |
+          sudo apt-get update -y -q
+          sudo apt-get install -y -q build-essential lsb-release wget software-properties-common gnupg
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "$LLVM_VERSION"
+          sudo apt-get install -y -q libc++-20-dev libc++abi-20-dev clang-tools-20
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-20 200
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-20 200
+          sudo update-alternatives --install /usr/bin/ld ld /usr/bin/ld.lld-20 100
+
+      - name: Install build tools
+        run: python -m pip install --upgrade build conan hatchling
+
+      - name: Run Endbot tests
+        env:
+          PYTHONPATH: plugin/endbot/src
+        run: |
+          python scripts/check_portability.py
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s plugin/endbot/tests -v
+          npm test --prefix runtime
+
+      - name: Prepare patched Endstone
+        run: python scripts/prepare_endstone.py
+
+      - name: Resolve patched Endstone dependencies
+        working-directory: build/endstone-patched
+        run: conan install . --build=missing
+
+      - name: Build patched Endstone
+        working-directory: build/endstone-patched
+        run: |
+          . build/RelWithDebInfo/generators/conanbuild.sh
+          cmake --preset conan-relwithdebinfo -DENDSTONE_GENERATE_STUBS=OFF
+          cmake --build --preset conan-relwithdebinfo
+
+      - name: Run patched Endstone tests
+        working-directory: build/endstone-patched
+        run: ctest --preset conan-relwithdebinfo --output-on-failure
+
+      - name: Build Endbot plugin
+        run: python -m build --wheel --outdir dist/plugin plugin/endbot
+

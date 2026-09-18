@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/amatouhake/endbot/blob/main/release/compatibility-manifest.schema.json",
+  "title": "Endbot compatibility manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "endbot",
+    "endstone",
+    "bds",
+    "endbot_patch_revision",
+    "tested_safety_conditions",
+    "bds_binary_included"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "endbot": {
+      "type": "object",
+      "required": ["version", "revision"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      },
+      "additionalProperties": false
+    },
+    "endstone": {
+      "type": "object",
+      "required": ["tag", "commit"],
+      "properties": {
+        "tag": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      },
+      "additionalProperties": false
+    },
+    "bds": {
+      "type": "object",
+      "required": ["version", "build", "protocol"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "build": { "type": "integer", "minimum": 1 },
+        "protocol": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "endbot_patch_revision": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "tested_safety_conditions": {
+      "type": "object",
+      "required": [
+        "online_mode",
+        "allow_cheats",
+        "experiments_required",
+        "actual_xbox_achievement_unlock_observed"
+      ],
+      "properties": {
+        "online_mode": { "const": true },
+        "allow_cheats": { "const": false },
+        "experiments_required": { "const": false },
+        "actual_xbox_achievement_unlock_observed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "bds_binary_included": { "const": false }
+  }
+}
+

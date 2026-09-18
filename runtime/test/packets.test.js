@@ -7,6 +7,7 @@ import test from 'node:test'
 
 import {
   addJumpInputFlags,
+  addToggleInputFlags,
   createAttackTransaction,
   createEntityMouseOver,
   createUseTransaction,
@@ -14,6 +15,7 @@ import {
   hasUsableHeldItem,
   serverRotation
 } from '../src/packets.js'
+import { InputState } from '../src/actions.js'
 
 test('jump input flags contain each protocol enum at most once', () => {
   const inputData = []
@@ -36,6 +38,51 @@ const require = createRequire(import.meta.url)
 const { createDeserializer, createSerializer } = require('bedrock-protocol/src/transforms/serializer')
 const serializer = createSerializer('1.26.50')
 const deserializer = createDeserializer('1.26.50')
+
+function serializeInputFlags (state) {
+  const inputData = []
+  addToggleInputFlags(inputData, state)
+  const wire = serializer.createPacketBuffer({
+    name: 'player_auth_input',
+    params: {
+      pitch: 0,
+      yaw: 0,
+      position: { x: 0, y: 64, z: 0 },
+      move_vector: { x: 0, z: 0 },
+      head_yaw: 0,
+      input_data: inputData,
+      input_mode: 'mouse',
+      play_mode: 'normal',
+      interaction_model: 'crosshair',
+      interact_rotation: { x: 0, z: 0 },
+      tick: 1n,
+      delta: { x: 0, y: 0, z: 0 },
+      transaction: undefined,
+      item_stack_request: undefined,
+      block_action: undefined,
+      vehicle_rotation: undefined,
+      predicted_vehicle: undefined,
+      analogue_move_vector: { x: 0, z: 0 },
+      camera_orientation: { x: 0, y: 0, z: 1 },
+      raw_move_vector: { x: 0, z: 0 }
+    }
+  })
+  return deserializer.parsePacketBuffer(wire).data.params.input_data
+}
+
+test('sprint and sneak start held and stop ticks serialize protocol transition flags', () => {
+  const inputs = new InputState()
+  inputs.setFlag('sprint', true)
+  inputs.setFlag('sneak', true)
+  assert.deepEqual(serializeInputFlags(inputs.step()), [
+    'sprinting', 'sneaking', 'start_sprinting', 'start_sneaking'
+  ])
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['sprinting', 'sneaking'])
+  inputs.setFlag('sprint', false)
+  inputs.setFlag('sneak', false)
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['stop_sprinting', 'stop_sneaking'])
+  assert.deepEqual(serializeInputFlags(inputs.step()), [])
+})
 
 test('M2 use transaction serializes with the pinned 1.26.50 schema', () => {
   const heldItem = {

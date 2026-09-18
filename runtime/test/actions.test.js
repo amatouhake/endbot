@@ -31,3 +31,18 @@ test('global stop clears movement actions sprint and sneak but not look', () => 
     movement: null, sprint: false, sneak: false, look: { yaw: 90, pitch: -20 }, actions: {}
   })
 })
+
+test('sprint and sneak transitions are emitted once and reset clears stale transitions', () => {
+  const inputs = new InputState()
+  inputs.setFlag('sprint', true)
+  inputs.setFlag('sneak', true)
+  assert.deepEqual(inputs.step().transitions, ['start_sprint', 'start_sneak'])
+  assert.deepEqual(inputs.step().transitions, [])
+  inputs.setFlag('sprint', false)
+  inputs.setFlag('sneak', false)
+  assert.deepEqual(inputs.step().transitions, ['stop_sprint', 'stop_sneak'])
+  inputs.setFlag('sprint', true)
+  inputs.reset()
+  assert.deepEqual(inputs.step().transitions, [])
+  assert.equal(inputs.snapshot().sprint, false)
+})

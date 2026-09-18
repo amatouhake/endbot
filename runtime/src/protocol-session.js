@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import { createLocalOwnerbotAuth, loadOrCreatePersistentArtifact } from './local-identity.js'
 import {
   addJumpInputFlags,
+  addToggleInputFlags,
   createAttackTransaction,
   createEntityMouseOver,
   createUseTransaction,
@@ -294,8 +295,7 @@ export class BedrockSession extends EventEmitter {
     if (move.z < 0) inputData.push('down')
     if (move.x < 0) inputData.push('left')
     if (move.x > 0) inputData.push('right')
-    if (state.sprint) inputData.push('sprinting')
-    if (state.sneak) inputData.push('sneaking')
+    addToggleInputFlags(inputData, state)
     const startedJump = state.triggered.includes('jump')
     if (startedJump) {
       this.verticalVelocity = this.verticalVelocity || 0.42

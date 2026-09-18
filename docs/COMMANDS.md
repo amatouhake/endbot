@@ -78,6 +78,8 @@ Omitting an action mode means `once`. Continuous actions run each 20 Hz input ti
 ticks. Movement behaves as held input. Global `stop` clears movement, scheduled actions, sprint, and sneak while keeping
 the session connected. `look` remains at its last rotation after stop. `use` sends the held item's normal Bedrock
 interaction; with an empty hand it is a safe no-op. Endbot does not invent an item or issue a server command.
+Sprint and sneak emit Bedrock's one-tick start/stop transitions as well as steady held-state flags; reconnect input reset
+does not replay transitions from the previous transport.
 
 ## Operational states
 

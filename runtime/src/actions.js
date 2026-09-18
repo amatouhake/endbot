@@ -11,6 +11,7 @@ export class InputState {
     this.movement = undefined
     this.sprint = false
     this.sneak = false
+    this.transitions = []
     this.yaw = 0
     this.pitch = 0
   }
@@ -48,14 +49,24 @@ export class InputState {
 
   setFlag (flag, value) {
     if (!['sprint', 'sneak'].includes(flag) || typeof value !== 'boolean') throw new Error('Invalid input flag')
+    if (this[flag] === value) return
     this[flag] = value
+    this.transitions.push(`${value ? 'start' : 'stop'}_${flag}`)
   }
 
   stopAll () {
     this.actions.clear()
     this.movement = undefined
+    this.setFlag('sprint', false)
+    this.setFlag('sneak', false)
+  }
+
+  reset () {
+    this.actions.clear()
+    this.movement = undefined
     this.sprint = false
     this.sneak = false
+    this.transitions = []
   }
 
   step () {
@@ -70,6 +81,7 @@ export class InputState {
     return {
       tick: this.tick,
       triggered,
+      transitions: this.transitions.splice(0),
       movement: this.movement,
       sprint: this.sprint,
       sneak: this.sneak,

@@ -17,6 +17,18 @@ export function addJumpInputFlags (inputData, { started, airborne }) {
   if (airborne) inputData.push('jumping')
 }
 
+export function addToggleInputFlags (inputData, state) {
+  if (state.sprint) inputData.push('sprinting')
+  if (state.sneak) inputData.push('sneaking')
+  const names = {
+    start_sprint: 'start_sprinting',
+    stop_sprint: 'stop_sprinting',
+    start_sneak: 'start_sneaking',
+    stop_sneak: 'stop_sneaking'
+  }
+  for (const transition of state.transitions) inputData.push(names[transition])
+}
+
 export function createUseTransaction ({ hotbarSlot, heldItem, position }) {
   return {
     transaction: {

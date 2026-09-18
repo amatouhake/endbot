@@ -11,6 +11,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "postinstall": "node scripts/prepare-minecraft-data.js",
     "test": "node --test",
     "check": "node --check src/*.js"
   },

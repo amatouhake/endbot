@@ -1,0 +1,43 @@
+// Copyright 2026 amatouhake and Endbot contributors
+// SPDX-License-Identifier: Apache-2.0
+
+export const EMPTY_ITEM = { network_id: 0 }
+
+export function createUseTransaction ({ hotbarSlot, heldItem, position }) {
+  return {
+    legacy: { legacy_request_id: 0 },
+    actions: [],
+    data: {
+      action_type: 'click_air',
+      trigger_type: 'player_input',
+      block_position: { x: 0, y: 0, z: 0 },
+      face: 255,
+      hotbar_slot: hotbarSlot,
+      hand: 'main_hand',
+      held_item: heldItem,
+      player_pos: { ...position },
+      click_pos: { x: 0, y: 0, z: 0 },
+      block_runtime_id: 0,
+      client_prediction: 'failure',
+      client_cooldown_state: 'off'
+    }
+  }
+}
+
+export function createAttackTransaction ({ runtimeId, hotbarSlot, heldItem, position }) {
+  return {
+    transaction: {
+      legacy: { legacy_request_id: 0 },
+      transaction_type: 'item_use_on_entity',
+      actions: [],
+      transaction_data: {
+        entity_runtime_id: runtimeId,
+        action_type: 'attack',
+        hotbar_slot: hotbarSlot,
+        held_item: heldItem,
+        player_pos: { ...position },
+        click_pos: { x: 0, y: 1, z: 0 }
+      }
+    }
+  }
+}

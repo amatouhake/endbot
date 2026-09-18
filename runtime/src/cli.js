@@ -7,7 +7,7 @@ import path from 'node:path'
 import { loadConfig } from './config.js'
 import { ControlServer } from './control-server.js'
 import { BotLifecycle } from './lifecycle.js'
-import { loadOrCreateControlToken } from './local-identity.js'
+import { loadOrCreateControlToken, prepareOwnerKeyPair } from './local-identity.js'
 import { ProfileStore } from './profile-store.js'
 import { createSessionFactory } from './protocol-session.js'
 
@@ -17,6 +17,7 @@ if (!configPath) throw new Error('--config requires a filename')
 
 const config = loadConfig(configPath)
 const token = loadOrCreateControlToken(config.controlTokenPath)
+prepareOwnerKeyPair(config.ownerPrivateKeyPath, config.ownerPublicKeyPath)
 const store = new ProfileStore(path.join(config.dataDirectory, 'profiles'))
 const lifecycle = new BotLifecycle({ store, sessionFactory: createSessionFactory(config), reconnect: config.reconnect })
 const control = new ControlServer({ host: config.controlHost, port: config.controlPort, token, lifecycle })

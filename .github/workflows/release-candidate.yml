@@ -84,7 +84,7 @@ jobs:
           python -m build --wheel --outdir dist plugin/endbot
           python scripts/test_package_install.py --endstone-wheel-dir dist --plugin-wheel-dir dist
           tar -czf "dist/endbot-runtime-${CANDIDATE_VERSION}.tar.gz" \
-            -C runtime package.json package-lock.json README.md endbot-runtime.example.json src
+            -C runtime package.json package-lock.json README.md endbot-runtime.example.json scripts src
           tar -czf "dist/endbot-config-${CANDIDATE_VERSION}.tar.gz" config LICENSE THIRD_PARTY_NOTICES.md
           cp build/endstone-patched/LICENSE dist/ENDSTONE_LICENSE
           python scripts/generate_compatibility_manifest.py dist/compatibility-manifest.json --endbot-version "$CANDIDATE_VERSION"

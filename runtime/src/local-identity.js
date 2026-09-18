@@ -208,6 +208,16 @@ export function loadOrCreateIdentityId (identityPath) {
   ).value
 }
 
+export function prepareOwnerKeyPair (privateKeyPath, publicKeyPath) {
+  assertDistinctOwnerKeyPaths(privateKeyPath, publicKeyPath)
+  const keys = loadOrCreateOwnerKeyPair(privateKeyPath)
+  if (publicKeyPath) {
+    assertDistinctOwnerKeyPaths(privateKeyPath, publicKeyPath)
+    writePublicKey(publicKeyPath, keys.publicKeyPem)
+  }
+  return keys
+}
+
 export function signCompact (payload, privateKey, header = {}) {
   const encodedHeader = base64Url(JSON.stringify({ alg: 'ES384', kid: 'endbot-local', ...header }))
   const encodedPayload = base64Url(JSON.stringify(payload))
@@ -300,12 +310,7 @@ export function createLocalOwnerbotAuth ({
 }) {
   assertName(username)
   assertUuid(identityId, 'identityId')
-  assertDistinctOwnerKeyPaths(privateKeyPath, publicKeyPath)
-  const keys = loadOrCreateOwnerKeyPair(privateKeyPath)
-  if (publicKeyPath) {
-    assertDistinctOwnerKeyPaths(privateKeyPath, publicKeyPath)
-    writePublicKey(publicKeyPath, keys.publicKeyPem)
-  }
+  const keys = prepareOwnerKeyPair(privateKeyPath, publicKeyPath)
 
   const authflow = {
     async getMinecraftBedrockToken (clientPublicKey) {

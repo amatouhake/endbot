@@ -16,6 +16,7 @@
   "reconnect": {
     "initialDelayMs": 1000,
     "maximumDelayMs": 30000,
-    "maximumAttempts": 8
+    "maximumAttempts": 8,
+    "sessionReplacementDelayMs": 1000
   }
 }

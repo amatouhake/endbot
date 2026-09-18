@@ -5,9 +5,9 @@ import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 
 import { createLocalOwnerbotAuth, loadOrCreatePersistentArtifact } from './local-identity.js'
+import { createAttackTransaction, createUseTransaction, EMPTY_ITEM } from './packets.js'
 
 function vector (value) { return { x: value.x, y: value.y, z: value.z } }
-const EMPTY_ITEM = { network_id: 0 }
 
 export class BedrockSession extends EventEmitter {
   constructor (profile, options) {
@@ -22,6 +22,9 @@ export class BedrockSession extends EventEmitter {
     this.heldItem = EMPTY_ITEM
     this.hotbarSlot = 0
     this.closeEmitted = false
+    this.spawned = false
+    this.respawnPending = false
+    this.respawnReadySent = false
   }
 
   async connect () {
@@ -79,8 +82,15 @@ export class BedrockSession extends EventEmitter {
       this.client.once('spawn', () => {
         if (settled) return
         settled = true
+        this.spawned = true
         this.client.queue('serverbound_loading_screen', { type: 2 })
-        this.timer = setInterval(() => this.#sendTick(), 50)
+        this.timer = setInterval(() => {
+          try {
+            this.#sendTick()
+          } catch (error) {
+            this.#fail(error)
+          }
+        }, 50)
         resolve()
       })
     })
@@ -91,7 +101,7 @@ export class BedrockSession extends EventEmitter {
   disconnect (reason = 'Endbot disconnect') {
     this.disconnecting = true
     clearInterval(this.timer)
-    if (this.client) this.client.close(reason)
+    if (this.client) this.client.disconnect(reason)
   }
 
   #wireClient () {
@@ -133,6 +143,15 @@ export class BedrockSession extends EventEmitter {
       this.heldItem = packet.item
       this.hotbarSlot = packet.selected_slot
     })
+    this.client.on('set_health', packet => {
+      if (Number(packet.health) <= 0) this.#requestRespawn()
+      else {
+        this.respawnPending = false
+        this.respawnReadySent = false
+      }
+    })
+    this.client.on('death_info', () => this.#requestRespawn())
+    this.client.on('respawn', packet => this.#handleRespawn(packet))
     this.client.on('error', error => {
       this.#emitClose(error)
     })
@@ -149,6 +168,49 @@ export class BedrockSession extends EventEmitter {
     if (this.disconnecting || this.closeEmitted) return
     this.closeEmitted = true
     this.emit('close', error)
+  }
+
+  #fail (error) {
+    this.#emitClose(error)
+    this.disconnecting = true
+    clearInterval(this.timer)
+    this.client?.close('Endbot protocol error')
+  }
+
+  #requestRespawn () {
+    if (this.respawnPending || !this.client || this.client.status !== 4) return
+    this.respawnPending = true
+    this.respawnReadySent = false
+    this.inputs?.stopAll()
+    this.#sendRespawnAction()
+  }
+
+  #sendRespawnAction () {
+    this.client.queue('player_action', {
+      runtime_entity_id: this.client.entityId,
+      action: 'respawn',
+      position: { x: 0, y: 0, z: 0 },
+      result_position: { x: 0, y: 0, z: 0 },
+      face: -1
+    })
+  }
+
+  #handleRespawn (packet) {
+    if (packet.state === 0 && !this.respawnReadySent) {
+      this.respawnReadySent = true
+      this.client.queue('respawn', {
+        position: { x: 0, y: 0, z: 0 },
+        state: 2,
+        runtime_entity_id: this.client.entityId
+      })
+      return
+    }
+    if (packet.state !== 1) return
+    this.position = vector(packet.position)
+    this.groundY = this.position.y
+    this.verticalVelocity = 0
+    if (this.respawnPending && this.spawned) this.#sendRespawnAction()
+    this.respawnPending = false
   }
 
   #sendTick () {
@@ -188,15 +250,11 @@ export class BedrockSession extends EventEmitter {
     let transaction
     if (state.triggered.includes('use')) {
       inputData.push('item_interact', 'start_using_item')
-      transaction = {
-        legacy: { legacy_request_id: 0 },
-        actions: [],
-        data: {
-          action_type: 'click_air', trigger_type: 'player_input', block_position: { x: 0, y: 0, z: 0 },
-          face: -1, hotbar_slot: this.hotbarSlot, held_item: this.heldItem, player_pos: vector(this.position),
-          click_pos: { x: 0, y: 0, z: 0 }, block_runtime_id: 0, client_prediction: 'failure'
-        }
-      }
+      transaction = createUseTransaction({
+        hotbarSlot: this.hotbarSlot,
+        heldItem: this.heldItem,
+        position: this.position
+      })
     }
     this.client.queue('player_auth_input', {
       pitch: state.pitch,
@@ -236,21 +294,12 @@ export class BedrockSession extends EventEmitter {
       this.client.queue('animate', { action_id: 'swing_arm', runtime_entity_id: this.client.entityId, data: 0, has_swing_source: false })
       return
     }
-    this.client.queue('inventory_transaction', {
-      transaction: {
-        legacy: { legacy_request_id: 0 },
-        transaction_type: 'item_use_on_entity',
-        actions: [],
-        transaction_data: {
-          entity_runtime_id: target.runtimeId,
-          action_type: 'attack',
-          hotbar_slot: this.hotbarSlot,
-          held_item: this.heldItem,
-          player_pos: vector(this.position),
-          click_pos: { x: 0, y: 1, z: 0 }
-        }
-      }
-    })
+    this.client.queue('inventory_transaction', createAttackTransaction({
+      runtimeId: target.runtimeId,
+      hotbarSlot: this.hotbarSlot,
+      heldItem: this.heldItem,
+      position: this.position
+    }))
   }
 
   #target (state) {

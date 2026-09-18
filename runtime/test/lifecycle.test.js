@@ -29,7 +29,7 @@ function fixture (options = {}) {
       sessions.push(session)
       return session
     },
-    reconnect: { initialDelayMs: 5, maximumDelayMs: 10, maximumAttempts: 2 },
+    reconnect: { initialDelayMs: 5, maximumDelayMs: 10, maximumAttempts: 2, sessionReplacementDelayMs: 0 },
     ...options
   })
   return { lifecycle, sessions }
@@ -60,6 +60,8 @@ test('unexpected disconnect reconnects with the same identity', async () => {
   sessions[0].emit('close', new Error('network gone'))
   sessions[0].emit('close', new Error('duplicate transport close'))
   assert.equal(lifecycle.status('Alice').connectionState, 'reconnecting')
+  assert.equal(lifecycle.status('Alice').inputs.movement, null)
+  assert.doesNotThrow(() => lifecycle.stop('Alice'))
   await new Promise(resolve => setTimeout(resolve, 15))
   assert.equal(sessions.length, 2)
   assert.equal(sessions[1].profile.identityId, spawned.identityId)

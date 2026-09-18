@@ -15,6 +15,7 @@ import {
   createLocalOwnerbotAuth,
   loadOrCreateIdentityId,
   loadOrCreateOwnerKeyPair,
+  prepareOwnerKeyPair,
   tamperPayload
 } from '../src/local-identity.js'
 
@@ -134,6 +135,19 @@ test('generates and reuses a mode-0600 P-384 owner key', () => {
   assert.equal(first.publicKeyDerBase64, second.publicKeyDerBase64)
   if (process.platform !== 'win32') assert.equal(fs.statSync(filename).mode & 0o777, 0o600)
   assert.equal(first.privateKey.asymmetricKeyDetails.namedCurve, 'secp384r1')
+})
+
+test('runtime startup preparation exports public key from the persisted private winner', () => {
+  const directory = temporaryDirectory('endbot-key-prepare-')
+  const privateKeyPath = path.join(directory, 'owner-private.pem')
+  const publicKeyPath = path.join(directory, 'owner-public.pem')
+  const first = prepareOwnerKeyPair(privateKeyPath, publicKeyPath)
+  const second = prepareOwnerKeyPair(privateKeyPath, publicKeyPath)
+  assert.equal(first.publicKeyDerBase64, second.publicKeyDerBase64)
+  assert.equal(
+    crypto.createPublicKey(fs.readFileSync(privateKeyPath)).export({ type: 'spki', format: 'pem' }).toString(),
+    fs.readFileSync(publicKeyPath, 'utf8')
+  )
 })
 
 test('refuses a symlink as a private-key path', (t) => {

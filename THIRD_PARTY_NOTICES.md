@@ -32,3 +32,17 @@ The Endbot runtime uses a NetherNet-capable revision of:
 
 The exact source archive is pinned in `runtime/package-lock.json`. Its transitive dependency notices remain available in
 their installed packages and must be retained when redistributing a runtime bundle.
+
+## minecraft-data
+
+The Endbot runtime prepares the Bedrock 1.26.50/protocol-2193 schema from:
+
+- Project: minecraft-data
+- Upstream: <https://github.com/PrismarineJS/minecraft-data>
+- Endbot integration revision: <https://github.com/amatouhake/minecraft-data/commit/7c1fe886dd92837c0550e8eff91440361c7d677f>
+- License: MIT
+- Copyright: PrismarineJS contributors
+
+`runtime/scripts/prepare-minecraft-data.js` fetches that exact revision during `npm ci` and replaces only the generated
+data input inside the installed npm package before running its normal data generator. Endbot does not depend on a local
+or sibling checkout.

@@ -17,7 +17,8 @@ export class BotLifecycle extends EventEmitter {
     this.reconnect = {
       initialDelayMs: reconnect.initialDelayMs ?? 1000,
       maximumDelayMs: reconnect.maximumDelayMs ?? 30_000,
-      maximumAttempts: reconnect.maximumAttempts ?? 8
+      maximumAttempts: reconnect.maximumAttempts ?? 8,
+      sessionReplacementDelayMs: reconnect.sessionReplacementDelayMs ?? 1000
     }
     this.sessions = new Map()
     this.generations = new Map()
@@ -76,6 +77,7 @@ export class BotLifecycle extends EventEmitter {
     const profile = this.#require(name)
     if (!profile.desiredOnline) throw new ProfileError('offline', `Bot ${profile.name} is intentionally offline`)
     await this.#endCurrent(profile.identityId, 'explicit reconnect')
+    await this.#replacementDelay()
     void this.#connect(this.store.getById(profile.identityId), true)
     return this.#status(this.store.getById(profile.identityId))
   }
@@ -105,6 +107,7 @@ export class BotLifecycle extends EventEmitter {
     profile = this.store.update(profile.identityId, { name: newName })
     if (wasOnline) {
       await this.#endCurrent(profile.identityId, 'rename reconnect')
+      await this.#replacementDelay()
       void this.#connect(profile, true)
     }
     return this.#status(profile)
@@ -139,9 +142,11 @@ export class BotLifecycle extends EventEmitter {
   }
 
   stop (name) {
-    const { profile, state } = this.#requireOnline(name)
+    const profile = this.#require(name)
+    const state = this.sessions.get(profile.identityId)
+    if (!state) throw new ProfileError('not_online', `Bot ${profile.name} has no active session`)
     state.inputs.stopAll()
-    state.session.applyInputs(state.inputs)
+    state.session?.applyInputs(state.inputs)
     return this.#status(profile)
   }
 
@@ -222,6 +227,10 @@ export class BotLifecycle extends EventEmitter {
     if (state.handledGeneration === generation) return
     state.handledGeneration = generation
     state.session = undefined
+    // Replaying held input after transport loss is surprising and can trap a
+    // malformed interaction in a reconnect loop. Lifecycle desire survives;
+    // transient input does not.
+    state.inputs.stopAll()
     state.lastError = error ? String(error.message ?? error) : 'Connection closed unexpectedly'
     if (!profile.desiredOnline) {
       state.state = 'offline'
@@ -256,5 +265,10 @@ export class BotLifecycle extends EventEmitter {
     if (state.session) await state.session.disconnect(reason)
     state.session = undefined
     state.timer = undefined
+  }
+
+  #replacementDelay () {
+    if (this.reconnect.sessionReplacementDelayMs === 0) return Promise.resolve()
+    return new Promise(resolve => this.timers.setTimeout(resolve, this.reconnect.sessionReplacementDelayMs))
   }
 }

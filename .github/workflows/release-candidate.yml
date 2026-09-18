@@ -53,6 +53,8 @@ jobs:
           python scripts/check_portability.py
           python -m unittest discover -s tests -v
           python -m unittest discover -s plugin/endbot/tests -v
+          npm ci --prefix runtime
+          npm run check --prefix runtime
           npm test --prefix runtime
           python scripts/prepare_endstone.py
 
@@ -81,7 +83,8 @@ jobs:
             python scripts/inspect_linux_wheel.py dist/endstone-*.whl
           python -m build --wheel --outdir dist plugin/endbot
           python scripts/test_package_install.py --endstone-wheel-dir dist --plugin-wheel-dir dist
-          tar -czf "dist/endbot-runtime-${CANDIDATE_VERSION}.tar.gz" -C runtime package.json README.md src
+          tar -czf "dist/endbot-runtime-${CANDIDATE_VERSION}.tar.gz" \
+            -C runtime package.json package-lock.json README.md endbot-runtime.example.json src
           tar -czf "dist/endbot-config-${CANDIDATE_VERSION}.tar.gz" config LICENSE THIRD_PARTY_NOTICES.md
           cp build/endstone-patched/LICENSE dist/ENDSTONE_LICENSE
           python scripts/generate_compatibility_manifest.py dist/compatibility-manifest.json --endbot-version "$CANDIDATE_VERSION"

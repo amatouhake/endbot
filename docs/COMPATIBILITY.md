@@ -31,7 +31,9 @@ A proposed Endstone/BDS update is not supported merely because it compiles. It m
 8. the manual `/bot ping` and actual Xbox achievement observation in `ACHIEVEMENTS.md`.
 
 Only after reviewed evidence should `endstone.lock`, the compatibility manifest, and support documentation change.
-Linux is the only CI build target in M1; Windows is not claimed as validated.
+Linux is the validated CI/build/runtime target. M2 uses Node and Python filesystem/socket APIs that are portable to
+Windows, avoids POSIX-only runtime requirements, and preserves Windows as a supported design target, but native Windows
+M2 operation is not yet claimed as validated.
 
 ## Release contents
 

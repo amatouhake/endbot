@@ -68,3 +68,12 @@ On 2026-09-18 JST, Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97` wa
 
 This establishes the M0 result for the exact baseline above. It does not establish compatibility for a later
 Endstone/BDS pair, prove every Xbox achievement, or replace the repeatable release gate for future compatibility bumps.
+
+## M2 gate
+
+M2 keeps the same configuration invariants and implements teleport with Endstone's actor/location API rather than a
+vanilla command. Automated tests assert that the adapter never dispatches `/tp`, but this is not sufficient to extend
+the observed Xbox-achievement claim to all M2 operations. Before calling the M2 gate complete, repeat the M0 procedure
+in a fresh Survival validation world, exercise representative spawn, teleport, input, reconnect, rename, and despawn
+operations, inspect world history, then unlock a still-locked achievement from a normally authenticated human client.
+Do not alter world flags to make that test pass.

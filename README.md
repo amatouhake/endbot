@@ -4,9 +4,9 @@ Endbot is a practical Fake Player foundation for the official Minecraft Bedrock 
 [Endstone](https://github.com/EndstoneMC/endstone) as the extension platform. It preserves the normal Microsoft/Xbox
 authentication path for people while adding a narrow, server-owner-controlled ES384 trust path for accountless bots.
 
-Endbot is pre-alpha. M0/M1 establishes reproducible patched Endstone source, a minimal `/bot ping` plugin probe, local
-identity signing, safety preflight, tests, and release metadata. Movement, groups, teleportation, macros, work tasks,
-Discord, blueprints, web UI, and AI behavior are not implemented.
+Endbot is pre-alpha. M2 adds persistent multi-bot profiles, real NetherNet client sessions, lifecycle/reconnect,
+server-API teleport, rename, and primitive player inputs behind the validated `/bot` authorization surface. Groups,
+macros, work tasks, Discord, blueprints, web UI, and AI behavior are not implemented.
 
 ## Safety invariants
 
@@ -40,8 +40,9 @@ Endbot keeps the Endstone delta small and reproducible:
 pinned official Endstone + patches/endstone series -> disposable patched checkout
                                                       -> modified Endstone build
 
-Endbot plugin  -> commands, permissions, registry, future control plane
-Endbot runtime -> local bot identity, future NetherNet client/controller
+Endbot plugin  -> commands, human authorization, BDS observation and teleport
+       | authenticated JSON request/response on loopback
+Endbot runtime -> profiles, local identity, NetherNet sessions, reconnect and inputs
 ```
 
 The core patch is necessary because BDS rejects an accountless login inside its login-validation path before a normal
@@ -90,9 +91,22 @@ manylinux container invokes Endstone's `auditwheel` repair command, and only the
 
 Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it together with the repaired patched
 Endstone wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official
-unpatched `0.11.11` wheel. The plugin registers `/bot ping`, returns `Endbot: pong`, and uses
+unpatched `0.11.11` wheel. The plugin registers the M2 `/bot` tree, including the original `/bot ping`, and uses
 `endbot.command.control`. The permission defaults to false and is attached only to player UUIDs/XUIDs explicitly listed
-in the generated plugin `config.toml`; it does not grant operator or vanilla command rights.
+in the generated plugin `config.toml`; it does not grant operator or vanilla command rights. See
+[commands and operation](docs/COMMANDS.md).
+
+Install runtime dependencies and create an operator-owned configuration outside source control:
+
+```bash
+npm ci --prefix runtime
+cp runtime/endbot-runtime.example.json endbot-runtime.json
+node runtime/src/cli.js --config endbot-runtime.json
+```
+
+The runtime creates its control token and owner key on first start. Configure the plugin's `[runtime].token-file` to
+the same token file and configure patched Endstone with the exported owner public key. All control traffic is bound to
+loopback; remote binds are rejected. Paths in the example are resolved relative to the copied configuration file.
 
 Before starting a server, run the scoped property check:
 
@@ -108,6 +122,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Security model](docs/SECURITY.md)
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)
 - [Compatibility and release gates](docs/COMPATIBILITY.md)
+- [M2 commands and operation](docs/COMMANDS.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Contributing

@@ -1,17 +1,28 @@
 # Endbot runtime
 
-This package is the boundary for the external headless Bedrock client. M1 contains only the proven local-identity
-producer: an explicitly persisted hidden UUID, a separate user-visible bot name, short-lived ES384 identity tokens,
-and client-public-key binding. The UUID is never derived from the name, so a later rename can retain persistent
-relationships. It intentionally does not yet contain transport, reconnect, movement, actions, macros, or tasks.
+The runtime owns persistent Bot profiles and accountless Bedrock client sessions. A profile contains an immutable UUID,
+a unique user-visible Minecraft name, and desired lifecycle state. It deliberately does not duplicate BDS world state.
 
-Private keys and bot UUIDs are generated at runtime and stored outside source control. Their shared load-or-create path
-publishes exactly one complete candidate with Node's cross-platform hard-link operation; concurrent losers discard their
-candidates and reload the persisted winner. Existing corrupt files and symlinks fail closed. Files are forced to mode
-`0600` on POSIX systems; on Windows, access control is provided by the native filesystem ACLs instead of POSIX modes.
-Publication requires a filesystem that supports same-volume hard links, as standard Windows and Linux local filesystems
-do; the candidate is placed beside its destination to keep both names on one volume.
+Install and run from a standalone clone:
 
 ```bash
+npm ci --prefix runtime
+cp runtime/endbot-runtime.example.json endbot-runtime.json
+node runtime/src/cli.js --config endbot-runtime.json
+```
+
+The exact NetherNet-capable `bedrock-protocol` revision is pinned in `package-lock.json`. Configuration paths are
+resolved relative to the configuration file. Keep the generated control token, owner private key, server identity pin,
+and profile directory outside source control. The owner public key is the only key configured in patched Endstone.
+
+The control service refuses non-loopback binds and authenticates every request with the generated token. Unexpected
+disconnects retry with bounded exponential backoff. An intentional `despawn` disables reconnect; `resume` reenables it.
+
+Private keys, tokens, server pins, and UUID artifacts use complete-before-publish creation and reject corrupt existing
+files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux
+filesystems support the same-volume hard-link publication used for initial artifacts.
+
+```bash
+npm run check --prefix runtime
 npm test --prefix runtime
 ```

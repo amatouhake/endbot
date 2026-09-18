@@ -1,8 +1,10 @@
 # Endbot Endstone plugin
 
-M1 registers the permission-protected `/bot ping` command and returns `Endbot: pong`. Command parsing is separated
-from the Endstone adapter so future bot actions do not accumulate in one handler.
+The plugin owns the permission-protected `/bot` command, authoritative BDS observation, deferred spawn placement, and
+teleport through Endstone APIs. Parsing and domain routing are separate from the Endstone adapter and the authenticated
+runtime transport.
 
-The `endbot.command.control` permission defaults to false. On player join, the plugin grants only that node to UUIDs or
-XUIDs explicitly listed in its `config.toml`; an empty allowlist grants nobody. Endbot does not enable cheats, make the
-player an operator, or grant vanilla command privileges.
+`endbot.command.control` defaults to false. The plugin grants only that node to explicitly listed human UUIDs/XUIDs; it
+does not enable cheats, grant OP, or grant vanilla command privileges. The runtime control host must be loopback and its
+token file must point to the token created by the runtime. See [the command guide](../../docs/COMMANDS.md) for syntax
+and lifecycle semantics.

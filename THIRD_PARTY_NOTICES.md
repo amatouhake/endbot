@@ -19,3 +19,16 @@ manifest.
 
 Endbot does not vendor or redistribute the official Minecraft Bedrock Dedicated Server binary. Minecraft and Xbox are
 trademarks of Microsoft; this project is not affiliated with or endorsed by Microsoft.
+
+## bedrock-protocol
+
+The Endbot runtime uses a NetherNet-capable revision of:
+
+- Project: bedrock-protocol
+- Upstream: <https://github.com/PrismarineJS/bedrock-protocol>
+- Endbot integration revision: <https://github.com/amatouhake/bedrock-protocol/commit/fb0af8e388127724c323fd46800e47ba004b1c55>
+- License: MIT
+- Copyright: PrismarineJS contributors
+
+The exact source archive is pinned in `runtime/package-lock.json`. Its transitive dependency notices remain available in
+their installed packages and must be retained when redistributing a runtime bundle.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unittest
@@ -25,6 +26,27 @@ def resulting_patch_fragment(path: str, hunk_prefix: str) -> str:
 
 
 class LoginHookContractTests(unittest.TestCase):
+    def test_missing_raw_token_skips_local_verification_and_reaches_stock_validator(self) -> None:
+        patch = (ROOT / "patches/endstone/0001-feat-auth-add-local-ownerbot-login-trust.patch").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("[[nodiscard]] const WebToken *_getRawRequest() const;", patch)
+        self.assertIn("return raw_token_ ? &*raw_token_ : nullptr;", patch)
+
+        source = resulting_patch_fragment(
+            "src/endstone/runtime/bedrock_hooks/server_network_handler.cpp",
+            "@@ -148,10 ",
+        )
+        raw_guard = source.index("if (const auto *raw_request = request._getRawRequest()) {")
+        local_verify = source.index("verifier->verify(", raw_guard)
+        stock_call = source.index(
+            "auth_info = ENDSTONE_HOOK_CALL_ORIGINAL(&ServerNetworkHandler::_validateLoginPacket",
+            local_verify,
+        )
+        self.assertLess(raw_guard, local_verify)
+        self.assertLess(local_verify, stock_call)
+        self.assertNotIn("getCompactClientDataToken(request._getRawRequest())", source)
+
     def test_stock_rejection_returns_before_authentication_result_is_dereferenced(self) -> None:
         source = resulting_patch_fragment(
             "src/endstone/runtime/bedrock_hooks/server_network_handler.cpp",
@@ -54,6 +76,16 @@ class PackageVersionContractTests(unittest.TestCase):
         dependencies = re.findall(r'^dependencies = \["([^"]+)"\]$', plugin, flags=re.MULTILINE)
         self.assertEqual(dependencies, [f"endstone=={package_version}"])
         self.assertNotEqual(package_version, lock["endstone"]["version"])
+
+    def test_third_party_notice_records_current_patch_revision(self) -> None:
+        patch_root = ROOT / "patches" / "endstone"
+        series = [line for line in (patch_root / "series").read_text(encoding="utf-8").splitlines() if line]
+        digest = hashlib.sha256()
+        for name in series:
+            digest.update((patch_root / name).read_bytes())
+
+        notice = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+        self.assertIn(digest.hexdigest(), notice)
 
 
 if __name__ == "__main__":

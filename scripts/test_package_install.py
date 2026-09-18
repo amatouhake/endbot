@@ -77,6 +77,10 @@ def integration_test(endstone_wheel_dir: Path, plugin_wheel_dir: Path) -> None:
     expected_version = lock["endstone"]["package_version"]
     endstone_wheel = one_wheel(endstone_wheel_dir, "endstone")
     plugin_wheel = one_wheel(plugin_wheel_dir, "endstone_endbot")
+    if sys.platform.startswith("linux") and (
+        "manylinux_" not in endstone_wheel.name or "-linux_" in endstone_wheel.name
+    ):
+        raise InstallTestError(f"Endstone wheel is not a repaired manylinux artifact: {endstone_wheel.name}")
 
     with tempfile.TemporaryDirectory(prefix="endbot-package-install-") as temporary:
         test_root = Path(temporary)

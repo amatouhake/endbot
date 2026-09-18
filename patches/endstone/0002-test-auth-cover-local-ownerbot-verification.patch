@@ -1,19 +1,29 @@
-From 6d38b50cb699ec87d390f251ffddfdf51f69deb0 Mon Sep 17 00:00:00 2001
+From ab8dc87f763c845dedca28818c471c0802ea2a50 Mon Sep 17 00:00:00 2001
 From: amatouhake <60422818+amatouhake@users.noreply.github.com>
 Date: Thu, 17 Sep 2026 13:21:22 +0900
 Subject: [PATCH 2/2] test(auth): cover local ownerbot verification
 
 ---
- tests/CMakeLists.txt               |   5 +-
- tests/test_local_ownerbot_auth.cpp | 234 +++++++++++++++++++++++++++++
- 2 files changed, 237 insertions(+), 2 deletions(-)
+ tests/CMakeLists.txt                          |   6 +-
+ .../bedrock/test_base_connection_request.cpp  |  35 +++
+ tests/test_local_ownerbot_auth.cpp            | 234 ++++++++++++++++++
+ 3 files changed, 273 insertions(+), 2 deletions(-)
+ create mode 100644 tests/bedrock/test_base_connection_request.cpp
  create mode 100644 tests/test_local_ownerbot_auth.cpp
 
 diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
-index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..cab9f2d9d65c6ce59390225655d242477fa7075d 100644
+index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..6492349a0c139572c8a71398a4906185c7b84b79 100644
 --- a/tests/CMakeLists.txt
 +++ b/tests/CMakeLists.txt
-@@ -23,6 +23,7 @@ add_executable(endstone_test
+@@ -8,6 +8,7 @@ set_target_properties(test_plugin PROPERTIES RUNTIME_OUTPUT_DIRECTORY "plugins")
+ add_executable(endstone_test
+         bedrock/test_actor_definition_identifier.cpp
+         bedrock/test_binary_stream.cpp
++        bedrock/test_base_connection_request.cpp
+         bedrock/test_block_pos.cpp
+         bedrock/test_check.cpp
+         bedrock/test_function_ref.cpp
+@@ -23,6 +24,7 @@ add_executable(endstone_test
          test_command_usage_parser.cpp
          test_cpp_plugin_loader.cpp
          test_logger_factory.cpp
@@ -21,7 +31,7 @@ index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..cab9f2d9d65c6ce59390225655d24247
          test_player_ban_list.cpp
          test_scheduler.cpp
          test_service_manager.cpp
-@@ -31,11 +32,11 @@ add_executable(endstone_test
+@@ -31,11 +33,11 @@ add_executable(endstone_test
          test_vector.cpp
  )
  add_dependencies(endstone_test test_plugin)
@@ -36,6 +46,47 @@ index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..cab9f2d9d65c6ce59390225655d24247
 -        TEST_FILTER "-CppPluginLoaderTest.*")
 \ No newline at end of file
 +        TEST_FILTER "-CppPluginLoaderTest.*")
+diff --git a/tests/bedrock/test_base_connection_request.cpp b/tests/bedrock/test_base_connection_request.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..82ae46c9ae57ff7aa2007033c8a1edb62a9d50a0
+--- /dev/null
++++ b/tests/bedrock/test_base_connection_request.cpp
+@@ -0,0 +1,35 @@
++// Copyright (c) 2026, Endbot contributors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include <gtest/gtest.h>
++
++#include "bedrock/network/base_connection_request.h"
++
++namespace {
++
++class TestConnectionRequest final : public BaseConnectionRequest {
++private:
++    bool _isAuthTypeWellFormed() const override { return false; }
++};
++
++TEST(BaseConnectionRequestTest, MissingRawTokenIsReportedWithoutDereference)
++{
++    // A decoded Login can contain a request object before BDS has established
++    // that its optional raw token is present. Local auth must be able to test
++    // this state safely and leave rejection to the stock validator.
++    TestConnectionRequest request;
++    EXPECT_EQ(request._getRawRequest(), nullptr);
++}
++
++}  // namespace
 diff --git a/tests/test_local_ownerbot_auth.cpp b/tests/test_local_ownerbot_auth.cpp
 new file mode 100644
 index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca302d4a9e4

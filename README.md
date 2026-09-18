@@ -72,7 +72,7 @@ To build and run all patched upstream tests on Linux:
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install --upgrade pip conan
+python -m pip install --upgrade pip build cibuildwheel==3.4.1 conan ninja uv
 cd build/endstone-patched
 conan install . --build=missing
 . build/RelWithDebInfo/generators/conanbuild.sh
@@ -81,11 +81,15 @@ cmake --build --preset conan-relwithdebinfo
 ctest --preset conan-relwithdebinfo --output-on-failure
 ```
 
-Endstone's Linux build requires its documented Clang/libc++ toolchain. CI installs and tests that toolchain explicitly.
+Endstone's Linux build requires its documented Clang/libc++ toolchain. CI installs and tests that toolchain explicitly;
+the repaired wheel command additionally requires Docker.
+After the build, `python3 scripts/build_endstone_wheel.py` runs the pinned checkout's cibuildwheel configuration. Its
+manylinux container invokes Endstone's `auditwheel` repair command, and only the repaired wheel is written under
+`dist/endstone/`. CI inspects its ELF dependencies/loader paths and imports it in a clean Linux image.
 
-Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it together with the patched Endstone
-wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official unpatched
-`0.11.11` wheel. The plugin registers `/bot ping`, returns `Endbot: pong`, and uses
+Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it together with the repaired patched
+Endstone wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official
+unpatched `0.11.11` wheel. The plugin registers `/bot ping`, returns `Endbot: pong`, and uses
 `endbot.command.control`. The permission defaults to false and is attached only to player UUIDs/XUIDs explicitly listed
 in the generated plugin `config.toml`; it does not grant operator or vanilla command rights.
 

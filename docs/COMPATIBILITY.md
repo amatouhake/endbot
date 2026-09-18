@@ -35,4 +35,7 @@ Linux is the only CI build target in M1; Windows is not claimed as validated.
 A future release workflow may package the modified Endstone artifact, Endbot plugin wheel, Endbot runtime, example
 configuration, checksums, generated compatibility manifest, Endbot license, and third-party notices. It must not package
 the official BDS binary. `scripts/generate_compatibility_manifest.py` binds metadata to the current Endbot Git revision
-and SHA-256 of the ordered patch series; no workflow in M1 publishes a production release.
+and SHA-256 of the ordered patch series. The Linux Endstone artifact is repaired with pinned upstream Endstone's
+configured cibuildwheel manylinux image and `auditwheel` repair command, then inspected and installed with the plugin in
+a clean consumer image that has no LLVM runtime. Raw build-host wheels remain inside cibuildwheel's disposable container
+and are never uploaded. No workflow in M1 publishes a production release.

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "endstone-endbot"
+version = "0.1.0.dev0"
+description = "Endstone control-plane plugin for Endbot"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "amatouhake and Endbot contributors" }]
+dependencies = ["endstone==0.11.11"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+]
+
+[project.entry-points."endstone"]
+endbot = "endstone_endbot.plugin:EndbotPlugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/endstone_endbot"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+extend-select = ["I", "E", "F"]
+

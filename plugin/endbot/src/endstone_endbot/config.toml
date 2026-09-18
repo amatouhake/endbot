@@ -1,0 +1,5 @@
+[authorization]
+# Values are strings. An empty allowlist grants no player the control permission.
+allowed-uuids = []
+allowed-xuids = []
+

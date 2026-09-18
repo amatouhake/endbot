@@ -1,0 +1,5 @@
+# Merge these invariant values into the server.properties created by official BDS.
+# This is not a complete server.properties file.
+online-mode=true
+allow-cheats=false
+

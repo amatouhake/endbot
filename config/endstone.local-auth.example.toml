@@ -1,0 +1,8 @@
+[local-bot-auth]
+enabled = false
+issuer = "ownerbot://local"
+audience = "endstone://local-ownerbot"
+public-key-file = "ownerbot-public.pem"
+clock-skew-seconds = 5
+max-token-lifetime-seconds = 120
+

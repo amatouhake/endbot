@@ -1,0 +1,16 @@
+{
+  "name": "@endbot/runtime",
+  "version": "0.1.0-dev",
+  "private": true,
+  "description": "Headless Bedrock runtime foundation for Endbot",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/local-identity.js"
+  },
+  "license": "Apache-2.0"
+}
+

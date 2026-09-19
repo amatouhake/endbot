@@ -311,10 +311,18 @@ test('hotbar selection interaction and drop use player protocol paths', async t 
   assert.equal(equipment.item.stack_id, 34)
 
   session.interactBlock({ blockPosition: [3, 63, 4], blockRuntimeId: 987, face: 1 })
+  const startInteraction = queued.filter(entry => entry.name === 'player_action').at(-1).packet
+  assert.equal(startInteraction.action, 'start_item_use_on')
+  assert.deepEqual(startInteraction.position, { x: 3, y: 63, z: 4 })
+  assert.equal(startInteraction.face, 1)
   while (!queued.some(entry => entry.name === 'player_auth_input' && entry.packet.transaction)) await nextPacket()
-  const interaction = queued.find(entry => entry.name === 'player_auth_input' && entry.packet.transaction).packet
+  const interaction = queued.filter(entry => entry.name === 'player_auth_input' && entry.packet.transaction).at(-1).packet
   assert.ok(interaction.input_data.includes('perform_item_interaction'))
   assert.equal(interaction.transaction.data.block_runtime_id, 987)
+  assert.equal(interaction.block_action, undefined)
+  while (queued.filter(entry => entry.name === 'player_action').length < 2) await nextPacket()
+  const interactionActions = queued.filter(entry => entry.name === 'player_action').slice(-2)
+  assert.deepEqual(interactionActions.map(entry => entry.packet.action), ['start_item_use_on', 'stop_item_use_on'])
 
   session.dropSelected(false)
   const drop = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet

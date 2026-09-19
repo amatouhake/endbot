@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import ClassVar
+from uuid import UUID
 
 from endstone.command import Command, CommandSender
 from endstone.event import PlayerJoinEvent, event_handler
@@ -10,40 +11,56 @@ from endstone.plugin import Plugin
 from endstone_endbot.authorization import AllowedPlayers
 from endstone_endbot.commands import BotCommandService
 from endstone_endbot.control import RuntimeControlClient
-from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
+from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
-    "/bot",
-    "/bot (ping|list)<command: EndbotRoot>",
-    "/bot (help)<command: EndbotHelp> (advanced)[topic: EndbotHelpTopic]",
-    "/bot <name: string> (status|resume|reconnect|despawn|forget|stop|hotbar)<operation: EndbotNoArgs>",
+    # Pinned Endstone/BDS does not consume values for optional enum parameters.
+    # Keep a string fallback for the zero/default form and required enum
+    # overloads for native completion of every finite choice.
+    "/bot [command: string] [topic: string]",
+    "/bot (ping|list|help)<command: EndbotRoot>",
+    "/bot (help)<command: EndbotHelp> (advanced)<topic: EndbotHelpTopic>",
+    "/bot <name: string> <operation: message>",
+    "/bot <name: string> (status|resume|reconnect|despawn|forget|stop)<operation: EndbotNoArgs>",
     "/bot <name: string> (spawn)<operation: EndbotSpawn> [placement: message]",
+    (
+        "/bot <name: string> (spawn)<operation: EndbotSpawnDimension> (at)<mode: EndbotAt> "
+        "<position: pos> (in)<scope: EndbotDimensionScope> "
+        "(overworld|nether|end)<dimension: EndbotDimension>"
+    ),
     "/bot <name: string> (rename)<operation: EndbotRename> <new_name: string>",
     "/bot <name: string> (tp)<operation: EndbotTeleport> <destination: message>",
+    (
+        "/bot <name: string> (tp)<operation: EndbotTeleportDimension> "
+        "(in)<scope: EndbotDimensionScope> (overworld|nether|end)<dimension: EndbotDimension> "
+        "<destination: message>"
+    ),
     (
         "/bot <name: string> (move)<operation: EndbotMove> "
         "(forward|backward|left|right|stop)<direction: EndbotDirection>"
     ),
     "/bot <name: string> (look)<operation: EndbotLook> <yaw: float> <pitch: float>",
     "/bot <name: string> (look)<operation: EndbotLookAt> (at)<mode: EndbotLookMode> <target: pos>",
-    "/bot <name: string> (jump|attack|use)<action: EndbotAction>",
+    "/bot <name: string> jump [mode: message]",
+    "/bot <name: string> attack [mode: message]",
+    "/bot <name: string> use [mode: message]",
     (
-        "/bot <name: string> (jump|attack|use)<action: EndbotActionModeCommand> "
+        "/bot <name: string> (jump|attack|use)<action: EndbotAction> "
         "(once|continuous|stop)<mode: EndbotActionMode>"
     ),
     (
-        "/bot <name: string> (jump|attack|use)<action: EndbotIntervalCommand> "
+        "/bot <name: string> (jump|attack|use)<action: EndbotIntervalAction> "
         "(interval)<mode: EndbotIntervalMode> <ticks: int>"
     ),
     "/bot <name: string> (sprint|sneak)<flag: EndbotFlag> (on|off)<state: EndbotOnOff>",
-    "/bot <name: string> (hotbar)<operation: EndbotHotbar> <slot: int>",
+    "/bot <name: string> (hotbar)<operation: EndbotHotbar> [slot: int]",
     (
         "/bot <name: string> (interact)<operation: EndbotInteract> <block: block_pos> "
         "(down|up|north|south|west|east)<face: EndbotBlockFace>"
     ),
-    "/bot <name: string> (drop)<operation: EndbotDrop>",
-    "/bot <name: string> (drop)<operation: EndbotDropStack> (stack)<mode: EndbotDropMode>",
+    "/bot <name: string> drop [mode: string]",
+    "/bot <name: string> (drop)<operation: EndbotDrop> (stack)<mode: EndbotDropMode>",
 ]
 
 
@@ -92,9 +109,15 @@ class EndbotPlugin(Plugin):
         )
         self._world = EndstoneWorld(self.server)
         self._server_thread = ServerThreadBridge(lambda task: self.server.scheduler.run_task(self, task))
-        command_world = ServerThreadWorld(self._world, self._server_thread)
+
+        def resolve_sender(source: CommandSource):
+            if source.player_id is not None:
+                return self.server.get_player(UUID(source.player_id))
+            return source.sender
+
+        command_world = ServerThreadWorld(self._world, self._server_thread, resolve_sender)
         self._bot_commands = BotCommandService(control, command_world)
-        self._command_runner = AsyncCommandRunner(self._bot_commands, self._server_thread)
+        self._command_runner = AsyncCommandRunner(self._bot_commands, self._server_thread, resolve_sender)
         self.register_events(self)
 
     def on_disable(self) -> None:

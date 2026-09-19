@@ -3,7 +3,7 @@ import threading
 import unittest
 
 from endstone_endbot.commands import CommandResult
-from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
+from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
 
 
 class ScheduledCallbacks:
@@ -43,7 +43,7 @@ class DispatchTests(unittest.TestCase):
 
         service = Service()
         sender = Sender()
-        runner = AsyncCommandRunner(service, bridge)
+        runner = AsyncCommandRunner(service, bridge, lambda source: source.sender)
         self.addCleanup(runner.close)
         self.addCleanup(bridge.close)
 
@@ -67,7 +67,7 @@ class DispatchTests(unittest.TestCase):
             def observe(self, identity_id):
                 return {"identityId": identity_id, "thread": threading.get_ident()}
 
-        world = ServerThreadWorld(World(), bridge)
+        world = ServerThreadWorld(World(), bridge, lambda source: source.sender)
         result = {}
 
         def worker():
@@ -80,6 +80,41 @@ class DispatchTests(unittest.TestCase):
 
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, {"identityId": "bot-uuid", "thread": main_thread})
+
+    def test_disconnected_player_is_not_retained_or_messaged(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        release = threading.Event()
+        resolved = {}
+
+        class Service:
+            def execute(self, arguments, source):
+                self.source = source
+                release.wait(1)
+                return CommandResult(True, ("Endbot: done",))
+
+        class Player:
+            unique_id = "00000000-0000-4000-8000-000000000001"
+            location = object()
+
+        service = Service()
+        player = Player()
+        resolved[str(player.unique_id)] = player
+        runner = AsyncCommandRunner(
+            service,
+            bridge,
+            lambda source: resolved.get(source.player_id) if source.player_id else source.sender,
+        )
+        self.addCleanup(runner.close)
+        self.addCleanup(bridge.close)
+
+        self.assertTrue(runner.submit(["Alice", "status"], player))
+        resolved.clear()
+        release.set()
+        scheduled.run_next()
+
+        self.assertEqual(service.source, CommandSource(player_id=str(player.unique_id)))
+        self.assertIsNone(service.source.sender)
 
     def test_disable_releases_pending_server_thread_calls(self) -> None:
         scheduled = ScheduledCallbacks()

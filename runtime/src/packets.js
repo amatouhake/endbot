@@ -69,7 +69,7 @@ export function createBlockInteractionInput ({ hotbarSlot, heldItem, position, b
   if (face === 5) click.x = 1
   return {
     legacy: { legacy_request_id: 0 },
-    actions: undefined,
+    actions: [],
     data: {
       action_type: 'click_block',
       trigger_type: 'player_input',
@@ -84,6 +84,16 @@ export function createBlockInteractionInput ({ hotbarSlot, heldItem, position, b
       client_prediction: 'success',
       client_cooldown_state: 'off'
     }
+  }
+}
+
+export function createBlockInteractionAction ({ runtimeEntityId, blockPosition, face, action }) {
+  return {
+    runtime_entity_id: runtimeEntityId,
+    action,
+    position: { x: blockPosition[0], y: blockPosition[1], z: blockPosition[2] },
+    result_position: { x: blockPosition[0], y: blockPosition[1], z: blockPosition[2] },
+    face
   }
 }
 

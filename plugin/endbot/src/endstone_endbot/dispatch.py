@@ -5,8 +5,28 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 
 from endstone_endbot.commands import CommandResult
+
+
+@dataclass(frozen=True, slots=True)
+class CommandSource:
+    """A worker-safe reference to a command source.
+
+    Endstone player wrappers are native objects whose lifetime ends when the
+    player disconnects.  Never retain one across asynchronous runtime IPC.
+    Console-style senders are process-lifetime objects and remain safe.
+    """
+
+    player_id: str | None = None
+    sender: object | None = None
+
+    @classmethod
+    def capture(cls, sender) -> CommandSource:
+        if hasattr(sender, "unique_id") and hasattr(sender, "location"):
+            return cls(player_id=str(sender.unique_id))
+        return cls(sender=sender)
 
 
 class ServerThreadBridge:
@@ -82,15 +102,22 @@ class ServerThreadBridge:
 class ServerThreadWorld:
     """Expose the world adapter to workers without off-thread Endstone access."""
 
-    def __init__(self, world, bridge: ServerThreadBridge) -> None:
+    def __init__(self, world, bridge: ServerThreadBridge, resolve_sender: Callable[[CommandSource], object]) -> None:
         self._world = world
         self._bridge = bridge
+        self._resolve_sender = resolve_sender
+
+    def _sender(self, source: CommandSource):
+        sender = self._resolve_sender(source)
+        if source.player_id is not None and sender is None:
+            raise ValueError("Command player is no longer online")
+        return sender
 
     def default_spawn(self, sender):
-        return self._bridge.call(lambda: self._world.default_spawn(sender))
+        return self._bridge.call(lambda: self._world.default_spawn(self._sender(sender)))
 
     def resolve_spawn_placement(self, placement, sender):
-        return self._bridge.call(lambda: self._world.resolve_spawn_placement(placement, sender))
+        return self._bridge.call(lambda: self._world.resolve_spawn_placement(placement, self._sender(sender)))
 
     def queue_spawn_placement(self, identity_id, placement):
         return self._bridge.call(lambda: self._world.queue_spawn_placement(identity_id, placement))
@@ -102,13 +129,15 @@ class ServerThreadWorld:
         return self._bridge.call(lambda: self._world.observe(identity_id))
 
     def teleport(self, identity_id, parameters, sender):
-        return self._bridge.call(lambda: self._world.teleport(identity_id, parameters, sender))
+        return self._bridge.call(lambda: self._world.teleport(identity_id, parameters, self._sender(sender)))
 
     def look_at(self, name, coordinates):
         return self._bridge.call(lambda: self._world.look_at(name, coordinates))
 
     def resolve_interaction(self, identity_id, parameters, sender):
-        return self._bridge.call(lambda: self._world.resolve_interaction(identity_id, parameters, sender))
+        return self._bridge.call(
+            lambda: self._world.resolve_interaction(identity_id, parameters, self._sender(sender))
+        )
 
     def assert_name_available(self, name, identity_id=None):
         return self._bridge.call(lambda: self._world.assert_name_available(name, identity_id))
@@ -117,9 +146,15 @@ class ServerThreadWorld:
 class AsyncCommandRunner:
     """Run ordered command service calls away from the BDS command thread."""
 
-    def __init__(self, service, bridge: ServerThreadBridge) -> None:
+    def __init__(
+        self,
+        service,
+        bridge: ServerThreadBridge,
+        resolve_sender: Callable[[CommandSource], object],
+    ) -> None:
         self._service = service
         self._bridge = bridge
+        self._resolve_sender = resolve_sender
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
@@ -127,11 +162,12 @@ class AsyncCommandRunner:
         self._open = True
 
     def submit(self, arguments: list[str], sender) -> bool:
+        source = CommandSource.capture(sender)
         with self._lock:
             if not self._open:
                 return False
             try:
-                self._executor.submit(self._execute, list(arguments), sender)
+                self._executor.submit(self._execute, list(arguments), source)
             except RuntimeError:
                 return False
         return True
@@ -143,13 +179,16 @@ class AsyncCommandRunner:
             self._open = False
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def _execute(self, arguments: list[str], sender) -> None:
+    def _execute(self, arguments: list[str], source: CommandSource) -> None:
         try:
-            result = self._service.execute(arguments, sender)
+            result = self._service.execute(arguments, source)
         except Exception:  # noqa: BLE001 - never strand command delivery on an unexpected service failure
             result = CommandResult(True, ("Endbot: internal command failure",))
 
         def deliver() -> None:
+            sender = self._resolve_sender(source)
+            if sender is None:
+                return
             for message in result.messages:
                 sender.send_message(message)
 

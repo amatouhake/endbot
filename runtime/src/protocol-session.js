@@ -9,6 +9,7 @@ import {
   addJumpInputFlags,
   addToggleInputFlags,
   createAttackTransaction,
+  createBlockInteractionAction,
   createBlockInteractionInput,
   createDropTransaction,
   createEntityMouseOver,
@@ -50,6 +51,7 @@ export class BedrockSession extends EventEmitter {
     this.jumping = false
     this.pendingHandledTeleport = false
     this.pendingInteraction = undefined
+    this.interactionStopNextTick = undefined
   }
 
   connect () {
@@ -159,20 +161,31 @@ export class BedrockSession extends EventEmitter {
 
   interactBlock ({ blockPosition, blockRuntimeId, face }) {
     if (!this.position) throw new Error('Bot position is not initialized')
+    if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
     if (!Array.isArray(blockPosition) || blockPosition.length !== 3 || !blockPosition.every(Number.isSafeInteger)) {
       throw new Error('Block interaction requires integer block coordinates')
     }
     if (!Number.isSafeInteger(face) || face < 0 || face > 5) throw new Error('Invalid block face')
     if (!Number.isSafeInteger(blockRuntimeId) || blockRuntimeId < 0) throw new Error('Invalid block runtime ID')
     if (this.pendingInteraction) throw new Error('A block interaction is already pending')
-    this.pendingInteraction = createBlockInteractionInput({
-      hotbarSlot: this.hotbarSlot,
-      heldItem: this.heldItem,
-      position: this.position,
+    const action = operation => createBlockInteractionAction({
+      runtimeEntityId: this.client.entityId,
       blockPosition,
-      blockRuntimeId,
-      face
+      face,
+      action: operation
     })
+    this.client.queue('player_action', action('start_item_use_on'))
+    this.pendingInteraction = {
+      transaction: createBlockInteractionInput({
+        hotbarSlot: this.hotbarSlot,
+        heldItem: this.heldItem,
+        position: this.position,
+        blockPosition,
+        blockRuntimeId,
+        face
+      }),
+      stopAction: action('stop_item_use_on')
+    }
   }
 
   dropSelected (stack) {
@@ -379,6 +392,10 @@ export class BedrockSession extends EventEmitter {
 
   #sendTick () {
     if (!this.position || !this.inputs || this.client.status !== 4) return
+    if (this.interactionStopNextTick) {
+      this.client.queue('player_action', this.interactionStopNextTick)
+      this.interactionStopNextTick = undefined
+    }
     if (this.activeItemUse && this.releaseItemUseNextTick) this.#releaseItemUse()
     const state = this.inputs.step()
     const previous = vector(this.position)
@@ -414,6 +431,14 @@ export class BedrockSession extends EventEmitter {
       this.pendingHandledTeleport = false
     }
     if (this.onGround) inputData.push('vertical_collision')
+    let transaction
+    if (this.pendingInteraction) {
+      const interaction = this.pendingInteraction
+      this.pendingInteraction = undefined
+      inputData.push('perform_item_interaction')
+      transaction = interaction.transaction
+      this.interactionStopNextTick = interaction.stopAction
+    }
     if (state.triggered.includes('attack')) this.#attack(inputData, state)
     if (state.triggered.includes('use') && !this.activeItemUse && hasUsableHeldItem(this.heldItem)) {
       const mode = this.inputs.actionMode('use') ?? 'once'
@@ -426,9 +451,6 @@ export class BedrockSession extends EventEmitter {
         position: this.position
       }))
     }
-    const transaction = this.pendingInteraction
-    this.pendingInteraction = undefined
-    if (transaction) inputData.push('perform_item_interaction')
     this.client.queue('player_auth_input', {
       pitch: state.pitch,
       yaw: state.yaw,

@@ -12,7 +12,7 @@ export const MINECRAFT_DATA_URL = 'https://github.com/amatouhake/minecraft-data.
 export const MINECRAFT_DATA_COMMIT = '7c1fe886dd92837c0550e8eff91440361c7d677f'
 export const MINECRAFT_VERSION = '1.26.50'
 export const MINECRAFT_PROTOCOL = 2193
-export const ENDBOT_SCHEMA_REVISION = 4
+export const ENDBOT_SCHEMA_REVISION = 23
 
 const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const packageRoot = path.join(runtimeRoot, 'node_modules', 'minecraft-data')
@@ -27,6 +27,22 @@ export function patchPinnedProtocolSchema (protocolPath) {
   legacySlots.type = ['option', legacySlots.type[1].default]
   protocol.types.TransactionLegacyStandalone = standaloneLegacy
   protocol.types.Transaction[1].find(value => value.name === 'legacy').type = 'TransactionLegacyStandalone'
+
+  // Protocol 2193 writes the embedded action array directly. The pinned data
+  // modeled that array as optional and inserted a byte that shifts ActionType.
+  const authInputFields = protocol.types.packet_player_auth_input[1]
+  const embeddedTransaction = authInputFields.find(value => value.name === 'transaction').type[1]
+  const embeddedFields = embeddedTransaction[1]
+  // Protocol 2193's packed auth-input form carries an explicit legacy-slots
+  // presence byte even when the legacy request id is zero.
+  embeddedFields.find(value => value.name === 'legacy').type = 'TransactionLegacyStandalone'
+  embeddedFields.find(value => value.name === 'actions').type = 'TransactionActions'
+  // Keep a named packed type so its protocol-2193 layout is tested separately
+  // from future standalone InventoryTransaction evolution.
+  const authInputUse = structuredClone(protocol.types.TransactionUseItem)
+  protocol.types.TransactionUseItemAuthInput = authInputUse
+  embeddedFields.find(value => value.name === 'data').type = 'TransactionUseItemAuthInput'
+
   fs.writeFileSync(protocolPath, `${JSON.stringify(protocol, null, 2)}\n`)
 }
 

@@ -9,6 +9,7 @@ import {
   addJumpInputFlags,
   addToggleInputFlags,
   createAttackTransaction,
+  createBlockInteractionAction,
   createBlockInteractionInput,
   createDropTransaction,
   createEntityMouseOver,
@@ -143,16 +144,16 @@ test('M2 entity attack transaction serializes with the pinned 1.26.50 schema', (
   assert.equal(deserializer.parsePacketBuffer(mouseOver).data.params.target_entity_id, 7n)
 })
 
-test('block interaction serializes inside authoritative PlayerAuthInput', () => {
+test('block interaction serializes in a server-authoritative input tick', () => {
   const transaction = createBlockInteractionInput({
-    hotbarSlot: 2,
-    heldItem: EMPTY_ITEM,
-    position: { x: 1, y: 64, z: 2 },
-    blockPosition: [3, 63, 4],
-    blockRuntimeId: 987,
-    face: 1
+      hotbarSlot: 2,
+      heldItem: EMPTY_ITEM,
+      position: { x: 1, y: 64, z: 2 },
+      blockPosition: [3, 63, 4],
+      blockRuntimeId: 987,
+      face: 1
   })
-  const wire = serializer.createPacketBuffer({
+  const input = deserializer.parsePacketBuffer(serializer.createPacketBuffer({
     name: 'player_auth_input',
     params: {
       pitch: 0,
@@ -176,12 +177,28 @@ test('block interaction serializes inside authoritative PlayerAuthInput', () => 
       camera_orientation: { x: 0, y: 0, z: 1 },
       raw_move_vector: { x: 0, z: 0 }
     }
-  })
-  const decoded = deserializer.parsePacketBuffer(wire).data.params
-  assert.deepEqual(decoded.input_data, ['perform_item_interaction'])
-  assert.equal(decoded.transaction.data.action_type, 'click_block')
-  assert.equal(decoded.transaction.data.block_runtime_id, 987)
-  assert.deepEqual(decoded.transaction.data.click_pos, { x: 0.5, y: 1, z: 0.5 })
+  })).data.params
+  assert.ok(input.input_data.includes('perform_item_interaction'))
+  assert.equal(input.transaction.data.action_type, 'click_block')
+  assert.equal(input.transaction.data.block_runtime_id, 987)
+  assert.deepEqual(input.transaction.data.click_pos, { x: 0.5, y: 1, z: 0.5 })
+  assert.equal(input.block_action, undefined)
+
+  for (const action of ['start_item_use_on', 'stop_item_use_on']) {
+    const wire = serializer.createPacketBuffer({
+      name: 'player_action',
+      params: createBlockInteractionAction({
+        runtimeEntityId: 7n,
+        blockPosition: [3, 63, 4],
+        face: 1,
+        action
+      })
+    })
+    const decoded = deserializer.parsePacketBuffer(wire).data.params
+    assert.equal(decoded.action, action)
+    assert.deepEqual(decoded.position, { x: 3, y: 63, z: 4 })
+    assert.equal(decoded.face, 1)
+  }
 })
 
 test('hotbar drop transactions balance inventory and world actions', () => {

@@ -17,12 +17,13 @@ Microsoft/Xbox-authenticated client executed `/bot ping`, received `Endbot: pong
 vanilla Xbox achievement in the same survival world. Post-session world-history fields remained zero. This evidence
 does not prove a future Endstone/BDS pair.
 
-M2 runtime behavior was live-smoked on Linux against the same pinned pair. The record covers ten simultaneous profiles,
-independent input, server-observed movement and attack, held-item use accepted by BDS, server-API teleport including a
-dimension change, same-UUID reconnect/resume/native persistence, lifecycle isolation, and rename/forget semantics. See
-[`M2_VALIDATION.md`](M2_VALIDATION.md) for the evidence boundary. Native Windows M2 operation, the full M2 command UX
-from an authenticated human client, post-M2 world-history inspection, and a new Xbox achievement observation remain
-manual gates; the completed M0 result is not silently generalized to M2.
+M2 runtime behavior was live-smoked on Linux against the same pinned pair, followed on 2026-09-19 by the authenticated
+Windows Bedrock command/achievement gate. The human session covered representative M2 lifecycle, input, and dimension
+teleport behavior and ended with a new locked vanilla Survival Xbox achievement unlock. Later Linux remediation smoke
+separately verified command roots, same-dimension fall physics, hotbar selection, BDS-authoritative block placement and
+inventory decrement, and item drop. See [`M2_VALIDATION.md`](M2_VALIDATION.md) for the evidence boundary. Native Windows
+hosting of the Endbot runtime is designed for but is not claimed as validated; the Windows game client was the human
+operator in this gate.
 
 ## Compatibility change gate
 

@@ -7,7 +7,8 @@ Endbot has three intentionally separate layers:
 1. **Patched Endstone** owns only the login-validation seam that a normal plugin cannot reach. The source of truth is
    the exact upstream revision in `endstone.lock` plus the ordered patch files in `patches/endstone/`.
 2. **Endbot plugin** owns `/bot`, explicit human UUID/XUID authorization, authoritative BDS player observation,
-   deferred spawn placement, name collision checks against online players, and teleport through `Actor.teleport`.
+   deferred spawn placement, name collision checks against online players, block observations, and teleport through
+   `Actor.teleport`.
 3. **Endbot runtime** owns persistent Bot profiles, local identity, NetherNet sessions, desired lifecycle state,
    reconnect, and player inputs. It does not own or duplicate inventory, position, dimension, or other world state.
 
@@ -73,9 +74,11 @@ send a placement; BDS therefore restores its native state. `spawn`, by contrast,
 plugin applies it when the UUID joins. Any explicit non-spawn lifecycle intent clears an unconsumed spawn placement,
 so a later resume, reconnect, or rename cannot unexpectedly relocate the Bot. This avoids a second location database.
 
-The pinned protocol data is also prepared reproducibly. Endbot applies one narrowly tested schema correction that
-separates the standalone `InventoryTransaction` legacy-slot optional from the distinct `PlayerAuthInput` layout. This
-is required for BDS 1.26.51 to accept entity attack and held-item use without changing the pinned protocol baseline.
+The pinned protocol data is also prepared reproducibly. Endbot corrects the protocol-2193 legacy-slot presence and
+packed `PlayerAuthInput` action-array layout while preserving the pinned enum ordinals already proven by movement and
+action tests. Block interaction then follows a player-like start-action, packed authoritative interaction, and
+next-tick stop-action sequence. BDS remains authoritative for target legality and inventory changes. These narrow,
+serialization-tested corrections do not change the pinned protocol baseline.
 
 ## Patch lifecycle
 

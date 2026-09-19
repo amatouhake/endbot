@@ -5,8 +5,9 @@ Endbot is a practical Fake Player foundation for the official Minecraft Bedrock 
 authentication path for people while adding a narrow, server-owner-controlled ES384 trust path for accountless bots.
 
 Endbot is pre-alpha. M2 adds persistent multi-bot profiles, real NetherNet client sessions, lifecycle/reconnect,
-server-API teleport, rename, and primitive player inputs behind the validated `/bot` authorization surface. Groups,
-macros, work tasks, Discord, blueprints, web UI, and AI behavior are not implemented.
+server-API teleport, rename, movement/actions, hotbar selection, block interaction, and item drop behind the validated
+`/bot` authorization surface. Groups, macros, work tasks, Discord, blueprints, web UI, and AI behavior are not
+implemented.
 
 ## Safety invariants
 
@@ -18,8 +19,8 @@ macros, work tasks, Discord, blueprints, web UI, and AI behavior are not impleme
 - BDS is downloaded by Endstone's normal bootstrap and is never bundled here.
 
 These settings preserve an achievement-compatible configuration and world state in the validated baseline. The M0
-manual gate has also observed an actual Xbox achievement unlock after `/bot ping` from a normally authenticated
-Bedrock client; see [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and remaining caveats.
+gate and the later M2 Windows-client session each observed an actual Xbox achievement unlock from a normally
+authenticated Bedrock client; see [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and caveats.
 
 ## Compatibility
 

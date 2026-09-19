@@ -1,65 +1,70 @@
 # M2 validation record
 
-This record describes the M2 implementation smoke run completed on 2026-09-18 JST. It used official BDS `1.26.51.1`
-build `51061372`, protocol `2193`, and patched Endstone `0.11.11+endbot.1`. The behavior under test is contained in the
-focused M2 commit series beginning with `d3e0382` and ending with `91d2b64`; later documentation-only commits do not
-change that runtime result.
+This record separates the recorded human achievement gate from autonomous Linux smoke and later remediation. All runs
+used official BDS `1.26.51.1` build `51061372`, protocol `2193`, and patched Endstone `0.11.11+endbot.1`. No server,
+world, identity, key, token, diagnostic capture, or machine-local path is retained in the repository.
 
-No server, world, identity, key, token, packet capture, or machine-local path is retained in the repository.
+## Recorded Windows-client gate — 2026-09-19 JST
 
-## Live results
+Confirmed in the recorded human session:
 
-- First spawn created a stable hidden UUID and a BDS player; respawn of an offline profile reused it.
-- Ten distinct profiles connected concurrently. Movement and lifecycle commands addressed only the named UUID/session;
-  a failing or stopped Bot did not alter another profile.
-- BDS-observed position changed under movement input. Look/rotation synchronization and jump were observed at the
-  server boundary.
-- A targeted attack produced server-observed knockback on the target player. Missed attacks remained harmless swings.
-- One-shot and continuous/stop held-item use transactions were accepted without a protocol violation or disconnect.
-  Empty-hand use remains an intentional no-op.
-- Endstone's `Actor.teleport` path changed position/rotation and performed a cross-dimension teleport without dispatching
-  vanilla `/tp`. The command parser and world adapter cover caller, player, coordinates, facing, relative coordinates,
-  aliases, and namespaced dimensions in automated tests.
-- An unexpected kick entered bounded reconnect and returned online with the same UUID. Explicit reconnect also retained
-  the UUID. After the session-closure fix, the old transport left before the replacement connected and BDS no longer
-  assigned a duplicate-name suffix.
-- `despawn` disabled reconnect and retained the profile. `resume` restored the same UUID without requesting relocation.
-  `forget` rejected a live profile, removed an offline Endbot registration, and a later spawn of the released name
-  received a new UUID.
-- Live rename preserved the UUID, reconnected under the new login name, removed the old lookup, and was reversed for
-  cleanup. Automated tests additionally reject case-insensitive collisions and online-player impersonation.
+- An unmodified Windows Bedrock client joined normally through Microsoft/Xbox authentication. The human identity was
+  explicitly allowlisted by UUID/XUID and was not made an operator or granted vanilla command permissions.
+- The world remained Survival with `online-mode=true`, `allow-cheats=false`, experiments disabled, and no required
+  behavior/resource packs.
+- Representative M2 control and lifecycle commands were exercised, including accountless Bot operation and a
+  cross-dimension teleport through Endstone's API rather than vanilla `/tp`.
+- The signed-in human unlocked a previously locked vanilla Survival Xbox achievement after those M2 operations. The
+  in-game achievement notification was captured on video.
 
-## Persistence finding
+This completes the M2 achievement-compatibility gate for this exact pinned pair. It does not establish compatibility
+for another Endstone/BDS pair or claim that every parser variant and primitive appeared in the recording.
 
-BDS restored the same UUID's position and inventory after reconnect, so M2 keeps BDS authoritative for player/world
-state. Endbot persists identity, name, and desired lifecycle only. Server rotation updates were observed and fed back
-into runtime input, but an isolated reconnect assertion for exact yaw/pitch was not recorded. Cross-dimension teleport
-worked live; cross-dimension state restoration after a clean reconnect was not separately isolated. Those narrower
-checks do not justify a competing Endbot location database.
+## Additional observations outside the recording
 
-## Automated and safety boundary
+The earlier 2026-09-18 Linux smoke established persistent UUID reuse, ten concurrent profiles, independently targeted
+movement/actions, server-observed movement and attack, held-item use/release, bounded reconnect, lifecycle isolation,
+rename/forget semantics, BDS-native position/inventory persistence, and cross-dimension teleport.
 
-The repository suites cover command grammar, authorization, loopback-token IPC, profile concurrency/corruption,
-lifecycle/reconnect timers, rename/forget, multi-Bot isolation, action scheduling, packet serialization, teleport
-adapter behavior, packaging, patch application, compatibility metadata, and portability. A final run and its exact
-totals are reported with the milestone handoff.
+Post-session remediation smoke on 2026-09-19 separately established:
 
-The live server reported Survival mode and an empty pack stack. The scoped preflight passed `online-mode=true` and
-`allow-cheats=false`; no experiments, Beta APIs, GameTest, operator grant, or vanilla cheat command was introduced.
-Endbot has no robust in-repository parser for this BDS version's world-history fields, so those fields remain unknown for
-this smoke rather than being declared safe by inference.
+- `/bot`, `/bot ping`, `/bot list`, `/bot help`, `/bot help advanced`, and named default-mode commands were accepted by
+  the real Bedrock command parser after the overload declarations were corrected.
+- A grounded Bot teleported within the same dimension to unsupported air fell from Y 75 to the terrain at Y 63,
+  landed, and could jump afterward.
+- Hotbar query/set used Bedrock's equipment path and reported human-facing slots 1–9.
+- `drop` and `drop stack` changed the selected BDS inventory through normal inventory transactions.
+- `interact` stayed connected and performed legal Survival block placement. BDS decremented a four-cobblestone stack
+  to two after two legal placements; rejected/illegal clicks did not decrement it.
+- The interaction used a protocol-2193 start action, packed server-authoritative item-interaction tick, and next-tick
+  stop action. The plugin never edited a block directly.
 
-## Remaining manual M2 gate
+## Defects discovered and remediation status
 
-The completed M0 human `/bot ping` and Xbox-achievement result still applies to the unchanged baseline, but it does not
-prove the expanded M2 surface. A human operator must still:
+- **Same-dimension airborne teleport suspension — fixed.** The runtime now acknowledges the server correction, seeds
+  downward motion when unsupported, and yields to authoritative landing updates.
+- **Top-level command rejection — fixed.** The pinned Endstone/BDS parser mishandles optional enum overloads. Required
+  typed overloads plus narrow string fallbacks preserve `/bot <name> ...` and make zero/default forms parse.
+- **Autocomplete gaps — fixed where supported.** Finite choices use native enums. Bot profile names remain strings
+  because the pinned Endstone public API has no supported dynamic-completion surface; `/bot list` is the discovery path.
+- **Missing hotbar, block interaction, and selected-item drop — fixed.** Inventory/world authority remains in BDS.
+- **Disconnected async command sender lifetime — fixed.** Workers retain only a player UUID and re-resolve it on the
+  server thread, so a diagnostic client disconnect cannot leave a stale native sender wrapper.
+- **Server-wide Low-ping to High-ping/stutter observation — unattributed.** It is tracked as an orchestration A/B
+  question, not asserted to be an Endbot defect. Machine-local supervisor evidence is intentionally not committed.
 
-1. join from an unmodified Windows Bedrock client through Microsoft/Xbox auth using an explicitly allowlisted UUID/XUID;
-2. exercise representative `/bot` spawn, list/status, teleport, action/stop, reconnect, rename, despawn, and resume flows;
-3. confirm no operator or vanilla command permission was granted and cheats remain disabled;
-4. perform a version-aware post-save world/history inspection; and
-5. unlock a still-locked vanilla Survival Xbox achievement in that session.
+Block breaking/mining remains out of scope. Its future implementation must follow the server-authoritative
+`PlayerAuthInput` block-action/prediction path rather than mutate blocks through the plugin.
 
-Native Windows runtime operation is designed for but was not executed in this record. Linux is the live-validated M2
-host. The server is intentionally stopped after autonomous validation; follow the normal setup documentation to create
-fresh local secrets and configure the real operator allowlist before the manual gate.
+## Persistence and safety boundary
+
+BDS restored the same UUID's dimension, position, rotation, and inventory across reconnect/resume. Endbot therefore
+persists identity, name, and desired lifecycle only; it does not maintain a competing location or inventory database.
+
+The live server reported Survival and an empty pack stack. Scoped preflight passed `online-mode=true` and
+`allow-cheats=false`; no experiment, Beta API, GameTest, operator grant, vanilla cheat command, or direct world-edit
+shortcut was introduced. The human Xbox unlock is the achievement observation. Repository automation still does not
+pretend to be a version-independent `level.dat` proof.
+
+Linux/WSL is the validated runtime/server host. A Windows Bedrock client is validated as the normal human operator;
+native Windows hosting of the Endbot runtime remains designed for but has not been claimed as tested.

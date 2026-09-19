@@ -53,7 +53,8 @@
         "experiments_required",
         "actual_xbox_achievement_unlock_observed",
         "actual_xbox_achievement_unlock_scope",
-        "m2_actual_xbox_achievement_unlock_observed"
+        "m2_actual_xbox_achievement_unlock_observed",
+        "m2_actual_xbox_achievement_unlock_scope"
       ],
       "properties": {
         "online_mode": { "const": true },
@@ -61,7 +62,8 @@
         "experiments_required": { "const": false },
         "actual_xbox_achievement_unlock_observed": { "const": true },
         "actual_xbox_achievement_unlock_scope": { "const": "m0_bot_ping" },
-        "m2_actual_xbox_achievement_unlock_observed": { "const": false }
+        "m2_actual_xbox_achievement_unlock_observed": { "const": true },
+        "m2_actual_xbox_achievement_unlock_scope": { "const": "representative_m2_controls" }
       },
       "additionalProperties": false
     },

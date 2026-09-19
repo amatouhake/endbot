@@ -69,16 +69,15 @@ On 2026-09-18 JST, Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97` wa
 This establishes the M0 result for the exact baseline above. It does not establish compatibility for a later
 Endstone/BDS pair, prove every Xbox achievement, or replace the repeatable release gate for future compatibility bumps.
 
-## M2 gate
+## Completed M2 gate
 
-M2 keeps the same configuration invariants and implements teleport with Endstone's actor/location API rather than a
-vanilla command. Automated tests assert that the adapter never dispatches `/tp`, but this is not sufficient to extend
-the observed Xbox-achievement claim to all M2 operations. Before calling the M2 gate complete, repeat the M0 procedure
-in a fresh Survival validation world, exercise representative spawn, teleport, input, reconnect, rename, and despawn
-operations, inspect world history, then unlock a still-locked achievement from a normally authenticated human client.
-Do not alter world flags to make that test pass.
+On 2026-09-19 JST, the same Survival world and pinned BDS/Endstone pair were exercised from a normal Windows Bedrock
+client after representative M2 lifecycle, input, and dimension-teleport operations. The human joined through the
+Microsoft/Xbox path, remained non-operator, and unlocked a still-locked vanilla Survival Xbox achievement; its in-game
+notification was captured on video. `online-mode=true`, `allow-cheats=false`, no experiments, and the empty pack stack
+were preserved. This completes the M2 achievement-compatibility gate for this exact pinned pair.
 
-The Linux runtime/server smoke described in [`M2_VALIDATION.md`](M2_VALIDATION.md) kept `online-mode=true`,
-`allow-cheats=false`, an empty pack stack, and the pinned official BDS. Its scoped property preflight passed. That test
-did not include the authenticated Windows command operator, a version-aware post-test history read, or a new Xbox
-achievement unlock, so the M2 achievement gate remains open.
+The session also exposed ordinary correctness defects, later repaired without changing the authentication patch or
+safety settings. Post-remediation Linux smoke is recorded separately in [`M2_VALIDATION.md`](M2_VALIDATION.md); it does
+not replace or retroactively alter the recorded human achievement observation. Future revisions and compatibility-pair
+updates still require the explicit release gate rather than inheriting this result automatically.

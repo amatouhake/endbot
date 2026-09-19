@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWheelContractTests(unittest.TestCase):
-    def test_manifest_records_completed_m0_achievement_gate(self) -> None:
+    def test_manifest_records_completed_m0_and_m2_achievement_gates(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "compatibility-manifest.json"
             completed = subprocess.run(
@@ -30,8 +30,21 @@ class ReleaseWheelContractTests(unittest.TestCase):
                 manifest["tested_safety_conditions"]["actual_xbox_achievement_unlock_scope"],
                 "m0_bot_ping",
             )
-            self.assertFalse(
+            self.assertTrue(
                 manifest["tested_safety_conditions"]["m2_actual_xbox_achievement_unlock_observed"]
+            )
+            self.assertEqual(
+                manifest["tested_safety_conditions"]["m2_actual_xbox_achievement_unlock_scope"],
+                "representative_m2_controls",
+            )
+            schema = json.loads(
+                (ROOT / "release/compatibility-manifest.schema.json").read_text(encoding="utf-8")
+            )
+            safety_schema = schema["properties"]["tested_safety_conditions"]
+            self.assertIn("m2_actual_xbox_achievement_unlock_scope", safety_schema["required"])
+            self.assertEqual(
+                safety_schema["properties"]["m2_actual_xbox_achievement_unlock_scope"]["const"],
+                manifest["tested_safety_conditions"]["m2_actual_xbox_achievement_unlock_scope"],
             )
 
     def test_release_candidate_repairs_and_inspects_endstone_wheel(self) -> None:

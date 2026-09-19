@@ -55,7 +55,8 @@ def main() -> int:
             "experiments_required": False,
             "actual_xbox_achievement_unlock_observed": True,
             "actual_xbox_achievement_unlock_scope": "m0_bot_ping",
-            "m2_actual_xbox_achievement_unlock_observed": False,
+            "m2_actual_xbox_achievement_unlock_observed": True,
+            "m2_actual_xbox_achievement_unlock_scope": "representative_m2_controls",
         },
         "bds_binary_included": False,
     }

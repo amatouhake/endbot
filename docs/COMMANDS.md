@@ -65,6 +65,10 @@ avoid known offline real-player names.
 relative destination and `facing` coordinates are both resolved from the same command-source snapshot. Teleport uses
 `Actor.teleport`; it never dispatches vanilla `/tp` and does not require cheat-command permission.
 
+After a same-dimension server teleport, the runtime acknowledges the correction and resumes normal client-predicted
+vertical movement. A Bot teleported into unsupported air therefore falls and lands instead of continually resending
+the teleport height.
+
 ## Inputs and actions
 
 ```text
@@ -74,6 +78,11 @@ relative destination and `facing` coordinates are both resolved from the same co
 /bot Alice jump|attack|use [once|continuous|interval <ticks>|stop]
 /bot Alice sprint on|off
 /bot Alice sneak on|off
+/bot Alice hotbar
+/bot Alice hotbar <1-9>
+/bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
+/bot Alice drop
+/bot Alice drop stack
 /bot Alice stop
 ```
 
@@ -83,6 +92,24 @@ the session connected. `look` remains at its last rotation after stop. `use` sen
 interaction; with an empty hand it is a safe no-op. Endbot does not invent an item or issue a server command.
 Sprint and sneak emit Bedrock's one-tick start/stop transitions as well as steady held-state flags; reconnect input reset
 does not replay transitions from the previous transport.
+
+`hotbar` reports or changes the selected slot using human-facing 1–9 numbering. Selection is sent through the normal
+Bedrock equipment path and inventory updates continue to come from BDS; Endbot does not keep a second inventory.
+
+`use` means using or holding the selected item in the air, such as food, a bow, or a trident. `interact` is a normal
+right-click on the named block face. It sends the protocol-2193 press, server-authoritative item-interaction tick, and
+release sequence; BDS decides reach, legality, collision, placement, and inventory decrement. A placeable selected
+item can therefore place a block in Survival without the plugin editing the world. `drop` drops one selected item and
+`drop stack` drops the selected stack through normal inventory transactions.
+
+The command declaration supplies native finite enums for roots, movement direction, action modes, on/off, dimension
+aliases, block faces, and `stack`, while retaining string fallbacks required by the pinned Endstone/BDS overload parser
+for zero-argument/default forms. The pinned Endstone public API does not expose supported dynamic completion for Bot
+profile names, so names remain strings; use `/bot list` to discover them. Endbot does not use private registry or raw
+soft-enum hooks.
+
+Block breaking/mining is not part of this remediation. A future implementation must use the server-authoritative
+`PlayerAuthInput` block-action/prediction sequence and BDS inventory/tool rules, not direct plugin block mutation.
 
 ## Operational states
 

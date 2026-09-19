@@ -10,6 +10,7 @@ from endstone.plugin import Plugin
 from endstone_endbot.authorization import AllowedPlayers
 from endstone_endbot.commands import BotCommandService
 from endstone_endbot.control import RuntimeControlClient
+from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
@@ -61,6 +62,8 @@ class EndbotPlugin(Plugin):
         self._bot_commands = BotCommandService()
         self._allowed_players = AllowedPlayers()
         self._world = None
+        self._server_thread = None
+        self._command_runner = None
 
     def on_load(self) -> None:
         self.save_default_config()
@@ -78,8 +81,19 @@ class EndbotPlugin(Plugin):
             timeout=float(runtime.get("timeout-seconds", 10.0)),
         )
         self._world = EndstoneWorld(self.server)
-        self._bot_commands = BotCommandService(control, self._world)
+        self._server_thread = ServerThreadBridge(lambda task: self.server.scheduler.run_task(self, task))
+        command_world = ServerThreadWorld(self._world, self._server_thread)
+        self._bot_commands = BotCommandService(control, command_world)
+        self._command_runner = AsyncCommandRunner(self._bot_commands, self._server_thread)
         self.register_events(self)
+
+    def on_disable(self) -> None:
+        if self._command_runner is not None:
+            self._command_runner.close()
+            self._command_runner = None
+        if self._server_thread is not None:
+            self._server_thread.close()
+            self._server_thread = None
 
     @event_handler
     def on_player_join(self, event: PlayerJoinEvent) -> None:
@@ -92,7 +106,6 @@ class EndbotPlugin(Plugin):
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         if command.name != "bot":
             return False
-        result = self._bot_commands.execute(args, sender)
-        for message in result.messages:
-            sender.send_message(message)
-        return result.handled
+        if self._command_runner is None or not self._command_runner.submit(args, sender):
+            sender.send_message("Endbot: command service is unavailable")
+        return True

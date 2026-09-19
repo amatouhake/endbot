@@ -38,6 +38,9 @@ placement. `resume` reconnects an existing profile without relocation, allowing 
 cancels automatic reconnect. `forget` requires an offline profile and removes only Endbot registration; it does not
 purge BDS player data. A live rename preserves UUID and reconnects automatically so the login name changes.
 
+If a requested spawn never reaches the world, its pending placement is discarded by resume, reconnect, despawn,
+forget, or rename. Those operations therefore never consume an abandoned spawn placement later.
+
 Spawn resolves coordinates and verifies the destination dimension before creating or starting a profile. A first spawn
 also rejects an active real-player name; an existing Bot may reuse its own UUID/name. Invalid placement therefore has no
 lifecycle side effect.

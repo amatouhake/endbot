@@ -33,12 +33,15 @@ The feature is disabled by default. Invalid local-looking traffic never becomes 
 
 The plugin and runtime use a versioned JSON request/response protocol over a loopback-only TCP socket. Each request
 contains an unguessable token loaded from a private file. Both endpoints reject non-loopback configuration, requests
-are size/time bounded, errors are returned explicitly, and the token is never logged. The plugin command service and
-runtime lifecycle are transport-independent and use fake adapters in tests.
+are size/time bounded, errors are returned explicitly, and the token is never logged. Blocking request/response work
+runs on one ordered plugin worker rather than the BDS command/tick thread. World operations and command replies are
+marshalled back through Endstone's synchronous scheduler before touching server objects. The plugin command service
+and runtime lifecycle are transport-independent and use fake adapters in tests.
 
 With shipped settings, session closure is bounded at 5 seconds, replacement delay is 1 second, the runtime control
-socket deadline is 8 seconds, and the plugin response deadline is 10 seconds. Thus a normal synchronous replacement
-either returns its result/error before either transport deadline; it does not report an early timeout and finish later.
+socket deadline is 8 seconds, and the plugin response deadline is 10 seconds. Thus a normal replacement returns its
+result/error before either transport deadline without blocking BDS ticks; it does not report an early timeout and
+finish later.
 
 The protocol is intentionally local operator IPC, not a remote API. It conveys desired lifecycle and input operations;
 authoritative world operations stay in the plugin. In particular, teleport never dispatches the vanilla `/tp` command.
@@ -67,7 +70,8 @@ reconnect reset the retry budget; attempts within one automatic reconnect sequen
 BDS remains authoritative for dimension, position, rotation, inventory, health, and other player-world state associated
 with the stable UUID. Endbot persists only identity and desired lifecycle/control state. `resume` and `reconnect` do not
 send a placement; BDS therefore restores its native state. `spawn`, by contrast, explicitly requests placement and the
-plugin applies it when the UUID joins. This avoids a second location database.
+plugin applies it when the UUID joins. Any explicit non-spawn lifecycle intent clears an unconsumed spawn placement,
+so a later resume, reconnect, or rename cannot unexpectedly relocate the Bot. This avoids a second location database.
 
 The pinned protocol data is also prepared reproducibly. Endbot applies one narrowly tested schema correction that
 separates the standalone `InventoryTransaction` legacy-slot optional from the distinct `PlayerAuthInput` layout. This

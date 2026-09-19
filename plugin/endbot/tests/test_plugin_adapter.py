@@ -57,8 +57,13 @@ class PluginAdapterTests(unittest.TestCase):
     def test_adapter_sends_pong(self) -> None:
         plugin = self.module.EndbotPlugin()
         sender = FakeSender()
+        submissions = []
+        plugin._command_runner = types.SimpleNamespace(
+            submit=lambda args, target: submissions.append((args, target)) or True,
+        )
         self.assertTrue(plugin.on_command(sender, FakeCommand("bot"), ["ping"]))
-        self.assertEqual(sender.messages, ["Endbot: pong"])
+        self.assertEqual(sender.messages, [])
+        self.assertEqual(submissions, [(["ping"], sender)])
 
 
 if __name__ == "__main__":

@@ -147,8 +147,9 @@ endstone -s C:\endbot-local\server
 ```
 
 Endstone's normal bootstrap downloads the official BDS that matches its pinned Minecraft version (`1.26.51`, BDS
-`1.26.51.1` build `51061372`, protocol `2193`) into the server folder after confirmation; never copy a BDS binary into
-the repository. On Windows the bootstrap also runs `CheckNetIsolation LoopbackExempt -a` for the Minecraft for
+`1.26.51.1` build `51061361` on Windows, protocol `2193`) into the server folder after confirmation; never copy a BDS binary into
+the repository. (The Linux compatibility baseline records build `51061372` for the same release; see the
+per-platform distinction below.) On Windows the bootstrap also runs `CheckNetIsolation LoopbackExempt -a` for the Minecraft for
 Windows app SID through a UAC prompt so the same-machine client can reach a loopback server; if you decline, run that
 command yourself from an elevated prompt, otherwise the client will not see the local server.
 

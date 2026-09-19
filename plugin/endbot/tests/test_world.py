@@ -92,18 +92,34 @@ class WorldTests(unittest.TestCase):
     def test_pending_spawn_placement_targets_uuid_only(self):
         placement = self.world.default_spawn(self.steve)
         placement = self.world.resolve_spawn_placement(placement, self.steve)
-        self.world.queue_spawn_placement(str(self.alice.unique_id), placement)
+        self.server.players.pop(str(self.alice.unique_id))
+        self.server.players.pop(self.alice.name.casefold())
+        self.assertFalse(self.world.queue_spawn_placement(str(self.alice.unique_id), placement))
         unrelated = FakePlayer("00000000-0000-4000-8000-000000000003", "Bob", self.steve.location)
         self.assertFalse(self.world.apply_pending_placement(unrelated))
+        self.server.players[str(self.alice.unique_id)] = self.alice
+        self.server.players[self.alice.name.casefold()] = self.alice
         self.assertTrue(self.world.apply_pending_placement(self.alice))
         self.assertEqual(self.alice.location.x, self.steve.location.x)
 
+    def test_spawn_placement_reconciles_a_player_who_joined_before_queueing(self):
+        placement = self.world.resolve_spawn_placement(self.world.default_spawn(self.steve), self.steve)
+
+        self.assertTrue(self.world.queue_spawn_placement(str(self.alice.unique_id), placement))
+
+        self.assertEqual(self.alice.location.x, self.steve.location.x)
+        self.assertFalse(self.world.apply_pending_placement(self.alice))
+
     def test_pending_spawn_placement_can_be_cleared_before_resume(self):
         placement = self.world.resolve_spawn_placement(self.world.default_spawn(self.steve), self.steve)
+        self.server.players.pop(str(self.alice.unique_id))
+        self.server.players.pop(self.alice.name.casefold())
         self.world.queue_spawn_placement(str(self.alice.unique_id), placement)
 
         self.world.clear_pending_placement(str(self.alice.unique_id))
 
+        self.server.players[str(self.alice.unique_id)] = self.alice
+        self.server.players[self.alice.name.casefold()] = self.alice
         self.assertFalse(self.world.apply_pending_placement(self.alice))
         self.assertEqual(self.alice.location.x, 0)
 

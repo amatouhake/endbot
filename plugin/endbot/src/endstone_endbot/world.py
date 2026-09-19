@@ -46,8 +46,21 @@ class EndstoneWorld:
         self._location(resolved)
         return resolved
 
-    def queue_spawn_placement(self, identity_id: str, placement: dict[str, object]) -> None:
-        self._pending_placements[UUID(identity_id)] = placement
+    def queue_spawn_placement(self, identity_id: str, placement: dict[str, object]) -> bool:
+        """Queue placement, or apply it if the Bot won the join race already.
+
+        This method and ``apply_pending_placement`` are only called on the BDS
+        server thread.  Looking up the player after publishing the placement
+        therefore closes both possible event orders without a name-based
+        fallback: either the join handler consumes the queued UUID entry, or
+        this call observes the already-joined UUID and consumes it itself.
+        """
+        identity = UUID(identity_id)
+        self._pending_placements[identity] = placement
+        player = self.server.get_player(identity)
+        if player is None:
+            return False
+        return self.apply_pending_placement(player)
 
     def clear_pending_placement(self, identity_id: str) -> None:
         self._pending_placements.pop(UUID(identity_id), None)

@@ -125,6 +125,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Compatibility and release gates](docs/COMPATIBILITY.md)
 - [M2 commands and operation](docs/COMMANDS.md)
 - [M2 validation record](docs/M2_VALIDATION.md)
+- [Native Windows development and live smoke](docs/WINDOWS_DEV.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Contributing

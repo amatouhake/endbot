@@ -15,13 +15,21 @@ from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerTh
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
-    # Pinned Endstone/BDS does not consume values for optional enum parameters.
-    # Keep a top-level string fallback for the zero/default root form and use
-    # required enums for the named-Bot tree. A message parameter immediately
-    # after <name> greedily hides every operation from Bedrock autocomplete.
+    # Bedrock matches each usage as one native overload before Python ever runs,
+    # so a documented form with no matching overload is a client-visible syntax
+    # error. The two string fallbacks are the parseability guarantee: the root
+    # fallback covers /bot, /bot help <page|command> and unknown roots, while the
+    # named fallback covers every /bot <name> ... form (Bedrock passes the
+    # remainder as one message argument and the Python parser re-splits it).
+    # Both fallbacks were validated against the real Bedrock parser, while a
+    # typed-only named tree was rejected live even for paper-perfect overloads
+    # (notably "/bot Alice move forward" and "/bot Alice tp me"). The typed
+    # enum overloads below exist only for native autocomplete and must never
+    # remove a form the fallbacks accept: parseability wins over completion.
+    # No private registry or soft-enum hooks are used.
     "/bot [command: string] [topic: string]",
     "/bot (ping|list|help)<command: EndbotRoot>",
-    "/bot (help)<command: EndbotHelp> (advanced)<topic: EndbotHelpTopic>",
+    "/bot <name: string> <operation: message>",
     "/bot <name: string> (status|resume|reconnect|despawn|forget|stop)<operation: EndbotNoArgs>",
     "/bot <name: string> (spawn)<operation: EndbotSpawn>",
     (

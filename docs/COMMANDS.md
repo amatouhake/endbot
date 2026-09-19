@@ -13,9 +13,30 @@ Every command names its Bot; there is no selected-target state.
 /bot Alice despawn
 ```
 
-`/bot`, `/bot help`, and `/bot help advanced` provide progressive help. `/bot list` summarizes every known profile and
+`/bot` and `/bot help` show help page 1. `/bot help <page>` (1-3) shows a paginated command summary modeled on
+vanilla Bedrock `/help`, and `/bot help <operation>` (for example `/bot help move`) shows every supported
+syntax for that operation with a concise explanation. `/bot list` summarizes every known profile and
 its lifecycle state. `/bot Alice status` combines runtime state with authoritative dimension/position/rotation when the
 BDS player entity is present.
+
+```text
+--- Endbot help page 1 of 3: lifecycle, status and teleport ---
+/bot ping | /bot list | /bot help - connectivity, profiles, this help
+/bot <name> spawn - create or connect a Bot
+/bot <name> resume - reconnect a profile without moving it
+...
+Next page: /bot help 2 - detail: /bot help <command>
+```
+
+```text
+Endbot help: move
+/bot <name> move forward|backward|left|right|stop
+Movement acts as held input; stop halts it.
+```
+
+Page 1 covers lifecycle, status, and teleport; page 2 covers movement and actions; page 3 covers
+inventory, world interaction, and advanced lifecycle. Each page is one chat message per line so it
+reads in Bedrock chat without dense pipe-separated one-liners.
 
 ## Lifecycle
 
@@ -102,11 +123,49 @@ release sequence; BDS decides reach, legality, collision, placement, and invento
 item can therefore place a block in Survival without the plugin editing the world. `drop` drops one selected item and
 `drop stack` drops the selected stack through normal inventory transactions.
 
-The command declaration supplies native finite enums for roots, movement direction, action modes, on/off, dimension
-aliases, block faces, and `stack`, while retaining string fallbacks required by the pinned Endstone/BDS overload parser
-for zero-argument/default forms. The pinned Endstone public API does not expose supported dynamic completion for Bot
-profile names, so names remain strings; use `/bot list` to discover them. Endbot does not use private registry or raw
-soft-enum hooks.
+The command declaration pairs native finite enums (roots, movement direction, action modes, on/off, dimension
+aliases, block faces, and `stack`) with two plain string fallbacks: `/bot [command: string] [topic: string]` for
+root forms including `/bot help <page|command>`, and `/bot <name: string> <operation: message>` for every named
+form. The fallbacks are the parseability guarantee — Bedrock matches each usage as one native overload before
+the Python parser runs, and a typed-only named tree was rejected live even for paper-perfect overloads (notably
+`/bot Alice move forward` and `/bot Alice tp me`). The typed overloads exist only for native autocomplete and
+must never remove a form the fallbacks accept. The pinned Endstone public API does not expose supported dynamic
+completion for Bot profile names, so names remain strings; use `/bot list` to discover them. Endbot does not use
+private registry or raw soft-enum hooks.
+
+## Live parser smoke (real BDS required)
+
+Repository unit tests prove the Python parser and the declaration coverage model, but they cannot execute the
+closed-source BDS overload matcher. After any change to `COMMAND_USAGES`, run each of these on the pinned
+native BDS build and confirm it reaches the Python layer (a Bot response or an `Endbot:` usage message, never a
+Bedrock syntax error):
+
+```text
+/bot
+/bot ping
+/bot help
+/bot help 2
+/bot help 3
+/bot help move
+/bot help teleport
+/bot help dance
+/bot Alice spawn
+/bot Alice status
+/bot Alice move forward
+/bot Alice tp me
+/bot Alice tp 100 64 -20 facing Steve
+/bot Alice look at 1 64 2
+/bot Alice attack interval 20
+/bot Alice interact 1 64 2 up
+/bot Alice hotbar 9
+/bot Alice drop stack
+/bot Alice stop
+/bot Alice despawn
+```
+
+Also confirm native autocomplete still offers operation names after `/bot Alice ` and direction names after
+`/bot Alice move `; if a fallback ever hides completion, parseability still wins and the tradeoff is recorded
+here rather than fixed by removing the fallback.
 
 Block breaking/mining is not part of this remediation. A future implementation must use the server-authoritative
 `PlayerAuthInput` block-action/prediction sequence and BDS inventory/tool rules, not direct plugin block mutation.

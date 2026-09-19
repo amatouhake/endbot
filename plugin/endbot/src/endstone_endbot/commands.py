@@ -30,15 +30,214 @@ class CommandResult:
         return self.messages[0] if self.messages else None
 
 
-QUICK_HELP = (
-    "Endbot quick start: /bot <name> spawn | tp me | hotbar 1 | jump | attack continuous | stop | despawn",
-    "use = selected item in air; interact <x y z> <face> = right-click a block. Use /bot help advanced for more.",
+@dataclass(frozen=True, slots=True)
+class HelpTopic:
+    """Structured help for one /bot operation.
+
+    ``syntaxes`` must stay in lockstep with :func:`parse_command`; the paginated
+    index shows ``syntaxes[0]`` while the detail page lists every form.
+    """
+
+    operation: str
+    summary: str
+    syntaxes: tuple[str, ...] = ()
+    details: tuple[str, ...] = ()
+    named: bool = True
+
+
+HELP_TOPICS: dict[str, HelpTopic] = {
+    "spawn": HelpTopic(
+        "spawn",
+        "create or connect a Bot",
+        ("spawn", "spawn at <x> <y> <z> [facing <yaw> <pitch>] [in <dimension>]"),
+        (
+            "First spawn creates a profile and places the arriving Bot at its caller.",
+            "Spawning an offline profile reuses its identity with the new placement.",
+        ),
+    ),
+    "resume": HelpTopic(
+        "resume",
+        "reconnect a profile without moving it",
+        ("resume",),
+        ("Keeps the stored identity and lets world persistence win.",),
+    ),
+    "reconnect": HelpTopic(
+        "reconnect",
+        "restart the session in place",
+        ("reconnect",),
+        ("Tears down and reconnects without changing identity or location.",),
+    ),
+    "despawn": HelpTopic(
+        "despawn",
+        "take a Bot offline (stays registered)",
+        ("despawn",),
+        ("Cancels automatic reconnect; resume or spawn brings it back.",),
+    ),
+    "forget": HelpTopic(
+        "forget",
+        "remove an offline profile registration",
+        ("forget",),
+        ("Requires an offline Bot; BDS player data is left alone.",),
+    ),
+    "rename": HelpTopic(
+        "rename",
+        "rename a Bot, keeping its identity",
+        ("rename <new-name>",),
+        ("Reconnects automatically so the login name changes.",),
+    ),
+    "status": HelpTopic(
+        "status",
+        "show lifecycle state and position",
+        ("status",),
+        ("Combines runtime state with the live position when spawned.",),
+    ),
+    "teleport": HelpTopic(
+        "teleport",
+        "teleport a Bot",
+        (
+            "tp <player>",
+            "tp <x> <y> <z> [yaw pitch]",
+            "tp <x> <y> <z> facing <player|x y z>",
+            "tp in <dimension> <x> <y> <z>",
+        ),
+        (
+            "Uses the server teleport; never dispatches vanilla /tp.",
+            "~ coordinates are relative to the command source.",
+        ),
+    ),
+    "move": HelpTopic(
+        "move",
+        "walk a Bot in a direction",
+        ("move forward|backward|left|right|stop",),
+        ("Movement acts as held input; stop halts it.",),
+    ),
+    "look": HelpTopic(
+        "look",
+        "turn a Bot's head",
+        ("look <yaw> <pitch>", "look at <x> <y> <z>"),
+        ("look at turns toward world coordinates.",),
+    ),
+    "jump": HelpTopic(
+        "jump",
+        "make a Bot jump",
+        ("jump [once|continuous|interval <ticks>|stop]",),
+        ("Omitting the mode means once; interval takes 1-72000 ticks.",),
+    ),
+    "attack": HelpTopic(
+        "attack",
+        "make a Bot attack",
+        ("attack [once|continuous|interval <ticks>|stop]",),
+        ("Continuous actions run every input tick.",),
+    ),
+    "use": HelpTopic(
+        "use",
+        "use the held item in air",
+        ("use [once|continuous|interval <ticks>|stop]",),
+        ("With an empty hand it is a safe no-op; blocks need interact.",),
+    ),
+    "sprint": HelpTopic(
+        "sprint",
+        "toggle sprinting",
+        ("sprint on|off",),
+        ("Emits Bedrock start/stop transitions plus held state.",),
+    ),
+    "sneak": HelpTopic(
+        "sneak",
+        "toggle sneaking",
+        ("sneak on|off",),
+        ("Emits Bedrock start/stop transitions plus held state.",),
+    ),
+    "hotbar": HelpTopic(
+        "hotbar",
+        "show or select the hotbar slot",
+        ("hotbar [1-9]",),
+        ("Slots use human-facing 1-9 numbering through Bedrock equipment.",),
+    ),
+    "interact": HelpTopic(
+        "interact",
+        "right-click a block face",
+        ("interact <x> <y> <z> <down|up|north|south|west|east>",),
+        ("BDS decides reach, legality and inventory changes.",),
+    ),
+    "drop": HelpTopic(
+        "drop",
+        "drop the selected item",
+        ("drop [stack]",),
+        ("drop drops one item; drop stack drops the selected stack.",),
+    ),
+    "stop": HelpTopic(
+        "stop",
+        "halt movement and actions",
+        ("stop",),
+        ("Clears movement, actions, sprint and sneak; stays connected.",),
+    ),
+    "ping": HelpTopic(
+        "ping",
+        "check the command path",
+        ("ping",),
+        ("Answers pong without touching the runtime.",),
+        named=False,
+    ),
+    "list": HelpTopic(
+        "list",
+        "list every Bot profile",
+        ("list",),
+        ("Shows each profile name with its lifecycle state.",),
+        named=False,
+    ),
+    "help": HelpTopic(
+        "help",
+        "show this help",
+        ("help [page|command]",),
+        ("Pages summarize commands; a command name shows detail.",),
+        named=False,
+    ),
+}
+
+HELP_TOPIC_ALIASES = {"tp": "teleport"}
+
+HELP_PAGES: tuple[tuple[str, ...], ...] = (
+    ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
+    ("move", "look", "jump", "attack", "use", "sprint", "sneak", "stop"),
+    ("hotbar", "interact", "drop", "rename", "forget"),
 )
-ADVANCED_HELP = (
-    "Lifecycle: spawn [at x y z [facing yaw pitch] [in dimension]], resume, reconnect, despawn, forget, rename",
-    "Control: tp, move, look, jump|attack|use, sprint, sneak, hotbar [1-9], interact x y z face, drop [stack], stop",
-    "use acts in air; interact right-clicks a block through BDS. Teleport never invokes vanilla /tp.",
+
+HELP_PAGE_TITLES = (
+    "lifecycle, status and teleport",
+    "movement and actions",
+    "inventory and advanced lifecycle",
 )
+
+
+def _help_prefix(topic: HelpTopic) -> str:
+    return "/bot <name>" if topic.named else "/bot"
+
+
+def help_page(page: int) -> tuple[str, ...]:
+    """Render one paginated help index, modeled on vanilla Bedrock /help."""
+    total = len(HELP_PAGES)
+    lines = [f"--- Endbot help page {page} of {total}: {HELP_PAGE_TITLES[page - 1]} ---"]
+    if page == 1:
+        lines.append("/bot ping | /bot list | /bot help - connectivity, profiles, this help")
+    for key in HELP_PAGES[page - 1]:
+        topic = HELP_TOPICS[key]
+        lines.append(f"{_help_prefix(topic)} {topic.syntaxes[0]} - {topic.summary}")
+    if page < total:
+        lines.append(f"Next page: /bot help {page + 1} - detail: /bot help <command>")
+    else:
+        lines.append("Detail: /bot help <command> (for example /bot help move)")
+    return tuple(lines)
+
+
+def help_detail(key: str) -> tuple[str, ...]:
+    """Render detailed help for one operation, listing every supported syntax."""
+    topic = HELP_TOPICS[key]
+    lines = [
+        f"Endbot help: {topic.operation}",
+        *(f"{_help_prefix(topic)} {syntax}" for syntax in topic.syntaxes),
+        *topic.details,
+    ]
+    return tuple(lines)
 
 BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
 
@@ -128,15 +327,35 @@ def _teleport(name: str, tokens: list[str]) -> BotCommand:
     return BotCommand("teleport", name, destination)
 
 
+def _help_topic(raw: str) -> BotCommand:
+    token = raw.lower()
+    if token == "advanced":
+        # Unadvertised compatibility alias for the retired dense help mode.
+        return BotCommand("help", parameters={"page": len(HELP_PAGES)})
+    if token.isdigit():
+        page = int(token)
+        if 1 <= page <= len(HELP_PAGES):
+            return BotCommand("help", parameters={"page": page})
+        raise CommandSyntaxError(f"Help page must be from 1 to {len(HELP_PAGES)}")
+    key = HELP_TOPIC_ALIASES.get(token, token)
+    if key in HELP_TOPICS:
+        return BotCommand("help", parameters={"topic": key})
+    raise CommandSyntaxError(f"Unknown help topic '{raw}'. Use /bot help <page> or /bot help <command>")
+
+
 def parse_command(arguments: list[str]) -> BotCommand:
     tokens = _tokens(arguments)
     if not tokens:
-        return BotCommand("help")
+        return BotCommand("help", parameters={"page": 1})
     first = tokens[0].lower()
     if first == "ping" and len(tokens) == 1:
         return BotCommand("ping")
-    if first == "help" and len(tokens) <= 2:
-        return BotCommand("help", parameters={"advanced": len(tokens) == 2 and tokens[1].lower() == "advanced"})
+    if first == "help":
+        if len(tokens) == 1:
+            return BotCommand("help", parameters={"page": 1})
+        if len(tokens) == 2:
+            return _help_topic(tokens[1])
+        raise CommandSyntaxError("Use /bot help <page> or /bot help <command>")
     if first == "list" and len(tokens) == 1:
         return BotCommand("list")
     if len(tokens) < 2:
@@ -211,7 +430,9 @@ class BotCommandService:
             # Keep the M0 server-side safety probe independent of runtime health.
             return CommandResult(True, ("Endbot: pong",))
         if command.operation == "help":
-            return CommandResult(True, ADVANCED_HELP if command.parameters.get("advanced") else QUICK_HELP)
+            if "topic" in command.parameters:
+                return CommandResult(True, help_detail(command.parameters["topic"]))
+            return CommandResult(True, help_page(int(command.parameters.get("page", 1))))
         if self.control is None:
             raise RuntimeError("runtime control is not configured")
         if command.operation == "list":

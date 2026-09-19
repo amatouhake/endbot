@@ -176,7 +176,20 @@ export class BotLifecycle extends EventEmitter {
           return this.#status(this.store.getById(profile.identityId))
         }
       }
-      const renamed = this.store.update(profile.identityId, { name: newName })
+      let renamed
+      try {
+        renamed = this.store.update(profile.identityId, { name: newName })
+      } catch (error) {
+        // An online rename closes the old transport before committing the new
+        // login name. If persistence loses a race or fails, keep the persisted
+        // desired-online intent operational under whichever profile remains.
+        const persisted = this.store.getById(profile.identityId)
+        if (wasOnline && this.#mayConnect(persisted, generation) && !this.sessions.get(profile.identityId)?.session) {
+          this.#resetRetryBudget(profile.identityId)
+          void this.#connect(persisted, true, generation)
+        }
+        throw error
+      }
       if (wasOnline && this.#mayConnect(renamed, generation)) {
         this.#resetRetryBudget(profile.identityId)
         void this.#connect(renamed, true, generation)

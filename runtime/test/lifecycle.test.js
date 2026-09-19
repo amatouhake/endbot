@@ -115,6 +115,27 @@ test('rename validates profile-name conflicts before disconnecting', async () =>
   assert.equal(lifecycle.status('Alice').connectionState, 'online')
 })
 
+test('rename persistence failure reconnects the desired-online persisted profile', async () => {
+  const { lifecycle, sessions } = fixture()
+  await lifecycle.spawn('Alice')
+  await turn()
+  const update = lifecycle.store.update.bind(lifecycle.store)
+  lifecycle.store.update = (identityId, changes) => {
+    if (changes.name !== undefined) throw new Error('profile persistence unavailable')
+    return update(identityId, changes)
+  }
+
+  await assert.rejects(lifecycle.rename('Alice', 'Builder'), /profile persistence unavailable/)
+  await turn()
+
+  assert.equal(sessions[0].disconnects[0], 'rename reconnect')
+  assert.equal(sessions.length, 2)
+  assert.equal(sessions[1].profile.name, 'Alice')
+  assert.equal(lifecycle.status('Alice').desiredState, 'online')
+  assert.equal(lifecycle.status('Alice').connectionState, 'online')
+  assert.throws(() => lifecycle.status('Builder'), error => error.code === 'not_found')
+})
+
 test('session replacement waits for the old transport to close', async () => {
   let releaseDisconnect
   class DelayedDisconnectSession extends FakeSession {

@@ -111,6 +111,34 @@ class WorldTests(unittest.TestCase):
         self.assertEqual(self.alice.location.x, self.steve.location.x)
         self.assertFalse(self.world.apply_pending_placement(self.alice))
 
+    def test_rejected_spawn_placement_remains_pending_for_retry(self):
+        placement = self.world.resolve_spawn_placement(self.world.default_spawn(self.steve), self.steve)
+        original_teleport = self.alice.teleport
+        self.alice.teleport = lambda target: False
+
+        self.assertFalse(self.world.queue_spawn_placement(str(self.alice.unique_id), placement))
+        self.assertEqual(self.alice.location.x, 0)
+
+        self.alice.teleport = original_teleport
+        self.assertTrue(self.world.apply_pending_placement(self.alice))
+        self.assertEqual(self.alice.location.x, self.steve.location.x)
+        self.assertFalse(self.world.apply_pending_placement(self.alice))
+
+    def test_spawn_placement_exception_does_not_consume_request(self):
+        placement = self.world.resolve_spawn_placement(self.world.default_spawn(self.steve), self.steve)
+        original_teleport = self.alice.teleport
+
+        def reject(_target):
+            raise RuntimeError("teleport listener failed")
+
+        self.alice.teleport = reject
+        with self.assertRaisesRegex(RuntimeError, "teleport listener failed"):
+            self.world.queue_spawn_placement(str(self.alice.unique_id), placement)
+
+        self.alice.teleport = original_teleport
+        self.assertTrue(self.world.apply_pending_placement(self.alice))
+        self.assertEqual(self.alice.location.x, self.steve.location.x)
+
     def test_pending_spawn_placement_can_be_cleared_before_resume(self):
         placement = self.world.resolve_spawn_placement(self.world.default_spawn(self.steve), self.steve)
         self.server.players.pop(str(self.alice.unique_id))

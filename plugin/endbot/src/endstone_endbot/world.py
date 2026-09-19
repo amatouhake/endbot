@@ -66,10 +66,16 @@ class EndstoneWorld:
         self._pending_placements.pop(UUID(identity_id), None)
 
     def apply_pending_placement(self, player) -> bool:
-        placement = self._pending_placements.pop(player.unique_id, None)
+        placement = self._pending_placements.get(player.unique_id)
         if not placement:
             return False
-        return bool(player.teleport(self._location(placement)))
+        if not player.teleport(self._location(placement)):
+            return False
+        # A teleport event may synchronously publish a newer request. Consume
+        # only the placement that was actually applied.
+        if self._pending_placements.get(player.unique_id) is placement:
+            self._pending_placements.pop(player.unique_id, None)
+        return True
 
     def observe(self, identity_id: str) -> dict[str, object] | None:
         player = self.server.get_player(UUID(identity_id))

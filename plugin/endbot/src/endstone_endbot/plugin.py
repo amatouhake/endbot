@@ -26,14 +26,15 @@ COMMAND_USAGES = [
     "/bot <name: string> (spawn)<operation: EndbotSpawn> [placement: message]",
     (
         "/bot <name: string> (spawn)<operation: EndbotSpawnDimension> (at)<mode: EndbotAt> "
-        "<position: pos> (in)<scope: EndbotDimensionScope> "
-        "(overworld|nether|end)<dimension: EndbotDimension>"
+        "<position: pos> (in)<scope: EndbotSpawnDimensionScope> "
+        "(overworld|nether|end)<dimension: EndbotSpawnDimensionName>"
     ),
     "/bot <name: string> (rename)<operation: EndbotRename> <new_name: string>",
     "/bot <name: string> (tp)<operation: EndbotTeleport> <destination: message>",
     (
         "/bot <name: string> (tp)<operation: EndbotTeleportDimension> "
-        "(in)<scope: EndbotDimensionScope> (overworld|nether|end)<dimension: EndbotDimension> "
+        "(in)<scope: EndbotTeleportDimensionScope> "
+        "(overworld|nether|end)<dimension: EndbotTeleportDimensionName> "
         "<destination: message>"
     ),
     (

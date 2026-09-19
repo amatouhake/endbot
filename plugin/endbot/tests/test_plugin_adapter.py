@@ -1,4 +1,5 @@
 import importlib
+import re
 import sys
 import types
 import unittest
@@ -64,8 +65,11 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertTrue(any("reconnect" in usage and "EndbotNoArgs" in usage for usage in usages))
         self.assertTrue(any("EndbotDirection" in usage for usage in usages))
         self.assertTrue(any("EndbotActionMode" in usage and "once|continuous|stop" in usage for usage in usages))
-        self.assertTrue(any("EndbotDimension" in usage and "overworld|nether|end" in usage for usage in usages))
+        self.assertTrue(any("DimensionName" in usage and "overworld|nether|end" in usage for usage in usages))
         self.assertTrue(any("EndbotBlockFace" in usage and "block_pos" in usage for usage in usages))
+
+        enum_names = re.findall(r": (Endbot\w+)>", "\n".join(usages))
+        self.assertEqual(len(enum_names), len(set(enum_names)), "native enum names must be globally unique")
         self.assertTrue(any("EndbotDropMode" in usage and "stack" in usage for usage in usages))
         self.assertFalse(any("<direction: string>" in usage for usage in usages))
         self.assertEqual(plugin_class.commands["bot"]["permissions"], ["endbot.command.control"])

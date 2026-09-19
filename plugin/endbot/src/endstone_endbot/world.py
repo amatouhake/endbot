@@ -49,6 +49,9 @@ class EndstoneWorld:
     def queue_spawn_placement(self, identity_id: str, placement: dict[str, object]) -> None:
         self._pending_placements[UUID(identity_id)] = placement
 
+    def clear_pending_placement(self, identity_id: str) -> None:
+        self._pending_placements.pop(UUID(identity_id), None)
+
     def apply_pending_placement(self, player) -> bool:
         placement = self._pending_placements.pop(player.unique_id, None)
         if not placement:

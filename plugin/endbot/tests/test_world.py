@@ -98,6 +98,15 @@ class WorldTests(unittest.TestCase):
         self.assertTrue(self.world.apply_pending_placement(self.alice))
         self.assertEqual(self.alice.location.x, self.steve.location.x)
 
+    def test_pending_spawn_placement_can_be_cleared_before_resume(self):
+        placement = self.world.resolve_spawn_placement(self.world.default_spawn(self.steve), self.steve)
+        self.world.queue_spawn_placement(str(self.alice.unique_id), placement)
+
+        self.world.clear_pending_placement(str(self.alice.unique_id))
+
+        self.assertFalse(self.world.apply_pending_placement(self.alice))
+        self.assertEqual(self.alice.location.x, 0)
+
     def test_spawn_resolution_rejects_missing_and_unknown_console_dimensions(self):
         with self.assertRaisesRegex(ValueError, "dimension is required"):
             self.world.resolve_spawn_placement({"coordinates": [1, 64, 2]}, None)

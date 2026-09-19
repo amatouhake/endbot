@@ -234,8 +234,14 @@ class BotCommandService:
             yaw, pitch = self.world.look_at(command.name, command.parameters["targetCoordinates"])
             result = self.control.request("look", name=command.name, yaw=yaw, pitch=pitch)
         elif command.operation == "rename":
-            self.world.assert_name_available(command.parameters["newName"])
+            status = self.control.request("status", name=command.name)
+            self.world.assert_name_available(command.parameters["newName"], status["identityId"])
+            self.world.clear_pending_placement(status["identityId"])
             result = self.control.request("rename", name=command.name, **command.parameters)
+        elif command.operation in {"resume", "reconnect", "despawn", "forget"}:
+            status = self.control.request("status", name=command.name)
+            self.world.clear_pending_placement(status["identityId"])
+            result = self.control.request(command.operation, name=command.name, **command.parameters)
         else:
             result = self.control.request(command.operation, name=command.name, **command.parameters)
         name = result.get("name", command.name)

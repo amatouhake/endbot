@@ -42,6 +42,7 @@ class FakeControl:
 class FakeWorld:
     def __init__(self) -> None:
         self.placements = []
+        self.cleared_placements = []
         self.collisions = {}
         self.invalid_dimensions = set()
 
@@ -57,6 +58,10 @@ class FakeWorld:
 
     def queue_spawn_placement(self, identity_id, placement):
         self.placements.append((identity_id, placement))
+
+    def clear_pending_placement(self, identity_id):
+        self.cleared_placements.append(identity_id)
+        self.placements = [entry for entry in self.placements if entry[0] != identity_id]
 
     def observe(self, identity_id):
         return None
@@ -90,6 +95,32 @@ class CommandServiceTests(unittest.TestCase):
         result = self.service.execute(["Alice", "rename", "Steve"], object())
         self.assertIn("collision", result.message)
         self.assertNotIn("rename", [call[0] for call in self.control.calls])
+
+    def test_case_only_rename_allows_the_same_online_bot_identity(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        identity_id = self.control.bots["Alice"]["identityId"]
+        self.world.collisions = {"ALICE": identity_id}
+
+        result = self.service.execute(["Alice", "rename", "ALICE"], object())
+
+        self.assertIn("ALICE", result.message)
+        self.assertEqual(self.control.calls[-1][0], "rename")
+        self.assertEqual(self.world.cleared_placements, [identity_id])
+
+    def test_non_spawn_lifecycle_intents_clear_abandoned_placement_first(self) -> None:
+        operations = ("resume", "reconnect", "despawn", "forget")
+        for operation in operations:
+            with self.subTest(operation=operation):
+                self.setUp()
+                self.service.execute(["Alice", "spawn"], object())
+                identity_id = self.control.bots["Alice"]["identityId"]
+                self.control.calls.clear()
+
+                self.service.execute(["Alice", operation], object())
+
+                self.assertEqual([call[0] for call in self.control.calls], ["status", operation])
+                self.assertEqual(self.world.cleared_placements, [identity_id])
+                self.assertEqual(self.world.placements, [])
 
     def test_first_spawn_rejects_active_human_before_profile_creation(self) -> None:
         self.world.collisions = {"Steve": "human-uuid"}

@@ -3,6 +3,7 @@
 
 import json
 import pathlib
+import subprocess
 import unittest
 
 import tomllib
@@ -45,6 +46,21 @@ class M2RuntimeContractTests(unittest.TestCase):
             "endbot-runtime.example.json scripts src",
             workflow,
         )
+
+    def test_documented_quick_start_state_is_ignored(self):
+        generated_paths = (
+            "endbot-runtime.json",
+            "data/profiles/Alice.json",
+            "secrets/control.token",
+        )
+        for generated_path in generated_paths:
+            with self.subTest(path=generated_path):
+                result = subprocess.run(
+                    ["git", "check-ignore", "--no-index", "--quiet", generated_path],
+                    cwd=ROOT,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, f"quick-start path is not ignored: {generated_path}")
 
 
 if __name__ == "__main__":

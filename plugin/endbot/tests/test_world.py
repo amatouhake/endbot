@@ -40,10 +40,11 @@ class FakePlayer:
 
 class FakeServer:
     def __init__(self):
-        self.dimensions = {
-            name: SimpleNamespace(name=name)
-            for name in ("Overworld", "Nether", "TheEnd")
-        }
+        self.dimensions = {}
+        for name in ("Overworld", "Nether", "TheEnd"):
+            dimension = SimpleNamespace(name=name)
+            dimension.get_block_at = lambda x, y, z: SimpleNamespace(data=SimpleNamespace(runtime_id=42))
+            self.dimensions[name] = dimension
         self.level = SimpleNamespace(get_dimension=lambda name: self.dimensions.get(name))
         self.players = {}
         self.dispatched = []
@@ -145,6 +146,14 @@ class WorldTests(unittest.TestCase):
         expected = self.world._facing([100.0, 64.0, 100.0], [9.0, 70.0, 9.0])
         self.assertAlmostEqual(location.yaw, expected[0])
         self.assertAlmostEqual(location.pitch, expected[1])
+
+    def test_interaction_uses_bot_dimension_and_public_block_runtime_id(self):
+        result = self.world.resolve_interaction(
+            str(self.alice.unique_id),
+            {"coordinates": [("relative", 1), 64.9, -2.1], "face": 1},
+            self.steve,
+        )
+        self.assertEqual(result, {"blockPosition": [9, 64, -3], "blockRuntimeId": 42, "face": 1})
 
 
 if __name__ == "__main__":

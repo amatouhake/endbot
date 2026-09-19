@@ -96,6 +96,9 @@ export class ControlServer {
       case 'look': return this.lifecycle.look(params.name, params.yaw, params.pitch)
       case 'action': return this.lifecycle.action(params.name, params.action, params.mode, params.intervalTicks)
       case 'flag': return this.lifecycle.flag(params.name, params.flag, params.value)
+      case 'hotbar': return this.lifecycle.hotbar(params.name, params.slot)
+      case 'interact': return this.lifecycle.interact(params.name, params)
+      case 'drop': return this.lifecycle.drop(params.name, params.stack)
       case 'stop': return this.lifecycle.stop(params.name)
       default: throw Object.assign(new Error(`Unknown control method: ${method}`), { code: 'unknown_method' })
     }

@@ -107,6 +107,9 @@ class ServerThreadWorld:
     def look_at(self, name, coordinates):
         return self._bridge.call(lambda: self._world.look_at(name, coordinates))
 
+    def resolve_interaction(self, identity_id, parameters, sender):
+        return self._bridge.call(lambda: self._world.resolve_interaction(identity_id, parameters, sender))
+
     def assert_name_available(self, name, identity_id=None):
         return self._bridge.call(lambda: self._world.assert_name_available(name, identity_id))
 

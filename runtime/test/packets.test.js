@@ -9,6 +9,8 @@ import {
   addJumpInputFlags,
   addToggleInputFlags,
   createAttackTransaction,
+  createBlockInteractionInput,
+  createDropTransaction,
   createEntityMouseOver,
   createReleaseTransaction,
   createUseTransaction,
@@ -139,4 +141,68 @@ test('M2 entity attack transaction serializes with the pinned 1.26.50 schema', (
 
   const mouseOver = serializer.createPacketBuffer({ name: 'interact', params: createEntityMouseOver(7n) })
   assert.equal(deserializer.parsePacketBuffer(mouseOver).data.params.target_entity_id, 7n)
+})
+
+test('block interaction serializes inside authoritative PlayerAuthInput', () => {
+  const transaction = createBlockInteractionInput({
+    hotbarSlot: 2,
+    heldItem: EMPTY_ITEM,
+    position: { x: 1, y: 64, z: 2 },
+    blockPosition: [3, 63, 4],
+    blockRuntimeId: 987,
+    face: 1
+  })
+  const wire = serializer.createPacketBuffer({
+    name: 'player_auth_input',
+    params: {
+      pitch: 0,
+      yaw: 0,
+      position: { x: 1, y: 64, z: 2 },
+      move_vector: { x: 0, z: 0 },
+      head_yaw: 0,
+      input_data: ['perform_item_interaction'],
+      input_mode: 'mouse',
+      play_mode: 'normal',
+      interaction_model: 'crosshair',
+      interact_rotation: { x: 0, z: 0 },
+      tick: 1n,
+      delta: { x: 0, y: 0, z: 0 },
+      transaction,
+      item_stack_request: undefined,
+      block_action: undefined,
+      vehicle_rotation: undefined,
+      predicted_vehicle: undefined,
+      analogue_move_vector: { x: 0, z: 0 },
+      camera_orientation: { x: 0, y: 0, z: 1 },
+      raw_move_vector: { x: 0, z: 0 }
+    }
+  })
+  const decoded = deserializer.parsePacketBuffer(wire).data.params
+  assert.deepEqual(decoded.input_data, ['perform_item_interaction'])
+  assert.equal(decoded.transaction.data.action_type, 'click_block')
+  assert.equal(decoded.transaction.data.block_runtime_id, 987)
+  assert.deepEqual(decoded.transaction.data.click_pos, { x: 0.5, y: 1, z: 0.5 })
+})
+
+test('hotbar drop transactions balance inventory and world actions', () => {
+  const heldItem = { network_id: 1, count: 8, metadata: 0, has_stack_id: false, block_runtime_id: 0 }
+  const one = createDropTransaction({ hotbarSlot: 4, heldItem, stack: false })
+  const decodedOne = deserializer.parsePacketBuffer(
+    serializer.createPacketBuffer({ name: 'inventory_transaction', params: one })
+  ).data.params.transaction
+  assert.equal(decodedOne.transaction_type, 'normal')
+  assert.equal(decodedOne.actions[0].source_type, 'container')
+  assert.equal(decodedOne.actions[0].slot, 4)
+  assert.equal(decodedOne.actions[0].new_item.count, 7)
+  assert.equal(decodedOne.actions[1].source_type, 'world_interaction')
+  assert.equal(decodedOne.actions[1].flags, 0)
+  assert.equal(decodedOne.actions[1].new_item.count, 1)
+
+  const stack = createDropTransaction({ hotbarSlot: 4, heldItem, stack: true })
+  const decodedStack = deserializer.parsePacketBuffer(
+    serializer.createPacketBuffer({ name: 'inventory_transaction', params: stack })
+  ).data.params.transaction
+  assert.equal(decodedStack.actions[0].new_item.network_id, 0)
+  assert.equal(decodedStack.actions[1].new_item.count, 8)
+  assert.throws(() => createDropTransaction({ hotbarSlot: 0, heldItem: EMPTY_ITEM, stack: false }), /empty/)
 })

@@ -12,10 +12,14 @@ import { BotLifecycle } from '../src/lifecycle.js'
 import { ProfileStore } from '../src/profile-store.js'
 
 class FakeSession extends EventEmitter {
-  constructor (profile) { super(); this.profile = profile; this.disconnects = []; this.inputSnapshots = [] }
+  constructor (profile) { super(); this.profile = profile; this.disconnects = []; this.inputSnapshots = []; this.slot = 0; this.interactions = []; this.drops = [] }
   async connect () {}
   async disconnect (reason) { this.disconnects.push(reason) }
   applyInputs (inputs) { this.inputSnapshots.push(inputs.snapshot()) }
+  selectedHotbarSlot () { return this.slot }
+  selectHotbar (slot) { this.slot = slot }
+  interactBlock (interaction) { this.interactions.push(interaction) }
+  dropSelected (stack) { this.drops.push(stack) }
 }
 
 function fixture (options = {}) {
@@ -52,6 +56,24 @@ test('implicit spawn creates once, isolates multiple bots, and despawn disables 
   sessions[0].emit('close', new Error('late close'))
   assert.equal(lifecycle.status('Alice').desiredState, 'offline')
   assert.equal(lifecycle.status('Alice').connectionState, 'offline')
+})
+
+test('hotbar interaction and drop target only the named live session', async () => {
+  const { lifecycle, sessions } = fixture()
+  await lifecycle.spawn('Alice')
+  await lifecycle.spawn('Bob')
+  await turn()
+
+  assert.equal(lifecycle.hotbar('Alice', 4).selectedHotbarSlot, 4)
+  lifecycle.interact('Alice', { blockPosition: [1, 64, 2], blockRuntimeId: 42, face: 1 })
+  lifecycle.drop('Alice', true)
+
+  assert.equal(sessions[0].slot, 3)
+  assert.deepEqual(sessions[0].interactions, [{ blockPosition: [1, 64, 2], blockRuntimeId: 42, face: 1 }])
+  assert.deepEqual(sessions[0].drops, [true])
+  assert.equal(sessions[1].slot, 0)
+  assert.deepEqual(sessions[1].interactions, [])
+  assert.deepEqual(sessions[1].drops, [])
 })
 
 test('unexpected disconnect reconnects with the same identity', async () => {

@@ -49,8 +49,13 @@ class PluginAdapterTests(unittest.TestCase):
     def test_metadata_registers_narrow_command_and_permission(self) -> None:
         plugin_class = self.module.EndbotPlugin
         self.assertEqual(plugin_class.api_version, "0.11")
-        self.assertIn("/bot ping", plugin_class.commands["bot"]["usages"])
-        self.assertIn("/bot <name: string> reconnect", plugin_class.commands["bot"]["usages"])
+        usages = plugin_class.commands["bot"]["usages"]
+        self.assertIn("/bot (ping|list)<command: EndbotRoot>", usages)
+        self.assertIn("/bot (help)<command: EndbotHelp> (advanced)[topic: EndbotHelpTopic]", usages)
+        self.assertTrue(any("reconnect" in usage and "EndbotNoArgs" in usage for usage in usages))
+        self.assertTrue(any("EndbotDirection" in usage for usage in usages))
+        self.assertTrue(any("EndbotBlockFace" in usage and "block_pos" in usage for usage in usages))
+        self.assertFalse(any("<direction: string>" in usage for usage in usages))
         self.assertEqual(plugin_class.commands["bot"]["permissions"], ["endbot.command.control"])
         self.assertIs(plugin_class.permissions["endbot.command.control"]["default"], False)
 

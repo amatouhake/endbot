@@ -9,6 +9,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 import { InputState } from '../src/actions.js'
+import { EMPTY_ITEM } from '../src/packets.js'
 import { BedrockSession } from '../src/protocol-session.js'
 
 const turn = () => new Promise(resolve => setImmediate(resolve))
@@ -229,6 +230,97 @@ test('use stop and global stop release an active continuous use immediately', as
   inputs.stopAll()
   session.applyInputs(inputs)
   assert.deepEqual(transactions, ['item_use', 'item_release', 'item_use', 'item_release'])
+  await session.disconnect('test complete')
+})
+
+test('server teleport acknowledgement starts gravity until authoritative landing', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const authInputs = []
+  const waiters = []
+  client.queue = (name, packet) => {
+    if (name !== 'player_auth_input') return
+    authInputs.push(packet)
+    waiters.splice(0).forEach(resolve => resolve())
+  }
+  const nextTick = () => new Promise(resolve => waiters.push(resolve))
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  session.applyInputs(new InputState())
+  client.emit('spawn')
+  await connecting
+  await nextTick()
+  authInputs.length = 0
+
+  client.emit('move_player', {
+    runtime_id: 7n,
+    position: { x: 0, y: 90, z: 0 },
+    pitch: 0,
+    yaw: 0,
+    mode: 'teleport',
+    on_ground: false,
+    tick: 20n
+  })
+  await nextTick()
+  assert.ok(authInputs[0].position.y < 90)
+  assert.ok(authInputs[0].input_data.includes('handled_teleport'))
+  await nextTick()
+  assert.ok(authInputs[1].position.y < authInputs[0].position.y)
+  assert.equal(authInputs[1].input_data.includes('handled_teleport'), false)
+
+  client.emit('correct_player_move_prediction', {
+    prediction_type: 'player',
+    position: { x: 0, y: 64, z: 0 },
+    delta: { x: 0, y: 0, z: 0 },
+    on_ground: true,
+    tick: 30n
+  })
+  await nextTick()
+  assert.equal(authInputs.at(-1).position.y, 64)
+  assert.ok(authInputs.at(-1).input_data.includes('vertical_collision'))
+  await session.disconnect('test complete')
+})
+
+test('hotbar selection interaction and drop use player protocol paths', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const queued = []
+  const waiters = []
+  client.queue = (name, packet) => {
+    queued.push({ name, packet })
+    waiters.splice(0).forEach(resolve => resolve())
+  }
+  const nextPacket = () => new Promise(resolve => waiters.push(resolve))
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 1, y: 64, z: 2 }, rotation: { x: 0, z: 0 } })
+  const items = Array(9).fill(undefined).map(() => ({ ...EMPTY_ITEM }))
+  items[2] = usableHeldItem()
+  client.emit('inventory_content', { window_id: 'inventory', input: items })
+  session.applyInputs(new InputState())
+  client.emit('spawn')
+  await connecting
+
+  session.selectHotbar(2)
+  assert.equal(session.selectedHotbarSlot(), 2)
+  const equipment = queued.find(entry => entry.name === 'mob_equipment')?.packet
+  assert.equal(equipment.selected_slot, 2)
+  assert.equal(equipment.item.stack_id, 34)
+
+  session.interactBlock({ blockPosition: [3, 63, 4], blockRuntimeId: 987, face: 1 })
+  while (!queued.some(entry => entry.name === 'player_auth_input' && entry.packet.transaction)) await nextPacket()
+  const interaction = queued.find(entry => entry.name === 'player_auth_input' && entry.packet.transaction).packet
+  assert.ok(interaction.input_data.includes('perform_item_interaction'))
+  assert.equal(interaction.transaction.data.block_runtime_id, 987)
+
+  session.dropSelected(false)
+  const drop = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet
+  assert.equal(drop.transaction.transaction_type, 'normal')
+  assert.equal(drop.transaction.actions[0].new_item.count, 0)
+  assert.equal(drop.transaction.actions[1].new_item.count, 1)
   await session.disconnect('test complete')
 })
 

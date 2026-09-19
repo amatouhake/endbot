@@ -31,14 +31,16 @@ class CommandResult:
 
 
 QUICK_HELP = (
-    "Endbot quick start: /bot <name> spawn | tp me | jump | attack continuous | stop | despawn",
-    "Use /bot help advanced for lifecycle, movement, and coordinate syntax.",
+    "Endbot quick start: /bot <name> spawn | tp me | hotbar 1 | jump | attack continuous | stop | despawn",
+    "use = selected item in air; interact <x y z> <face> = right-click a block. Use /bot help advanced for more.",
 )
 ADVANCED_HELP = (
     "Lifecycle: spawn [at x y z [facing yaw pitch] [in dimension]], resume, reconnect, despawn, forget, rename",
-    "Control: tp, move forward|backward|left|right|stop, look yaw pitch, jump|attack|use, sprint, sneak, stop",
-    "Actions: once (default), continuous, interval <ticks>, or stop. Teleport never invokes vanilla /tp.",
+    "Control: tp, move, look, jump|attack|use, sprint, sneak, hotbar [1-9], interact x y z face, drop [stack], stop",
+    "use acts in air; interact right-clicks a block through BDS. Teleport never invokes vanilla /tp.",
 )
+
+BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
 
 
 def _tokens(arguments: list[str]) -> list[str]:
@@ -164,6 +166,26 @@ def parse_command(arguments: list[str]) -> BotCommand:
         )
     if operation == "look" and len(remaining) == 4 and remaining[0].lower() == "at":
         return BotCommand(operation, name, {"targetCoordinates": [_coordinate(value) for value in remaining[1:]]})
+    if operation == "hotbar" and not remaining:
+        return BotCommand(operation, name)
+    if operation == "hotbar" and len(remaining) == 1:
+        try:
+            slot = int(remaining[0])
+        except ValueError as error:
+            raise CommandSyntaxError("Hotbar slot must be an integer from 1 to 9") from error
+        if not 1 <= slot <= 9:
+            raise CommandSyntaxError("Hotbar slot must be from 1 to 9")
+        return BotCommand(operation, name, {"slot": slot})
+    if operation == "interact" and len(remaining) == 4 and remaining[-1].lower() in BLOCK_FACES:
+        target, unused = _position(remaining[:3])
+        assert not unused
+        return BotCommand(
+            operation,
+            name,
+            {**target, "face": BLOCK_FACES[remaining[-1].lower()], "faceName": remaining[-1].lower()},
+        )
+    if operation == "drop" and (not remaining or remaining == ["stack"]):
+        return BotCommand(operation, name, {"stack": bool(remaining)})
     if operation in {"jump", "attack", "use"}:
         return _action(name, operation, remaining)
     if operation in {"sprint", "sneak"} and len(remaining) == 1 and remaining[0].lower() in {"on", "off"}:
@@ -230,7 +252,21 @@ class BotCommandService:
             status = self.control.request("status", name=command.name)
             location = self.world.teleport(status["identityId"], command.parameters, sender)
             return CommandResult(True, (f"Endbot: teleported {status['name']} to {location}",))
-        if command.operation == "look" and "targetCoordinates" in command.parameters:
+        if command.operation == "interact":
+            status = self.control.request("status", name=command.name)
+            interaction = self.world.resolve_interaction(status["identityId"], command.parameters, sender)
+            result = self.control.request("interact", name=command.name, **interaction)
+        elif command.operation == "hotbar":
+            result = self.control.request("hotbar", name=command.name, **command.parameters)
+            return CommandResult(
+                True,
+                (f"Endbot: {result['name']} selected hotbar slot {result['selectedHotbarSlot']}",),
+            )
+        elif command.operation == "drop":
+            result = self.control.request("drop", name=command.name, **command.parameters)
+            amount = "stack" if command.parameters["stack"] else "one item"
+            return CommandResult(True, (f"Endbot: {result['name']} requested drop {amount}",))
+        elif command.operation == "look" and "targetCoordinates" in command.parameters:
             yaw, pitch = self.world.look_at(command.name, command.parameters["targetCoordinates"])
             result = self.control.request("look", name=command.name, yaw=yaw, pitch=pitch)
         elif command.operation == "rename":

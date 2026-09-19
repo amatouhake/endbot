@@ -15,25 +15,35 @@ from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
     "/bot",
-    "/bot ping",
-    "/bot help [topic: string]",
-    "/bot list",
-    "/bot <name: string> status",
-    "/bot <name: string> spawn [placement: message]",
-    "/bot <name: string> resume",
-    "/bot <name: string> reconnect",
-    "/bot <name: string> despawn",
-    "/bot <name: string> forget",
-    "/bot <name: string> rename <new_name: string>",
-    "/bot <name: string> tp <destination: message>",
-    "/bot <name: string> move <direction: string>",
-    "/bot <name: string> look <rotation: message>",
-    "/bot <name: string> jump [mode: message]",
-    "/bot <name: string> attack [mode: message]",
-    "/bot <name: string> use [mode: message]",
-    "/bot <name: string> sprint <state: string>",
-    "/bot <name: string> sneak <state: string>",
-    "/bot <name: string> stop",
+    "/bot (ping|list)<command: EndbotRoot>",
+    "/bot (help)<command: EndbotHelp> (advanced)[topic: EndbotHelpTopic]",
+    "/bot <name: string> (status|resume|reconnect|despawn|forget|stop|hotbar)<operation: EndbotNoArgs>",
+    "/bot <name: string> (spawn)<operation: EndbotSpawn> [placement: message]",
+    "/bot <name: string> (rename)<operation: EndbotRename> <new_name: string>",
+    "/bot <name: string> (tp)<operation: EndbotTeleport> <destination: message>",
+    (
+        "/bot <name: string> (move)<operation: EndbotMove> "
+        "(forward|backward|left|right|stop)<direction: EndbotDirection>"
+    ),
+    "/bot <name: string> (look)<operation: EndbotLook> <yaw: float> <pitch: float>",
+    "/bot <name: string> (look)<operation: EndbotLookAt> (at)<mode: EndbotLookMode> <target: pos>",
+    "/bot <name: string> (jump|attack|use)<action: EndbotAction>",
+    (
+        "/bot <name: string> (jump|attack|use)<action: EndbotActionModeCommand> "
+        "(once|continuous|stop)<mode: EndbotActionMode>"
+    ),
+    (
+        "/bot <name: string> (jump|attack|use)<action: EndbotIntervalCommand> "
+        "(interval)<mode: EndbotIntervalMode> <ticks: int>"
+    ),
+    "/bot <name: string> (sprint|sneak)<flag: EndbotFlag> (on|off)<state: EndbotOnOff>",
+    "/bot <name: string> (hotbar)<operation: EndbotHotbar> <slot: int>",
+    (
+        "/bot <name: string> (interact)<operation: EndbotInteract> <block: block_pos> "
+        "(down|up|north|south|west|east)<face: EndbotBlockFace>"
+    ),
+    "/bot <name: string> (drop)<operation: EndbotDrop>",
+    "/bot <name: string> (drop)<operation: EndbotDropStack> (stack)<mode: EndbotDropMode>",
 ]
 
 

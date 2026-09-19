@@ -213,6 +213,24 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
+  hotbar (name, slot) {
+    const { profile, state } = this.#requireOnline(name)
+    if (slot !== undefined) state.session.selectHotbar(slot - 1)
+    return { ...this.#status(profile), selectedHotbarSlot: state.session.selectedHotbarSlot() + 1 }
+  }
+
+  interact (name, interaction) {
+    const { profile, state } = this.#requireOnline(name)
+    state.session.interactBlock(interaction)
+    return this.#status(profile)
+  }
+
+  drop (name, stack = false) {
+    const { profile, state } = this.#requireOnline(name)
+    state.session.dropSelected(Boolean(stack))
+    return this.#status(profile)
+  }
+
   stop (name) {
     const profile = this.#require(name)
     const state = this.sessions.get(profile.identityId)

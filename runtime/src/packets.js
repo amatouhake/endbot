@@ -59,6 +59,69 @@ export function createUseTransaction ({ hotbarSlot, heldItem, position }) {
   }
 }
 
+export function createBlockInteractionInput ({ hotbarSlot, heldItem, position, blockPosition, blockRuntimeId, face }) {
+  const click = { x: 0.5, y: 0.5, z: 0.5 }
+  if (face === 0) click.y = 0
+  if (face === 1) click.y = 1
+  if (face === 2) click.z = 0
+  if (face === 3) click.z = 1
+  if (face === 4) click.x = 0
+  if (face === 5) click.x = 1
+  return {
+    legacy: { legacy_request_id: 0 },
+    actions: undefined,
+    data: {
+      action_type: 'click_block',
+      trigger_type: 'player_input',
+      block_position: { x: blockPosition[0], y: blockPosition[1], z: blockPosition[2] },
+      face,
+      hotbar_slot: hotbarSlot,
+      hand: 'main_hand',
+      held_item: heldItem,
+      player_pos: { ...position },
+      click_pos: click,
+      block_runtime_id: blockRuntimeId,
+      client_prediction: 'success',
+      client_cooldown_state: 'off'
+    }
+  }
+}
+
+function withCount (item, count) {
+  return count === 0 ? EMPTY_ITEM : { ...item, count }
+}
+
+export function createDropTransaction ({ hotbarSlot, heldItem, stack }) {
+  if (!hasUsableHeldItem(heldItem)) throw new Error('Selected hotbar slot is empty')
+  const count = stack ? Number(heldItem.count) : 1
+  const remaining = Number(heldItem.count) - count
+  return {
+    transaction: {
+      legacy: { legacy_request_id: 0 },
+      transaction_type: 'normal',
+      actions: [
+        {
+          source_type: 'container',
+          window_id: 0,
+          flags: undefined,
+          slot: hotbarSlot,
+          old_item: heldItem,
+          new_item: withCount(heldItem, remaining)
+        },
+        {
+          source_type: 'world_interaction',
+          window_id: undefined,
+          flags: 0,
+          slot: 0,
+          old_item: EMPTY_ITEM,
+          new_item: withCount(heldItem, count)
+        }
+      ],
+      transaction_data: undefined
+    }
+  }
+}
+
 export function createReleaseTransaction ({ hotbarSlot, heldItem, position }) {
   return {
     transaction: {

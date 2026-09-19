@@ -36,6 +36,8 @@ class FakeControl:
             value = {**value, "name": parameters["newName"], "connectionState": "reconnecting"}
             self.bots[value["name"]] = value
             return value
+        if operation == "hotbar":
+            return {**self.bots[name], "selectedHotbarSlot": parameters.get("slot", 1)}
         return {**self.bots[name], "connectionState": "online"}
 
 
@@ -55,6 +57,9 @@ class FakeWorld:
         if sender is None and "dimension" not in placement:
             raise ValueError("A dimension is required")
         return {**placement, "resolved": True}
+
+    def resolve_interaction(self, identity_id, parameters, sender):
+        return {"blockPosition": [1, 64, 2], "blockRuntimeId": 42, "face": parameters["face"]}
 
     def queue_spawn_placement(self, identity_id, placement):
         self.placements.append((identity_id, placement))
@@ -148,6 +153,25 @@ class CommandServiceTests(unittest.TestCase):
         )
         self.assertIn("Unknown dimension", result.message)
         self.assertNotIn("spawn", [call[0] for call in self.control.calls])
+
+    def test_player_primitives_route_authoritative_parameters(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+
+        selected = self.service.execute(["Alice", "hotbar", "3"], object())
+        self.assertEqual(self.control.calls[-1], ("hotbar", {"name": "Alice", "slot": 3}))
+        self.assertIn("slot", selected.message)
+
+        self.service.execute(["Alice", "interact", "1", "64", "2", "up"], object())
+        self.assertEqual(
+            self.control.calls[-1],
+            (
+                "interact",
+                {"name": "Alice", "blockPosition": [1, 64, 2], "blockRuntimeId": 42, "face": 1},
+            ),
+        )
+
+        self.service.execute(["Alice", "drop", "stack"], object())
+        self.assertEqual(self.control.calls[-1], ("drop", {"name": "Alice", "stack": True}))
 
 
 if __name__ == "__main__":

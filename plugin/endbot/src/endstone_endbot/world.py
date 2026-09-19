@@ -129,6 +129,21 @@ class EndstoneWorld:
         target = self._resolve_coordinates(coordinates, player.location)
         return self._facing(self._coordinates(player.location), target)
 
+    def resolve_interaction(self, identity_id: str, parameters: dict[str, object], sender) -> dict[str, object]:
+        """Resolve a client block click without changing the world in the plugin."""
+        bot = self.server.get_player(UUID(identity_id))
+        if bot is None:
+            raise ValueError("Bot is not present in the world")
+        reference = self._snapshot(sender.location) if self._is_player(sender) else None
+        coordinates = self._resolve_coordinates(parameters["coordinates"], reference)
+        block_position = [math.floor(value) for value in coordinates]
+        block = bot.location.dimension.get_block_at(*block_position)
+        return {
+            "blockPosition": block_position,
+            "blockRuntimeId": int(block.data.runtime_id),
+            "face": int(parameters["face"]),
+        }
+
     def assert_name_available(self, name: str, identity_id: str | None = None) -> None:
         player = self.server.get_player(name)
         if player is not None and (identity_id is None or str(player.unique_id) != str(identity_id)):

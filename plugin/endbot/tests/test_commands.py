@@ -23,6 +23,15 @@ class BotCommandServiceTests(unittest.TestCase):
         result = self.service.execute([])
         self.assertIn("quick start", result.message)
 
+    def test_root_and_named_default_forms_remain_parseable(self) -> None:
+        self.assertEqual(parse_command(["ping"]).operation, "ping")
+        self.assertEqual(parse_command(["list"]).operation, "list")
+        self.assertEqual(parse_command(["help"]).operation, "help")
+        self.assertTrue(parse_command(["help", "advanced"]).parameters["advanced"])
+        for operation in ("spawn", "jump", "attack", "use", "hotbar", "drop"):
+            with self.subTest(operation=operation):
+                self.assertEqual(parse_command(["Alice", operation]).name, "Alice")
+
     def test_lifecycle_and_action_grammar(self) -> None:
         self.assertEqual(parse_command(["Alice", "spawn"]).operation, "spawn")
         placement = parse_command(["Alice", "spawn", "at", "~1", "64", "-2", "facing", "90", "0", "in", "nether"])

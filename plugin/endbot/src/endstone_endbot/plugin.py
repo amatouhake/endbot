@@ -16,14 +16,18 @@ from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
     # Pinned Endstone/BDS does not consume values for optional enum parameters.
-    # Keep a string fallback for the zero/default form and required enum
-    # overloads for native completion of every finite choice.
+    # Keep a top-level string fallback for the zero/default root form and use
+    # required enums for the named-Bot tree. A message parameter immediately
+    # after <name> greedily hides every operation from Bedrock autocomplete.
     "/bot [command: string] [topic: string]",
     "/bot (ping|list|help)<command: EndbotRoot>",
     "/bot (help)<command: EndbotHelp> (advanced)<topic: EndbotHelpTopic>",
-    "/bot <name: string> <operation: message>",
     "/bot <name: string> (status|resume|reconnect|despawn|forget|stop)<operation: EndbotNoArgs>",
-    "/bot <name: string> (spawn)<operation: EndbotSpawn> [placement: message]",
+    "/bot <name: string> (spawn)<operation: EndbotSpawn>",
+    (
+        "/bot <name: string> (spawn)<operation: EndbotSpawnAt> (at)<mode: EndbotSpawnAtMode> "
+        "<placement: message>"
+    ),
     (
         "/bot <name: string> (spawn)<operation: EndbotSpawnDimension> (at)<mode: EndbotAt> "
         "<position: pos> (in)<scope: EndbotSpawnDimensionScope> "
@@ -43,9 +47,7 @@ COMMAND_USAGES = [
     ),
     "/bot <name: string> (look)<operation: EndbotLook> <yaw: float> <pitch: float>",
     "/bot <name: string> (look)<operation: EndbotLookAt> (at)<mode: EndbotLookMode> <target: pos>",
-    "/bot <name: string> jump [mode: message]",
-    "/bot <name: string> attack [mode: message]",
-    "/bot <name: string> use [mode: message]",
+    "/bot <name: string> (jump|attack|use)<action: EndbotDefaultAction>",
     (
         "/bot <name: string> (jump|attack|use)<action: EndbotAction> "
         "(once|continuous|stop)<mode: EndbotActionMode>"
@@ -55,13 +57,14 @@ COMMAND_USAGES = [
         "(interval)<mode: EndbotIntervalMode> <ticks: int>"
     ),
     "/bot <name: string> (sprint|sneak)<flag: EndbotFlag> (on|off)<state: EndbotOnOff>",
-    "/bot <name: string> (hotbar)<operation: EndbotHotbar> [slot: int]",
+    "/bot <name: string> (hotbar)<operation: EndbotHotbarQuery>",
+    "/bot <name: string> (hotbar)<operation: EndbotHotbarSet> <slot: int>",
     (
         "/bot <name: string> (interact)<operation: EndbotInteract> <block: block_pos> "
         "(down|up|north|south|west|east)<face: EndbotBlockFace>"
     ),
-    "/bot <name: string> drop [mode: string]",
-    "/bot <name: string> (drop)<operation: EndbotDrop> (stack)<mode: EndbotDropMode>",
+    "/bot <name: string> (drop)<operation: EndbotDropOne>",
+    "/bot <name: string> (drop)<operation: EndbotDropStack> (stack)<mode: EndbotDropMode>",
 ]
 
 

@@ -60,8 +60,48 @@ class PluginAdapterTests(unittest.TestCase):
             "/bot (help)<command: EndbotHelp> (advanced)<topic: EndbotHelpTopic>",
             usages,
         )
-        self.assertIn("/bot <name: string> <operation: message>", usages)
-        self.assertTrue(any("EndbotHotbar" in usage and "[slot: int]" in usage for usage in usages))
+        named_usages = [usage for usage in usages if usage.startswith("/bot <name: string>")]
+        self.assertFalse(
+            any(usage.startswith("/bot <name: string> <") for usage in named_usages),
+            "a free-form second parameter hides the named-Bot operation tree",
+        )
+        advertised_operations = set()
+        for usage in named_usages:
+            match = re.match(r"^/bot <name: string> \(([^)]+)\)<[^:]+: Endbot[^>]+>", usage)
+            self.assertIsNotNone(match, f"named-Bot overload must advertise a typed operation: {usage}")
+            advertised_operations.update(match.group(1).split("|"))
+        self.assertEqual(
+            advertised_operations,
+            {
+                "status",
+                "spawn",
+                "resume",
+                "reconnect",
+                "despawn",
+                "forget",
+                "rename",
+                "tp",
+                "move",
+                "look",
+                "jump",
+                "attack",
+                "use",
+                "sprint",
+                "sneak",
+                "hotbar",
+                "interact",
+                "drop",
+                "stop",
+            },
+        )
+        self.assertIn("/bot <name: string> (spawn)<operation: EndbotSpawn>", usages)
+        self.assertIn(
+            "/bot <name: string> (jump|attack|use)<action: EndbotDefaultAction>",
+            usages,
+        )
+        self.assertIn("/bot <name: string> (hotbar)<operation: EndbotHotbarQuery>", usages)
+        self.assertTrue(any("EndbotHotbarSet" in usage and "<slot: int>" in usage for usage in usages))
+        self.assertIn("/bot <name: string> (drop)<operation: EndbotDropOne>", usages)
         self.assertTrue(any("reconnect" in usage and "EndbotNoArgs" in usage for usage in usages))
         self.assertTrue(any("EndbotDirection" in usage for usage in usages))
         self.assertTrue(any("EndbotActionMode" in usage and "once|continuous|stop" in usage for usage in usages))

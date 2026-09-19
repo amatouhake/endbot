@@ -56,17 +56,21 @@ class PluginAdapterTests(unittest.TestCase):
             "/bot (ping|list|help)<command: EndbotRoot>",
             usages,
         )
-        self.assertIn(
+        # The retired dense "advanced" mode stays parseable through the root
+        # string fallback but must not be advertised as native completion.
+        self.assertNotIn(
             "/bot (help)<command: EndbotHelp> (advanced)<topic: EndbotHelpTopic>",
             usages,
         )
+        self.assertFalse(any("(advanced)" in usage for usage in usages))
+        # Parseability guarantee: a free-form named fallback must cover every
+        # /bot <name> ... form even if Bedrock fails to resolve a typed overload.
+        self.assertIn("/bot <name: string> <operation: message>", usages)
         named_usages = [usage for usage in usages if usage.startswith("/bot <name: string>")]
-        self.assertFalse(
-            any(usage.startswith("/bot <name: string> <") for usage in named_usages),
-            "a free-form second parameter hides the named-Bot operation tree",
-        )
         advertised_operations = set()
         for usage in named_usages:
+            if usage == "/bot <name: string> <operation: message>":
+                continue  # parseability fallback, not an autocomplete branch
             match = re.match(r"^/bot <name: string> \(([^)]+)\)<[^:]+: Endbot[^>]+>", usage)
             self.assertIsNotNone(match, f"named-Bot overload must advertise a typed operation: {usage}")
             advertised_operations.update(match.group(1).split("|"))

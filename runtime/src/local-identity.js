@@ -46,6 +46,12 @@ function loadExistingArtifact (filename, description, loadAndValidate) {
   return { exists: true, value: loadAndValidate(filename) }
 }
 
+export function loadPersistentArtifact (filename, loadAndValidate, description) {
+  const existing = loadExistingArtifact(filename, description, loadAndValidate)
+  if (existing.exists) cleanupTemporaryArtifacts(filename)
+  return existing
+}
+
 function cleanupTemporaryArtifacts (filename) {
   const directory = path.dirname(filename)
   const prefix = `${path.basename(filename)}.`
@@ -69,9 +75,8 @@ function cleanupTemporaryArtifacts (filename) {
 }
 
 export function loadOrCreatePersistentArtifact (filename, create, loadAndValidate, description) {
-  const existing = loadExistingArtifact(filename, description, loadAndValidate)
+  const existing = loadPersistentArtifact(filename, loadAndValidate, description)
   if (existing.exists) {
-    cleanupTemporaryArtifacts(filename)
     return { value: existing.value, created: false }
   }
 

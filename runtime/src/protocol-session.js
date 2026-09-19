@@ -4,7 +4,7 @@
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 
-import { createLocalOwnerbotAuth, loadOrCreatePersistentArtifact } from './local-identity.js'
+import { createLocalOwnerbotAuth, loadOrCreatePersistentArtifact, loadPersistentArtifact } from './local-identity.js'
 import {
   addJumpInputFlags,
   addToggleInputFlags,
@@ -21,6 +21,14 @@ import {
 } from './packets.js'
 
 function vector (value) { return { x: value.x, y: value.y, z: value.z } }
+
+function loadServerIdentityPin (filename) {
+  const value = fs.readFileSync(filename, 'utf8').trim()
+  if (!/^sha256:[0-9a-f]{64}$/.test(value)) {
+    throw new Error('BDS NetherNet server identity pin is invalid')
+  }
+  return value
+}
 
 export class BedrockSession extends EventEmitter {
   constructor (profile, options) {
@@ -74,10 +82,11 @@ export class BedrockSession extends EventEmitter {
       issuer: this.options.localAuthIssuer,
       audience: this.options.localAuthAudience
     })
-    let pin
-    try { pin = fs.readFileSync(this.options.serverIdentityPinPath, 'utf8').trim() } catch (error) {
-      if (error.code !== 'ENOENT') throw error
-    }
+    const pin = loadPersistentArtifact(
+      this.options.serverIdentityPinPath,
+      loadServerIdentityPin,
+      'BDS NetherNet server identity pin'
+    ).value
     this.client = protocol.createClient({
       host: this.options.serverHost,
       port: this.options.serverPort,
@@ -93,11 +102,7 @@ export class BedrockSession extends EventEmitter {
         const winner = loadOrCreatePersistentArtifact(
           this.options.serverIdentityPinPath,
           () => `${identity.pin}\n`,
-          filename => {
-            const value = fs.readFileSync(filename, 'utf8').trim()
-            if (!value) throw new Error('BDS NetherNet server identity pin is empty')
-            return value
-          },
+          loadServerIdentityPin,
           'BDS NetherNet server identity pin'
         ).value
         return winner === identity.pin
@@ -289,6 +294,15 @@ export class BedrockSession extends EventEmitter {
     this.client.on('move_entity', packet => {
       const entity = this.entities.get(String(packet.runtime_entity_id))
       if (entity) entity.position = vector(packet.position)
+    })
+    this.client.on('move_entity_delta', packet => {
+      const entity = this.entities.get(String(packet.runtime_entity_id))
+      if (!entity) return
+      // Protocol 2193 names this packet historically, but its present optional
+      // coordinates are absolute. Preserve omitted axes from the last update.
+      for (const axis of ['x', 'y', 'z']) {
+        if (Number.isFinite(packet[axis])) entity.position[axis] = packet[axis]
+      }
     })
     this.client.on('remove_entity', packet => {
       const uniqueId = String(packet.entity_id_self)

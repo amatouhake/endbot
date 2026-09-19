@@ -142,6 +142,59 @@ test('client errors retain session ownership until transport closure', async t =
   assert.match(closures[0].message, /recoverable parser failure/)
 })
 
+test('existing server identity pins retain persistent-artifact validation', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const target = path.join(directory, 'mutable-pin')
+  const pin = path.join(directory, 'server.pin')
+  fs.writeFileSync(target, 'attacker-controlled-pin\n')
+  try {
+    fs.symlinkSync(target, pin, process.platform === 'win32' ? 'file' : undefined)
+  } catch (error) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
+      return t.skip('Creating symlinks requires Windows Developer Mode or elevated privileges')
+    }
+    throw error
+  }
+  let createClientCalls = 0
+  const session = new BedrockSession(
+    { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
+    {
+      protocolLoader: async () => ({ createClient: () => { createClientCalls += 1 } }),
+      ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
+      ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
+      serverIdentityPinPath: pin,
+      localAuthIssuer: 'endbot-test',
+      localAuthAudience: 'endstone-test'
+    }
+  )
+
+  await assert.rejects(session.connect(), /regular file, not a symlink/)
+  assert.equal(createClientCalls, 0)
+})
+
+test('corrupt existing server identity pins fail before client creation', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const pin = path.join(directory, 'server.pin')
+  fs.writeFileSync(pin, 'not-a-nethernet-identity-pin\n')
+  let createClientCalls = 0
+  const session = new BedrockSession(
+    { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
+    {
+      protocolLoader: async () => ({ createClient: () => { createClientCalls += 1 } }),
+      ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
+      ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
+      serverIdentityPinPath: pin,
+      localAuthIssuer: 'endbot-test',
+      localAuthAudience: 'endstone-test'
+    }
+  )
+
+  await assert.rejects(session.connect(), /server identity pin is invalid/)
+  assert.equal(createClientCalls, 0)
+})
+
 test('start-game rotation seeds the first serialized auth-input tick', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -329,6 +382,45 @@ test('hotbar selection interaction and drop use player protocol paths', async t 
   assert.equal(drop.transaction.transaction_type, 'normal')
   assert.equal(drop.transaction.actions[0].new_item.count, 0)
   assert.equal(drop.transaction.actions[1].new_item.count, 1)
+  await session.disconnect('test complete')
+})
+
+test('move-entity delta coordinates update the target used by attack', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  let resolveAttack
+  const attacked = new Promise(resolve => { resolveAttack = resolve })
+  client.queue = (name, packet) => {
+    if (name === 'inventory_transaction' && packet.transaction.transaction_type === 'item_use_on_entity') {
+      resolveAttack(packet.transaction.transaction_data.entity_runtime_id)
+    }
+  }
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  client.emit('add_entity', {
+    runtime_id: 99n,
+    unique_id: 100n,
+    entity_type: 'minecraft:zombie',
+    position: { x: 0, y: 64.62, z: 20 }
+  })
+  client.emit('move_entity_delta', {
+    runtime_entity_id: 99n,
+    z: 2,
+    on_ground: true,
+    force_move: false,
+    force_move_local_entity: false,
+    force_completion: false,
+    ticks: 1n
+  })
+  const inputs = new InputState()
+  inputs.setAction('attack', 'once')
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+
+  assert.equal(await attacked, 99n)
   await session.disconnect('test complete')
 })
 

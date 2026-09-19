@@ -38,6 +38,8 @@ export class BedrockSession extends EventEmitter {
     this.respawnReadySent = false
     this.disconnectPromise = undefined
     this.connectPromise = undefined
+    this.terminalError = undefined
+    this.failureCloseRequested = false
   }
 
   connect () {
@@ -93,17 +95,18 @@ export class BedrockSession extends EventEmitter {
     this.#wireClient()
     return await new Promise((resolve, reject) => {
       let settled = false
+      const closed = reason => fail(this.terminalError ?? new Error(`Connection closed: ${reason || 'unknown reason'}`))
       const fail = error => {
         if (!settled) {
           settled = true
           reject(error)
         }
       }
-      this.client.once('error', fail)
-      this.client.once('kick', packet => fail(new Error(`Kicked: ${packet.message}`)))
+      this.client.once('close', closed)
       this.client.once('spawn', () => {
         if (settled) return
         settled = true
+        this.client.off('close', closed)
         this.spawned = true
         this.client.queue('serverbound_loading_screen', { type: 2 })
         this.timer = setInterval(() => {
@@ -237,15 +240,15 @@ export class BedrockSession extends EventEmitter {
     this.client.on('death_info', () => this.#requestRespawn())
     this.client.on('respawn', packet => this.#handleRespawn(packet))
     this.client.on('error', error => {
-      this.#emitClose(error)
+      this.#fail(error)
     })
     this.client.on('kick', packet => {
-      this.#emitClose(new Error(`Kicked: ${packet.message}`))
+      this.#fail(new Error(`Kicked: ${packet.message}`))
     })
     this.client.on('close', reason => {
       clearInterval(this.timer)
       this.transportClosed = true
-      this.#emitClose(new Error(`Connection closed: ${reason || 'unknown reason'}`))
+      this.#emitClose(this.terminalError ?? new Error(`Connection closed: ${reason || 'unknown reason'}`))
     })
   }
 
@@ -256,9 +259,11 @@ export class BedrockSession extends EventEmitter {
   }
 
   #fail (error) {
-    this.#emitClose(error)
-    this.disconnecting = true
+    if (this.transportClosed) return
+    this.terminalError ??= error
     clearInterval(this.timer)
+    if (this.failureCloseRequested) return
+    this.failureCloseRequested = true
     this.client?.close('Endbot protocol error')
   }
 

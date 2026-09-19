@@ -10,6 +10,7 @@ import {
   addToggleInputFlags,
   createAttackTransaction,
   createEntityMouseOver,
+  createReleaseTransaction,
   createUseTransaction,
   EMPTY_ITEM,
   hasUsableHeldItem,
@@ -31,6 +32,7 @@ test('empty-hand use is a safe no-op instead of an invalid transaction', () => {
 
 test('server teleport rotation can synchronize subsequent client input', () => {
   assert.deepEqual(serverRotation({ yaw: 123, pitch: 10 }), { yaw: 123, pitch: 10 })
+  assert.deepEqual(serverRotation({ rotation: { x: -15, z: 245 } }), { yaw: 245, pitch: -15 })
   assert.equal(serverRotation({ yaw: Number.NaN, pitch: 10 }), undefined)
 })
 
@@ -100,6 +102,26 @@ test('M2 use transaction serializes with the pinned 1.26.50 schema', () => {
   const decoded = deserializer.parsePacketBuffer(wire).data
   assert.equal(decoded.params.transaction.transaction_data.action_type, 'click_air')
   assert.equal(decoded.params.transaction.transaction_data.held_item.stack_id, 34)
+})
+
+test('M2 item release transaction serializes with the pinned 1.26.50 schema', () => {
+  const heldItem = {
+    network_id: 882,
+    count: 1,
+    metadata: 0,
+    has_stack_id: true,
+    stack_id: 34,
+    block_runtime_id: 0,
+    extra: { has_nbt: 0, nbt: undefined, can_place_on: [], can_destroy: [] }
+  }
+  const packet = createReleaseTransaction({ hotbarSlot: 2, heldItem, position: { x: 1, y: 64, z: 2 } })
+  const wire = serializer.createPacketBuffer({ name: 'inventory_transaction', params: packet })
+  const decoded = deserializer.parsePacketBuffer(wire).data.params.transaction
+  assert.equal(decoded.transaction_type, 'item_release')
+  assert.equal(decoded.transaction_data.action_type, 'release')
+  assert.equal(decoded.transaction_data.hotbar_slot, 2)
+  assert.equal(decoded.transaction_data.held_item.stack_id, 34)
+  assert.deepEqual(decoded.transaction_data.head_pos, { x: 1, y: 65.62000274658203, z: 2 })
 })
 
 test('M2 entity attack transaction serializes with the pinned 1.26.50 schema', () => {

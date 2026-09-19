@@ -8,9 +8,20 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
+import { InputState } from '../src/actions.js'
 import { BedrockSession } from '../src/protocol-session.js'
 
 const turn = () => new Promise(resolve => setImmediate(resolve))
+
+function fakeLiveClient () {
+  const client = new EventEmitter()
+  client.status = 4
+  client.entityId = 7n
+  client.queue = () => {}
+  client.close = () => queueMicrotask(() => client.emit('close'))
+  client.disconnect = () => queueMicrotask(() => client.emit('close'))
+  return client
+}
 
 function connectedSession (directory, client) {
   const session = new BedrockSession(
@@ -129,3 +140,106 @@ test('client errors retain session ownership until transport closure', async t =
   assert.equal(closures.length, 1)
   assert.match(closures[0].message, /recoverable parser failure/)
 })
+
+test('start-game rotation seeds the first serialized auth-input tick', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  let resolveAuthInput
+  const authInput = new Promise(resolve => { resolveAuthInput = resolve })
+  client.queue = (name, packet) => {
+    if (name === 'player_auth_input') resolveAuthInput(packet)
+  }
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', {
+    player_position: { x: 4, y: 70, z: -3 },
+    rotation: { x: -17, z: 231 }
+  })
+  const inputs = new InputState()
+  inputs.setLook(42, 8)
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+
+  const packet = await authInput
+  assert.equal(packet.yaw, 231)
+  assert.equal(packet.head_yaw, 231)
+  assert.equal(packet.pitch, -17)
+  assert.deepEqual(inputs.snapshot().look, { yaw: 231, pitch: -17 })
+  await session.disconnect('test complete')
+})
+
+test('use once releases on the following tick', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const transactions = []
+  let resolveRelease
+  const released = new Promise(resolve => { resolveRelease = resolve })
+  client.queue = (name, packet) => {
+    if (name !== 'inventory_transaction') return
+    transactions.push(packet.transaction.transaction_type)
+    if (packet.transaction.transaction_type === 'item_release') resolveRelease()
+  }
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  client.emit('inventory_content', { window_id: 'inventory', input: [usableHeldItem()] })
+  const inputs = new InputState()
+  inputs.setAction('use', 'once')
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+
+  await released
+  assert.deepEqual(transactions, ['item_use', 'item_release'])
+  await session.disconnect('test complete')
+})
+
+test('use stop and global stop release an active continuous use immediately', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const transactions = []
+  const waiters = []
+  client.queue = (name, packet) => {
+    if (name !== 'inventory_transaction') return
+    transactions.push(packet.transaction.transaction_type)
+    waiters.splice(0).forEach(resolve => resolve())
+  }
+  const nextTransaction = () => new Promise(resolve => waiters.push(resolve))
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  client.emit('inventory_content', { window_id: 'inventory', input: [usableHeldItem()] })
+  const inputs = new InputState()
+  inputs.setAction('use', 'continuous')
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+
+  await nextTransaction()
+  inputs.setAction('use', 'stop')
+  session.applyInputs(inputs)
+  assert.deepEqual(transactions, ['item_use', 'item_release'])
+
+  inputs.setAction('use', 'continuous')
+  await nextTransaction()
+  inputs.stopAll()
+  session.applyInputs(inputs)
+  assert.deepEqual(transactions, ['item_use', 'item_release', 'item_use', 'item_release'])
+  await session.disconnect('test complete')
+})
+
+function usableHeldItem () {
+  return {
+    network_id: 882,
+    count: 1,
+    metadata: 0,
+    has_stack_id: true,
+    stack_id: 34,
+    block_runtime_id: 0,
+    extra: { has_nbt: 0, nbt: undefined, can_place_on: [], can_destroy: [] }
+  }
+}

@@ -8,8 +8,10 @@ export function hasUsableHeldItem (item) {
 }
 
 export function serverRotation (packet) {
-  if (!Number.isFinite(packet?.yaw) || !Number.isFinite(packet?.pitch)) return undefined
-  return { yaw: packet.yaw, pitch: packet.pitch }
+  const yaw = packet?.yaw ?? packet?.rotation?.z
+  const pitch = packet?.pitch ?? packet?.rotation?.x
+  if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) return undefined
+  return { yaw, pitch }
 }
 
 export function addJumpInputFlags (inputData, { started, airborne }) {
@@ -52,6 +54,22 @@ export function createUseTransaction ({ hotbarSlot, heldItem, position }) {
         block_runtime_id: 0,
         client_prediction: 'success',
         client_cooldown_state: 'off'
+      }
+    }
+  }
+}
+
+export function createReleaseTransaction ({ hotbarSlot, heldItem, position }) {
+  return {
+    transaction: {
+      legacy: { legacy_request_id: 0 },
+      transaction_type: 'item_release',
+      actions: [],
+      transaction_data: {
+        action_type: 'release',
+        hotbar_slot: hotbarSlot,
+        held_item: heldItem,
+        head_pos: { x: position.x, y: position.y + 1.62, z: position.z }
       }
     }
   }

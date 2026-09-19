@@ -10,6 +10,7 @@ import {
   addToggleInputFlags,
   createAttackTransaction,
   createEntityMouseOver,
+  createReleaseTransaction,
   createUseTransaction,
   EMPTY_ITEM,
   hasUsableHeldItem,
@@ -40,6 +41,9 @@ export class BedrockSession extends EventEmitter {
     this.connectPromise = undefined
     this.terminalError = undefined
     this.failureCloseRequested = false
+    this.authoritativeLook = undefined
+    this.activeItemUse = undefined
+    this.releaseItemUseNextTick = false
   }
 
   connect () {
@@ -121,7 +125,15 @@ export class BedrockSession extends EventEmitter {
     })
   }
 
-  applyInputs (inputs) { this.inputs = inputs }
+  applyInputs (inputs) {
+    const firstAttachment = this.inputs !== inputs
+    this.inputs = inputs
+    if (firstAttachment && this.authoritativeLook) {
+      inputs.setLook(this.authoritativeLook.yaw, this.authoritativeLook.pitch)
+    }
+    const useMode = inputs.actionMode('use')
+    if (this.activeItemUse && useMode !== this.activeItemUse.mode) this.#releaseItemUse()
+  }
 
   disconnect (reason = 'Endbot disconnect') {
     if (this.disconnectPromise) return this.disconnectPromise
@@ -171,6 +183,7 @@ export class BedrockSession extends EventEmitter {
     this.client.on('start_game', packet => {
       this.position = vector(packet.player_position)
       this.groundY = this.position.y
+      this.#setAuthoritativeLook(packet)
       this.client.queue('serverbound_loading_screen', { type: 1 })
     })
     this.client.on('correct_player_move_prediction', packet => {
@@ -183,8 +196,7 @@ export class BedrockSession extends EventEmitter {
       if (String(packet.runtime_id) === String(this.client.entityId)) {
         this.position = vector(packet.position)
         if (!this.verticalVelocity) this.groundY = this.position.y
-        const rotation = serverRotation(packet)
-        if (rotation) this.inputs?.setLook(rotation.yaw, rotation.pitch)
+        this.#setAuthoritativeLook(packet)
         const next = BigInt(packet.tick) + 1n
         if (next > this.tick) this.tick = next
       } else {
@@ -305,6 +317,7 @@ export class BedrockSession extends EventEmitter {
 
   #sendTick () {
     if (!this.position || !this.inputs || this.client.status !== 4) return
+    if (this.activeItemUse && this.releaseItemUseNextTick) this.#releaseItemUse()
     const state = this.inputs.step()
     const previous = vector(this.position)
     const move = { x: 0, z: 0 }
@@ -337,8 +350,11 @@ export class BedrockSession extends EventEmitter {
     }
     addJumpInputFlags(inputData, { started: startedJump, airborne: Boolean(this.verticalVelocity) })
     if (state.triggered.includes('attack')) this.#attack(inputData, state)
-    if (state.triggered.includes('use') && hasUsableHeldItem(this.heldItem)) {
+    if (state.triggered.includes('use') && !this.activeItemUse && hasUsableHeldItem(this.heldItem)) {
+      const mode = this.inputs.actionMode('use') ?? 'once'
       inputData.push('start_using_item')
+      this.activeItemUse = { hotbarSlot: this.hotbarSlot, heldItem: this.heldItem, mode }
+      this.releaseItemUseNextTick = mode !== 'continuous'
       this.client.queue('inventory_transaction', createUseTransaction({
         hotbarSlot: this.hotbarSlot,
         heldItem: this.heldItem,
@@ -374,6 +390,26 @@ export class BedrockSession extends EventEmitter {
     const y = -Math.sin(pitch * Math.PI / 180)
     const horizontal = Math.cos(pitch * Math.PI / 180)
     return { x: -Math.sin(yaw * Math.PI / 180) * horizontal, y, z: Math.cos(yaw * Math.PI / 180) * horizontal }
+  }
+
+  #setAuthoritativeLook (packet) {
+    const rotation = serverRotation(packet)
+    if (!rotation) return
+    this.authoritativeLook = rotation
+    this.inputs?.setLook(rotation.yaw, rotation.pitch)
+  }
+
+  #releaseItemUse () {
+    if (!this.activeItemUse) return
+    const use = this.activeItemUse
+    this.activeItemUse = undefined
+    this.releaseItemUseNextTick = false
+    if (!this.client || this.transportClosed || this.client.status !== 4 || !this.position) return
+    this.client.queue('inventory_transaction', createReleaseTransaction({
+      hotbarSlot: use.hotbarSlot,
+      heldItem: use.heldItem,
+      position: this.position
+    }))
   }
 
   #attack (inputData, state) {

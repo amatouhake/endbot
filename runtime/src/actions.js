@@ -31,6 +31,10 @@ export class InputState {
     this.actions.set(action, { mode, interval, nextTick: this.tick + 1 })
   }
 
+  actionMode (action) {
+    return this.actions.get(action)?.mode
+  }
+
   setMovement (direction) {
     if (direction === 'stop') this.movement = undefined
     else if (!DIRECTIONS.has(direction)) throw new Error(`Unsupported movement direction: ${direction}`)

@@ -82,8 +82,11 @@ export function prepareMinecraftData () {
     }
     fs.rmSync(installedData, { recursive: true, force: true })
     fs.cpSync(path.join(temporary, 'data'), installedData, { recursive: true })
+    // Node refuses to spawn a .cmd shim without a shell on Windows
+    // (CVE-2024-27980), so the npm launcher needs cmd.exe there. The
+    // arguments are fixed literals, so no shell quoting is involved.
     const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-    run(npm, ['run', 'generate:data'], { cwd: packageRoot })
+    run(npm, ['run', 'generate:data'], { cwd: packageRoot, shell: process.platform === 'win32' })
     patchPinnedProtocolSchema(path.join(installedData, 'bedrock', MINECRAFT_VERSION, 'protocol.json'))
     const preparedVersion = JSON.parse(fs.readFileSync(
       path.join(installedData, 'bedrock', MINECRAFT_VERSION, 'version.json'),

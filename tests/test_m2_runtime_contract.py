@@ -39,6 +39,21 @@ class M2RuntimeContractTests(unittest.TestCase):
         self.assertIn("7c1fe886dd92837c0550e8eff91440361c7d677f", prepare)
         self.assertIn("MINECRAFT_PROTOCOL = 2193", prepare)
 
+    def test_runtime_scripts_do_not_depend_on_a_posix_shell(self):
+        package = json.loads((ROOT / "runtime/package.json").read_text())
+        prepare = (ROOT / "runtime/scripts/prepare-minecraft-data.js").read_text()
+        check = ROOT / "runtime/scripts/check-syntax.js"
+
+        # cmd.exe does not expand globs, and `node --check` only checks one file.
+        self.assertEqual(package["scripts"]["check"], "node scripts/check-syntax.js")
+        self.assertTrue(check.is_file())
+        self.assertNotIn("*", package["scripts"]["check"])
+        # Node refuses to spawn an npm .cmd shim without a shell on Windows.
+        self.assertIn("shell: process.platform === 'win32'", prepare)
+        # npm 12 blocks dependency install scripts by default; the NetherNet
+        # transport needs its prebuilt binary, so that approval must stay pinned.
+        self.assertEqual(package["allowScripts"], {"node-datachannel@0.31.0": True})
+
     def test_release_runtime_archive_contains_protocol_preparation(self):
         workflow = (ROOT / ".github/workflows/release-candidate.yml").read_text()
         self.assertIn(

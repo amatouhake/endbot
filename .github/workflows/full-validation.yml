@@ -44,6 +44,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Restore validated Endstone wheel
+        id: endstone-wheel-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: dist/endstone/
+          key: endstone-wheel-v1-linux-x64-cpy312-llvm20-cibw3.4.1-${{ hashFiles('endstone.lock', 'patches/endstone/**', 'scripts/prepare_endstone.py', 'scripts/build_endstone_wheel.py', '.github/workflows/full-validation.yml') }}
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -52,8 +59,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: runtime/package-lock.json
 
       - name: Install LLVM 20 and libc++
+        if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
         env:
           LLVM_VERSION: "20"
         run: |
@@ -82,13 +92,16 @@ jobs:
           npm test --prefix runtime
 
       - name: Prepare patched Endstone
+        if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
         run: python scripts/prepare_endstone.py
 
       - name: Resolve patched Endstone dependencies
+        if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
         working-directory: build/endstone-patched
         run: conan install . --build=missing
 
       - name: Build patched Endstone
+        if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
         working-directory: build/endstone-patched
         run: |
           . build/RelWithDebInfo/generators/conanbuild.sh
@@ -96,13 +109,18 @@ jobs:
           cmake --build --preset conan-relwithdebinfo
 
       - name: Run patched Endstone tests
+        if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
         working-directory: build/endstone-patched
         run: ctest --preset conan-relwithdebinfo --output-on-failure
 
-      - name: Build and inspect repaired Endstone wheel
+      - name: Build repaired Endstone wheel
+        if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
         run: |
           python scripts/build_endstone_wheel.py \
             --output-dir dist/endstone
+
+      - name: Inspect repaired Endstone wheel
+        run: |
           uv run --with auditwheel==6.2.0 \
             python scripts/inspect_linux_wheel.py dist/endstone/endstone-*.whl
 
@@ -122,3 +140,10 @@ jobs:
           python scripts/test_package_install.py
           --endstone-wheel-dir dist/endstone
           --plugin-wheel-dir dist/plugin
+
+      - name: Save validated Endstone wheel
+        if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: dist/endstone/
+          key: endstone-wheel-v1-linux-x64-cpy312-llvm20-cibw3.4.1-${{ hashFiles('endstone.lock', 'patches/endstone/**', 'scripts/prepare_endstone.py', 'scripts/build_endstone_wheel.py', '.github/workflows/full-validation.yml') }}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,18 @@ from pathlib import Path
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
+
+CACHE_MISS_GUARD = "steps.endstone-wheel-cache.outputs.cache-hit != 'true'"
+
+
+def _step_block(workflow: str, marker: str) -> str:
+    start = workflow.index(marker)
+    end = workflow.find("\n      - ", start + len(marker))
+    return workflow[start:] if end == -1 else workflow[start:end]
+
+
+def _hashfiles_segments(workflow: str) -> list[str]:
+    return re.findall(r"hashFiles\((.*?)\)", workflow, flags=re.DOTALL)
 
 
 class ReleaseWheelContractTests(unittest.TestCase):
@@ -100,6 +113,129 @@ class ReleaseWheelContractTests(unittest.TestCase):
         )
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("does not match runtime package version", rejected.stderr)
+
+
+class CICacheContractTests(unittest.TestCase):
+    def test_fast_ci_skips_endstone_preparation_but_keeps_coverage(self) -> None:
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertNotIn("prepare_endstone", workflow)
+        self.assertNotIn("scripts/prepare_endstone.py", workflow)
+        for required in (
+            "python scripts/check_portability.py",
+            "ruff check scripts tests plugin/endbot",
+            "python -m unittest discover -s tests",
+            "python -m unittest discover -s plugin/endbot/tests",
+            "python -m build --wheel --outdir dist/plugin",
+            "npm ci --prefix runtime",
+            "npm run check --prefix runtime",
+            "npm test --prefix runtime",
+        ):
+            self.assertIn(required, workflow)
+        self.assertIn("cache: npm", workflow)
+        self.assertIn("runtime/package-lock.json", workflow)
+        self.assertNotIn("node_modules", workflow)
+
+    def test_full_validation_restores_cache_before_heavy_setup(self) -> None:
+        workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
+        checkout = workflow.index("actions/checkout")
+        restore = workflow.index("actions/cache/restore")
+        llvm = workflow.index("Install LLVM 20")
+        prepare = workflow.index("Prepare patched Endstone")
+        conan = workflow.index("conan install")
+        self.assertLess(checkout, restore)
+        self.assertLess(restore, llvm)
+        self.assertLess(restore, prepare)
+        self.assertLess(restore, conan)
+        self.assertIn("dist/endstone", workflow)
+
+    def test_endstone_cache_uses_exact_matching(self) -> None:
+        workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
+        self.assertIn("actions/cache/restore@v6", workflow)
+        self.assertIn("actions/cache/save@v6", workflow)
+        self.assertNotIn("restore-keys", workflow)
+        self.assertNotIn("github.sha", workflow)
+        for identifier in (
+            "endstone-wheel-v1",
+            "linux-x64",
+            "cpy312",
+            "llvm20",
+            "cibw3.4.1",
+        ):
+            self.assertIn(identifier, workflow)
+        segments = _hashfiles_segments(workflow)
+        self.assertTrue(segments)
+        fingerprinted = " ".join(segments)
+        for required_input in (
+            "endstone.lock",
+            "patches/endstone/**",
+            "scripts/prepare_endstone.py",
+            "scripts/build_endstone_wheel.py",
+            ".github/workflows/full-validation.yml",
+        ):
+            self.assertIn(required_input, fingerprinted)
+        self.assertNotIn("plugin/endbot", fingerprinted)
+        self.assertNotIn("runtime/", fingerprinted)
+
+    def test_expensive_endstone_steps_run_only_on_cache_miss(self) -> None:
+        workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
+        for marker in (
+            "Install LLVM 20 and libc++",
+            "Prepare patched Endstone",
+            "Resolve patched Endstone dependencies",
+            "Build patched Endstone",
+            "Run patched Endstone tests",
+            "Build repaired Endstone wheel",
+        ):
+            with self.subTest(step=marker):
+                block = _step_block(workflow, marker)
+                self.assertIn("cache-hit", block)
+                self.assertIn(CACHE_MISS_GUARD, block)
+
+    def test_downstream_gates_run_on_hit_and_miss(self) -> None:
+        workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
+        for marker in (
+            "Inspect repaired Endstone wheel",
+            "Build plugin and test paired installation",
+            "Test in a clean Linux consumer without LLVM",
+        ):
+            with self.subTest(step=marker):
+                block = _step_block(workflow, marker)
+                self.assertNotIn("cache-hit", block)
+        self.assertIn("python scripts/inspect_linux_wheel.py", workflow)
+        self.assertIn("python -m build --wheel --outdir dist/plugin", workflow)
+        self.assertIn("python scripts/test_package_install.py", workflow)
+
+    def test_cache_save_happens_only_after_validation_on_miss(self) -> None:
+        workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
+        inspect = workflow.index("Inspect repaired Endstone wheel")
+        paired = workflow.index("Build plugin and test paired installation")
+        consumer = workflow.index("Test in a clean Linux consumer without LLVM")
+        save = workflow.index("actions/cache/save")
+        self.assertLess(inspect, paired)
+        self.assertLess(paired, consumer)
+        self.assertLess(consumer, save)
+        block = _step_block(workflow, "Save validated Endstone wheel")
+        self.assertIn(CACHE_MISS_GUARD, block)
+        self.assertIn("dist/endstone", block)
+        self.assertIn("endstone-wheel-v1-linux-x64-cpy312-llvm20-cibw3.4.1-", block)
+
+    def test_release_candidate_stays_clean_build(self) -> None:
+        workflow = (ROOT / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
+        self.assertNotIn("actions/cache/restore", workflow)
+        self.assertNotIn("actions/cache/save", workflow)
+        self.assertNotIn("cache-hit", workflow)
+        self.assertNotIn("endstone-wheel-cache", workflow)
+        for required in (
+            "python scripts/prepare_endstone.py",
+            "conan install",
+            "cmake --build",
+            "ctest --preset",
+            "python scripts/build_endstone_wheel.py",
+            "python scripts/inspect_linux_wheel.py",
+            "python scripts/test_package_install.py",
+        ):
+            self.assertIn(required, workflow)
+        self.assertIn("npm ci --prefix runtime", workflow)
 
 
 if __name__ == "__main__":

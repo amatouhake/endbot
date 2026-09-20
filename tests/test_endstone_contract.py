@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def resulting_patch_fragment(path: str, hunk_prefix: str) -> str:
-    patch = (ROOT / "patches/endstone/0001-feat-auth-add-local-ownerbot-login-trust.patch").read_text(
+    patch = (ROOT / "patches/endstone/0001-feat-auth-add-local-bot-login-trust.patch").read_text(
         encoding="utf-8"
     )
     section_marker = f"diff --git a/{path} b/{path}\n"
@@ -27,7 +27,7 @@ def resulting_patch_fragment(path: str, hunk_prefix: str) -> str:
 
 class LoginHookContractTests(unittest.TestCase):
     def test_missing_raw_token_skips_local_verification_and_reaches_stock_validator(self) -> None:
-        patch = (ROOT / "patches/endstone/0001-feat-auth-add-local-ownerbot-login-trust.patch").read_text(
+        patch = (ROOT / "patches/endstone/0001-feat-auth-add-local-bot-login-trust.patch").read_text(
             encoding="utf-8"
         )
         self.assertIn("[[nodiscard]] const WebToken *_getRawRequest() const;", patch)

@@ -6,7 +6,7 @@ The only pinned baseline is Endstone `v0.11.11` at
 `37b395378d91d6d20f1c52bf9d79dbd20e152458`, with BDS `1.26.51.1` build `51061372` and protocol `2193`.
 `endstone.lock` is the machine-readable authority.
 
-The modified wheel uses the separate package version `0.11.11+endbot.1`. Preparation creates that exact local tag on
+The modified wheel uses the separate package version `0.11.11+endbot.2`. Preparation creates that exact local tag on
 the disposable patched commit for `setuptools_scm`; the plugin requires the same exact version. This prevents pip from
 substituting official unpatched `0.11.11` while leaving the upstream compatibility baseline unambiguous.
 
@@ -24,6 +24,31 @@ separately verified command roots, same-dimension fall physics, hotbar selection
 inventory decrement, and item drop. See [`M2_VALIDATION.md`](M2_VALIDATION.md) for the evidence boundary. Native Windows
 hosting of the Endbot runtime is designed for but is not claimed as validated; the Windows game client was the human
 operator in this gate.
+
+Historical human/Xbox evidence above was recorded against `0.11.11+endbot.1`. The `+endbot.2` revision is this
+terminology/default-identifier migration and does not claim a new human achievement observation.
+
+### Local-bot auth defaults migration
+
+Old defaults:
+
+```text
+iss: ownerbot://local
+aud: endstone://local-ownerbot
+Endstone default public key filename: ownerbot-public.pem
+```
+
+New defaults:
+
+```text
+iss: endbot://local-bot
+aud: endstone://local-bot
+Endstone default public key filename: owner-public.pem
+```
+
+Runtime and Endstone issuer/audience must match exactly; update both sides together. No legacy alias was added.
+Explicit custom values remain supported if both sides use the same values. Owner-key terminology and
+`owner-private.pem` / `owner-public.pem` are intentional: the key pair remains the server-owner-controlled trust root.
 
 ## Compatibility change gate
 

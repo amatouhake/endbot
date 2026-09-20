@@ -77,7 +77,7 @@ python scripts\prepare_endstone.py
 ```
 
 This creates `build\endstone-patched` exactly as on Linux (bare cache under `.cache\`, `git am` of the patch series,
-local tag `v0.11.11+endbot.1`). The script refuses to overwrite an existing output directory; to start over, run
+local tag `v0.11.11+endbot.2`). The script refuses to overwrite an existing output directory; to start over, run
 `Remove-Item -Recurse -Force build\endstone-patched` first (the tree also accumulates a project-local Conan cache
 under its ignored `.conan2\` entries, which `git -C build\endstone-patched clean -fdX` resets on its own). Then,
 from a Visual Studio x64 developer prompt with `.venv` active:
@@ -98,8 +98,8 @@ Verify the Endbot-local package contract before going further:
 python -c "import importlib.metadata as m, endstone; print(m.version('endstone'), endstone.__minecraft_version__)"
 ```
 
-Expected: `0.11.11+endbot.1 26.51` (Endstone reports the Minecraft version without the leading `1.`; its bootstrap
-prepends it, so this is BDS `1.26.51.x`). The prepared tree carries the local tag `v0.11.11+endbot.1` on the patched
+Expected: `0.11.11+endbot.2 26.51` (Endstone reports the Minecraft version without the leading `1.`; its bootstrap
+prepends it, so this is BDS `1.26.51.x`). The prepared tree carries the local tag `v0.11.11+endbot.2` on the patched
 commit (see `git -C build\endstone-patched tag --points-at HEAD`), which the build backend reads for the package
 version. Do not install the official `endstone==0.11.11` wheel into this
 environment; the plugin's exact pin exists to prevent running against an unpatched server.
@@ -175,8 +175,8 @@ Stop the server after the first start, then configure:
    tester join once and read `Player connected: <name>, xuid: <xuid>` from the server log; the plugin reads its
    allowlist at load, so restart the server after editing.
 
-Restart the server. The log shows the Endbot plugin enabling, and `Local ownerbot authentication is enabled for issuer
-'ownerbot://local'` on the first login attempt. The runtime must be running before any `/bot <name> spawn`.
+Restart the server. The log shows the Endbot plugin enabling, and `Local bot authentication is enabled for issuer
+'endbot://local-bot'` on the first login attempt. The runtime must be running before any `/bot <name> spawn`.
 
 BDS generates a new NetherNet DTLS identity on every start, so the runtime's saved `bds-nethernet.pin` matches only
 the server process that created it. After every intentional BDS restart, delete the pin file before resuming a Bot;
@@ -192,7 +192,7 @@ rather than a different Minecraft version.
 `Incorrect permission level for command: bot`). To confirm an accountless join before a human tests, drive the runtime
 directly over its loopback control socket with the plugin's own client, for example
 `RuntimeControlClient("127.0.0.1", 19142, Path(r"C:\endbot-local\secrets\control.token")).request("spawn", name="Alice")`
-from `endstone_endbot.control`; the server log must then show `Accepted local ownerbot 'Alice' (...)`, `Player Spawned:
+from `endstone_endbot.control`; the server log must then show `Accepted local bot 'Alice' (...)`, `Player Spawned:
 Alice xuid:` with an empty XUID, and vanilla `list` counts the Bot. This bypasses only the command layer and spawn
 placement, not the login path.
 
@@ -214,8 +214,8 @@ Join from Minecraft for Windows through normal Microsoft/Xbox sign-in and run, i
 ```
 
 `/bot ping` proves plugin-to-runtime loopback control; `spawn` proves the accountless local-bot login through the
-patched validator, which the server log reports as `Accepted local ownerbot 'Alice' (...) from issuer
-'ownerbot://local'`. Record the human jump behavior here before comparing with the WSL topology. A native smoke
+patched validator, which the server log reports as `Accepted local bot 'Alice' (...) from issuer
+'endbot://local-bot'`. Record the human jump behavior here before comparing with the WSL topology. A native smoke
 that does not reproduce the previously observed WSL jump anomaly establishes only that this topology did not
 reproduce it; it is not a root-cause finding for the WSL behavior.
 

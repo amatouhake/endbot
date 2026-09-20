@@ -12,7 +12,7 @@ Endbot prepares a modified Endstone build from:
 - Copyright: The Endstone Project contributors
 
 The resulting build is **modified by Endbot**. The Endbot patch-set revision is SHA-256
-`6e430fd2f8b72a5bc72251493b6925286b25bff4341c220a1b89bc93fc8fc54b`; its ordered sources are listed in
+`4ba4c3e056450b90ec42af61785799de1003992a60793f253feb9fa3f69ee796`; its ordered sources are listed in
 `patches/endstone/series`. Upstream source notices are retained by the patches. Distributions of the modified build
 must include this file, Endbot's `LICENSE`, Endstone's upstream license/notice material, and the generated compatibility
 manifest.

@@ -2,9 +2,9 @@
 
 `series` is the ordered, reviewable Endbot delta from the exact upstream commit in `endstone.lock`.
 
-- `0001-feat-auth-add-local-ownerbot-login-trust.patch` adds disabled-by-default configuration, the ES384 local identity
+- `0001-feat-auth-add-local-bot-login-trust.patch` adds disabled-by-default configuration, the ES384 local identity
   verifier, the narrow login hook, and required crypto build dependency.
-- `0002-test-auth-cover-local-ownerbot-verification.patch` adds verifier unit coverage for acceptance, replay, disabled and
+- `0002-test-auth-cover-local-bot-verification.patch` adds verifier unit coverage for acceptance, replay, disabled and
   malformed inputs, owner signature, issuer/expiry, client-key/name binding, and safe observation of a missing raw
   request token.
 

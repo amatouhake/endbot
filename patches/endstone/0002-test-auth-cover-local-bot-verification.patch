@@ -1,18 +1,18 @@
-From ab8dc87f763c845dedca28818c471c0802ea2a50 Mon Sep 17 00:00:00 2001
+From e4caffecc734d795640cc56b0d1a5ff78a8434c9 Mon Sep 17 00:00:00 2001
 From: amatouhake <60422818+amatouhake@users.noreply.github.com>
-Date: Thu, 17 Sep 2026 13:21:22 +0900
-Subject: [PATCH 2/2] test(auth): cover local ownerbot verification
+Date: Mon, 21 Sep 2026 04:20:27 +0900
+Subject: [PATCH 2/2] test(auth): cover local bot verification
 
 ---
  tests/CMakeLists.txt                          |   6 +-
  .../bedrock/test_base_connection_request.cpp  |  35 +++
- tests/test_local_ownerbot_auth.cpp            | 234 ++++++++++++++++++
+ tests/test_local_bot_auth.cpp                 | 234 ++++++++++++++++++
  3 files changed, 273 insertions(+), 2 deletions(-)
  create mode 100644 tests/bedrock/test_base_connection_request.cpp
- create mode 100644 tests/test_local_ownerbot_auth.cpp
+ create mode 100644 tests/test_local_bot_auth.cpp
 
 diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
-index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..6492349a0c139572c8a71398a4906185c7b84b79 100644
+index 10ed35ba8..53c268b95 100644
 --- a/tests/CMakeLists.txt
 +++ b/tests/CMakeLists.txt
 @@ -8,6 +8,7 @@ set_target_properties(test_plugin PROPERTIES RUNTIME_OUTPUT_DIRECTORY "plugins")
@@ -27,7 +27,7 @@ index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..6492349a0c139572c8a71398a4906185
          test_command_usage_parser.cpp
          test_cpp_plugin_loader.cpp
          test_logger_factory.cpp
-+        test_local_ownerbot_auth.cpp
++        test_local_bot_auth.cpp
          test_player_ban_list.cpp
          test_scheduler.cpp
          test_service_manager.cpp
@@ -36,7 +36,7 @@ index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..6492349a0c139572c8a71398a4906185
  )
  add_dependencies(endstone_test test_plugin)
 -target_link_libraries(endstone_test PRIVATE endstone::core GTest::gtest_main GTest::gmock_main)
-+target_link_libraries(endstone_test PRIVATE endstone::core endstone_local_ownerbot_auth GTest::gtest_main GTest::gmock_main)
++target_link_libraries(endstone_test PRIVATE endstone::core endstone_local_bot_auth GTest::gtest_main GTest::gmock_main)
  # CppPluginLoaderTest cases share the plugins/.local shadow-copy dir, whose
  # cleanup races when ctest runs them in parallel; serialize just those.
  gtest_discover_tests(endstone_test
@@ -48,7 +48,7 @@ index 10ed35ba8bc7f6effd9f8ba621b0da5945973126..6492349a0c139572c8a71398a4906185
 +        TEST_FILTER "-CppPluginLoaderTest.*")
 diff --git a/tests/bedrock/test_base_connection_request.cpp b/tests/bedrock/test_base_connection_request.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..82ae46c9ae57ff7aa2007033c8a1edb62a9d50a0
+index 000000000..82ae46c9a
 --- /dev/null
 +++ b/tests/bedrock/test_base_connection_request.cpp
 @@ -0,0 +1,35 @@
@@ -87,11 +87,11 @@ index 0000000000000000000000000000000000000000..82ae46c9ae57ff7aa2007033c8a1edb6
 +}
 +
 +}  // namespace
-diff --git a/tests/test_local_ownerbot_auth.cpp b/tests/test_local_ownerbot_auth.cpp
+diff --git a/tests/test_local_bot_auth.cpp b/tests/test_local_bot_auth.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca302d4a9e4
+index 000000000..0c5fe13a6
 --- /dev/null
-+++ b/tests/test_local_ownerbot_auth.cpp
++++ b/tests/test_local_bot_auth.cpp
 @@ -0,0 +1,234 @@
 +// Copyright (c) 2026, The Endstone Project contributors.
 +// SPDX-License-Identifier: Apache-2.0
@@ -111,7 +111,7 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +#include <openssl/pem.h>
 +#include <openssl/x509.h>
 +
-+#include "endstone/runtime/local_ownerbot_auth.h"
++#include "endstone/runtime/local_bot_auth.h"
 +
 +namespace {
 +
@@ -157,8 +157,8 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +
 +std::string signJwt(const Json &payload, EVP_PKEY *key)
 +{
-+    const auto header = base64Url(reinterpret_cast<const unsigned char *>(R"({"alg":"ES384","kid":"ownerbot-local"})"),
-+                                  std::string_view(R"({"alg":"ES384","kid":"ownerbot-local"})").size());
++    const auto header = base64Url(reinterpret_cast<const unsigned char *>(R"({"alg":"ES384","kid":"endbot-local"})"),
++                                  std::string_view(R"({"alg":"ES384","kid":"endbot-local"})").size());
 +    const auto body_text = payload.dump();
 +    const auto body = base64Url(reinterpret_cast<const unsigned char *>(body_text.data()), body_text.size());
 +    const auto input = header + "." + body;
@@ -188,7 +188,7 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +    Fixture()
 +        : owner(makeKey()), client(makeKey()), alternate(makeKey()),
 +          directory(std::filesystem::temp_directory_path() /
-+                    ("endstone-ownerbot-" + std::to_string(reinterpret_cast<std::uintptr_t>(this)))),
++                    ("endstone-local-bot-" + std::to_string(reinterpret_cast<std::uintptr_t>(this)))),
 +          public_key_path(directory / "owner-public.pem")
 +    {
 +        std::filesystem::create_directories(directory);
@@ -200,9 +200,9 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +
 +    ~Fixture() { std::filesystem::remove_all(directory); }
 +
-+    endstone::runtime::ownerbot::Config config(bool enabled = true) const
++    endstone::runtime::localbot::Config config(bool enabled = true) const
 +    {
-+        endstone::runtime::ownerbot::Config result;
++        endstone::runtime::localbot::Config result;
 +        result.enabled = enabled;
 +        result.public_key_file = public_key_path.string();
 +        return result;
@@ -211,8 +211,8 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +    Json identityPayload(std::string cpk = {}) const
 +    {
 +        return {
-+            {"iss", "ownerbot://local"},
-+            {"aud", "endstone://local-ownerbot"},
++            {"iss", "endbot://local-bot"},
++            {"aud", "endstone://local-bot"},
 +            {"sub", "63572362-0c83-5f0a-8cec-e1b788101798"},
 +            {"xname", "CppBot"},
 +            {"cpk", cpk.empty() ? publicKeyBase64(client.get()) : cpk},
@@ -237,10 +237,10 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +    std::filesystem::path public_key_path;
 +};
 +
-+TEST(LocalOwnerbotAuthTest, AcceptsValidIdentityAndRejectsReplay)
++TEST(LocalBotAuthTest, AcceptsValidIdentityAndRejectsReplay)
 +{
 +    Fixture fixture;
-+    endstone::runtime::ownerbot::Verifier verifier(fixture.config());
++    endstone::runtime::localbot::Verifier verifier(fixture.config());
 +    const auto identity = signJwt(fixture.identityPayload(), fixture.owner.get());
 +    const auto client_data = signJwt(fixture.clientPayload(), fixture.client.get());
 +    const auto first = verifier.verify(identity, client_data, fixture.now());
@@ -253,10 +253,10 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +    EXPECT_EQ(replay.error, "local identity token was already used");
 +}
 +
-+TEST(LocalOwnerbotAuthTest, RejectsWrongOwnerSignature)
++TEST(LocalBotAuthTest, RejectsWrongOwnerSignature)
 +{
 +    Fixture fixture;
-+    endstone::runtime::ownerbot::Verifier verifier(fixture.config());
++    endstone::runtime::localbot::Verifier verifier(fixture.config());
 +    const auto result = verifier.verify(signJwt(fixture.identityPayload(), fixture.alternate.get()),
 +                                        signJwt(fixture.clientPayload(), fixture.client.get()), fixture.now());
 +    EXPECT_FALSE(result.accepted);
@@ -264,12 +264,12 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +    EXPECT_EQ(result.error, "owner signature is invalid");
 +}
 +
-+TEST(LocalOwnerbotAuthTest, RejectsWrongIssuerAndExpiredToken)
++TEST(LocalBotAuthTest, RejectsWrongIssuerAndExpiredToken)
 +{
 +    Fixture fixture;
 +    auto wrong_issuer = fixture.identityPayload();
-+    wrong_issuer["iss"] = "ownerbot://wrong";
-+    endstone::runtime::ownerbot::Verifier issuer_verifier(fixture.config());
++    wrong_issuer["iss"] = "endbot://wrong";
++    endstone::runtime::localbot::Verifier issuer_verifier(fixture.config());
 +    auto result = issuer_verifier.verify(signJwt(wrong_issuer, fixture.owner.get()),
 +                                         signJwt(fixture.clientPayload(), fixture.client.get()), fixture.now());
 +    EXPECT_FALSE(result.accepted);
@@ -280,7 +280,7 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +    expired["iat"] = kNow - 300;
 +    expired["nbf"] = kNow - 300;
 +    expired["exp"] = kNow - 180;
-+    endstone::runtime::ownerbot::Verifier expiry_verifier(fixture.config());
++    endstone::runtime::localbot::Verifier expiry_verifier(fixture.config());
 +    result = expiry_verifier.verify(signJwt(expired, fixture.owner.get()),
 +                                    signJwt(fixture.clientPayload(), fixture.client.get()), fixture.now());
 +    EXPECT_FALSE(result.accepted);
@@ -288,10 +288,10 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +    EXPECT_EQ(result.error, "local identity has expired");
 +}
 +
-+TEST(LocalOwnerbotAuthTest, RejectsClientKeyAndClaimBindingFailures)
++TEST(LocalBotAuthTest, RejectsClientKeyAndClaimBindingFailures)
 +{
 +    Fixture fixture;
-+    endstone::runtime::ownerbot::Verifier key_verifier(fixture.config());
++    endstone::runtime::localbot::Verifier key_verifier(fixture.config());
 +    auto result = key_verifier.verify(signJwt(fixture.identityPayload(publicKeyBase64(fixture.alternate.get())),
 +                                              fixture.owner.get()),
 +                                      signJwt(fixture.clientPayload(), fixture.client.get()), fixture.now());
@@ -300,26 +300,26 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +
 +    auto wrong_name = fixture.clientPayload();
 +    wrong_name["ThirdPartyName"] = "OtherBot";
-+    endstone::runtime::ownerbot::Verifier name_verifier(fixture.config());
++    endstone::runtime::localbot::Verifier name_verifier(fixture.config());
 +    result = name_verifier.verify(signJwt(fixture.identityPayload(), fixture.owner.get()),
 +                                  signJwt(wrong_name, fixture.client.get()), fixture.now());
 +    EXPECT_FALSE(result.accepted);
 +    EXPECT_EQ(result.error, "client-data name is not bound to the local identity");
 +}
 +
-+TEST(LocalOwnerbotAuthTest, DisabledConfigurationCannotAuthorize)
++TEST(LocalBotAuthTest, DisabledConfigurationCannotAuthorize)
 +{
 +    Fixture fixture;
-+    endstone::runtime::ownerbot::Verifier verifier(fixture.config(false));
++    endstone::runtime::localbot::Verifier verifier(fixture.config(false));
 +    const auto result = verifier.verify("not-a-token", "not-a-token", fixture.now());
 +    EXPECT_FALSE(result.accepted);
 +    EXPECT_EQ(result.error, "local-bot-auth is disabled");
 +}
 +
-+TEST(LocalOwnerbotAuthTest, MalformedTokenIsNotRoutedAsLocal)
++TEST(LocalBotAuthTest, MalformedTokenIsNotRoutedAsLocal)
 +{
 +    Fixture fixture;
-+    endstone::runtime::ownerbot::Verifier verifier(fixture.config());
++    endstone::runtime::localbot::Verifier verifier(fixture.config());
 +    const auto result = verifier.verify("not-a-token", "not-a-token", fixture.now());
 +    EXPECT_FALSE(result.candidate);
 +    EXPECT_FALSE(result.accepted);
@@ -327,3 +327,6 @@ index 0000000000000000000000000000000000000000..d1bb20ef05ec351bcb4ad1e29e911ca3
 +}
 +
 +}  // namespace
+-- 
+2.52.0.windows.1
+

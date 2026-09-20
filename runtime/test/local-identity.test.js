@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   createLocalIdentityToken,
-  createLocalOwnerbotAuth,
+  createLocalBotAuth,
   loadOrCreateIdentityId,
   loadOrCreateOwnerKeyPair,
   prepareOwnerKeyPair,
@@ -280,7 +280,7 @@ test('tampering invalidates the owner signature', () => {
 
 test('authflow emits fresh tokens with one stable hidden identity', async () => {
   const directory = temporaryDirectory('endbot-flow-')
-  const auth = createLocalOwnerbotAuth({
+  const auth = createLocalBotAuth({
     username: 'FlowBot',
     identityId: loadOrCreateIdentityId(path.join(directory, 'bot.uuid')),
     privateKeyPath: path.join(directory, 'private.pem'),
@@ -312,7 +312,7 @@ test('rejects normalized private/public key path overlap without damaging the pr
   const original = loadOrCreateOwnerKeyPair(privateKeyPath)
   const originalPem = fs.readFileSync(privateKeyPath)
 
-  assert.throws(() => createLocalOwnerbotAuth({
+  assert.throws(() => createLocalBotAuth({
     username: 'OverlapBot',
     identityId: '63572362-0c83-5f0a-8cec-e1b788101798',
     privateKeyPath,
@@ -331,7 +331,7 @@ test('rejects private/public key hard-link aliases without damaging the private 
   const originalPem = fs.readFileSync(privateKeyPath)
   fs.linkSync(privateKeyPath, publicKeyPath)
 
-  assert.throws(() => createLocalOwnerbotAuth({
+  assert.throws(() => createLocalBotAuth({
     username: 'HardLinkBot',
     identityId: '63572362-0c83-5f0a-8cec-e1b788101798',
     privateKeyPath,
@@ -343,7 +343,7 @@ test('rejects private/public key hard-link aliases without damaging the private 
 })
 
 test('rejects invalid identity inputs before signing', () => {
-  assert.throws(() => createLocalOwnerbotAuth({
+  assert.throws(() => createLocalBotAuth({
     username: '',
     identityId: '63572362-0c83-5f0a-8cec-e1b788101798',
     privateKeyPath: 'unused.pem'

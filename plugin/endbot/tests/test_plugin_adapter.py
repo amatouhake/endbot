@@ -63,14 +63,20 @@ class PluginAdapterTests(unittest.TestCase):
             usages,
         )
         self.assertFalse(any("(advanced)" in usage for usage in usages))
-        # Parseability guarantee: a free-form named fallback must cover every
-        # /bot <name> ... form even if Bedrock fails to resolve a typed overload.
-        self.assertIn("/bot <name: string> <operation: message>", usages)
+        # Parseability layer: enum-free string overloads. Live BDS never
+        # matches params after an enum, so these carry every named form while
+        # the typed tree below carries completion. No message may sit at the
+        # operation position: that shape absorbs all named-Bot autocomplete.
+        self.assertNotIn("/bot <name: string> <operation: message>", usages)
+        self.assertIn("/bot <name: string> <operation: string>", usages)
+        self.assertIn("/bot <name: string> <operation: string> <arguments: message>", usages)
+        self.assertIn("/bot <command: string> <page: int>", usages)
+        self.assertTrue(any("EndbotHelpTopic" in usage for usage in usages))
         named_usages = [usage for usage in usages if usage.startswith("/bot <name: string>")]
         advertised_operations = set()
         for usage in named_usages:
-            if usage == "/bot <name: string> <operation: message>":
-                continue  # parseability fallback, not an autocomplete branch
+            if "<operation: string>" in usage:
+                continue  # parseability layer, not an autocomplete branch
             match = re.match(r"^/bot <name: string> \(([^)]+)\)<[^:]+: Endbot[^>]+>", usage)
             self.assertIsNotNone(match, f"named-Bot overload must advertise a typed operation: {usage}")
             advertised_operations.update(match.group(1).split("|"))

@@ -123,15 +123,31 @@ release sequence; BDS decides reach, legality, collision, placement, and invento
 item can therefore place a block in Survival without the plugin editing the world. `drop` drops one selected item and
 `drop stack` drops the selected stack through normal inventory transactions.
 
-The command declaration pairs native finite enums (roots, movement direction, action modes, on/off, dimension
-aliases, block faces, and `stack`) with two plain string fallbacks: `/bot [command: string] [topic: string]` for
-root forms including `/bot help <page|command>`, and `/bot <name: string> <operation: message>` for every named
-form. The fallbacks are the parseability guarantee — Bedrock matches each usage as one native overload before
-the Python parser runs, and a typed-only named tree was rejected live even for paper-perfect overloads (notably
-`/bot Alice move forward` and `/bot Alice tp me`). The typed overloads exist only for native autocomplete and
-must never remove a form the fallbacks accept. The pinned Endstone public API does not expose supported dynamic
-completion for Bot profile names, so names remain strings; use `/bot list` to discover them. Endbot does not use
-private registry or raw soft-enum hooks.
+The command declaration separates parseability from completion because live BDS overload matching proved three
+rules (verified with a probe plugin dispatching 42 documented forms through the real `compileCommand` path):
+trailing optional parameters never consume input; `string` rejects numeric tokens; and parameters positioned
+after an enum never match. A tail consumer must therefore be a required `message` with no enum before it, while
+suggestions need enums at the same positions in separate overloads:
+
+```text
+/bot [command: string] [topic: string]
+/bot (ping|list|help)<command: EndbotRoot>
+/bot <command: string> <page: int>
+/bot <name: string> <operation: string>
+/bot <name: string> <operation: string> <arguments: message>
+```
+
+The two `<name>` string overloads are the parseability layer: they accept every 2-token and every longer named
+form (numeric help pages use the required-int overload instead, since strings reject numbers). The typed enum
+overloads below them — operations, movement direction, action modes, on/off, dimension aliases, block faces, and
+`stack` — are the completion layer: they advertise native suggestions but never match a tailed input on real
+BDS, so the string layer always catches those forms for the Python parser. A broad `<operation: message>`
+fallback was rejected as the final shape because live smoke confirmed it absorbs all named-operation
+suggestions; the string layers keep the operation position suggestible. Second-level completion (for example
+directions after `/bot Alice move `) depends on client-side merging of the enum and message branches and still
+needs in-client confirmation. The pinned Endstone public API does not expose supported dynamic completion for
+Bot profile names, so names remain strings; use `/bot list` to discover them. Endbot does not use private
+registry or raw soft-enum hooks.
 
 ## Live parser smoke (real BDS required)
 

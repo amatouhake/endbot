@@ -1,29 +1,30 @@
 """Bedrock declaration coverage for the /bot command surface.
 
-Unit tests cannot execute the closed-source BDS command parser, so this module
-uses a small conservative model of the actual Endstone/BDS grammar instead:
+This module models how the pinned BDS build actually matches Endstone usage
+strings. The rules below were established experimentally with a throwaway
+probe plugin that dispatched 42 documented /bot forms through the real BDS
+``compileCommand`` path across four declaration variants (typed-only tree,
+shared-enum optional tail, shared-enum required tail, and the current
+enum-free string tails):
 
-- each usage string in ``COMMAND_USAGES`` becomes one native overload, parsed
-  with the same bracket rules as Endstone's ``CommandUsageParser``;
-- ``message`` is ``MessageRoot`` (rest of line, must be last) and ``pos`` /
-  ``block_pos`` consume three tokens, matching the pinned registry mapping;
-- optional *enum* parameters consume nothing on the pinned BDS build, while
-  optional ``string`` / ``message`` / ``int`` parameters behave normally.
+- R1: only a FIRST-position optional consumes (strings take one
+  non-numeric token, message takes the rest); every other optional is
+  omit-only.
+- R2: ``string`` (Bedrock Id) rejects pure-numeric tokens (``help 2`` fails
+  where ``help dance`` passes at the same position).
+- R3: params after an enum never match. Only overloads ending at (or without)
+  an enum consume a tail, so tailed named inputs require an enum-free
+  overload such as ``/bot <name> <operation> <arguments: message>``.
 
-The model deliberately cannot prove live BDS matching. Its job is narrower:
-
-1. every usage string must satisfy Endstone's registration rules, and
-2. every documented /bot form must match at least one overload *without
-   relying on enum resolution* (the ``test_named_forms_survive_enum_failure``
-   case). That enum-independent fallback is what the typed-only declaration
-   set removed, which live Bedrock rejected with a syntax error before the
-   Python parser ran (notably ``/bot Alice move forward`` and
-   ``/bot Alice tp me``).
-
-The required live smoke cases are listed in docs/COMMANDS.md.
+What this cannot do: it cannot prove client-side autocomplete rendering.
+It is a regression tripwire — any declaration change that breaks a
+documented form under these rules fails here without needing live BDS —
+plus a record of the live behavior the rules were calibrated against. The
+required live smoke cases are listed in docs/COMMANDS.md.
 """
 
 import importlib
+import re
 import sys
 import types
 import unittest
@@ -85,6 +86,8 @@ KNOWN_TYPES = {
     "block_pos": 3,
     "vec3i": 3,
 }
+
+ENUM_VALUE = re.compile(r"[A-Za-z_-][A-Za-z0-9_-]*")
 
 # Documented /bot inputs (words after "/bot"). Forms that Python rejects with a
 # usage error are still listed: Bedrock must accept them so the rejection comes
@@ -183,6 +186,10 @@ def _parse_usage(usage):
         if rest.startswith("("):
             closing = rest.index(")")
             enum_values = rest[1:closing].split("|")
+            for value in enum_values:
+                assert ENUM_VALUE.fullmatch(value), (
+                    f"enum value {value!r} is not a BDS identifier in: {usage}"
+                )
             rest = rest[closing + 1 :]
             assert rest, f"enum values need a parameter in: {usage}"
         assert rest[0] in "<[" and rest[-1] in ">]", f"bad parameter segment {segment!r} in: {usage}"
@@ -226,48 +233,87 @@ def _is_float(token):
     return True
 
 
-def _head_matches(param_type, token):
-    if param_type == "int":
-        return _is_int(token)
-    if param_type == "float":
-        return _is_float(token)
-    return True
+def _is_numeric(token):
+    return _is_int(token) or _is_float(token)
 
 
 def _match(parameters, tokens, allow_enums=True):
-    """Try to match words against one overload's parameters."""
+    """Try to match words against one overload under the live BDS rules.
+
+    R1: only a FIRST-position optional consumes (strings: one non-numeric
+    token; message: the rest); every other optional is omit-only. R2: string
+    rejects numeric tokens. R3: nothing after an enum consumes.
+    """
+    if not parameters:
+        return not tokens
+    return _match_rest(parameters, tokens, seen_enum=False, allow_enums=allow_enums, is_first=True)
+
+
+def _match_rest(parameters, tokens, seen_enum, allow_enums=True, is_first=False):
     if not parameters:
         return not tokens
     first, rest = parameters[0], parameters[1:]
 
-    def match_rest(remaining):
-        return _match(rest, remaining, allow_enums)
+    def skip():
+        return _match_rest(rest, tokens, seen_enum, allow_enums)
 
     if first["kind"] == "enum":
         if first["optional"]:
-            # Pinned BDS does not consume values for optional enum parameters.
-            return match_rest(tokens)
+            return skip()
         if not allow_enums:
             return False
+        if seen_enum:
+            return False
         if tokens and tokens[0] in first["values"]:
-            return match_rest(tokens[1:])
+            return _match_rest(rest, tokens[1:], True, allow_enums)
         return False
-
-    param_type = first["type"]
-    if param_type == "message":
-        if tokens:
-            return match_rest([])
-        return match_rest(tokens) if first["optional"] else False
-    arity = KNOWN_TYPES[param_type]
-    if len(tokens) >= arity and _head_matches(param_type, tokens[0]) and match_rest(tokens[arity:]):
-        return True
     if first["optional"]:
-        return match_rest(tokens)
-    return False
+        if seen_enum:
+            return skip()
+        consumed = _consume_optional(first, tokens, is_first)
+        if consumed is not None:
+            return _match_rest(rest, consumed, seen_enum, allow_enums)
+        return skip()
+    if seen_enum:
+        # R3: live BDS never matches a param positioned after an enum.
+        return False
+    return _consume(first, tokens, rest, allow_enums)
+
+
+def _consume_optional(parameter, tokens, is_first):
+    """Consume one optional param, or None if it must be omitted."""
+    if not tokens:
+        return None
+    param_type = parameter["type"]
+    if param_type == "message":
+        # Only a first-position optional message consumes on live BDS.
+        return [] if is_first else None
+    if param_type in {"string", "str"}:
+        return None if _is_numeric(tokens[0]) else tokens[1:]
+    return None
+
+
+def _consume(parameter, tokens, rest, allow_enums=True):
+    param_type = parameter["type"]
+    if param_type == "message":
+        return bool(tokens) and _match_rest(rest, [], False, allow_enums)
+    arity = KNOWN_TYPES[param_type]
+    if len(tokens) < arity:
+        return False
+    head = tokens[0]
+    if param_type in {"string", "str"} and _is_numeric(head):
+        return False
+    if param_type == "int" and not _is_int(head):
+        return False
+    if param_type == "float" and not _is_float(head):
+        return False
+    return _match_rest(rest, tokens[arity:], False, allow_enums)
 
 
 def _matches_any(tokens, allow_enums=True):
-    return any(_match(_parse_usage(usage), tokens, allow_enums) for usage in COMMAND_USAGES)
+    return any(
+        _match(_parse_usage(usage), tokens, allow_enums) for usage in COMMAND_USAGES
+    )
 
 
 class DeclarationCoverageTests(unittest.TestCase):
@@ -276,7 +322,7 @@ class DeclarationCoverageTests(unittest.TestCase):
             with self.subTest(usage=usage):
                 self.assertTrue(_parse_usage(usage))
 
-    def test_every_documented_form_matches_an_overload(self) -> None:
+    def test_every_documented_form_matches_under_live_rules(self) -> None:
         for tokens in DOCUMENTED_ROOT_FORMS + DOCUMENTED_NAMED_FORMS:
             with self.subTest(tokens=tokens):
                 self.assertTrue(
@@ -284,19 +330,32 @@ class DeclarationCoverageTests(unittest.TestCase):
                     f"no overload matches documented form: /bot {' '.join(tokens)}",
                 )
 
-    def test_named_forms_survive_enum_failure(self) -> None:
-        """Every named form must match an overload without enum resolution.
+    def test_parseability_never_depends_on_enums(self) -> None:
+        """Every documented form must match an overload with no enums at all.
 
-        This is the regression case: the typed-only declaration set matched on
-        paper yet live Bedrock rejected ``move forward`` and ``tp me`` before
-        Python ran. The string/message fallbacks keep those forms parseable.
+        Tailed named inputs can only be consumed where no enum precedes the
+        tail (live rule R3), and numeric pages cannot use strings (R2), so the
+        enum-free string overloads are the parseability layer. The typed tree
+        exists only for completion.
         """
         for tokens in DOCUMENTED_ROOT_FORMS + DOCUMENTED_NAMED_FORMS:
             with self.subTest(tokens=tokens):
+                overloads = _parse_usage_matchers(tokens)
                 self.assertTrue(
-                    _matches_any(tokens, allow_enums=False),
+                    overloads,
                     f"documented form depends on enum resolution: /bot {' '.join(tokens)}",
                 )
+
+
+def _parse_usage_matchers(tokens):
+    matches = []
+    for usage in COMMAND_USAGES:
+        parameters = _parse_usage(usage)
+        if any(parameter["kind"] == "enum" for parameter in parameters):
+            continue
+        if _match(parameters, tokens, allow_enums=False):
+            matches.append(usage)
+    return matches
 
 
 if __name__ == "__main__":

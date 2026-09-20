@@ -15,21 +15,34 @@ from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerTh
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
-    # Bedrock matches each usage as one native overload before Python ever runs,
-    # so a documented form with no matching overload is a client-visible syntax
-    # error. The two string fallbacks are the parseability guarantee: the root
-    # fallback covers /bot, /bot help <page|command> and unknown roots, while the
-    # named fallback covers every /bot <name> ... form (Bedrock passes the
-    # remainder as one message argument and the Python parser re-splits it).
-    # Both fallbacks were validated against the real Bedrock parser, while a
-    # typed-only named tree was rejected live even for paper-perfect overloads
-    # (notably "/bot Alice move forward" and "/bot Alice tp me"). The typed
-    # enum overloads below exist only for native autocomplete and must never
-    # remove a form the fallbacks accept: parseability wins over completion.
-    # No private registry or soft-enum hooks are used.
+    # Each usage becomes one native BDS overload, matched before Python runs.
+    # Live oracle batteries on the pinned BDS build proved three rules that
+    # shape this list (see docs/COMMANDS.md): trailing OPTIONAL params never
+    # consume input; string/Id rejects numeric tokens; and params after an
+    # enum never match, so only overloads ending at (or without) an enum can
+    # consume a tail. The architecture follows from those rules:
+    # - enum-free string overloads are the parseability layer. <name> plus a
+    #   required <operation: string> covers every 2-token named form, and the
+    #   same pair plus a required <arguments: message> covers every longer
+    #   form (message consumes anything only with no enum before it).
+    # - typed enum overloads are the completion layer. They advertise
+    #   operations, directions, modes, dimensions, faces and stack natively,
+    #   but never match a tailed input on real BDS; the string layer above
+    #   always catches those forms for the Python parser instead.
+    # - /bot help <page> cannot use a string (numbers rejected) or an enum
+    #   (numeric values are unrepresentable, message-after-enum never
+    #   matches), so numeric pages use a required int. Priority order is
+    #   parseability, then first-level operation completion, then
+    #   second-level completion. No private registry or soft-enum hooks.
     "/bot [command: string] [topic: string]",
     "/bot (ping|list|help)<command: EndbotRoot>",
-    "/bot <name: string> <operation: message>",
+    "/bot <command: string> <page: int>",
+    (
+        "/bot (help)<command: EndbotHelpTopic> (status|spawn|resume|reconnect|despawn|forget|rename|tp|move|look|"
+        "jump|attack|use|sprint|sneak|hotbar|interact|drop|stop)<topic: EndbotHelpTopicName>"
+    ),
+    "/bot <name: string> <operation: string>",
+    "/bot <name: string> <operation: string> <arguments: message>",
     "/bot <name: string> (status|resume|reconnect|despawn|forget|stop)<operation: EndbotNoArgs>",
     "/bot <name: string> (spawn)<operation: EndbotSpawn>",
     (

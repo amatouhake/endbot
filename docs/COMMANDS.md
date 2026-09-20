@@ -137,15 +137,18 @@ suggestions need enums at the same positions in separate overloads:
 /bot <name: string> <operation: string> <arguments: message>
 ```
 
-The two `<name>` string overloads are the parseability layer: they accept every 2-token and every longer named
+The `<name>` string overloads are the parseability layer: they accept every 2-token and every longer named
 form (numeric help pages use the required-int overload instead, since strings reject numbers). The typed enum
 overloads below them — operations, movement direction, action modes, on/off, dimension aliases, block faces, and
-`stack` — are the completion layer: they advertise native suggestions but never match a tailed input on real
-BDS, so the string layer always catches those forms for the Python parser. A broad `<operation: message>`
-fallback was rejected as the final shape because live smoke confirmed it absorbs all named-operation
-suggestions; the string layers keep the operation position suggestible. Second-level completion (for example
-directions after `/bot Alice move `) depends on client-side merging of the enum and message branches and still
-needs in-client confirmation. The pinned Endstone public API does not expose supported dynamic completion for
+`stack` — exist so completion has something to advertise, but real Minecraft-client smoke showed they do not
+cleanly narrow the UI while a compatible generic string branch remains: generic overloads stay visible and
+dominate filtering, for both the name-first `/bot` surface and the selection-model `/botprobe`. Numeric tokens
+narrow better only because they eliminate the generic `string` branch. A broad `<operation: message>` fallback
+was already rejected because it absorbs all named-operation suggestions. On this pinned Endstone 0.11 baseline,
+execution is therefore prioritized over completion: every documented form parses, while autocomplete stays
+degraded. Deeper command declaration redesign is deferred until upstream Endstone command API work
+(Brigadier-style typed command tree, upstream PR #509) matures; this layout is intentionally a compatibility
+stopgap, not the final command API. The pinned Endstone public API does not expose supported dynamic completion for
 Bot profile names, so names remain strings; use `/bot list` to discover them. Endbot does not use private
 registry or raw soft-enum hooks.
 
@@ -179,9 +182,10 @@ Bedrock syntax error):
 /bot Alice despawn
 ```
 
-Also confirm native autocomplete still offers operation names after `/bot Alice ` and direction names after
-`/bot Alice move `; if a fallback ever hides completion, parseability still wins and the tradeoff is recorded
-here rather than fixed by removing the fallback.
+Native autocomplete on this baseline stays degraded by design: generic string/message overloads remain visible
+and dominate filtering, so operation and direction suggestions do not narrow cleanly. Confirm execution for
+every line above; record any completion change as evidence for the deferred redesign, not as a reason to remove
+a parseability overload.
 
 Block breaking/mining is not part of this remediation. A future implementation must use the server-authoritative
 `PlayerAuthInput` block-action/prediction sequence and BDS inventory/tool rules, not direct plugin block mutation.

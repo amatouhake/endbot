@@ -25,15 +25,18 @@ COMMAND_USAGES = [
     #   required <operation: string> covers every 2-token named form, and the
     #   same pair plus a required <arguments: message> covers every longer
     #   form (message consumes anything only with no enum before it).
-    # - typed enum overloads are the completion layer. They advertise
-    #   operations, directions, modes, dimensions, faces and stack natively,
-    #   but never match a tailed input on real BDS; the string layer above
-    #   always catches those forms for the Python parser instead.
+    # - typed enum overloads exist for completion: they advertise operations,
+    #   directions, modes, dimensions, faces and stack natively, but never
+    #   match a tailed input on real BDS; the string layer above always
+    #   catches those forms for the Python parser instead. Live client smoke
+    #   showed generic branches dominate filtering, so completion stays
+    #   degraded on this baseline and execution is prioritized.
     # - /bot help <page> cannot use a string (numbers rejected) or an enum
     #   (numeric values are unrepresentable, message-after-enum never
-    #   matches), so numeric pages use a required int. Priority order is
-    #   parseability, then first-level operation completion, then
-    #   second-level completion. No private registry or soft-enum hooks.
+    #   matches), so numeric pages use a required int. This layout is a
+    #   compatibility stopgap for pinned Endstone 0.11, not the final command
+    #   API; deeper redesign waits on upstream command API work. No private
+    #   registry or soft-enum hooks.
     "/bot [command: string] [topic: string]",
     "/bot (ping|list|help)<command: EndbotRoot>",
     "/bot <command: string> <page: int>",

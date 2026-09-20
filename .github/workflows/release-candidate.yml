@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: runtime/package-lock.json
 
       - name: Install LLVM 20 and libc++
         env:

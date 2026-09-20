@@ -56,17 +56,27 @@ class PluginAdapterTests(unittest.TestCase):
             "/bot (ping|list|help)<command: EndbotRoot>",
             usages,
         )
-        self.assertIn(
+        # The retired dense "advanced" mode stays parseable through the root
+        # string fallback but must not be advertised as native completion.
+        self.assertNotIn(
             "/bot (help)<command: EndbotHelp> (advanced)<topic: EndbotHelpTopic>",
             usages,
         )
+        self.assertFalse(any("(advanced)" in usage for usage in usages))
+        # Parseability layer: enum-free string overloads. Live BDS never
+        # matches params after an enum, so these carry every named form while
+        # the typed tree below carries completion. No message may sit at the
+        # operation position: that shape absorbs all named-Bot autocomplete.
+        self.assertNotIn("/bot <name: string> <operation: message>", usages)
+        self.assertIn("/bot <name: string> <operation: string>", usages)
+        self.assertIn("/bot <name: string> <operation: string> <arguments: message>", usages)
+        self.assertIn("/bot <command: string> <page: int>", usages)
+        self.assertTrue(any("EndbotHelpTopic" in usage for usage in usages))
         named_usages = [usage for usage in usages if usage.startswith("/bot <name: string>")]
-        self.assertFalse(
-            any(usage.startswith("/bot <name: string> <") for usage in named_usages),
-            "a free-form second parameter hides the named-Bot operation tree",
-        )
         advertised_operations = set()
         for usage in named_usages:
+            if "<operation: string>" in usage:
+                continue  # parseability layer, not an autocomplete branch
             match = re.match(r"^/bot <name: string> \(([^)]+)\)<[^:]+: Endbot[^>]+>", usage)
             self.assertIsNotNone(match, f"named-Bot overload must advertise a typed operation: {usage}")
             advertised_operations.update(match.group(1).split("|"))

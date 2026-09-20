@@ -15,13 +15,37 @@ from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerTh
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
-    # Pinned Endstone/BDS does not consume values for optional enum parameters.
-    # Keep a top-level string fallback for the zero/default root form and use
-    # required enums for the named-Bot tree. A message parameter immediately
-    # after <name> greedily hides every operation from Bedrock autocomplete.
+    # Each usage becomes one native BDS overload, matched before Python runs.
+    # Live oracle batteries on the pinned BDS build proved three rules that
+    # shape this list (see docs/COMMANDS.md): trailing OPTIONAL params never
+    # consume input; string/Id rejects numeric tokens; and params after an
+    # enum never match, so only overloads ending at (or without) an enum can
+    # consume a tail. The architecture follows from those rules:
+    # - enum-free string overloads are the parseability layer. <name> plus a
+    #   required <operation: string> covers every 2-token named form, and the
+    #   same pair plus a required <arguments: message> covers every longer
+    #   form (message consumes anything only with no enum before it).
+    # - typed enum overloads exist for completion: they advertise operations,
+    #   directions, modes, dimensions, faces and stack natively, but never
+    #   match a tailed input on real BDS; the string layer above always
+    #   catches those forms for the Python parser instead. Live client smoke
+    #   showed generic branches dominate filtering, so completion stays
+    #   degraded on this baseline and execution is prioritized.
+    # - /bot help <page> cannot use a string (numbers rejected) or an enum
+    #   (numeric values are unrepresentable, message-after-enum never
+    #   matches), so numeric pages use a required int. This layout is a
+    #   compatibility stopgap for pinned Endstone 0.11, not the final command
+    #   API; deeper redesign waits on upstream command API work. No private
+    #   registry or soft-enum hooks.
     "/bot [command: string] [topic: string]",
     "/bot (ping|list|help)<command: EndbotRoot>",
-    "/bot (help)<command: EndbotHelp> (advanced)<topic: EndbotHelpTopic>",
+    "/bot <command: string> <page: int>",
+    (
+        "/bot (help)<command: EndbotHelpTopic> (status|spawn|resume|reconnect|despawn|forget|rename|tp|move|look|"
+        "jump|attack|use|sprint|sneak|hotbar|interact|drop|stop)<topic: EndbotHelpTopicName>"
+    ),
+    "/bot <name: string> <operation: string>",
+    "/bot <name: string> <operation: string> <arguments: message>",
     "/bot <name: string> (status|resume|reconnect|despawn|forget|stop)<operation: EndbotNoArgs>",
     "/bot <name: string> (spawn)<operation: EndbotSpawn>",
     (

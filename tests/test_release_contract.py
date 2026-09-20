@@ -170,6 +170,7 @@ class CICacheContractTests(unittest.TestCase):
             "patches/endstone/**",
             "scripts/prepare_endstone.py",
             "scripts/build_endstone_wheel.py",
+            ".github/workflows/full-validation.yml",
         ):
             self.assertIn(required_input, fingerprinted)
         self.assertNotIn("plugin/endbot", fingerprinted)

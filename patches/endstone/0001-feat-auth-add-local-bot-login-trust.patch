@@ -1,7 +1,7 @@
-From 65a6ed2b7c17a420e93ee0be0386f1bfaab23d98 Mon Sep 17 00:00:00 2001
+From f742750fba097c4425c2f45bf4a22c7bc8bb3ab6 Mon Sep 17 00:00:00 2001
 From: amatouhake <60422818+amatouhake@users.noreply.github.com>
-Date: Thu, 17 Sep 2026 13:21:13 +0900
-Subject: [PATCH 1/2] feat(auth): add local ownerbot login trust
+Date: Mon, 21 Sep 2026 04:20:21 +0900
+Subject: [PATCH 1/2] feat(auth): add local bot login trust
 
 ---
  conanfile.py                                  |   1 +
@@ -12,14 +12,14 @@ Subject: [PATCH 1/2] feat(auth): add local ownerbot login trust
  src/bedrock/network/base_connection_request.h |   2 +-
  src/endstone/runtime/CMakeLists.txt           |  10 +-
  .../bedrock_hooks/server_network_handler.cpp  |  68 ++++-
- src/endstone/runtime/local_ownerbot_auth.cpp  | 279 ++++++++++++++++++
- src/endstone/runtime/local_ownerbot_auth.h    |  67 +++++
+ src/endstone/runtime/local_bot_auth.cpp       | 279 ++++++++++++++++++
+ src/endstone/runtime/local_bot_auth.h         |  67 +++++
  10 files changed, 457 insertions(+), 7 deletions(-)
- create mode 100644 src/endstone/runtime/local_ownerbot_auth.cpp
- create mode 100644 src/endstone/runtime/local_ownerbot_auth.h
+ create mode 100644 src/endstone/runtime/local_bot_auth.cpp
+ create mode 100644 src/endstone/runtime/local_bot_auth.h
 
 diff --git a/conanfile.py b/conanfile.py
-index b5703adee6950c7cc9afc769367ee740cbfcf30f..6e241b64b3412a65cbbd6df4011a1fb3b7b05d94 100644
+index b5703adee..6e241b64b 100644
 --- a/conanfile.py
 +++ b/conanfile.py
 @@ -61,6 +61,7 @@ class EndstoneRecipe(ConanFile):
@@ -31,7 +31,7 @@ index b5703adee6950c7cc9afc769367ee740cbfcf30f..6e241b64b3412a65cbbd6df4011a1fb3
          self.requires("raknet/4.081-mojang")
          self.requires("replxx/0.0.4")
 diff --git a/endstone/config/endstone.default.toml b/endstone/config/endstone.default.toml
-index 174ba791d2160186a1b411b5d9d8ed79e9b719e2..a50ab40e1ea3c6d764e7308176556860b774ddf6 100644
+index 174ba791d..c7dc06202 100644
 --- a/endstone/config/endstone.default.toml
 +++ b/endstone/config/endstone.default.toml
 @@ -13,3 +13,13 @@ allow-client-packs = false
@@ -43,13 +43,13 @@ index 174ba791d2160186a1b411b5d9d8ed79e9b719e2..a50ab40e1ea3c6d764e7308176556860
 +# Add a server-owner trust path for explicitly signed external bots. Tokens
 +# outside this configured issuer continue through the stock BDS validator.
 +enabled = false
-+issuer = "ownerbot://local"
-+audience = "endstone://local-ownerbot"
-+public-key-file = "ownerbot-public.pem"
++issuer = "endbot://local-bot"
++audience = "endstone://local-bot"
++public-key-file = "owner-public.pem"
 +clock-skew-seconds = 5
 +max-token-lifetime-seconds = 120
 diff --git a/src/bedrock/certificates/web_token.cpp b/src/bedrock/certificates/web_token.cpp
-index e1ea3ef6449fb572684addd46d9382d7a8481e06..c55daf42ac4a2173226bf45526320f2959a50248 100644
+index e1ea3ef64..c55daf42a 100644
 --- a/src/bedrock/certificates/web_token.cpp
 +++ b/src/bedrock/certificates/web_token.cpp
 @@ -23,3 +23,18 @@ const Json::Value &WebToken::getData() const
@@ -72,7 +72,7 @@ index e1ea3ef6449fb572684addd46d9382d7a8481e06..c55daf42ac4a2173226bf45526320f29
 +    return signature_;
 +}
 diff --git a/src/bedrock/certificates/web_token.h b/src/bedrock/certificates/web_token.h
-index 58e212eb2632f34fed28d649c74ff76907095b73..98bd72c11e472502b826aeea07d6ab334149ce0b 100644
+index 58e212eb2..98bd72c11 100644
 --- a/src/bedrock/certificates/web_token.h
 +++ b/src/bedrock/certificates/web_token.h
 @@ -22,6 +22,9 @@ public:
@@ -86,7 +86,7 @@ index 58e212eb2632f34fed28d649c74ff76907095b73..98bd72c11e472502b826aeea07d6ab33
  private:
      std::string header_;       // +0
 diff --git a/src/bedrock/network/base_connection_request.cpp b/src/bedrock/network/base_connection_request.cpp
-index b01351f132024eded1e65c43b4d8ff3bcda79aa6..667517f6dc4c71a55c2438e1a97eb8e1917ef5f2 100644
+index b01351f13..667517f6d 100644
 --- a/src/bedrock/network/base_connection_request.cpp
 +++ b/src/bedrock/network/base_connection_request.cpp
 @@ -21,9 +21,14 @@ Json::Value BaseConnectionRequest::getData(const std::string &key) const
@@ -107,7 +107,7 @@ index b01351f132024eded1e65c43b4d8ff3bcda79aa6..667517f6dc4c71a55c2438e1a97eb8e1
  
  std::string BaseConnectionRequest::getThirdPartyName() const
 diff --git a/src/bedrock/network/base_connection_request.h b/src/bedrock/network/base_connection_request.h
-index 02dc189fdd6763aa352fe0179b6c3b808ce55ba4..a1838de149af67b5d43ec50e7cc3b28af01224f2 100644
+index 02dc189fd..a1838de14 100644
 --- a/src/bedrock/network/base_connection_request.h
 +++ b/src/bedrock/network/base_connection_request.h
 @@ -71,7 +71,7 @@ public:
@@ -120,7 +120,7 @@ index 02dc189fdd6763aa352fe0179b6c3b808ce55ba4..a1838de149af67b5d43ec50e7cc3b28a
  
  protected:
 diff --git a/src/endstone/runtime/CMakeLists.txt b/src/endstone/runtime/CMakeLists.txt
-index 87389155ee69370b1ddc95b776df45b40fe634a3..6f235f6397c441c149c7180812cb4dc3b2a44551 100644
+index 87389155e..647191e1f 100644
 --- a/src/endstone/runtime/CMakeLists.txt
 +++ b/src/endstone/runtime/CMakeLists.txt
 @@ -4,8 +4,16 @@ project(endstone_runtime LANGUAGES CXX)
@@ -131,11 +131,11 @@ index 87389155ee69370b1ddc95b776df45b40fe634a3..6f235f6397c441c149c7180812cb4dc3
 +find_package(OpenSSL REQUIRED)
  find_package(tomlplusplus REQUIRED)
  
-+add_library(endstone_local_ownerbot_auth STATIC
-+        local_ownerbot_auth.cpp
++add_library(endstone_local_bot_auth STATIC
++        local_bot_auth.cpp
 +)
-+target_include_directories(endstone_local_ownerbot_auth PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../)
-+target_link_libraries(endstone_local_ownerbot_auth PUBLIC nlohmann_json::nlohmann_json OpenSSL::Crypto tomlplusplus::tomlplusplus)
++target_include_directories(endstone_local_bot_auth PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../)
++target_link_libraries(endstone_local_bot_auth PUBLIC nlohmann_json::nlohmann_json OpenSSL::Crypto tomlplusplus::tomlplusplus)
 +
  add_library(endstone_runtime SHARED
          bedrock_hooks/actor.cpp
@@ -145,12 +145,12 @@ index 87389155ee69370b1ddc95b776df45b40fe634a3..6f235f6397c441c149c7180812cb4dc3
  add_library(endstone::runtime ALIAS endstone_runtime)
  set_target_properties(endstone_runtime PROPERTIES COMPILE_WARNING_AS_ERROR ON)
 -target_link_libraries(endstone_runtime PRIVATE endstone::core funchook::funchook pybind11::embed tomlplusplus::tomlplusplus)
-+target_link_libraries(endstone_runtime PRIVATE endstone::core endstone_local_ownerbot_auth funchook::funchook pybind11::embed tomlplusplus::tomlplusplus)
++target_link_libraries(endstone_runtime PRIVATE endstone::core endstone_local_bot_auth funchook::funchook pybind11::embed tomlplusplus::tomlplusplus)
  if (MSVC)
      target_link_libraries(endstone_runtime PRIVATE dbghelp.lib ws2_32.lib)
      target_link_options(endstone_runtime PRIVATE /DEBUG /INCREMENTAL:NO /OPT:REF /OPT:ICF)
 diff --git a/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp b/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
-index a53c5beab19d1b3bf12615110883e6dd965bac1e..ae4049c25a81b7a620d633b1b93d102ed9ca291f 100644
+index a53c5beab..ea54ee2cc 100644
 --- a/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
 +++ b/src/endstone/runtime/bedrock_hooks/server_network_handler.cpp
 @@ -16,6 +16,8 @@
@@ -166,19 +166,19 @@ index a53c5beab19d1b3bf12615110883e6dd965bac1e..ae4049c25a81b7a620d633b1b93d102e
  #include "endstone/event/player/player_kick_event.h"
  #include "endstone/event/player/player_login_event.h"
  #include "endstone/runtime/hook.h"
-+#include "endstone/runtime/local_ownerbot_auth.h"
++#include "endstone/runtime/local_bot_auth.h"
 +
 +namespace {
-+endstone::runtime::ownerbot::Verifier *getOwnerbotVerifier()
++endstone::runtime::localbot::Verifier *getLocalBotVerifier()
 +{
-+    static std::unique_ptr<endstone::runtime::ownerbot::Verifier> verifier;
++    static std::unique_ptr<endstone::runtime::localbot::Verifier> verifier;
 +    static std::once_flag once;
 +    std::call_once(once, [] {
-+        auto config = endstone::runtime::ownerbot::loadConfig();
++        auto config = endstone::runtime::localbot::loadConfig();
 +        if (config.enabled) {
-+            verifier = std::make_unique<endstone::runtime::ownerbot::Verifier>(std::move(config));
++            verifier = std::make_unique<endstone::runtime::localbot::Verifier>(std::move(config));
 +            endstone::core::EndstoneServer::getInstance().getLogger().info(
-+                "Local ownerbot authentication is enabled for issuer '{}'.", verifier->getConfig().issuer);
++                "Local bot authentication is enabled for issuer '{}'.", verifier->getConfig().issuer);
 +        }
 +    });
 +    return verifier.get();
@@ -200,7 +200,7 @@ index a53c5beab19d1b3bf12615110883e6dd965bac1e..ae4049c25a81b7a620d633b1b93d102e
 -    auto auth_info = ENDSTONE_HOOK_CALL_ORIGINAL(&ServerNetworkHandler::_validateLoginPacket, this, source, packet);
 +    std::optional<PlayerAuthenticationInfo> auth_info;
 +    try {
-+        if (auto *verifier = getOwnerbotVerifier()) {
++        if (auto *verifier = getLocalBotVerifier()) {
 +            const auto &request = *packet.payload.connection_request;
 +            if (const auto *raw_request = request._getRawRequest()) {
 +                const auto verification = verifier->verify(request._getGameServerToken().value,
@@ -214,18 +214,18 @@ index a53c5beab19d1b3bf12615110883e6dd965bac1e..ae4049c25a81b7a620d633b1b93d102e
 +                    local_info.authenticated_uuid = mce::UUID::fromString(identity.subject);
 +                    local_info.is_host = false;
 +                    local_info.is_local = true;
-+                    server.getLogger().info("Accepted local ownerbot '{}' ({}) from issuer '{}'.", identity.name,
++                    server.getLogger().info("Accepted local bot '{}' ({}) from issuer '{}'.", identity.name,
 +                                            identity.subject, identity.issuer);
 +                    auth_info = std::move(local_info);
 +                }
 +                else if (verification.candidate) {
-+                    server.getLogger().info("Local ownerbot Login rejected: {}.", verification.error);
++                    server.getLogger().info("Local bot login rejected: {}.", verification.error);
 +                }
 +            }
 +        }
 +    }
 +    catch (const std::exception &error) {
-+        server.getLogger().error("Local ownerbot authentication configuration failed: {}", error.what());
++        server.getLogger().error("Local bot authentication configuration failed: {}", error.what());
 +    }
 +
 +    // The stock validator sends a disconnect as part of rejecting a Login, so
@@ -243,16 +243,16 @@ index a53c5beab19d1b3bf12615110883e6dd965bac1e..ae4049c25a81b7a620d633b1b93d102e
      }
  
      const auto &info = *auth_info;
-diff --git a/src/endstone/runtime/local_ownerbot_auth.cpp b/src/endstone/runtime/local_ownerbot_auth.cpp
+diff --git a/src/endstone/runtime/local_bot_auth.cpp b/src/endstone/runtime/local_bot_auth.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..f8f99b021e467a4237b66dfc4a333f255af57115
+index 000000000..71a7fbb37
 --- /dev/null
-+++ b/src/endstone/runtime/local_ownerbot_auth.cpp
++++ b/src/endstone/runtime/local_bot_auth.cpp
 @@ -0,0 +1,279 @@
 +// Copyright (c) 2026, The Endstone Project contributors.
 +// SPDX-License-Identifier: Apache-2.0
 +
-+#include "endstone/runtime/local_ownerbot_auth.h"
++#include "endstone/runtime/local_bot_auth.h"
 +
 +#include <algorithm>
 +#include <array>
@@ -273,7 +273,7 @@ index 0000000000000000000000000000000000000000..f8f99b021e467a4237b66dfc4a333f25
 +#include <openssl/x509.h>
 +#include <toml++/toml.h>
 +
-+namespace endstone::runtime::ownerbot {
++namespace endstone::runtime::localbot {
 +namespace {
 +
 +using Json = nlohmann::json;
@@ -527,12 +527,12 @@ index 0000000000000000000000000000000000000000..f8f99b021e467a4237b66dfc4a333f25
 +    return result;
 +}
 +
-+}  // namespace endstone::runtime::ownerbot
-diff --git a/src/endstone/runtime/local_ownerbot_auth.h b/src/endstone/runtime/local_ownerbot_auth.h
++}  // namespace endstone::runtime::localbot
+diff --git a/src/endstone/runtime/local_bot_auth.h b/src/endstone/runtime/local_bot_auth.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..88b53b882ebc94ef4eae741c6a94b49f89149074
+index 000000000..1c00fd08e
 --- /dev/null
-+++ b/src/endstone/runtime/local_ownerbot_auth.h
++++ b/src/endstone/runtime/local_bot_auth.h
 @@ -0,0 +1,67 @@
 +// Copyright (c) 2026, The Endstone Project contributors.
 +// SPDX-License-Identifier: Apache-2.0
@@ -548,13 +548,13 @@ index 0000000000000000000000000000000000000000..88b53b882ebc94ef4eae741c6a94b49f
 +
 +typedef struct evp_pkey_st EVP_PKEY;
 +
-+namespace endstone::runtime::ownerbot {
++namespace endstone::runtime::localbot {
 +
 +struct Config {
 +    bool enabled{false};
-+    std::string issuer{"ownerbot://local"};
-+    std::string audience{"endstone://local-ownerbot"};
-+    std::string public_key_file{"ownerbot-public.pem"};
++    std::string issuer{"endbot://local-bot"};
++    std::string audience{"endstone://local-bot"};
++    std::string public_key_file{"owner-public.pem"};
 +    std::int64_t clock_skew_seconds{5};
 +    std::int64_t max_token_lifetime_seconds{120};
 +};
@@ -600,4 +600,7 @@ index 0000000000000000000000000000000000000000..88b53b882ebc94ef4eae741c6a94b49f
 +    std::unordered_map<std::string, std::int64_t> used_token_ids_;
 +};
 +
-+}  // namespace endstone::runtime::ownerbot
++}  // namespace endstone::runtime::localbot
+-- 
+2.52.0.windows.1
+

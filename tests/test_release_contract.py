@@ -26,7 +26,7 @@ def _hashfiles_segments(workflow: str) -> list[str]:
 
 
 class ReleaseWheelContractTests(unittest.TestCase):
-    def test_manifest_records_completed_m0_and_m2_achievement_gates(self) -> None:
+    def test_manifest_separates_current_artifact_from_historical_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "compatibility-manifest.json"
             completed = subprocess.run(
@@ -38,26 +38,78 @@ class ReleaseWheelContractTests(unittest.TestCase):
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             manifest = json.loads(output.read_text(encoding="utf-8"))
-            self.assertTrue(manifest["tested_safety_conditions"]["actual_xbox_achievement_unlock_observed"])
+            lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
+
+            # 1. Generated manifest contains current package version from lock.
             self.assertEqual(
-                manifest["tested_safety_conditions"]["actual_xbox_achievement_unlock_scope"],
-                "m0_bot_ping",
+                manifest["endstone"]["package_version"], lock["endstone"]["package_version"]
             )
-            self.assertTrue(
-                manifest["tested_safety_conditions"]["m2_actual_xbox_achievement_unlock_observed"]
-            )
+            self.assertEqual(manifest["schema_version"], 2)
+
+            # 2. Current artifact does NOT claim M0/M2 human achievement observation.
+            safety = manifest["tested_safety_conditions"]
+            self.assertFalse(safety["actual_xbox_achievement_unlock_observed"])
+            self.assertFalse(safety["m2_actual_xbox_achievement_unlock_observed"])
+            self.assertEqual(safety["actual_xbox_achievement_unlock_scope"], "m0_bot_ping")
             self.assertEqual(
-                manifest["tested_safety_conditions"]["m2_actual_xbox_achievement_unlock_scope"],
+                safety["m2_actual_xbox_achievement_unlock_scope"],
                 "representative_m2_controls",
             )
+
+            # 3-4. Historical evidence is explicitly associated with .1.
+            historical = manifest["historical_validation"]
+            self.assertEqual(
+                historical["patched_endstone_package_version"], "0.11.11+endbot.1"
+            )
+            self.assertNotEqual(
+                historical["patched_endstone_package_version"],
+                manifest["endstone"]["package_version"],
+            )
+            self.assertTrue(historical["m0"]["observed"])
+            self.assertEqual(historical["m0"]["scope"], "m0_bot_ping")
+            self.assertTrue(historical["m2"]["observed"])
+            self.assertEqual(historical["m2"]["scope"], "representative_m2_controls")
+
+            # 5. Recorded M0 Endbot revision is included where the repo has it.
+            self.assertEqual(
+                historical["m0"]["endbot_revision"],
+                "f509ac4e8677d9bc870b341f001b8e42f512df97",
+            )
+
+            # 6. Schema validates the generated representation (manual const checks,
+            # no new validator dependency).
             schema = json.loads(
                 (ROOT / "release/compatibility-manifest.schema.json").read_text(encoding="utf-8")
             )
+            self.assertEqual(schema["properties"]["schema_version"]["const"], 2)
+            self.assertEqual(manifest["schema_version"], schema["properties"]["schema_version"]["const"])
             safety_schema = schema["properties"]["tested_safety_conditions"]
             self.assertIn("m2_actual_xbox_achievement_unlock_scope", safety_schema["required"])
             self.assertEqual(
+                safety_schema["properties"]["actual_xbox_achievement_unlock_observed"]["const"],
+                False,
+            )
+            self.assertEqual(
+                safety_schema["properties"]["m2_actual_xbox_achievement_unlock_observed"]["const"],
+                False,
+            )
+            self.assertEqual(
                 safety_schema["properties"]["m2_actual_xbox_achievement_unlock_scope"]["const"],
                 manifest["tested_safety_conditions"]["m2_actual_xbox_achievement_unlock_scope"],
+            )
+            historical_schema = schema["properties"]["historical_validation"]
+            self.assertIn("patched_endstone_package_version", historical_schema["required"])
+            self.assertEqual(
+                historical_schema["properties"]["patched_endstone_package_version"]["const"],
+                historical["patched_endstone_package_version"],
+            )
+            self.assertEqual(
+                historical_schema["properties"]["m0"]["properties"]["endbot_revision"]["const"],
+                historical["m0"]["endbot_revision"],
+            )
+            self.assertEqual(
+                historical_schema["properties"]["m2"]["properties"]["scope"]["const"],
+                historical["m2"]["scope"],
             )
 
     def test_release_candidate_repairs_and_inspects_endstone_wheel(self) -> None:

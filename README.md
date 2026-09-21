@@ -27,7 +27,7 @@ authenticated Bedrock client; see [achievement validation](docs/ACHIEVEMENTS.md)
 | Component | Pinned baseline |
 | --- | --- |
 | Endstone | `v0.11.11` / `37b395378d91d6d20f1c52bf9d79dbd20e152458` |
-| Patched Endstone package | `0.11.11+endbot.1` |
+| Patched Endstone package | `0.11.11+endbot.2` |
 | BDS | `1.26.51.1` (build `51061372`) |
 | Bedrock protocol | `2193` |
 

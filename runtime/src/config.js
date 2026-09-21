@@ -22,8 +22,8 @@ export function loadConfig (filename) {
     gameVersion: value.gameVersion ?? '1.26.50',
     protocol: value.protocol ?? 2193,
     connectTimeoutMs: value.connectTimeoutMs ?? 15_000,
-    localAuthIssuer: value.localAuthIssuer ?? 'ownerbot://local',
-    localAuthAudience: value.localAuthAudience ?? 'endstone://local-ownerbot',
+    localAuthIssuer: value.localAuthIssuer ?? 'endbot://local-bot',
+    localAuthAudience: value.localAuthAudience ?? 'endstone://local-bot',
     reconnect: value.reconnect ?? {}
   }
 }

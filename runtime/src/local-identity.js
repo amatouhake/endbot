@@ -5,8 +5,8 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const DEFAULT_ISSUER = 'ownerbot://local'
-export const DEFAULT_AUDIENCE = 'endstone://local-ownerbot'
+export const DEFAULT_ISSUER = 'endbot://local-bot'
+export const DEFAULT_AUDIENCE = 'endstone://local-bot'
 
 function base64Url (value) {
   return Buffer.from(value).toString('base64url')
@@ -303,7 +303,7 @@ function createProfileCertificate ({ privateKey, publicKeyDerBase64, identityId,
   }, privateKey, { x5u: publicKeyDerBase64 })
 }
 
-export function createLocalOwnerbotAuth ({
+export function createLocalBotAuth ({
   username,
   privateKeyPath,
   publicKeyPath,

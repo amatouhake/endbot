@@ -6,8 +6,11 @@ Generate metadata only from a clean, reviewed release commit:
 python3 scripts/generate_compatibility_manifest.py dist/compatibility-manifest.json --endbot-version X.Y.Z
 ```
 
-The safety metadata scopes the original achievement observation to the M0 `/bot ping` gate and separately records the
-completed 2026-09-19 representative M2 Windows-client gate. Neither result transfers to a different compatibility pair.
+The compatibility manifest distinguishes current-artifact validation state from historical evidence. A current patched
+package does not inherit human/Xbox achievement observations from an earlier patched-package revision merely because it
+uses the same upstream Endstone/BDS pair. Historical M0/M2 evidence remains recorded with the patched Endstone package
+against which it was actually observed (currently `0.11.11+endbot.1`; current package `0.11.11+endbot.2` has no new
+human/Xbox observation).
 
 Release-candidate workflow input must exactly match `runtime/package.json`; the Python plugin version must be its
 PEP 440-equivalent form. `scripts/check_release_version.py` enforces that contract before any candidate is assembled.

@@ -4,7 +4,7 @@
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 
-import { createLocalOwnerbotAuth, loadOrCreatePersistentArtifact, loadPersistentArtifact } from './local-identity.js'
+import { createLocalBotAuth, loadOrCreatePersistentArtifact, loadPersistentArtifact } from './local-identity.js'
 import {
   addJumpInputFlags,
   addToggleInputFlags,
@@ -74,7 +74,7 @@ export class BedrockSession extends EventEmitter {
     // after it settles so a concurrent disconnect cannot create a late client.
     if (this.disconnecting) throw new Error('Bedrock session connection was canceled')
     const protocol = protocolModule.default ?? protocolModule
-    const auth = createLocalOwnerbotAuth({
+    const auth = createLocalBotAuth({
       username: this.profile.name,
       identityId: this.profile.identityId,
       privateKeyPath: this.options.ownerPrivateKeyPath,

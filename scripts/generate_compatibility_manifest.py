@@ -39,8 +39,13 @@ def main() -> int:
     args = parser.parse_args()
 
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
+    # Current-artifact safety state must not inherit historical human/Xbox
+    # observations. Historical M0/M2 gates were recorded against
+    # 0.11.11+endbot.1 (see docs/ACHIEVEMENTS.md, docs/M2_VALIDATION.md);
+    # the current +endbot.2 terminology migration has no new human observation
+    # yet. Historical provenance is preserved explicitly below.
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "endbot": {"version": args.endbot_version, "revision": git_revision()},
         "endstone": {
             "tag": lock["endstone"]["tag"],
@@ -53,10 +58,22 @@ def main() -> int:
             "online_mode": True,
             "allow_cheats": False,
             "experiments_required": False,
-            "actual_xbox_achievement_unlock_observed": True,
+            "actual_xbox_achievement_unlock_observed": False,
             "actual_xbox_achievement_unlock_scope": "m0_bot_ping",
-            "m2_actual_xbox_achievement_unlock_observed": True,
+            "m2_actual_xbox_achievement_unlock_observed": False,
             "m2_actual_xbox_achievement_unlock_scope": "representative_m2_controls",
+        },
+        "historical_validation": {
+            "patched_endstone_package_version": "0.11.11+endbot.1",
+            "m0": {
+                "observed": True,
+                "scope": "m0_bot_ping",
+                "endbot_revision": "f509ac4e8677d9bc870b341f001b8e42f512df97",
+            },
+            "m2": {
+                "observed": True,
+                "scope": "representative_m2_controls",
+            },
         },
         "bds_binary_included": False,
     }

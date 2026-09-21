@@ -6,11 +6,15 @@ The only pinned baseline is Endstone `v0.11.11` at
 `37b395378d91d6d20f1c52bf9d79dbd20e152458`, with BDS `1.26.51.1` build `51061372` and protocol `2193`.
 `endstone.lock` is the machine-readable authority.
 
-The modified wheel uses the separate package version `0.11.11+endbot.1`. Preparation creates that exact local tag on
+The modified wheel uses the separate package version `0.11.11+endbot.2`. Preparation creates that exact local tag on
 the disposable patched commit for `setuptools_scm`; the plugin requires the same exact version. This prevents pip from
 substituting official unpatched `0.11.11` while leaving the upstream compatibility baseline unambiguous.
+`endstone.lock` `support_status: "validated-baseline"` refers to the pinned upstream Endstone/BDS pair above, not to
+human validation of the exact patched package; exact patched-package human validation is tracked below and in the
+compatibility manifest.
 
-The local-auth behavior was live-tested at this baseline with ten concurrent external bots while online mode remained
+The following live evidence was obtained against historical patched package `0.11.11+endbot.1` (same upstream pair),
+not the current `+endbot.2` artifact. The local-auth behavior was live-tested with ten concurrent external bots while online mode remained
 enabled, cheats and commands remained disabled, experiments/packs were absent, and creative/experiment history stayed
 zero. M0 was subsequently completed at Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97`: a normally
 Microsoft/Xbox-authenticated client executed `/bot ping`, received `Endbot: pong`, and unlocked a previously locked
@@ -23,7 +27,32 @@ teleport behavior and ended with a new locked vanilla Survival Xbox achievement 
 separately verified command roots, same-dimension fall physics, hotbar selection, BDS-authoritative block placement and
 inventory decrement, and item drop. See [`M2_VALIDATION.md`](M2_VALIDATION.md) for the evidence boundary. Native Windows
 hosting of the Endbot runtime is designed for but is not claimed as validated; the Windows game client was the human
-operator in this gate.
+operator in this gate. These M2 observations were also against `0.11.11+endbot.1`; see [`M2_VALIDATION.md`](M2_VALIDATION.md).
+
+Current patched package `0.11.11+endbot.2` is this terminology/default-identifier migration and has NOT yet received
+a new human/Xbox achievement observation.
+
+### Local-bot auth defaults migration
+
+Old defaults:
+
+```text
+iss: ownerbot://local
+aud: endstone://local-ownerbot
+Endstone default public key filename: ownerbot-public.pem
+```
+
+New defaults:
+
+```text
+iss: endbot://local-bot
+aud: endstone://local-bot
+Endstone default public key filename: owner-public.pem
+```
+
+Runtime and Endstone issuer/audience must match exactly; update both sides together. No legacy alias was added.
+Explicit custom values remain supported if both sides use the same values. Owner-key terminology and
+`owner-private.pem` / `owner-public.pem` are intentional: the key pair remains the server-owner-controlled trust root.
 
 ## Compatibility change gate
 

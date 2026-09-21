@@ -12,8 +12,8 @@
   "gameVersion": "1.26.50",
   "protocol": 2193,
   "connectTimeoutMs": 15000,
-  "localAuthIssuer": "ownerbot://local",
-  "localAuthAudience": "endstone://local-ownerbot",
+  "localAuthIssuer": "endbot://local-bot",
+  "localAuthAudience": "endstone://local-bot",
   "reconnect": {
     "initialDelayMs": 1000,
     "maximumDelayMs": 30000,

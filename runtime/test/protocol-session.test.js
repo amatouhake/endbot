@@ -424,6 +424,97 @@ test('move-entity delta coordinates update the target used by attack', async t =
   await session.disconnect('test complete')
 })
 
+test('jump once taps and releases instead of holding through the flight', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const authInputs = []
+  const waiters = []
+  client.queue = (name, packet) => {
+    if (name !== 'player_auth_input') return
+    authInputs.push(packet)
+    waiters.splice(0).forEach(resolve => resolve())
+  }
+  const nextTick = () => new Promise(resolve => waiters.push(resolve))
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  const inputs = new InputState()
+  inputs.setAction('jump', 'once')
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+  for (let tick = 0; tick < 6; tick += 1) await nextTick()
+
+  // The trigger tick presses the key; later airborne ticks must release it so
+  // BDS sees a tap. Holding `jumping` through the predicted flight made the
+  // server bunny-hop on every landing with no action left for `jump stop`.
+  assert.ok(authInputs[0].input_data.includes('jump_down'))
+  assert.ok(authInputs[0].input_data.includes('start_jumping'))
+  assert.ok(authInputs[0].input_data.includes('jumping'))
+  for (const packet of authInputs.slice(1, 6)) {
+    assert.equal(packet.input_data.includes('jumping'), false)
+    assert.equal(packet.input_data.includes('jump_down'), false)
+    assert.equal(packet.input_data.includes('start_jumping'), false)
+  }
+  // Single ballistic launch: every predicted tick stays above takeoff.
+  for (const packet of authInputs.slice(0, 6)) assert.ok(packet.position.y > 64)
+
+  // Authoritative landing must not produce a second jump.
+  client.emit('correct_player_move_prediction', {
+    prediction_type: 'player',
+    position: { x: 0, y: 64, z: 0 },
+    delta: { x: 0, y: 0, z: 0 },
+    on_ground: true,
+    tick: 50n
+  })
+  for (let tick = 0; tick < 3; tick += 1) await nextTick()
+  for (const packet of authInputs.slice(-3)) {
+    assert.equal(packet.input_data.includes('jumping'), false)
+    assert.equal(packet.input_data.includes('jump_down'), false)
+    assert.equal(packet.input_data.includes('start_jumping'), false)
+  }
+  assert.equal(authInputs.at(-1).position.y, 64)
+  assert.ok(authInputs.at(-1).input_data.includes('vertical_collision'))
+  await session.disconnect('test complete')
+})
+
+test('jump stop clears a continuous hold', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const authInputs = []
+  const waiters = []
+  client.queue = (name, packet) => {
+    if (name !== 'player_auth_input') return
+    authInputs.push(packet)
+    waiters.splice(0).forEach(resolve => resolve())
+  }
+  const nextTick = () => new Promise(resolve => waiters.push(resolve))
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  const inputs = new InputState()
+  inputs.setAction('jump', 'continuous')
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+  for (let tick = 0; tick < 3; tick += 1) await nextTick()
+  for (const packet of authInputs.slice(0, 3)) {
+    assert.ok(packet.input_data.includes('jumping'))
+  }
+
+  inputs.setAction('jump', 'stop')
+  session.applyInputs(inputs)
+  for (let tick = 0; tick < 3; tick += 1) await nextTick()
+  for (const packet of authInputs.slice(-3)) {
+    assert.equal(packet.input_data.includes('jumping'), false)
+    assert.equal(packet.input_data.includes('jump_down'), false)
+    assert.equal(packet.input_data.includes('start_jumping'), false)
+  }
+  await session.disconnect('test complete')
+})
+
 function usableHeldItem () {
   return {
     network_id: 882,

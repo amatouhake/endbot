@@ -11,10 +11,11 @@
     "bds",
     "endbot_patch_revision",
     "tested_safety_conditions",
+    "historical_validation",
     "bds_binary_included"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": { "const": 2 },
     "endbot": {
       "type": "object",
       "required": ["version", "revision"],
@@ -60,10 +61,37 @@
         "online_mode": { "const": true },
         "allow_cheats": { "const": false },
         "experiments_required": { "const": false },
-        "actual_xbox_achievement_unlock_observed": { "const": true },
+        "actual_xbox_achievement_unlock_observed": { "const": false },
         "actual_xbox_achievement_unlock_scope": { "const": "m0_bot_ping" },
-        "m2_actual_xbox_achievement_unlock_observed": { "const": true },
+        "m2_actual_xbox_achievement_unlock_observed": { "const": false },
         "m2_actual_xbox_achievement_unlock_scope": { "const": "representative_m2_controls" }
+      },
+      "additionalProperties": false
+    },
+    "historical_validation": {
+      "type": "object",
+      "required": ["patched_endstone_package_version", "m0", "m2"],
+      "properties": {
+        "patched_endstone_package_version": { "const": "0.11.11+endbot.1" },
+        "m0": {
+          "type": "object",
+          "required": ["observed", "scope", "endbot_revision"],
+          "properties": {
+            "observed": { "const": true },
+            "scope": { "const": "m0_bot_ping" },
+            "endbot_revision": { "const": "f509ac4e8677d9bc870b341f001b8e42f512df97" }
+          },
+          "additionalProperties": false
+        },
+        "m2": {
+          "type": "object",
+          "required": ["observed", "scope"],
+          "properties": {
+            "observed": { "const": true },
+            "scope": { "const": "representative_m2_controls" }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },

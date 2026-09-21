@@ -8,7 +8,8 @@ Two claims must remain separate:
   APIs/GameTest, no required packs, and no recorded creative/experiment history. This configuration and zeroed history
   were preserved in the validated baseline with ten concurrent external bots.
 - **Observed Xbox achievement unlock:** a signed-in Bedrock client actually unlocks a previously unearned Xbox
-  achievement in the test world. This was completed for the current baseline in the M0 record below.
+  achievement in the test world. The recorded M0 observation was completed against patched Endstone
+  `0.11.11+endbot.1`; the current `+endbot.2` artifact has no new achievement observation.
 
 `scripts/preflight.py` robustly checks only the two relevant `server.properties` values. Endbot deliberately does not ship a
 partial `level.dat` parser: format/version ambiguity would turn unknown state into a false safety claim. Without the

@@ -18,9 +18,10 @@ implemented.
   and audience, unused token ID, valid UUID/name, and client-public-key binding.
 - BDS is downloaded by Endstone's normal bootstrap and is never bundled here.
 
-These settings preserve an achievement-compatible configuration and world state in the validated baseline. The M0
-gate and the later M2 Windows-client session each observed an actual Xbox achievement unlock from a normally
-authenticated Bedrock client; see [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and caveats.
+These settings preserve an achievement-compatible configuration and world state in the validated baseline. The recorded
+M0 gate and the later M2 Windows-client session each observed an actual Xbox achievement unlock from a normally
+authenticated Bedrock client against historical patched package `0.11.11+endbot.1`; the current `0.11.11+endbot.2`
+artifact has no new Xbox-achievement observation. See [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and caveats.
 
 ## Compatibility
 

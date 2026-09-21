@@ -80,12 +80,31 @@ test('sprint and sneak start held and stop ticks serialize protocol transition f
   inputs.setFlag('sprint', true)
   inputs.setFlag('sneak', true)
   assert.deepEqual(serializeInputFlags(inputs.step()), [
-    'sprinting', 'sneaking', 'start_sprinting', 'start_sneaking'
+    'sprinting', 'sneaking', 'sneak_down', 'sneak_current_raw', 'start_sprinting', 'sneak_pressed_raw', 'start_sneaking'
   ])
-  assert.deepEqual(serializeInputFlags(inputs.step()), ['sprinting', 'sneaking'])
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['sprinting', 'sneaking', 'sneak_down', 'sneak_current_raw'])
   inputs.setFlag('sprint', false)
   inputs.setFlag('sneak', false)
-  assert.deepEqual(serializeInputFlags(inputs.step()), ['stop_sprinting', 'stop_sneaking'])
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['stop_sprinting', 'sneak_released_raw', 'stop_sneaking'])
+  assert.deepEqual(serializeInputFlags(inputs.step()), [])
+})
+
+test('sneak holds down-state flags across ticks and releases cleanly', () => {
+  const inputs = new InputState()
+  inputs.setFlag('sneak', true)
+  // Cooked `_down` is held state, not an edge: every tick while sneaking
+  // asserts sneaking + sneak_down + raw current. Internal state stays true
+  // throughout; every outgoing tick is traced, not just the first.
+  assert.deepEqual(
+    serializeInputFlags(inputs.step()),
+    ['sneaking', 'sneak_down', 'sneak_current_raw', 'sneak_pressed_raw', 'start_sneaking']
+  )
+  // Held ticks repeat the down-state triple with no press, release, or
+  // stop flag contradicting the sustained sneak.
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['sneaking', 'sneak_down', 'sneak_current_raw'])
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['sneaking', 'sneak_down', 'sneak_current_raw'])
+  inputs.setFlag('sneak', false)
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['sneak_released_raw', 'stop_sneaking'])
   assert.deepEqual(serializeInputFlags(inputs.step()), [])
 })
 

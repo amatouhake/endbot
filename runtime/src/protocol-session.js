@@ -56,7 +56,6 @@ export class BedrockSession extends EventEmitter {
     this.activeItemUse = undefined
     this.releaseItemUseNextTick = false
     this.onGround = true
-    this.jumping = false
     this.pendingHandledTeleport = false
     this.pendingInteraction = undefined
     this.interactionStopNextTick = undefined
@@ -200,6 +199,13 @@ export class BedrockSession extends EventEmitter {
       heldItem: this.heldItem,
       stack
     }))
+    // BDS applies our drop silently, so predict the selected slot exactly
+    // like the transaction above (vanilla clients update their own
+    // inventory immediately) and re-announce the held item. Without this
+    // the cache keeps the dropped item and observers keep rendering it.
+    const remaining = Number(this.heldItem.count) - (stack ? Number(this.heldItem.count) : 1)
+    this.inventory[this.hotbarSlot] = remaining > 0 ? { ...this.heldItem, count: remaining } : EMPTY_ITEM
+    this.selectHotbar(this.hotbarSlot)
   }
 
   disconnect (reason = 'Endbot disconnect') {
@@ -259,7 +265,6 @@ export class BedrockSession extends EventEmitter {
       this.position = vector(packet.position)
       this.onGround = Boolean(packet.on_ground)
       this.verticalVelocity = this.onGround ? 0 : Number(packet.delta?.y ?? this.verticalVelocity ?? 0)
-      if (this.onGround) this.jumping = false
       const next = BigInt(packet.tick) + 1n
       if (next > this.tick) this.tick = next
     })
@@ -270,10 +275,8 @@ export class BedrockSession extends EventEmitter {
         if (packet.mode === 'teleport') {
           this.pendingHandledTeleport = true
           this.verticalVelocity = this.onGround ? 0 : -0.08
-          this.jumping = false
         } else if (this.onGround) {
           this.verticalVelocity = 0
-          this.jumping = false
         }
         this.#setAuthoritativeLook(packet)
         const next = BigInt(packet.tick) + 1n
@@ -399,7 +402,6 @@ export class BedrockSession extends EventEmitter {
     this.position = vector(packet.position)
     this.verticalVelocity = 0
     this.onGround = true
-    this.jumping = false
     if (this.respawnPending && this.spawned) this.#sendRespawnAction()
     this.respawnPending = false
   }
@@ -429,17 +431,22 @@ export class BedrockSession extends EventEmitter {
     if (move.x < 0) inputData.push('left')
     if (move.x > 0) inputData.push('right')
     addToggleInputFlags(inputData, state)
+    // Jump is a tap, not a hold: only the trigger tick presses the key and
+    // later ticks release it, even while predicted airborne. Holding the
+    // `jumping` flag for the whole predicted flight makes BDS bunny-hop on
+    // every landing, and a consumed `once` action then leaves `jump stop`
+    // with nothing to clear. Continuous mode re-triggers every tick, so it
+    // keeps holding by re-pressing instead of by predicted state.
     const startedJump = state.triggered.includes('jump')
     if (startedJump && this.onGround) {
       this.verticalVelocity = 0.42
       this.onGround = false
-      this.jumping = true
     }
     if (!this.onGround) {
       this.position.y += this.verticalVelocity
       this.verticalVelocity = (this.verticalVelocity - 0.08) * 0.98
     }
-    addJumpInputFlags(inputData, { started: startedJump, airborne: this.jumping })
+    addJumpInputFlags(inputData, { started: startedJump, airborne: startedJump })
     if (this.pendingHandledTeleport) {
       inputData.push('handled_teleport')
       this.pendingHandledTeleport = false

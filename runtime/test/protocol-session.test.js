@@ -424,6 +424,158 @@ test('move-entity delta coordinates update the target used by attack', async t =
   await session.disconnect('test complete')
 })
 
+test('jump once taps and releases instead of holding through the flight', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const authInputs = []
+  const waiters = []
+  client.queue = (name, packet) => {
+    if (name !== 'player_auth_input') return
+    authInputs.push(packet)
+    waiters.splice(0).forEach(resolve => resolve())
+  }
+  const nextTick = () => new Promise(resolve => waiters.push(resolve))
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  const inputs = new InputState()
+  inputs.setAction('jump', 'once')
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+  for (let tick = 0; tick < 6; tick += 1) await nextTick()
+
+  // The trigger tick presses the key; later airborne ticks must release it so
+  // BDS sees a tap. Holding `jumping` through the predicted flight made the
+  // server bunny-hop on every landing with no action left for `jump stop`.
+  assert.ok(authInputs[0].input_data.includes('jump_down'))
+  assert.ok(authInputs[0].input_data.includes('start_jumping'))
+  assert.ok(authInputs[0].input_data.includes('jumping'))
+  for (const packet of authInputs.slice(1, 6)) {
+    assert.equal(packet.input_data.includes('jumping'), false)
+    assert.equal(packet.input_data.includes('jump_down'), false)
+    assert.equal(packet.input_data.includes('start_jumping'), false)
+  }
+  // Single ballistic launch: every predicted tick stays above takeoff.
+  for (const packet of authInputs.slice(0, 6)) assert.ok(packet.position.y > 64)
+
+  // Authoritative landing must not produce a second jump.
+  client.emit('correct_player_move_prediction', {
+    prediction_type: 'player',
+    position: { x: 0, y: 64, z: 0 },
+    delta: { x: 0, y: 0, z: 0 },
+    on_ground: true,
+    tick: 50n
+  })
+  for (let tick = 0; tick < 3; tick += 1) await nextTick()
+  for (const packet of authInputs.slice(-3)) {
+    assert.equal(packet.input_data.includes('jumping'), false)
+    assert.equal(packet.input_data.includes('jump_down'), false)
+    assert.equal(packet.input_data.includes('start_jumping'), false)
+  }
+  assert.equal(authInputs.at(-1).position.y, 64)
+  assert.ok(authInputs.at(-1).input_data.includes('vertical_collision'))
+  await session.disconnect('test complete')
+})
+
+test('jump stop clears a continuous hold', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const authInputs = []
+  const waiters = []
+  client.queue = (name, packet) => {
+    if (name !== 'player_auth_input') return
+    authInputs.push(packet)
+    waiters.splice(0).forEach(resolve => resolve())
+  }
+  const nextTick = () => new Promise(resolve => waiters.push(resolve))
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  const inputs = new InputState()
+  inputs.setAction('jump', 'continuous')
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+  for (let tick = 0; tick < 3; tick += 1) await nextTick()
+  for (const packet of authInputs.slice(0, 3)) {
+    assert.ok(packet.input_data.includes('jumping'))
+  }
+
+  inputs.setAction('jump', 'stop')
+  session.applyInputs(inputs)
+  for (let tick = 0; tick < 3; tick += 1) await nextTick()
+  for (const packet of authInputs.slice(-3)) {
+    assert.equal(packet.input_data.includes('jumping'), false)
+    assert.equal(packet.input_data.includes('jump_down'), false)
+    assert.equal(packet.input_data.includes('start_jumping'), false)
+  }
+  await session.disconnect('test complete')
+})
+
+test('drop predicts selected-slot inventory and re-announces equipment', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const queued = []
+  client.queue = (name, packet) => queued.push({ name, packet })
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  const items = Array(9).fill(undefined).map(() => ({ ...EMPTY_ITEM }))
+  items[0] = { ...usableHeldItem(), count: 5 }
+  client.emit('inventory_content', { window_id: 'inventory', input: items })
+  client.emit('player_hotbar', { window_id: 'inventory', selected_slot: 0 })
+  client.emit('spawn')
+  await connecting
+  queued.length = 0
+
+  // BDS applies our drop silently, so the session predicts the selected
+  // slot exactly like the queued transaction and announces the new held
+  // item for observers; otherwise the cache keeps the dropped item and
+  // the hand rendering goes stale.
+  session.dropSelected(false)
+  const drop = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet
+  assert.equal(drop.transaction.transaction_type, 'normal')
+  assert.equal(drop.transaction.actions[0].new_item.count, 4)
+  assert.equal(drop.transaction.actions[1].new_item.count, 1)
+  assert.equal(session.inventory[0].count, 4)
+  const announced = queued.filter(entry => entry.name === 'mob_equipment').at(-1).packet
+  assert.equal(announced.selected_slot, 0)
+  assert.equal(announced.item.count, 4)
+
+  session.dropSelected(true)
+  const dropStack = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet
+  assert.equal(dropStack.transaction.actions[0].new_item.count, 0)
+  assert.equal(dropStack.transaction.actions[1].new_item.count, 4)
+  assert.equal(session.inventory[0].network_id, 0)
+  const announcedEmpty = queued.filter(entry => entry.name === 'mob_equipment').at(-1).packet
+  assert.equal(announcedEmpty.item.network_id, 0)
+  await session.disconnect('test complete')
+})
+
+test('drop on an empty selected slot fails before sending', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const queued = []
+  client.queue = (name, packet) => queued.push({ name, packet })
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  session.applyInputs(new InputState())
+  client.emit('spawn')
+  await connecting
+  queued.length = 0
+
+  assert.throws(() => session.dropSelected(false), /Selected hotbar slot is empty/)
+  assert.throws(() => session.dropSelected(true), /Selected hotbar slot is empty/)
+  assert.equal(queued.filter(entry => entry.name === 'inventory_transaction').length, 0)
+  await session.disconnect('test complete')
+})
+
 function usableHeldItem () {
   return {
     network_id: 882,

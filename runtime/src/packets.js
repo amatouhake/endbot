@@ -21,14 +21,27 @@ export function addJumpInputFlags (inputData, { started, airborne }) {
 
 export function addToggleInputFlags (inputData, state) {
   if (state.sprint) inputData.push('sprinting')
-  if (state.sneak) inputData.push('sneaking')
+  // Cooked `_down` flags are held state ("key is down now"), not one-tick
+  // edges: the server derives press/release by diffing consecutive ticks.
+  // Sustained sneak therefore asserts `sneak_down` on every tick while
+  // held, exactly like vanilla holding the sneak key. Sending the edge
+  // once produced a single crouch tick and then stood back up. Raw flags
+  // mirror the same sequence: pressed+current on the press tick, current
+  // while held, released on release.
+  if (state.sneak) inputData.push('sneaking', 'sneak_down', 'sneak_current_raw')
   const names = {
     start_sprint: 'start_sprinting',
     stop_sprint: 'stop_sprinting',
     start_sneak: 'start_sneaking',
     stop_sneak: 'stop_sneaking'
   }
-  for (const transition of state.transitions) inputData.push(names[transition])
+  for (const transition of state.transitions) {
+    // Transitions fire once, so press/release markers are sent only on
+    // their own tick, never repeated while held.
+    if (transition === 'start_sneak') inputData.push('sneak_pressed_raw')
+    if (transition === 'stop_sneak') inputData.push('sneak_released_raw')
+    inputData.push(names[transition])
+  }
 }
 
 export function createUseTransaction ({ hotbarSlot, heldItem, position }) {

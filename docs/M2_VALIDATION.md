@@ -83,3 +83,51 @@ Microsoft/Xbox human client joined with a populated XUID, with no human `Accepte
 Kelp/Timeout/stutter, and normal Survival with no achievement-disabled warning. This smoke did not add a new
 Xbox-achievement observation; the current `+endbot.2` manifest observation remains false. Linux remains the
 CI/release-artifact baseline, so this smoke does not claim identical Linux/Windows CI/release coverage.
+
+## Native-Windows runtime-correctness matrix (M2 primitives, 2026-09-21/22 JST)
+
+Fresh native-Windows session on the same pinned pair (patched Endstone `0.11.11+endbot.2`, official Windows BDS
+`1.26.51.1`, protocol `2193`, fresh vanilla Survival world, `online-mode=true`, `allow-cheats=false`, fresh runtime
+secrets on current local-bot defaults). One human client (normal Microsoft/Xbox login, single-XUID allowlist)
+established the control baseline first: normal human movement/jumping throughout, no short/stuttery human-jump
+anomaly in this session. One Bot (`Alice`), then a temporary fresh-UUID Bot for the drop matrix. Each primitive was
+observed live from the human client, one at a time.
+
+- `jump` / `jump once` — initially FAIL (repeated bunny-hop from one command), PASS after fix. The runtime held the
+  cooked `jumping` flag for the whole predicted airborne phase, so BDS re-jumped on every landing; a consumed
+  `once` action left `jump stop` nothing to clear. Fix: only the trigger tick presses (`cb1074d`), with session-level
+  regression tests. Live retest: exactly one settled jump for both forms; height judged a normal single jump by eye
+  (not measured).
+- `jump continuous` → `jump stop` — PASS after the same fix (continuous holds by re-triggering every tick; stop
+  deletes the action).
+- `jump continuous` → global `stop` — PASS (continuous jumping ceases, bot stays online).
+- `sneak on` → `sneak off` — state semantics PASS after two fixes (`10683a7` press edge, `0dd3a0c` held
+  `sneak_down` + raw current): sustained visible crouch, slower movement while sneaking, clean release. Cooked
+  `_down` flags are held state, not edges; the server diffs consecutive ticks. Packet-level multi-tick regression
+  tests pin the sequence.
+- Sneak edge avoidance (not walking off a ledge while sneaking) — FAIL, investigated and DEFERRED as
+  client-movement-simulation scope, not an input defect. The runtime predictor integrates motion with no
+  collision/world awareness and BDS (lenient authority: `server-authoritative-movement-strict=false`, acceptance
+  threshold 0.5) accepts the positions; no `PlayerAuthInput` mechanism requests edge-stop. Reproducing vanilla
+  edge protection would require Endbot-side collision/edge simulation, deliberately not built here.
+- Hotbar selection + `drop` — PASS **when the selected inventory state is known to the runtime** (fresh-UUID bot
+  plus login full-sync, slots identified visually in-hand): exactly one selected item ejected; slot independence
+  confirmed. Same-session world pickups alone do not qualify: see the limitation below.
+- Hotbar selection + `drop stack` — PASS under the same known-state condition: remaining stack ejected; hand
+  emptied live with no reselect.
+- Drop-sync fix (`8cc405e`, session-level regression tests): BDS applies our drop silently and sends no inventory
+  deltas for pickups (proven under full packet trace: zero slot/content/equipment/stack-response/actor signals to
+  the picker), so the session now predicts its own drop mutations exactly like the queued transaction and
+  re-announces the held item.
+- World pickup → same-session runtime inventory synchronization: KNOWN LIMITATION, deferred, confirmed end-to-end
+  after the fix. One controlled item: BDS inventory gains it, runtime cache stays stale, explicit hotbar selection
+  can render it without populating the cache, and `drop` fails closed with `Selected hotbar slot is empty`; a real
+  Bot reconnect repopulates via login full-sync, after which `drop` and `drop stack` work normally. A bounded
+  check of the pinned 1.26.50 protocol (246 packets) found no vanilla client→server inventory-resync request:
+  `container_open`, `item_stack_request`, and `block_pick_request` are not sync requests, and provoking an
+  error-correction is not a normal mechanism. Pickup awareness without server deltas would require entity-magnet
+  simulation and stays deferred. Reconnect is the documented recovery path; `resume` on an already-online bot is
+  a no-op and is not a resync mechanism.
+
+Sprint/move directions were exercised but not carefully observed; they remain unvalidated (not implied PASS). No
+new Xbox-achievement observation was made or claimed in this session.

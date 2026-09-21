@@ -199,6 +199,13 @@ export class BedrockSession extends EventEmitter {
       heldItem: this.heldItem,
       stack
     }))
+    // BDS applies our drop silently, so predict the selected slot exactly
+    // like the transaction above (vanilla clients update their own
+    // inventory immediately) and re-announce the held item. Without this
+    // the cache keeps the dropped item and observers keep rendering it.
+    const remaining = Number(this.heldItem.count) - (stack ? Number(this.heldItem.count) : 1)
+    this.inventory[this.hotbarSlot] = remaining > 0 ? { ...this.heldItem, count: remaining } : EMPTY_ITEM
+    this.selectHotbar(this.hotbarSlot)
   }
 
   disconnect (reason = 'Endbot disconnect') {

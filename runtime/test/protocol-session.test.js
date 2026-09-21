@@ -515,6 +515,67 @@ test('jump stop clears a continuous hold', async t => {
   await session.disconnect('test complete')
 })
 
+test('drop predicts selected-slot inventory and re-announces equipment', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const queued = []
+  client.queue = (name, packet) => queued.push({ name, packet })
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  const items = Array(9).fill(undefined).map(() => ({ ...EMPTY_ITEM }))
+  items[0] = { ...usableHeldItem(), count: 5 }
+  client.emit('inventory_content', { window_id: 'inventory', input: items })
+  client.emit('player_hotbar', { window_id: 'inventory', selected_slot: 0 })
+  client.emit('spawn')
+  await connecting
+  queued.length = 0
+
+  // BDS applies our drop silently, so the session predicts the selected
+  // slot exactly like the queued transaction and announces the new held
+  // item for observers; otherwise the cache keeps the dropped item and
+  // the hand rendering goes stale.
+  session.dropSelected(false)
+  const drop = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet
+  assert.equal(drop.transaction.transaction_type, 'normal')
+  assert.equal(drop.transaction.actions[0].new_item.count, 4)
+  assert.equal(drop.transaction.actions[1].new_item.count, 1)
+  assert.equal(session.inventory[0].count, 4)
+  const announced = queued.filter(entry => entry.name === 'mob_equipment').at(-1).packet
+  assert.equal(announced.selected_slot, 0)
+  assert.equal(announced.item.count, 4)
+
+  session.dropSelected(true)
+  const dropStack = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet
+  assert.equal(dropStack.transaction.actions[0].new_item.count, 0)
+  assert.equal(dropStack.transaction.actions[1].new_item.count, 4)
+  assert.equal(session.inventory[0].network_id, 0)
+  const announcedEmpty = queued.filter(entry => entry.name === 'mob_equipment').at(-1).packet
+  assert.equal(announcedEmpty.item.network_id, 0)
+  await session.disconnect('test complete')
+})
+
+test('drop on an empty selected slot fails before sending', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const queued = []
+  client.queue = (name, packet) => queued.push({ name, packet })
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  session.applyInputs(new InputState())
+  client.emit('spawn')
+  await connecting
+  queued.length = 0
+
+  assert.throws(() => session.dropSelected(false), /Selected hotbar slot is empty/)
+  assert.throws(() => session.dropSelected(true), /Selected hotbar slot is empty/)
+  assert.equal(queued.filter(entry => entry.name === 'inventory_transaction').length, 0)
+  await session.disconnect('test complete')
+})
+
 function usableHeldItem () {
   return {
     network_id: 882,

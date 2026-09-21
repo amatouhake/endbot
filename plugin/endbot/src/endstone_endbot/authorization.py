@@ -1,4 +1,4 @@
-"""Fail-closed player identity allowlist for the M0 control command."""
+"""Fail-closed player identity allowlist for the control command."""
 
 from dataclasses import dataclass, field
 from uuid import UUID

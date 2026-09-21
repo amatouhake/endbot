@@ -45,8 +45,12 @@ Post-session remediation smoke on 2026-09-19 separately established:
   downward motion when unsupported, and yields to authoritative landing updates.
 - **Top-level command rejection — fixed.** The pinned Endstone/BDS parser mishandles optional enum overloads. Required
   typed overloads plus narrow string fallbacks preserve `/bot <name> ...` and make zero/default forms parse.
-- **Autocomplete gaps — fixed where supported.** Finite choices use native enums. Bot profile names remain strings
-  because the pinned Endstone public API has no supported dynamic-completion surface; `/bot list` is the discovery path.
+- **Autocomplete gaps — fixed where supported (historical assessment at the time).** Finite choices used native enums. Bot
+  profile names remained strings
+  because the pinned Endstone public API had no supported dynamic-completion surface; `/bot list` was the discovery path.
+
+  > Current status after the later command-compatibility work: execution is complete, but native client completion
+  > remains degraded on the pinned Endstone 0.11 API. See `COMMANDS.md`.
 - **Missing hotbar, block interaction, and selected-item drop — fixed.** Inventory/world authority remains in BDS.
 - **Disconnected async command sender lifetime — fixed.** Workers retain only a player UUID and re-resolve it on the
   server thread, so a diagnostic client disconnect cannot leave a stale native sender wrapper.
@@ -66,5 +70,16 @@ The live server reported Survival and an empty pack stack. Scoped preflight pass
 shortcut was introduced. The human Xbox unlock is the achievement observation. Repository automation still does not
 pretend to be a version-independent `level.dat` proof.
 
-Linux/WSL is the validated runtime/server host. A Windows Bedrock client is validated as the normal human operator;
-native Windows hosting of the Endbot runtime remains designed for but has not been claimed as tested.
+Linux/WSL was the validated runtime/server host at the time of the recorded gates above. A Windows Bedrock client was
+validated as the normal human operator; native Windows hosting of the Endbot runtime remained designed for but had not
+been claimed as tested at that point.
+
+## Native-Windows host smoke (post-PR-#4 current status)
+
+After PR #4, native Windows hosting was live-smoked successfully: Windows host, patched Endstone `0.11.11+endbot.2`,
+official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Endbot plugin/runtime, Alice local Bot
+(`iss = endbot://local-bot`, `aud = endstone://local-bot`, `owner-public.pem`). Alice stayed online while a normal
+Microsoft/Xbox human client joined with a populated XUID, with no human `Accepted local bot` entry, no
+Kelp/Timeout/stutter, and normal Survival with no achievement-disabled warning. This smoke did not add a new
+Xbox-achievement observation; the current `+endbot.2` manifest observation remains false. Linux remains the
+CI/release-artifact baseline, so this smoke does not claim identical Linux/Windows CI/release coverage.

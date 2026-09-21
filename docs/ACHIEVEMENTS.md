@@ -10,7 +10,7 @@ Two claims must remain separate:
 - **Observed Xbox achievement unlock:** a signed-in Bedrock client actually unlocks a previously unearned Xbox
   achievement in the test world. This was completed for the current baseline in the M0 record below.
 
-`scripts/preflight.py` robustly checks only the two relevant `server.properties` values. M1 deliberately does not ship a
+`scripts/preflight.py` robustly checks only the two relevant `server.properties` values. Endbot deliberately does not ship a
 partial `level.dat` parser: format/version ambiguity would turn unknown state into a false safety claim. Without the
 explicit `--acknowledge-world-state-unverified` scope flag, the script exits incomplete.
 

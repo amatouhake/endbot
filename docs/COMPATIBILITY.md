@@ -25,9 +25,18 @@ M2 runtime behavior was live-smoked on Linux against the same pinned pair, follo
 Windows Bedrock command/achievement gate. The human session covered representative M2 lifecycle, input, and dimension
 teleport behavior and ended with a new locked vanilla Survival Xbox achievement unlock. Later Linux remediation smoke
 separately verified command roots, same-dimension fall physics, hotbar selection, BDS-authoritative block placement and
-inventory decrement, and item drop. See [`M2_VALIDATION.md`](M2_VALIDATION.md) for the evidence boundary. Native Windows
-hosting of the Endbot runtime is designed for but is not claimed as validated; the Windows game client was the human
-operator in this gate. These M2 observations were also against `0.11.11+endbot.1`; see [`M2_VALIDATION.md`](M2_VALIDATION.md).
+inventory decrement, and item drop. See [`M2_VALIDATION.md`](M2_VALIDATION.md) for the evidence boundary. At the time of
+those `0.11.11+endbot.1` observations, native Windows hosting of the Endbot runtime was designed for but not
+claimed as validated; the Windows game client was the human operator in that gate. These M2 observations were also
+against `0.11.11+endbot.1`; see [`M2_VALIDATION.md`](M2_VALIDATION.md).
+
+Current status after PR #4: native Windows hosting has been live-smoked successfully (Windows host, patched Endstone
+`0.11.11+endbot.2`, official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Endbot plugin/runtime, Alice
+local Bot with `iss = endbot://local-bot` and `aud = endstone://local-bot` via `owner-public.pem`). Alice stayed
+online while a normal Microsoft/Xbox human client joined with a populated XUID, with no human `Accepted local bot`
+entry, no Kelp/Timeout/stutter, and normal Survival with no achievement-disabled warning. Linux nevertheless remains
+the CI/release-artifact baseline: the Windows smoke does not give Windows identical CI/release coverage. The PR #4
+smoke added no new Xbox-achievement observation; the current `+endbot.2` manifest observation remains false.
 
 Current patched package `0.11.11+endbot.2` is this terminology/default-identifier migration and has NOT yet received
 a new human/Xbox achievement observation.
@@ -68,16 +77,18 @@ A proposed Endstone/BDS update is not supported merely because it compiles. It m
 8. the manual `/bot ping` and actual Xbox achievement observation in `ACHIEVEMENTS.md`.
 
 Only after reviewed evidence should `endstone.lock`, the compatibility manifest, and support documentation change.
-Linux is the validated CI/build/runtime target. M2 uses Node and Python filesystem/socket APIs that are portable to
-Windows, avoids POSIX-only runtime requirements, and preserves Windows as a supported design target, but native Windows
-M2 operation is not yet claimed as validated.
+Linux remains the CI/release-artifact baseline. The runtime uses Node and Python filesystem/socket APIs that are portable to
+Windows and avoids POSIX-only runtime requirements. Native Windows hosting has additionally been live-smoked
+successfully after PR #4 (see above), but that smoke does not give Linux and Windows identical CI/release coverage.
 
 ## Release contents
 
-A future release workflow may package the modified Endstone artifact, Endbot plugin wheel, Endbot runtime, example
-configuration, checksums, generated compatibility manifest, Endbot license, and third-party notices. It must not package
-the official BDS binary. `scripts/generate_compatibility_manifest.py` binds metadata to the current Endbot Git revision
+`.github/workflows/release-candidate.yml` exists and assembles a release candidate on manual dispatch: it clean-builds
+the patched Endstone tree, runs its upstream tests, builds and inspects the Linux Endstone wheel, builds the Endbot
+plugin wheel, packages the Endbot runtime and example configuration, generates the compatibility manifest and
+SHA-256 checksums as currently implemented, and uploads the `dist/` candidate as a workflow artifact. It does not
+publish a production release automatically. It must not package the official BDS binary. `scripts/generate_compatibility_manifest.py` binds metadata to the current Endbot Git revision
 and SHA-256 of the ordered patch series. The Linux Endstone artifact is repaired with pinned upstream Endstone's
 configured cibuildwheel manylinux image and `auditwheel` repair command, then inspected and installed with the plugin in
 a clean consumer image that has no LLVM runtime. Raw build-host wheels remain inside cibuildwheel's disposable container
-and are never uploaded. No workflow in M1 publishes a production release.
+and are never uploaded. No workflow publishes a production release.

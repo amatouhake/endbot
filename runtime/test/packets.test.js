@@ -80,12 +80,23 @@ test('sprint and sneak start held and stop ticks serialize protocol transition f
   inputs.setFlag('sprint', true)
   inputs.setFlag('sneak', true)
   assert.deepEqual(serializeInputFlags(inputs.step()), [
-    'sprinting', 'sneaking', 'start_sprinting', 'start_sneaking'
+    'sprinting', 'sneaking', 'start_sprinting', 'sneak_down', 'start_sneaking'
   ])
   assert.deepEqual(serializeInputFlags(inputs.step()), ['sprinting', 'sneaking'])
   inputs.setFlag('sprint', false)
   inputs.setFlag('sneak', false)
   assert.deepEqual(serializeInputFlags(inputs.step()), ['stop_sprinting', 'stop_sneaking'])
+  assert.deepEqual(serializeInputFlags(inputs.step()), [])
+})
+
+test('sneak press carries a one-tick sneak_down edge and release is clean', () => {
+  const inputs = new InputState()
+  inputs.setFlag('sneak', true)
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['sneaking', 'sneak_down', 'start_sneaking'])
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['sneaking'])
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['sneaking'])
+  inputs.setFlag('sneak', false)
+  assert.deepEqual(serializeInputFlags(inputs.step()), ['stop_sneaking'])
   assert.deepEqual(serializeInputFlags(inputs.step()), [])
 })
 

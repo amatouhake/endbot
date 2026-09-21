@@ -28,7 +28,14 @@ export function addToggleInputFlags (inputData, state) {
     start_sneak: 'start_sneaking',
     stop_sneak: 'stop_sneaking'
   }
-  for (const transition of state.transitions) inputData.push(names[transition])
+  for (const transition of state.transitions) {
+    // The steady `sneaking` flag alone does not move the BDS sneak state:
+    // like `jump_down` for jump, the press tick must also carry the
+    // `sneak_down` edge. Transitions fire once, so the edge is sent only on
+    // the press tick, never while held.
+    if (transition === 'start_sneak') inputData.push('sneak_down')
+    inputData.push(names[transition])
+  }
 }
 
 export function createUseTransaction ({ hotbarSlot, heldItem, position }) {

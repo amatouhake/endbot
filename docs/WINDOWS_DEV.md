@@ -12,8 +12,13 @@ and every safety invariant in the README applies unchanged: `online-mode=true`, 
 Beta APIs, GameTest, or required packs, the normal Microsoft/Xbox path for people, and local bot auth disabled unless
 the operator enables it with the runtime-generated owner public key.
 
-Native Windows hosting of the runtime and server is designed for but was not part of the recorded M2 validation; see
+Native Windows hosting of the runtime and server was designed for but was not part of the recorded M2 validation; see
 [`COMPATIBILITY.md`](COMPATIBILITY.md).
+
+Current status after PR #4: native Windows hosting has additionally been live-smoked successfully (patched Endstone
+`0.11.11+endbot.2`, official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Alice local Bot alongside a
+normal Microsoft/Xbox human client). Linux nevertheless remains the CI/release-artifact baseline, and the PR #4 smoke
+added no new Xbox-achievement observation for `+endbot.2`.
 
 ## Prerequisites
 
@@ -229,5 +234,7 @@ machine-specific addresses or identifiers into the repository. The prepared `bui
 project-local `.venv\`, `build\`, `dist\`, and `node_modules\` directories are git-ignored build state.
 
 This guide does not publish Windows release artifacts and does not change the pinned compatibility pair in
-`endstone.lock`: Linux remains the validated baseline, and the Windows build-ID distinction above is
-per-platform packaging, not a new baseline.
+`endstone.lock`: Linux remains the CI/release-artifact baseline even though native Windows hosting has been
+live-smoked successfully after PR #4 (see [`COMPATIBILITY.md`](COMPATIBILITY.md)), and the Windows build-ID distinction above is
+per-platform packaging, not a new baseline. The post-PR-#4 Windows smoke added no new Xbox-achievement observation
+for `+endbot.2`.

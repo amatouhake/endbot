@@ -1,4 +1,4 @@
-"""Pure command grammar and service for the M2 /bot surface."""
+"""Pure command grammar and service for the /bot surface."""
 
 from __future__ import annotations
 
@@ -427,7 +427,7 @@ class BotCommandService:
 
     def _execute(self, command: BotCommand, sender) -> CommandResult:
         if command.operation == "ping":
-            # Keep the M0 server-side safety probe independent of runtime health.
+            # Keep the server-side safety probe independent of runtime health.
             return CommandResult(True, ("Endbot: pong",))
         if command.operation == "help":
             if "topic" in command.parameters:

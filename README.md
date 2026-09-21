@@ -4,7 +4,7 @@ Endbot is a practical Fake Player foundation for the official Minecraft Bedrock 
 [Endstone](https://github.com/EndstoneMC/endstone) as the extension platform. It preserves the normal Microsoft/Xbox
 authentication path for people while adding a narrow, server-owner-controlled ES384 trust path for accountless bots.
 
-Endbot is pre-alpha. M2 adds persistent multi-bot profiles, real NetherNet client sessions, lifecycle/reconnect,
+Endbot is pre-alpha. It provides persistent multi-bot profiles, real NetherNet client sessions, lifecycle/reconnect,
 server-API teleport, rename, movement/actions, hotbar selection, block interaction, and item drop behind the validated
 `/bot` authorization surface. Groups, macros, work tasks, Discord, blueprints, web UI, and AI behavior are not
 implemented.
@@ -18,9 +18,10 @@ implemented.
   and audience, unused token ID, valid UUID/name, and client-public-key binding.
 - BDS is downloaded by Endstone's normal bootstrap and is never bundled here.
 
-These settings preserve an achievement-compatible configuration and world state in the validated baseline. The M0
-gate and the later M2 Windows-client session each observed an actual Xbox achievement unlock from a normally
-authenticated Bedrock client; see [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and caveats.
+These settings preserve an achievement-compatible configuration and world state in the validated baseline. The recorded
+M0 gate and the later M2 Windows-client session each observed an actual Xbox achievement unlock from a normally
+authenticated Bedrock client against historical patched package `0.11.11+endbot.1`; the current `0.11.11+endbot.2`
+artifact has no new Xbox-achievement observation. See [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and caveats.
 
 ## Compatibility
 
@@ -92,7 +93,7 @@ manylinux container invokes Endstone's `auditwheel` repair command, and only the
 
 Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it together with the repaired patched
 Endstone wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official
-unpatched `0.11.11` wheel. The plugin registers the M2 `/bot` tree, including the original `/bot ping`, and uses
+unpatched `0.11.11` wheel. The plugin registers the `/bot` tree, including the original `/bot ping`, and uses
 `endbot.command.control`. The permission defaults to false and is attached only to player UUIDs/XUIDs explicitly listed
 in the generated plugin `config.toml`; it does not grant operator or vanilla command rights. See
 [commands and operation](docs/COMMANDS.md).
@@ -123,7 +124,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Security model](docs/SECURITY.md)
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)
 - [Compatibility and release gates](docs/COMPATIBILITY.md)
-- [M2 commands and operation](docs/COMMANDS.md)
+- [Commands and operation](docs/COMMANDS.md)
 - [M2 validation record](docs/M2_VALIDATION.md)
 - [Native Windows development and live smoke](docs/WINDOWS_DEV.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

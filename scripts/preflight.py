@@ -64,7 +64,7 @@ def main() -> int:
         return 1
 
     print("\n".join(messages))
-    print("UNKNOWN world creative/experiment history: no robust M1 parser is available", file=sys.stderr)
+    print("UNKNOWN world creative/experiment history: no robust level.dat parser is available", file=sys.stderr)
     print("UNKNOWN actual Xbox achievement unlock: requires a real authenticated client", file=sys.stderr)
     if not args.acknowledge_world_state_unverified:
         print(

@@ -1,4 +1,4 @@
-# M2 commands and operation
+# Endbot commands and operation
 
 ## Quick start
 
@@ -142,7 +142,8 @@ form (numeric help pages use the required-int overload instead, since strings re
 overloads below them — operations, movement direction, action modes, on/off, dimension aliases, block faces, and
 `stack` — exist so completion has something to advertise, but real Minecraft-client smoke showed they do not
 cleanly narrow the UI while a compatible generic string branch remains: generic overloads stay visible and
-dominate filtering, for both the name-first `/bot` surface and the selection-model `/botprobe`. Numeric tokens
+dominate filtering, for both the name-first `/bot` surface and the selection-model `/botprobe` (an ad-hoc
+diagnostic probe used during the command-parser investigation, not a shipped Endbot command). Numeric tokens
 narrow better only because they eliminate the generic `string` branch. A broad `<operation: message>` fallback
 was already rejected because it absorbs all named-operation suggestions. On this pinned Endstone 0.11 baseline,
 execution is therefore prioritized over completion: every documented form parses, while autocomplete stays

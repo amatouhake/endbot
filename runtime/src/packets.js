@@ -21,12 +21,14 @@ export function addJumpInputFlags (inputData, { started, airborne }) {
 
 export function addToggleInputFlags (inputData, state) {
   if (state.sprint) inputData.push('sprinting')
-  // BDS 1.26 keys sustained sneak on the per-tick raw flags, not just the
-  // cooked `sneaking` steady flag: without held `sneak_current_raw` the
-  // server drops the crouch one tick after the press edge. Vanilla asserts
-  // pressed+current on the press tick, current while held, released on
-  // release; mirror exactly that sequence and nothing else.
-  if (state.sneak) inputData.push('sneaking', 'sneak_current_raw')
+  // Cooked `_down` flags are held state ("key is down now"), not one-tick
+  // edges: the server derives press/release by diffing consecutive ticks.
+  // Sustained sneak therefore asserts `sneak_down` on every tick while
+  // held, exactly like vanilla holding the sneak key. Sending the edge
+  // once produced a single crouch tick and then stood back up. Raw flags
+  // mirror the same sequence: pressed+current on the press tick, current
+  // while held, released on release.
+  if (state.sneak) inputData.push('sneaking', 'sneak_down', 'sneak_current_raw')
   const names = {
     start_sprint: 'start_sprinting',
     stop_sprint: 'stop_sprinting',
@@ -34,9 +36,9 @@ export function addToggleInputFlags (inputData, state) {
     stop_sneak: 'stop_sneaking'
   }
   for (const transition of state.transitions) {
-    // Transitions fire once, so press/release edges are sent only on their
-    // own tick, never repeated while held.
-    if (transition === 'start_sneak') inputData.push('sneak_down', 'sneak_pressed_raw')
+    // Transitions fire once, so press/release markers are sent only on
+    // their own tick, never repeated while held.
+    if (transition === 'start_sneak') inputData.push('sneak_pressed_raw')
     if (transition === 'stop_sneak') inputData.push('sneak_released_raw')
     inputData.push(names[transition])
   }

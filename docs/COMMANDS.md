@@ -116,12 +116,16 @@ does not replay transitions from the previous transport.
 
 `hotbar` reports or changes the selected slot using human-facing 1–9 numbering. Selection is sent through the normal
 Bedrock equipment path and inventory updates continue to come from BDS; Endbot does not keep a second inventory.
+BDS does not push per-pickup inventory deltas to the picker, so items picked up from the world mid-session become
+visible to inventory-sensitive operations only after a reconnect (login full-sync), not instantly; `drop` against
+an unknown selected slot fails closed with `Selected hotbar slot is empty` instead of guessing.
 
 `use` means using or holding the selected item in the air, such as food, a bow, or a trident. `interact` is a normal
 right-click on the named block face. It sends the protocol-2193 press, server-authoritative item-interaction tick, and
 release sequence; BDS decides reach, legality, collision, placement, and inventory decrement. A placeable selected
 item can therefore place a block in Survival without the plugin editing the world. `drop` drops one selected item and
-`drop stack` drops the selected stack through normal inventory transactions.
+`drop stack` drops the selected stack through normal inventory transactions, operating on the runtime-known selected
+slot (see the `hotbar` pickup-sync note above).
 
 The command declaration separates parseability from completion because live BDS overload matching proved three
 rules (verified with a probe plugin dispatching 42 documented forms through the real `compileCommand` path):

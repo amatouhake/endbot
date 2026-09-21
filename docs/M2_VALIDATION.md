@@ -110,15 +110,24 @@ observed live from the human client, one at a time.
   collision/world awareness and BDS (lenient authority: `server-authoritative-movement-strict=false`, acceptance
   threshold 0.5) accepts the positions; no `PlayerAuthInput` mechanism requests edge-stop. Reproducing vanilla
   edge protection would require Endbot-side collision/edge simulation, deliberately not built here.
-- Hotbar selection + `drop` — PASS after fix, on visually identified slots of a fresh bot (slot 1: 4 oak saplings,
-  slot 2: 4 leaf litter): exactly one selected item ejected; slot independence confirmed.
-- Hotbar selection + `drop stack` — PASS: remaining stack ejected; hand emptied live with no reselect.
+- Hotbar selection + `drop` — PASS **when the selected inventory state is known to the runtime** (fresh-UUID bot
+  plus login full-sync, slots identified visually in-hand): exactly one selected item ejected; slot independence
+  confirmed. Same-session world pickups alone do not qualify: see the limitation below.
+- Hotbar selection + `drop stack` — PASS under the same known-state condition: remaining stack ejected; hand
+  emptied live with no reselect.
 - Drop-sync fix (`8cc405e`, session-level regression tests): BDS applies our drop silently and sends no inventory
   deltas for pickups (proven under full packet trace: zero slot/content/equipment/stack-response/actor signals to
   the picker), so the session now predicts its own drop mutations exactly like the queued transaction and
-  re-announces the held item. Pickup awareness without server deltas would need entity-magnet simulation and stays
-  deferred; reconnect/login full-sync is the M2-aligned way to learn pickups (note: `resume` on an already-online
-  bot is a no-op and does not resync).
+  re-announces the held item.
+- World pickup → same-session runtime inventory synchronization: KNOWN LIMITATION, deferred, confirmed end-to-end
+  after the fix. One controlled item: BDS inventory gains it, runtime cache stays stale, explicit hotbar selection
+  can render it without populating the cache, and `drop` fails closed with `Selected hotbar slot is empty`; a real
+  Bot reconnect repopulates via login full-sync, after which `drop` and `drop stack` work normally. A bounded
+  check of the pinned 1.26.50 protocol (246 packets) found no vanilla client→server inventory-resync request:
+  `container_open`, `item_stack_request`, and `block_pick_request` are not sync requests, and provoking an
+  error-correction is not a normal mechanism. Pickup awareness without server deltas would require entity-magnet
+  simulation and stays deferred. Reconnect is the documented recovery path; `resume` on an already-online bot is
+  a no-op and is not a resync mechanism.
 
 Sprint/move directions were exercised but not carefully observed; they remain unvalidated (not implied PASS). No
 new Xbox-achievement observation was made or claimed in this session.

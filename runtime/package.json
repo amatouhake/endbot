@@ -1,6 +1,6 @@
 {
   "name": "@endbot/runtime",
-  "version": "0.1.0-dev",
+  "version": "0.1.0",
   "private": true,
   "description": "Headless Bedrock runtime foundation for Endbot",
   "bin": {

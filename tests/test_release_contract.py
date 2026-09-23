@@ -145,7 +145,10 @@ class ReleaseWheelContractTests(unittest.TestCase):
         plugin_version = tomllib.loads(
             (ROOT / "plugin/endbot/pyproject.toml").read_text(encoding="utf-8")
         )["project"]["version"]
-        self.assertNotEqual(runtime_version, plugin_version)
+        # First-release alignment: the tracked runtime and plugin versions agree
+        # (npm spelling and PEP 440 spelling of the same release), so the
+        # release-candidate workflow input matches both package metadata files.
+        self.assertEqual(runtime_version, plugin_version)
 
         accepted = subprocess.run(
             (sys.executable, "scripts/check_release_version.py", runtime_version),

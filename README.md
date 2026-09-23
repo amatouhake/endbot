@@ -20,15 +20,15 @@ implemented.
 
 These settings preserve an achievement-compatible configuration and world state in the validated baseline. The recorded
 M0 gate and the later M2 Windows-client session each observed an actual Xbox achievement unlock from a normally
-authenticated Bedrock client against historical patched package `0.11.11+endbot.1`; the current `0.11.11+endbot.2`
+authenticated Bedrock client against historical patched package `0.11.11+endbot.1`; the current `0.11.12+endbot.1`
 artifact has no new Xbox-achievement observation. See [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and caveats.
 
 ## Compatibility
 
 | Component | Pinned baseline |
 | --- | --- |
-| Endstone | `v0.11.11` / `37b395378d91d6d20f1c52bf9d79dbd20e152458` |
-| Patched Endstone package | `0.11.11+endbot.2` |
+| Endstone | `v0.11.12` / `1c71186cba896c5e0bc432384a8a8e72dfb2a626` |
+| Patched Endstone package | `0.11.12+endbot.1` |
 | BDS | `1.26.51.1` (build `51061372`) |
 | Bedrock protocol | `2193` |
 
@@ -66,7 +66,7 @@ npm test --prefix runtime
 python3 scripts/check_portability.py
 ```
 
-The first command verifies `v0.11.11` resolves to the exact locked commit, keeps a bare upstream cache under `.cache/`,
+The first command verifies `v0.11.12` resolves to the exact locked commit, keeps a bare upstream cache under `.cache/`,
 clones a disposable tree to `build/endstone-patched`, applies the ordered patch series with `git am`, and tags that
 patched commit with the locked Endbot-local package version. It refuses to overwrite an existing output directory. To
 reuse a populated cache without network access, choose a new output and add `--offline`.
@@ -93,7 +93,7 @@ manylinux container invokes Endstone's `auditwheel` repair command, and only the
 
 Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it together with the repaired patched
 Endstone wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official
-unpatched `0.11.11` wheel. The plugin registers the `/bot` tree, including the original `/bot ping`, and uses
+unpatched `0.11.12` wheel. The plugin registers the `/bot` tree, including the original `/bot ping`, and uses
 `endbot.command.control`. The permission defaults to false and is attached only to player UUIDs/XUIDs explicitly listed
 in the generated plugin `config.toml`; it does not grant operator or vanilla command rights. See
 [commands and operation](docs/COMMANDS.md).
@@ -121,6 +121,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Installing from release artifacts](docs/INSTALL.md)
 - [Security model](docs/SECURITY.md)
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)
 - [Compatibility and release gates](docs/COMPATIBILITY.md)

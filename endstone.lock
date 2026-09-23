@@ -2,10 +2,10 @@
   "schema_version": 1,
   "endstone": {
     "upstream_url": "https://github.com/EndstoneMC/endstone.git",
-    "version": "0.11.11",
-    "tag": "v0.11.11",
-    "commit": "37b395378d91d6d20f1c52bf9d79dbd20e152458",
-    "package_version": "0.11.11+endbot.2"
+    "version": "0.11.12",
+    "tag": "v0.11.12",
+    "commit": "1c71186cba896c5e0bc432384a8a8e72dfb2a626",
+    "package_version": "0.11.12+endbot.1"
   },
   "bds": {
     "version": "1.26.51.1",

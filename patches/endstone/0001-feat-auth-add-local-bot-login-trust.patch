@@ -1,4 +1,4 @@
-From f742750fba097c4425c2f45bf4a22c7bc8bb3ab6 Mon Sep 17 00:00:00 2001
+From 23e10d65c07909f8c26dd81f551601f623c96fd8 Mon Sep 17 00:00:00 2001
 From: amatouhake <60422818+amatouhake@users.noreply.github.com>
 Date: Mon, 21 Sep 2026 04:20:21 +0900
 Subject: [PATCH 1/2] feat(auth): add local bot login trust
@@ -31,13 +31,13 @@ index b5703adee..6e241b64b 100644
          self.requires("raknet/4.081-mojang")
          self.requires("replxx/0.0.4")
 diff --git a/endstone/config/endstone.default.toml b/endstone/config/endstone.default.toml
-index 174ba791d..c7dc06202 100644
+index 9d6d042b1..a1a64d9ec 100644
 --- a/endstone/config/endstone.default.toml
 +++ b/endstone/config/endstone.default.toml
-@@ -13,3 +13,13 @@ allow-client-packs = false
- # Disabled by default: the server exits when it cannot bind that port, and many
- # hosts and containers have no IPv6 at all.
- ipv6 = false
+@@ -17,3 +17,13 @@ ipv6 = false
+ # STUN servers used to discover this server's public address.
+ # Only used when transport is nethernet.
+ stun-servers = ["stun:stun.l.google.com:19302"]
 +
 +[local-bot-auth]
 +# Add a server-owner trust path for explicitly signed external bots. Tokens
@@ -120,7 +120,7 @@ index 02dc189fd..a1838de14 100644
  
  protected:
 diff --git a/src/endstone/runtime/CMakeLists.txt b/src/endstone/runtime/CMakeLists.txt
-index 87389155e..647191e1f 100644
+index c5129c140..78d33db56 100644
 --- a/src/endstone/runtime/CMakeLists.txt
 +++ b/src/endstone/runtime/CMakeLists.txt
 @@ -4,8 +4,16 @@ project(endstone_runtime LANGUAGES CXX)
@@ -140,7 +140,7 @@ index 87389155e..647191e1f 100644
  add_library(endstone_runtime SHARED
          bedrock_hooks/actor.cpp
          bedrock_hooks/batched_network_peer.cpp
-@@ -52,7 +60,7 @@ add_library(endstone_runtime SHARED
+@@ -54,7 +62,7 @@ add_library(endstone_runtime SHARED
  )
  add_library(endstone::runtime ALIAS endstone_runtime)
  set_target_properties(endstone_runtime PROPERTIES COMPILE_WARNING_AS_ERROR ON)

@@ -35,14 +35,14 @@ def patch_revision() -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--endbot-version", default="0.1.0-dev")
+    parser.add_argument("--endbot-version", default="0.1.0")
     args = parser.parse_args()
 
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     # Current-artifact safety state must not inherit historical human/Xbox
     # observations. Historical M0/M2 gates were recorded against
     # 0.11.11+endbot.1 (see docs/ACHIEVEMENTS.md, docs/M2_VALIDATION.md);
-    # the current +endbot.2 terminology migration has no new human observation
+    # the current 0.11.12+endbot.1 rebase has no new human observation
     # yet. Historical provenance is preserved explicitly below.
     manifest = {
         "schema_version": 2,

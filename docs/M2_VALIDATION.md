@@ -81,12 +81,12 @@ official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Endbot plugi
 (`iss = endbot://local-bot`, `aud = endstone://local-bot`, `owner-public.pem`). Alice stayed online while a normal
 Microsoft/Xbox human client joined with a populated XUID, with no human `Accepted local bot` entry, no
 Kelp/Timeout/stutter, and normal Survival with no achievement-disabled warning. This smoke did not add a new
-Xbox-achievement observation; the current `+endbot.2` manifest observation remains false. Linux remains the
+Xbox-achievement observation; the `+endbot.2` manifest observation remained false at the time. Linux remains the
 CI/release-artifact baseline, so this smoke does not claim identical Linux/Windows CI/release coverage.
 
 ## Native-Windows runtime-correctness matrix (M2 primitives, 2026-09-21/22 JST)
 
-Fresh native-Windows session on the same pinned pair (patched Endstone `0.11.11+endbot.2`, official Windows BDS
+Fresh native-Windows session on the previous pinned pair (patched Endstone `0.11.11+endbot.2`, official Windows BDS
 `1.26.51.1`, protocol `2193`, fresh vanilla Survival world, `online-mode=true`, `allow-cheats=false`, fresh runtime
 secrets on current local-bot defaults). One human client (normal Microsoft/Xbox login, single-XUID allowlist)
 established the control baseline first: normal human movement/jumping throughout, no short/stuttery human-jump

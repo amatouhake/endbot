@@ -2,19 +2,24 @@
 
 ## Current baseline
 
-The only pinned baseline is Endstone `v0.11.11` at
-`37b395378d91d6d20f1c52bf9d79dbd20e152458`, with BDS `1.26.51.1` build `51061372` and protocol `2193`.
+The only pinned baseline is Endstone `v0.11.12` at
+`1c71186cba896c5e0bc432384a8a8e72dfb2a626`, with BDS `1.26.51.1` build `51061372` and protocol `2193`.
 `endstone.lock` is the machine-readable authority.
 
-The modified wheel uses the separate package version `0.11.11+endbot.2`. Preparation creates that exact local tag on
+Upstream `v0.11.12` keeps the same BDS `1.26.51.1` / protocol `2193` pair as `v0.11.11`. It stops narrowing
+NetherNet to a single UDP port, fixes cross-dimension Actor/Player teleport, adds `network.stun-servers`, and fixes
+further map/scoreboard regressions. The upstream Brigadier-style command tree work is still an open PR and is not
+part of this baseline.
+
+The modified wheel uses the separate package version `0.11.12+endbot.1`. Preparation creates that exact local tag on
 the disposable patched commit for `setuptools_scm`; the plugin requires the same exact version. This prevents pip from
-substituting official unpatched `0.11.11` while leaving the upstream compatibility baseline unambiguous.
+substituting official unpatched `0.11.12` while leaving the upstream compatibility baseline unambiguous.
 `endstone.lock` `support_status: "validated-baseline"` refers to the pinned upstream Endstone/BDS pair above, not to
 human validation of the exact patched package; exact patched-package human validation is tracked below and in the
 compatibility manifest.
 
-The following live evidence was obtained against historical patched package `0.11.11+endbot.1` (same upstream pair),
-not the current `+endbot.2` artifact. The local-auth behavior was live-tested with ten concurrent external bots while online mode remained
+The following live evidence was obtained against historical patched package `0.11.11+endbot.1` (same BDS pair,
+older Endstone `v0.11.11`), not the current `0.11.12+endbot.1` artifact. The local-auth behavior was live-tested with ten concurrent external bots while online mode remained
 enabled, cheats and commands remained disabled, experiments/packs were absent, and creative/experiment history stayed
 zero. M0 was subsequently completed at Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97`: a normally
 Microsoft/Xbox-authenticated client executed `/bot ping`, received `Endbot: pong`, and unlocked a previously locked
@@ -36,10 +41,11 @@ local Bot with `iss = endbot://local-bot` and `aud = endstone://local-bot` via `
 online while a normal Microsoft/Xbox human client joined with a populated XUID, with no human `Accepted local bot`
 entry, no Kelp/Timeout/stutter, and normal Survival with no achievement-disabled warning. Linux nevertheless remains
 the CI/release-artifact baseline: the Windows smoke does not give Windows identical CI/release coverage. The PR #4
-smoke added no new Xbox-achievement observation; the current `+endbot.2` manifest observation remains false.
+smoke added no new Xbox-achievement observation; the then-current `+endbot.2` manifest observation remained false.
 
-Current patched package `0.11.11+endbot.2` is this terminology/default-identifier migration and has NOT yet received
-a new human/Xbox achievement observation.
+Current patched package `0.11.12+endbot.1` is the `v0.11.12` rebase and has NOT yet received
+a new human/Xbox achievement observation. A new exact package does not inherit historical observations; see the
+compatibility manifest and the release gate below.
 
 ### Local-bot auth defaults migration
 

@@ -18,7 +18,8 @@ Native Windows hosting of the runtime and server was designed for but was not pa
 Current status after PR #4: native Windows hosting has additionally been live-smoked successfully (patched Endstone
 `0.11.11+endbot.2`, official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Alice local Bot alongside a
 normal Microsoft/Xbox human client). Linux nevertheless remains the CI/release-artifact baseline, and the PR #4 smoke
-added no new Xbox-achievement observation for `+endbot.2`.
+added no new Xbox-achievement observation for `+endbot.2`. The current package is `0.11.12+endbot.1` on upstream
+`v0.11.12` (same BDS pair); that rebase awaits its own live regression and new achievement observation.
 
 ## Prerequisites
 
@@ -82,7 +83,7 @@ python scripts\prepare_endstone.py
 ```
 
 This creates `build\endstone-patched` exactly as on Linux (bare cache under `.cache\`, `git am` of the patch series,
-local tag `v0.11.11+endbot.2`). The script refuses to overwrite an existing output directory; to start over, run
+local tag `v0.11.12+endbot.1`). The script refuses to overwrite an existing output directory; to start over, run
 `Remove-Item -Recurse -Force build\endstone-patched` first (the tree also accumulates a project-local Conan cache
 under its ignored `.conan2\` entries, which `git -C build\endstone-patched clean -fdX` resets on its own). Then,
 from a Visual Studio x64 developer prompt with `.venv` active:
@@ -103,10 +104,10 @@ Verify the Endbot-local package contract before going further:
 python -c "import importlib.metadata as m, endstone; print(m.version('endstone'), endstone.__minecraft_version__)"
 ```
 
-Expected: `0.11.11+endbot.2 26.51` (Endstone reports the Minecraft version without the leading `1.`; its bootstrap
-prepends it, so this is BDS `1.26.51.x`). The prepared tree carries the local tag `v0.11.11+endbot.2` on the patched
+Expected: `0.11.12+endbot.1 26.51` (Endstone reports the Minecraft version without the leading `1.`; its bootstrap
+prepends it, so this is BDS `1.26.51.x`). The prepared tree carries the local tag `v0.11.12+endbot.1` on the patched
 commit (see `git -C build\endstone-patched tag --points-at HEAD`), which the build backend reads for the package
-version. Do not install the official `endstone==0.11.11` wheel into this
+version. Do not install the official `endstone==0.11.12` wheel into this
 environment; the plugin's exact pin exists to prevent running against an unpatched server.
 
 ## Install the plugin
@@ -164,16 +165,22 @@ Stop the server after the first start, then configure:
    with `python scripts\preflight.py C:\endbot-local\server\server.properties --acknowledge-world-state-unverified`.
    BDS `1.26.51` ships `allow-list=true`, which also blocks Bot names; for a local smoke server set `allow-list=false`
    (it is an access list, not an authentication or achievement invariant) or add every human and Bot name to
-   `allowlist.json`. Also replace the shipped `server-udp-ports=19132` with a range such as
-   `server-udp-ports=20000-20100`: with `transport=nethernet`, BDS allocates one UDP port per client from that
-   window, and the shipped single-port window lets exactly one NetherNet client hold a connection. A second client
-   (for example a human joining while a Bot is online) then receives an SDP answer with no ICE candidates and the
-   game reports `Kelp` / `InitialConnection-32` (`DisconnectFailReason::Timeout`) before any `Player connected:`
-   line. This was reproduced and fixed on Windows with a scripted second NetherNet client; the recorded WSL M2
-   server already used the range form.
+   `allowlist.json`. Leave `server-udp-ports` unset: delete the shipped `server-udp-ports=19132` line (or leave it
+   commented) and do not replace it with a range. Since upstream Endstone `v0.11.12`, Endstone no longer writes
+   `server-udp-ports` on NetherNet servers, and the server shares a single UDP port (the signaling port) across
+   sessions instead of allocating one port per client from that window. A bare single-port value narrows Bedrock's
+   UDP allocation window so every session must bind the same port while each one asks for its own socket; that is
+   what previously limited a NetherNet server to one client (second client got an SDP answer with no ICE candidates
+   and the game reported `Kelp` / `InitialConnection-32` before any `Player connected:` line). The old
+   `server-udp-ports=20000-20100` range workaround is unnecessary on this baseline and must not be applied: leaving
+   the property unset lets Bedrock pick its own window again, and the second-connection regression check below
+   verifies the fix rather than depending on the old accidental single-port configuration.
 2. `endstone.toml`: set the `[local-bot-auth]` table from `config\endstone.local-auth.example.toml`, `enabled = true`,
    and `public-key-file` pointing at the runtime's `owner-public.pem` (copy it next to `endstone.toml` or use an
-   absolute path). Only the public key is ever configured in Endstone.
+   absolute path). Only the public key is ever configured in Endstone. The `[network]` table now also carries
+   `stun-servers` (default `stun:stun.l.google.com:19302`); Endstone's config migration adds it to an existing
+   `endstone.toml` on upgrade. It is only used with `transport=nethernet` behind NAT so clients learn the server's
+   public address, and loopback smoke needs no change there.
 3. `plugins\endbot\config.toml` (written by the first start): set `[runtime].token-file` to the runtime's
    `control.token` (absolute path) and keep `host = "127.0.0.1"`, `port = 19142`. Add the human tester's UUID or
    decimal XUID to one `[authorization]` allowlist; do not make the tester an operator. To capture the XUID, let the
@@ -237,4 +244,4 @@ This guide does not publish Windows release artifacts and does not change the pi
 `endstone.lock`: Linux remains the CI/release-artifact baseline even though native Windows hosting has been
 live-smoked successfully after PR #4 (see [`COMPATIBILITY.md`](COMPATIBILITY.md)), and the Windows build-ID distinction above is
 per-platform packaging, not a new baseline. The post-PR-#4 Windows smoke added no new Xbox-achievement observation
-for `+endbot.2`.
+for `+endbot.2`, and the current `0.11.12+endbot.1` rebase likewise has none yet.

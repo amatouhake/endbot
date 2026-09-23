@@ -1,4 +1,4 @@
-From e4caffecc734d795640cc56b0d1a5ff78a8434c9 Mon Sep 17 00:00:00 2001
+From cb09523be521fcab03f3fd0a60aa795dbe087d99 Mon Sep 17 00:00:00 2001
 From: amatouhake <60422818+amatouhake@users.noreply.github.com>
 Date: Mon, 21 Sep 2026 04:20:27 +0900
 Subject: [PATCH 2/2] test(auth): cover local bot verification
@@ -89,7 +89,7 @@ index 000000000..82ae46c9a
 +}  // namespace
 diff --git a/tests/test_local_bot_auth.cpp b/tests/test_local_bot_auth.cpp
 new file mode 100644
-index 000000000..0c5fe13a6
+index 000000000..391c8c145
 --- /dev/null
 +++ b/tests/test_local_bot_auth.cpp
 @@ -0,0 +1,234 @@
@@ -192,7 +192,7 @@ index 000000000..0c5fe13a6
 +          public_key_path(directory / "owner-public.pem")
 +    {
 +        std::filesystem::create_directories(directory);
-+        auto *file = fopen(public_key_path.c_str(), "w");
++        auto *file = fopen(public_key_path.string().c_str(), "w");
 +        EXPECT_NE(file, nullptr);
 +        EXPECT_EQ(PEM_write_PUBKEY(file, owner.get()), 1);
 +        fclose(file);

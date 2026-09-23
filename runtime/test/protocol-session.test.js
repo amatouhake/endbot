@@ -576,6 +576,55 @@ test('drop on an empty selected slot fails before sending', async t => {
   await session.disconnect('test complete')
 })
 
+test('strafe left and right follow the facing instead of its mirror', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const queued = []
+  const waiters = []
+  client.queue = (name, packet) => {
+    queued.push({ name, packet })
+    waiters.splice(0).forEach(resolve => resolve())
+  }
+  const nextPacket = () => new Promise(resolve => waiters.push(resolve))
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  // Yaw 0 faces +Z (south). East (+X) is to the left of a south-facing
+  // player, so strafing left must move toward +X in both the serialized
+  // move vector and the predicted displacement. The key-state flags keep
+  // vanilla key semantics: the strafe-left key reports 'left'.
+  client.emit('start_game', { player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  const inputs = new InputState()
+  inputs.setLook(0, 0)
+  inputs.setMovement('left')
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+  let tick
+  while (!queued.some(entry => entry.name === 'player_auth_input' &&
+    (entry.packet.move_vector.x !== 0 || entry.packet.move_vector.z !== 0))) await nextPacket()
+  tick = queued.filter(entry => entry.name === 'player_auth_input' &&
+    (entry.packet.move_vector.x !== 0 || entry.packet.move_vector.z !== 0)).at(-1).packet
+  assert.deepEqual(tick.move_vector, { x: 1, z: 0 })
+  assert.ok(tick.delta.x > 0)
+  assert.equal(tick.delta.z, 0)
+  assert.ok(tick.input_data.includes('left'))
+  assert.ok(!tick.input_data.includes('right'))
+
+  queued.length = 0
+  inputs.setMovement('right')
+  while (!queued.some(entry => entry.name === 'player_auth_input' &&
+    (entry.packet.move_vector.x !== 0 || entry.packet.move_vector.z !== 0))) await nextPacket()
+  tick = queued.filter(entry => entry.name === 'player_auth_input' &&
+    (entry.packet.move_vector.x !== 0 || entry.packet.move_vector.z !== 0)).at(-1).packet
+  assert.deepEqual(tick.move_vector, { x: -1, z: 0 })
+  assert.ok(tick.delta.x < 0)
+  assert.equal(tick.delta.z, 0)
+  assert.ok(tick.input_data.includes('right'))
+  assert.ok(!tick.input_data.includes('left'))
+  await session.disconnect('test complete')
+})
+
 function usableHeldItem () {
   return {
     network_id: 882,

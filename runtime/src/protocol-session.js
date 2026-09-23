@@ -418,8 +418,8 @@ export class BedrockSession extends EventEmitter {
     const move = { x: 0, z: 0 }
     if (state.movement === 'forward') move.z = 1
     if (state.movement === 'backward') move.z = -1
-    if (state.movement === 'left') move.x = -1
-    if (state.movement === 'right') move.x = 1
+    if (state.movement === 'left') move.x = 1
+    if (state.movement === 'right') move.x = -1
     const radians = state.yaw * Math.PI / 180
     let speed = state.sprint ? 0.28 : state.sneak ? 0.065 : 0.215
     if (!state.movement) speed = 0
@@ -428,8 +428,11 @@ export class BedrockSession extends EventEmitter {
     const inputData = []
     if (move.z > 0) inputData.push('up')
     if (move.z < 0) inputData.push('down')
-    if (move.x < 0) inputData.push('left')
-    if (move.x > 0) inputData.push('right')
+    // Key-state flags follow the commanded direction (vanilla key semantics),
+    // not the move-vector sign: the vector carries the facing-relative
+    // displacement while the flags report which strafe key is held.
+    if (state.movement === 'left') inputData.push('left')
+    if (state.movement === 'right') inputData.push('right')
     addToggleInputFlags(inputData, state)
     // Jump is a tap, not a hold: only the trigger tick presses the key and
     // later ticks release it, even while predicted airborne. Holding the

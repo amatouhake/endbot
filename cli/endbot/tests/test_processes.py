@@ -122,7 +122,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class ProcessAliveTests(unittest.TestCase):
+class ProcessAliveZombieTests(unittest.TestCase):
     def test_current_process_is_alive(self) -> None:
         from endbot_cli.processes import process_alive
 

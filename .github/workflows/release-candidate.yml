@@ -76,10 +76,24 @@ jobs:
           uv run --with auditwheel==6.2.0 \
             python scripts/inspect_linux_wheel.py dist/endstone/endstone-*.whl
           python -m build --wheel --outdir dist/plugin plugin/endbot
+          python -m build --wheel --outdir dist/cli cli/endbot
           python scripts/test_package_install.py --endstone-wheel-dir dist/endstone --plugin-wheel-dir dist/plugin
           mkdir -p staging/linux
           cp dist/endstone/*.whl staging/linux/
           cp build/endstone-patched/LICENSE staging/linux/ENDSTONE_LICENSE
+
+      - name: Build the Linux operator bundle
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          python scripts/build_bundle.py \
+            --version "$CANDIDATE_VERSION" \
+            --platform linux-x86_64 \
+            --endstone-wheel dist/endstone/endstone-*.whl \
+            --plugin-wheel dist/plugin/endstone_endbot-*.whl \
+            --cli-wheel dist/cli/endbot-*.whl \
+            --endstone-license staging/linux/ENDSTONE_LICENSE \
+            --output-dir dist/bundle
 
       - name: Test candidate in a clean Linux consumer without LLVM
         run: >-
@@ -96,6 +110,16 @@ jobs:
         with:
           name: endstone-linux-wheel
           path: staging/linux/
+          if-no-files-found: error
+
+      - name: Upload Linux bundle and pure wheels (intermediate, not the candidate)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-linux
+          path: |
+            dist/bundle/
+            dist/plugin/
+            dist/cli/
           if-no-files-found: error
 
   windows:
@@ -147,15 +171,37 @@ jobs:
             --build-selector cp312-win_amd64
           python scripts/inspect_windows_wheel.py dist/endstone/endstone-*.whl
           python -m build --wheel --outdir dist/plugin plugin/endbot
+          python -m build --wheel --outdir dist/cli cli/endbot
           python scripts/test_package_install.py --endstone-wheel-dir dist/endstone --plugin-wheel-dir dist/plugin
           mkdir -p staging/windows
           cp dist/endstone/*.whl staging/windows/
+          cp build/endstone-patched/LICENSE staging/windows/ENDSTONE_LICENSE
+
+      - name: Build the Windows operator bundle
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          python scripts/build_bundle.py \
+            --version "$CANDIDATE_VERSION" \
+            --platform windows-x86_64 \
+            --endstone-wheel dist/endstone/endstone-*.whl \
+            --plugin-wheel dist/plugin/endstone_endbot-*.whl \
+            --cli-wheel dist/cli/endbot-*.whl \
+            --endstone-license staging/windows/ENDSTONE_LICENSE \
+            --output-dir dist/bundle
 
       - name: Upload Windows wheel (intermediate, not the candidate)
         uses: actions/upload-artifact@v4
         with:
           name: endstone-windows-wheel
           path: staging/windows/
+          if-no-files-found: error
+
+      - name: Upload Windows bundle (intermediate, not the candidate)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-windows
+          path: dist/bundle/
           if-no-files-found: error
 
   assemble:
@@ -173,7 +219,7 @@ jobs:
           cache: pip
 
       - name: Install packaging tools
-        run: python -m pip install --upgrade build packaging
+        run: python -m pip install --upgrade packaging
 
       - name: Download Linux wheel
         uses: actions/download-artifact@v4
@@ -187,10 +233,28 @@ jobs:
           name: endstone-windows-wheel
           path: staging/windows
 
-      # The plugin wheel and the runtime/config tarballs are built once,
-      # here, so the candidate checksums are unambiguous. Both Endstone
-      # wheels arrive install-tested from the platform jobs; the Linux
-      # wheel is re-verified here against the published plugin wheel.
+      - name: Download Linux bundle and pure wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-linux
+          path: staging/bundle-linux
+
+      - name: Download Windows bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-windows
+          path: staging/bundle-windows
+
+      # upload-artifact strips the paths' common ancestor (dist/), so the
+      # bundle-linux artifact holds bundle/, plugin/ and cli/ at its root.
+      # The pure-Python plugin and CLI wheels are built in each platform job
+      # from the same commit; assemble publishes exactly one of each, taking
+      # the Linux-built pair so the candidate checksums are unambiguous. The
+      # runtime/config tarballs are built once, here. Both Endstone wheels
+      # arrive install-tested from the platform jobs; the Linux wheel is
+      # re-verified here against the published plugin wheel. Both operator
+      # bundles arrive self-tested from their platform jobs and join dist/
+      # so SHA256SUMS covers them.
       - name: Assemble candidate artifacts
         env:
           CANDIDATE_VERSION: ${{ inputs.version }}
@@ -203,8 +267,9 @@ jobs:
           mkdir -p dist
           cp staging/linux/*.whl staging/windows/*.whl dist/
           cp staging/linux/ENDSTONE_LICENSE dist/ENDSTONE_LICENSE
-          python -m build --wheel --outdir dist plugin/endbot
-          python scripts/test_package_install.py --endstone-wheel-dir staging/linux --plugin-wheel-dir dist
+          cp staging/bundle-linux/plugin/*.whl staging/bundle-linux/cli/*.whl dist/
+          python scripts/test_package_install.py --endstone-wheel-dir staging/linux --plugin-wheel-dir staging/bundle-linux/plugin
+          cp staging/bundle-linux/bundle/* staging/bundle-windows/* dist/
           tar -czf "dist/endbot-runtime-${CANDIDATE_VERSION}.tar.gz" \
             -C runtime package.json package-lock.json README.md endbot-runtime.example.json scripts src
           tar -czf "dist/endbot-config-${CANDIDATE_VERSION}.tar.gz" config LICENSE THIRD_PARTY_NOTICES.md

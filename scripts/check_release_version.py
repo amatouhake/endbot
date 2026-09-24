@@ -33,6 +33,7 @@ def validate_release_version(candidate: str) -> None:
     plugin = tomllib.loads((ROOT / "plugin/endbot/pyproject.toml").read_text(encoding="utf-8"))["project"][
         "version"
     ]
+    cli = tomllib.loads((ROOT / "cli/endbot/pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     module = plugin_module_version()
 
     errors: list[str] = []
@@ -43,6 +44,11 @@ def validate_release_version(candidate: str) -> None:
             errors.append(f"candidate {candidate!r} does not match Python plugin version {plugin!r}")
     except InvalidVersion as error:
         errors.append(f"candidate version is not PEP 440 compatible: {error}")
+    try:
+        if Version(candidate) != Version(cli):
+            errors.append(f"candidate {candidate!r} does not match CLI package version {cli!r}")
+    except InvalidVersion as error:
+        errors.append(f"CLI version is not PEP 440 compatible: {error}")
     if module != plugin:
         errors.append(f"plugin module version {module!r} does not match package version {plugin!r}")
     if errors:

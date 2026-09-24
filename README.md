@@ -9,6 +9,28 @@ server-API teleport, rename, movement/actions, hotbar selection, block interacti
 `/bot` authorization surface. Groups, macros, work tasks, Discord, blueprints, web UI, and AI behavior are not
 implemented.
 
+## Quick start (server operators)
+
+No Python, Node.js, pip, or npm install is needed: the platform bundle carries its own runtimes, and BDS is downloaded
+through Endstone's official acquisition path.
+
+1. Download `endbot-<version>-windows-x86_64.zip` or `endbot-<version>-linux-x86_64.tar.gz` and `SHA256SUMS` from the
+   release, verify the checksum, and extract it where the instance should live.
+2. Preview, then apply the setup (`endbot.cmd` on Windows, `./endbot` on Linux):
+
+   ```text
+   endbot setup --fresh --controller <YourGamerTag>
+   endbot setup --fresh --controller <YourGamerTag> --apply
+   ```
+
+   To adopt an existing server instead, use `--existing <path-to-bds>`; it backs up everything it may touch first.
+3. `endbot start`, join once with your GamerTag (this binds control to your XUID), then run `/bot Alice spawn`.
+4. `endbot stop` shuts down BDS and the runtime cleanly; `endbot doctor` checks the whole instance; `endbot update
+   <bundle>` installs a new release next to the current one and `endbot update --rollback` returns to it.
+
+See [installation](docs/INSTALL.md), the [operator contract](docs/OPERATIONS.md), and [commands](docs/COMMANDS.md).
+The sections below describe the developer and source-build workflow.
+
 ## Safety invariants
 
 - Official BDS and Endstone; no replacement server.

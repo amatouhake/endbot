@@ -33,7 +33,10 @@ the candidate until the exact candidate passes the documented human/live gate.
 
 ## Linux install and start
 
-Requirements: Python 3.12, Node.js 22+, Docker is not needed to install (only to build) the candidate.
+Requirements: Python 3.12, Node.js 22+, git, cmake, and a C++ compiler. Docker is not needed to install
+(only to build) the candidate. The compiler toolchain matters because `npm ci` falls back to building
+`raknet-native` from source when no published prebuild matches the platform; without it the install fails
+inside the dependency's build check rather than with an Endbot error.
 
 1. Create a virtual environment and install the two wheels offline from the candidate directory. The repaired
    Endstone wheel carries no LLVM runtime dependency:
@@ -66,7 +69,10 @@ Requirements: Python 3.12, Node.js 22+, Docker is not needed to install (only to
      is ever configured in Endstone. The `[network]` `stun-servers` default needs no change for local/loopback use.
    - `plugins/endbot/config.toml` (written by the first start): set `[runtime].token-file` to the runtime's
      `control.token` (absolute path), keep loopback host/port, and add the human tester's UUID or decimal XUID to
-     one `[authorization]` allowlist. Do not make the tester an operator.
+     one `[authorization]` allowlist. Do not make the tester an operator. Two TOML traps found during the
+     operator gate: Windows paths must use *single-quoted* literal strings
+     (`token-file = 'C:\endbot\secrets\control.token'`) because backslashes in double-quoted strings are
+     escapes, and XUIDs must be *strings* (`allowed-xuids = ["2535466722952312"]`), not bare numbers.
 4. Start the runtime first, then the server. The runtime prints `endbot_runtime_ready` when its loopback control
    socket listens; the server log reports `Accepted local bot '...'` on Bot login and the human joins through the
    normal Microsoft/Xbox path.

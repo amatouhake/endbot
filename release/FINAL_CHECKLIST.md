@@ -29,6 +29,23 @@ publish the final Release until every gate item below is satisfied.
 - [ ] **Rebuild + re-verify the final candidate** from the exact final `main`
   SHA after the above land, and confirm checksums, manifest binding, and a
   clean install from the published assets before tagging.
+- [ ] **Onboarding review (operator-gate feedback).** A fresh user-perspective
+  setup succeeded end to end (venv + release wheels, runtime tarball +
+  `npm ci`, fresh server bootstrap, `/bot ping`), but two TOML traps needed
+  guidance: Windows paths must be single-quoted literal strings, and XUIDs
+  must be strings, not numbers (both now documented in `docs/INSTALL.md`).
+  Decide before release how far to go for plain BDS operators: at minimum
+  consider extending `scripts/preflight.py` beyond `server.properties` to
+  validate the plugin `config.toml` (TOML parses, `token-file` points at an
+  existing file, allowlist entries are strings) and the `[local-bot-auth]`
+  table (enabled + readable public key), so these fail fast with a clear
+  message instead of a server-log traceback. Node.js/Python prerequisites
+  are architectural and stay, but every manual step should be either
+  documented or mechanically checked.
+- [ ] **Live-check `allow-list=true`.** The gate ran with `allow-list=false`;
+  `allow-list=true` (which also blocks Bot names unless allowlisted) has not
+  been exercised with a human + bot join. Either test it or document it as
+  untested.
 
 ## Explicitly deferred (recorded, not blocking 0.1.0)
 

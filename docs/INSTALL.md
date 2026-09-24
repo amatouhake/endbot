@@ -1,10 +1,50 @@
-# Installing Endbot from release artifacts
+# Installing Endbot
 
-This guide installs Endbot `0.1.0` from the release-candidate artifacts without reconstructing the development build
-process. No artifact contains the official Bedrock Dedicated Server (BDS) binary: Endstone's normal bootstrap
-downloads the pinned BDS (`1.26.51.1`, protocol `2193`) into the server folder after confirmation.
+## Operator install (platform bundle)
 
-## Candidate contents
+The operator path needs no Python, Node.js, venv, pip, or npm: one platform bundle carries the private CPython with the
+patched Endstone, the Endbot plugin and CLI, a private Node.js, and the prebuilt runtime. No artifact ever contains the
+official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition path downloads the pinned BDS
+(`1.26.51.1`, protocol `2193`) during `endbot setup` (AGENTS.md: BDS is never bundled, vendored, or redistributed).
+
+1. Download the platform bundle `endbot-<version>-<platform>.zip|tar.gz` (`.zip` for `windows-x86_64`, `.tar.gz` for
+   `linux-x86_64`) and its `SHA256SUMS` from the release, and verify the archive:
+
+   ```bash
+   sha256sum -c SHA256SUMS                       # Linux
+   certutil -hashfile endbot-<version>-<platform>.zip SHA256   # Windows: compare with SHA256SUMS by hand
+   ```
+
+2. Extract the bundle into an empty instance directory (for example `/srv/endbot` or `C:\endbot`). It contains
+   `app/<version>/` (the application) and the `endbot` / `endbot.cmd` launcher; that is the whole install.
+3. Run setup (a dry run first if you want to see the plan; `--apply` is the confirmation, the CLI never prompts):
+
+   ```bash
+   ./endbot setup --fresh --controller <GamerTag>          # print the plan only
+   ./endbot setup --fresh --controller <GamerTag> --apply  # create <instance>/server and download the locked BDS
+   ```
+
+   To adopt an existing vanilla BDS (or earlier Endstone) directory instead, use
+   `endbot setup --existing <path> --controller <GamerTag> --i-have-a-world-backup --apply` (or pass
+   `--backup-worlds` to copy `worlds/` into the `backups/<UTC timestamp>/` safety backup). Setup enforces
+   `online-mode=true`, `allow-cheats=false`, and no experiment history; a server or world that violates those is
+   refused with an explanation rather than silently changed.
+4. Start the stack in the foreground: `endbot start`. The first start generates the owner keys and control token in
+   `state/secrets/`; `endbot doctor` reports instance health at any time.
+5. Join the server **once** with each controller GamerTag so it binds to its XUID (section 3 of
+   [`OPERATIONS.md`](OPERATIONS.md)). Until then the GamerTag is only "pending".
+6. Give the Bot a name and bring it online: `/bot Alice spawn`.
+
+Updating to a newer bundle: `endbot update <bundle> [--sums PATH]` verifies the archive, extracts the new
+`app/<version>/`, runs its doctor against the existing instance (moving BDS only with a §6 backup when the new version
+locks a different BDS), switches `app/current`, and keeps the old version for `endbot update --rollback`.
+
+## Developer install
+
+The remainder of this guide is the developer/source-build path: it reconstructs the stack from the release-candidate
+wheels and the runtime source bundle instead of the platform bundle above.
+
+### Candidate contents
 
 A release candidate (`endbot-<version>-candidate` workflow artifact, assembled but never published automatically)
 contains exactly:
@@ -31,7 +71,7 @@ package never inherits human/Xbox achievement observations from an earlier one; 
 attributed to `0.11.11+endbot.1` under `historical_validation`. Do not claim achievement-preserving compatibility for
 the candidate until the exact candidate passes the documented human/live gate.
 
-## Linux install and start
+### Linux install and start
 
 Requirements: Python 3.12, Node.js 24+, git, cmake, and a C++ compiler. Docker is not needed to install
 (only to build) the candidate. The compiler toolchain matters because `npm ci` falls back to building
@@ -77,7 +117,7 @@ inside the dependency's build check rather than with an Endbot error.
    socket listens; the server log reports `Accepted local bot '...'` on Bot login and the human joins through the
    normal Microsoft/Xbox path.
 
-## Native Windows install and start
+### Native Windows install and start
 
 The Linux wheel does not install on Windows. The supported Windows path reuses every release artifact except the
 Endstone wheel:
@@ -95,7 +135,7 @@ Endstone wheel:
    `2193`), then apply the same `server.properties` / `endstone.toml` / plugin configuration as on Linux. Native
    Windows hosting is live-smoked but Linux remains the CI/release-artifact baseline.
 
-## Updating to a newer candidate
+### Updating to a newer candidate
 
 1. Stop the server (`stop` in its console) and the runtime (`Ctrl+C`). Despawn Bots first.
 2. Verify the new candidate's `SHA256SUMS` and confirm its `compatibility-manifest.json` names the intended
@@ -107,7 +147,7 @@ Endstone wheel:
 4. Start the runtime, then the server, and re-run the live regression matrix in [`WINDOWS_DEV.md`](WINDOWS_DEV.md)
    plus `/bot ping` before returning the server to normal use.
 
-## What is intentionally out of scope
+### What is intentionally out of scope
 
 - BDS is never bundled, vendored, or copied into the repository or the candidate.
 - No tag or GitHub Release is created from a green build alone. Publication waits for the exact candidate to pass

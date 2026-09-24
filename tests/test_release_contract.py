@@ -464,6 +464,16 @@ class WindowsWheelContractTests(unittest.TestCase):
         self.assertIn('"win_amd64" not in endstone_wheel.name', installer)
         self.assertIn('environment / "Scripts" / "python.exe"', installer)
 
+    def test_paired_install_resolves_pip_file_urls_on_this_platform(self) -> None:
+        spec = importlib.util.spec_from_file_location("package_install", ROOT / "scripts/test_package_install.py")
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        with tempfile.TemporaryDirectory() as directory:
+            wheel = (Path(directory) / "dir with space" / "endstone-1-cp312-cp312-win_amd64.whl").resolve()
+            self.assertEqual(installer.file_url_to_path(wheel.as_uri()), wheel)
+        with self.assertRaises(installer.InstallTestError):
+            installer.file_url_to_path("https://example.invalid/endstone.whl")
+
     def test_bds_build_stays_on_the_single_locked_baseline(self) -> None:
         # Windows BDS 1.26.51.1 reports build 51061361 while the Linux
         # package reports 51061372. The manifest records the single lock

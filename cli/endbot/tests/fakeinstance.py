@@ -11,6 +11,8 @@ import socket
 import sys
 from pathlib import Path
 
+import fakenbt
+
 from endbot_cli.instance import InstancePaths
 from endbot_cli.lock import LockData, normalize_bds_version
 
@@ -34,6 +36,60 @@ level-name=world
 """
 
 CONTROL_TOKEN = "test-control-token-0123456789abcdef0123456789"
+
+FAKE_BDS_PROPERTIES = """\
+# Bedrock Dedicated Server properties
+online-mode = false
+allow-cheats = true
+level-name=world
+"""
+
+
+def build_bds_dir(
+    server: Path,
+    *,
+    version: str | None = "26.51",
+    properties: str | None = SERVER_PROPERTIES,
+    executable: bool = True,
+    packs: bool = True,
+    worlds: bool = False,
+    creative: bool = False,
+) -> Path:
+    """Create a synthetic (vanilla or earlier-Endstone) BDS directory."""
+
+    server.mkdir(parents=True, exist_ok=True)
+    if properties is not None:
+        (server / "server.properties").write_text(properties, encoding="utf-8")
+    if version is not None:
+        (server / "version.txt").write_text(version, encoding="utf-8")
+    if executable:
+        (server / "bedrock_server").write_bytes(b"fake-bds-binary")
+    if packs:
+        for name in ("behavior_packs", "resource_packs", "definitions"):
+            (server / name / "vanilla").mkdir(parents=True, exist_ok=True)
+            (server / name / "vanilla" / "contents.json").write_text("{}\n", encoding="utf-8")
+    if worlds:
+        world = server / "worlds" / "world"
+        world.mkdir(parents=True, exist_ok=True)
+        tags = {"hasBeenLoadedInCreative": fakenbt.byte(1)} if creative else {}
+        (world / "level.dat").write_bytes(fakenbt.level_dat(tags))
+    return server
+
+
+def simulate_bds_download(server: Path, version: str = "26.51") -> Path:
+    """What Endstone's ``_download`` leaves behind (fresh files plus version.txt).
+
+    Like the real step, an existing ``server.properties`` keeps its values.
+    """
+
+    server.mkdir(parents=True, exist_ok=True)
+    if not (server / "server.properties").exists():
+        (server / "server.properties").write_text(FAKE_BDS_PROPERTIES, encoding="utf-8")
+    (server / "version.txt").write_text(version, encoding="utf-8")
+    (server / "bedrock_server").write_bytes(b"fake-bds-binary")
+    for name in ("behavior_packs", "resource_packs", "definitions"):
+        (server / name / "vanilla").mkdir(parents=True, exist_ok=True)
+    return server
 
 
 def generate_key_pem() -> tuple[bytes, bytes]:

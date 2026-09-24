@@ -31,9 +31,18 @@ signatures and mismatched `cpk`; release qualification must repeat live negative
 
 ## Command authorization
 
-`endbot.command.control` defaults to false. The plugin reads UUID/XUID allowlists on load and attaches only that Endstone
-permission to matching players when they join. It does not make them operators or grant vanilla command permissions.
-Invalid allowlist data prevents safe plugin initialization rather than granting broadly.
+`endbot.command.control` defaults to false. The plugin attaches only that Endstone permission, on join, to players that
+are either bound controllers or listed in the pre-bound UUID/XUID allowlists. It does not make them operators or grant
+vanilla command permissions. Invalid allowlist or binding data prevents safe plugin initialization rather than granting
+broadly.
+
+Controllers are configured by Xbox GamerTag but authorized by XUID. A configured GamerTag stays pending until a player
+with that name joins through Microsoft/Xbox authentication with a non-empty decimal XUID; the plugin then records the
+GamerTag → XUID/UUID binding in the controllers file. A bound GamerTag can never be re-bound to another XUID, so a
+different account that later takes the GamerTag gets no permission, while the bound owner keeps control after a
+GamerTag change. Local Bots have no XUID and can never bind. Removing a GamerTag from the configuration revokes its
+binding on the next load. Until the owner's first join, whoever currently holds a pending GamerTag could claim it, so
+operators should join once right after setup; `endbot doctor` lists pending entries.
 
 ## Runtime control
 

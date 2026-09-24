@@ -12,6 +12,7 @@ from endstone_endbot.authorization import AllowedPlayers
 from endstone_endbot.commands import BotCommandService
 from endstone_endbot.control import RuntimeControlClient
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
+from endstone_endbot.enrollment import ControllerEnrollment
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
@@ -116,13 +117,18 @@ class EndbotPlugin(Plugin):
         super().__init__()
         self._bot_commands = BotCommandService()
         self._allowed_players = AllowedPlayers()
+        self._controllers = ControllerEnrollment((), None)
         self._world = None
         self._server_thread = None
         self._command_runner = None
 
     def on_load(self) -> None:
         self.save_default_config()
-        self._allowed_players = AllowedPlayers.from_config(self.config.get("authorization", {}))
+        authorization = self.config.get("authorization", {})
+        self._allowed_players = AllowedPlayers.from_config(authorization)
+        self._controllers = ControllerEnrollment.from_config(authorization, self.data_folder)
+        for gamertag in self._controllers.pending():
+            self.logger.info(f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
 
     def on_enable(self) -> None:
         runtime = self.config.get("runtime", {})
@@ -159,7 +165,11 @@ class EndbotPlugin(Plugin):
     @event_handler
     def on_player_join(self, event: PlayerJoinEvent) -> None:
         player = event.player
-        if self._allowed_players.allows(str(player.unique_id), str(player.xuid)):
+        player_uuid, xuid = str(player.unique_id), str(player.xuid)
+        authorized, binding = self._controllers.authorize(player.name, xuid, player_uuid)
+        if binding is not None:
+            self.logger.info(f"Bound controller {binding.gamertag} to XUID {binding.xuid}.")
+        if authorized or self._allowed_players.allows(player_uuid, xuid):
             player.add_attachment(self, "endbot.command.control", True)
         if self._world is not None:
             self._world.apply_pending_placement(player)

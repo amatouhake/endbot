@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  candidate:
+  linux:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -69,6 +69,128 @@ jobs:
           cmake --build --preset conan-relwithdebinfo
           ctest --preset conan-relwithdebinfo --output-on-failure
 
+      - name: Build, inspect, and test the Linux wheel
+        run: |
+          python scripts/build_endstone_wheel.py \
+            --output-dir dist/endstone
+          uv run --with auditwheel==6.2.0 \
+            python scripts/inspect_linux_wheel.py dist/endstone/endstone-*.whl
+          python -m build --wheel --outdir dist/plugin plugin/endbot
+          python scripts/test_package_install.py --endstone-wheel-dir dist/endstone --plugin-wheel-dir dist/plugin
+          mkdir -p staging/linux
+          cp dist/endstone/*.whl staging/linux/
+          cp build/endstone-patched/LICENSE staging/linux/ENDSTONE_LICENSE
+
+      - name: Test candidate in a clean Linux consumer without LLVM
+        run: >-
+          docker run --rm
+          --volume "${PWD}:/workspace:ro"
+          --workdir /workspace
+          python:3.12-slim-bookworm
+          python scripts/test_package_install.py
+          --endstone-wheel-dir dist/endstone
+          --plugin-wheel-dir dist/plugin
+
+      - name: Upload Linux wheel (intermediate, not the candidate)
+        uses: actions/upload-artifact@v4
+        with:
+          name: endstone-linux-wheel
+          path: staging/linux/
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Mirror upstream Endstone's own Windows wheel toolchain
+      # (prepared tree .github/workflows/build.yml): MSVC developer
+      # environment plus CMake/Ninja, with Conan available to the
+      # PEP 517 build backend. Deliberately no SENTRY_AUTH_TOKEN or
+      # other secrets: without a token the repair step skips symbol
+      # upload and only stages the wheel.
+      - name: Set up MSVC (Windows)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86_64
+
+      - name: Set up CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Install packaging tools
+        run: python -m pip install --upgrade build cibuildwheel==3.4.1 conan packaging
+
+      - name: Verify source and prepare Endstone
+        env:
+          PYTHONPATH: plugin/endbot/src
+        run: |
+          python scripts/check_portability.py
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s plugin/endbot/tests -v
+          python scripts/prepare_endstone.py
+
+      - name: Build, inspect, and test the Windows wheel
+        run: |
+          python scripts/build_endstone_wheel.py \
+            --output-dir dist/endstone \
+            --build-selector cp312-win_amd64
+          python scripts/inspect_windows_wheel.py dist/endstone/endstone-*.whl
+          python -m build --wheel --outdir dist/plugin plugin/endbot
+          python scripts/test_package_install.py --endstone-wheel-dir dist/endstone --plugin-wheel-dir dist/plugin
+          mkdir -p staging/windows
+          cp dist/endstone/*.whl staging/windows/
+
+      - name: Upload Windows wheel (intermediate, not the candidate)
+        uses: actions/upload-artifact@v4
+        with:
+          name: endstone-windows-wheel
+          path: staging/windows/
+          if-no-files-found: error
+
+  assemble:
+    needs: [linux, windows]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install packaging tools
+        run: python -m pip install --upgrade build packaging
+
+      - name: Download Linux wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: endstone-linux-wheel
+          path: staging/linux
+
+      - name: Download Windows wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: endstone-windows-wheel
+          path: staging/windows
+
+      # The plugin wheel and the runtime/config tarballs are built once,
+      # here, so the candidate checksums are unambiguous. Both Endstone
+      # wheels arrive install-tested from the platform jobs; the Linux
+      # wheel is re-verified here against the published plugin wheel.
       - name: Assemble candidate artifacts
         env:
           CANDIDATE_VERSION: ${{ inputs.version }}
@@ -79,29 +201,16 @@ jobs:
           fi
           python scripts/check_release_version.py "$CANDIDATE_VERSION"
           mkdir -p dist
-          python scripts/build_endstone_wheel.py \
-            --output-dir dist
-          uv run --with auditwheel==6.2.0 \
-            python scripts/inspect_linux_wheel.py dist/endstone-*.whl
+          cp staging/linux/*.whl staging/windows/*.whl dist/
+          cp staging/linux/ENDSTONE_LICENSE dist/ENDSTONE_LICENSE
           python -m build --wheel --outdir dist plugin/endbot
-          python scripts/test_package_install.py --endstone-wheel-dir dist --plugin-wheel-dir dist
+          python scripts/test_package_install.py --endstone-wheel-dir staging/linux --plugin-wheel-dir dist
           tar -czf "dist/endbot-runtime-${CANDIDATE_VERSION}.tar.gz" \
             -C runtime package.json package-lock.json README.md endbot-runtime.example.json scripts src
           tar -czf "dist/endbot-config-${CANDIDATE_VERSION}.tar.gz" config LICENSE THIRD_PARTY_NOTICES.md
-          cp build/endstone-patched/LICENSE dist/ENDSTONE_LICENSE
           python scripts/generate_compatibility_manifest.py dist/compatibility-manifest.json --endbot-version "$CANDIDATE_VERSION"
           cd dist
           sha256sum ./* > SHA256SUMS
-
-      - name: Test candidate in a clean Linux consumer without LLVM
-        run: >-
-          docker run --rm
-          --volume "${PWD}:/workspace:ro"
-          --workdir /workspace
-          python:3.12-slim-bookworm
-          python scripts/test_package_install.py
-          --endstone-wheel-dir dist
-          --plugin-wheel-dir dist
 
       - name: Upload candidate (never publish)
         uses: actions/upload-artifact@v4

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -81,13 +82,18 @@ def integration_test(endstone_wheel_dir: Path, plugin_wheel_dir: Path) -> None:
         "manylinux_" not in endstone_wheel.name or "-linux_" in endstone_wheel.name
     ):
         raise InstallTestError(f"Endstone wheel is not a repaired manylinux artifact: {endstone_wheel.name}")
+    if sys.platform == "win32" and "win_amd64" not in endstone_wheel.name:
+        raise InstallTestError(f"Endstone wheel is not a win_amd64 artifact: {endstone_wheel.name}")
 
     with tempfile.TemporaryDirectory(prefix="endbot-package-install-") as temporary:
         test_root = Path(temporary)
         environment = test_root / "venv"
         report_path = test_root / "paired-install.json"
         run(sys.executable, "-m", "venv", str(environment))
-        python = environment / "bin" / "python"
+        if os.name == "nt":
+            python = environment / "Scripts" / "python.exe"
+        else:
+            python = environment / "bin" / "python"
 
         # Bootstrap only third-party runtime dependencies from the explicit patched
         # wheel, then remove Endstone so the paired installation starts absent.

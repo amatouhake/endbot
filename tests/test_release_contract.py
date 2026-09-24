@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
+from unittest import mock
 
 import tomllib
 
@@ -291,6 +294,195 @@ class CICacheContractTests(unittest.TestCase):
         ):
             self.assertIn(required, workflow)
         self.assertIn("npm ci --prefix runtime", workflow)
+
+
+def _load_script(name: str):
+    path = ROOT / "scripts" / name
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _release_job_blocks() -> dict[str, str]:
+    workflow = (ROOT / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
+    linux = workflow.split("  linux:", 1)[1].split("  windows:", 1)[0]
+    windows, assemble = workflow.split("  windows:", 1)[1].split("  assemble:", 1)
+    return {"workflow": workflow, "linux": linux, "windows": windows, "assemble": assemble}
+
+
+class WindowsWheelContractTests(unittest.TestCase):
+    def test_release_candidate_builds_both_platforms_then_assembles(self) -> None:
+        blocks = _release_job_blocks()
+        workflow = blocks["workflow"]
+        self.assertIn("needs: [linux, windows]", blocks["assemble"])
+        self.assertIn("runs-on: ubuntu-22.04", blocks["linux"])
+        self.assertIn("runs-on: windows-2022", blocks["windows"])
+        self.assertIn('python-version: "3.12"', blocks["windows"])
+        self.assertIn("--build-selector cp312-win_amd64", blocks["windows"])
+        self.assertIn("python scripts/inspect_windows_wheel.py", blocks["windows"])
+        self.assertIn("python scripts/test_package_install.py", blocks["windows"])
+        self.assertIn("python scripts/prepare_endstone.py", blocks["windows"])
+        self.assertIn("python scripts/check_portability.py", blocks["windows"])
+        self.assertIn("python -m unittest discover -s tests", blocks["windows"])
+        self.assertIn("python -m unittest discover -s plugin/endbot/tests", blocks["windows"])
+        # The published plugin wheel and tarballs are built once, in assemble,
+        # so the candidate checksums are unambiguous.
+        self.assertEqual(
+            workflow.count("python -m build --wheel --outdir dist plugin/endbot"), 1
+        )
+        self.assertIn(
+            "python -m build --wheel --outdir dist plugin/endbot", blocks["assemble"]
+        )
+        self.assertIn("actions/download-artifact@v4", blocks["assemble"])
+        self.assertIn("endstone-linux-wheel", workflow)
+        self.assertIn("endstone-windows-wheel", workflow)
+        self.assertIn("endbot-${{ inputs.version }}-candidate", blocks["assemble"])
+
+    def test_windows_job_mirrors_upstream_toolchain_without_secrets(self) -> None:
+        blocks = _release_job_blocks()
+        self.assertIn("ilammy/msvc-dev-cmd@v1", blocks["windows"])
+        self.assertIn("lukka/get-cmake@latest", blocks["windows"])
+        self.assertIn("cibuildwheel==3.4.1", blocks["windows"])
+        # No secret is passed to any step (the workflow comment may name the
+        # token it deliberately omits, so match secret references, not words).
+        self.assertNotIn("${{ secrets.", blocks["workflow"])
+        self.assertNotIn("SENTRY_AUTH_TOKEN:", blocks["workflow"])
+        # No container runtime exists on the Windows runner.
+        self.assertNotIn("docker", blocks["windows"])
+
+    def test_build_endstone_wheel_supports_windows_selector(self) -> None:
+        builder = _load_script("build_endstone_wheel.py")
+        tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+        with mock.patch.object(sys, "platform", "win32"):
+            self.assertEqual(builder.default_build_selector(), f"{tag}-win_amd64")
+        with mock.patch.object(sys, "platform", "linux"):
+            self.assertEqual(builder.default_build_selector(), f"{tag}-manylinux_x86_64")
+
+        version = "0.11.12+endbot.1"
+        # Linux behaviour is unchanged: manylinux required, raw linux rejected.
+        builder.check_repaired_wheel(
+            Path(f"endstone-{version}-cp312-cp312-manylinux_2_31_x86_64.whl"),
+            version,
+            "cp312-manylinux_x86_64",
+        )
+        with self.assertRaises(builder.WheelBuildError) as linux_failure:
+            builder.check_repaired_wheel(
+                Path(f"endstone-{version}-cp312-cp312-linux_x86_64.whl"),
+                version,
+                "cp312-manylinux_x86_64",
+            )
+        self.assertIn("manylinux-tagged wheel", str(linux_failure.exception))
+        # Windows behaviour: locked version plus a win_amd64 tag, no linux tag.
+        builder.check_repaired_wheel(
+            Path(f"endstone-{version}-cp312-cp312-win_amd64.whl"),
+            version,
+            "cp312-win_amd64",
+        )
+        with self.assertRaises(builder.WheelBuildError) as windows_failure:
+            builder.check_repaired_wheel(
+                Path(f"endstone-{version}-cp312-cp312-manylinux_2_31_x86_64.whl"),
+                version,
+                "cp312-win_amd64",
+            )
+        self.assertIn("win_amd64-tagged wheel", str(windows_failure.exception))
+        with self.assertRaises(builder.WheelBuildError) as version_failure:
+            builder.check_repaired_wheel(
+                Path("endstone-0.11.12-cp312-cp312-win_amd64.whl"),
+                version,
+                "cp312-win_amd64",
+            )
+        self.assertIn("locked package version", str(version_failure.exception))
+
+    def _make_windows_wheel(
+        self,
+        directory: Path,
+        version: str,
+        tag: str = "cp312-cp312-win_amd64",
+        metadata_version: str | None = None,
+        include_dll: bool = True,
+        include_pyd: bool = True,
+    ) -> Path:
+        wheel = directory / f"endstone-{version}-{tag}.whl"
+        dist_info = f"endstone-{version}.dist-info"
+        with zipfile.ZipFile(wheel, "w") as archive:
+            archive.writestr("endstone/__init__.py", "")
+            if include_pyd:
+                archive.writestr("endstone/_python.cp312-win_amd64.pyd", b"\x00")
+            if include_dll:
+                archive.writestr("endstone/endstone_runtime.dll", b"\x00")
+            archive.writestr(
+                f"{dist_info}/WHEEL",
+                "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: false\n"
+                "Tag: cp312-cp312-win_amd64\n",
+            )
+            archive.writestr(
+                f"{dist_info}/METADATA",
+                f"Metadata-Version: 2.4\nName: endstone\nVersion: {metadata_version or version}\n",
+            )
+        return wheel
+
+    def test_inspect_windows_wheel_accepts_locked_wheel(self) -> None:
+        inspector = _load_script("inspect_windows_wheel.py")
+        lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
+        version = lock["endstone"]["package_version"]
+        with tempfile.TemporaryDirectory() as directory:
+            wheel = self._make_windows_wheel(Path(directory), version)
+            inspector.inspect(wheel)
+
+    def test_inspect_windows_wheel_rejects_bad_artifacts(self) -> None:
+        inspector = _load_script("inspect_windows_wheel.py")
+        lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
+        version = lock["endstone"]["package_version"]
+        cases = {
+            "linux tag": {
+                "tag": "cp312-cp312-manylinux_2_31_x86_64",
+            },
+            "wrong interpreter": {
+                "tag": "cp311-cp311-win_amd64",
+            },
+            "unpatched version": {
+                "metadata_version": "0.11.12",
+            },
+            "missing runtime dll": {
+                "include_dll": False,
+            },
+            "missing extensions": {
+                "include_pyd": False,
+            },
+        }
+        for label, kwargs in cases.items():
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as directory:
+                wheel = self._make_windows_wheel(Path(directory), version, **kwargs)
+                with self.assertRaises(inspector.WheelInspectionError):
+                    inspector.inspect(wheel)
+
+    def test_paired_install_handles_windows_layout(self) -> None:
+        installer = (ROOT / "scripts/test_package_install.py").read_text(encoding="utf-8")
+        self.assertIn('sys.platform == "win32"', installer)
+        self.assertIn('"win_amd64" not in endstone_wheel.name', installer)
+        self.assertIn('environment / "Scripts" / "python.exe"', installer)
+
+    def test_bds_build_stays_on_the_single_locked_baseline(self) -> None:
+        # Windows BDS 1.26.51.1 reports build 51061361 while the Linux
+        # package reports 51061372. The manifest records the single lock
+        # value (the Linux baseline) and must not silently invent a
+        # per-platform reading; any per-platform record needs a schema
+        # change and deliberate validation first.
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "compatibility-manifest.json"
+            completed = subprocess.run(
+                (sys.executable, "scripts/generate_compatibility_manifest.py", str(output)),
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            manifest = json.loads(output.read_text(encoding="utf-8"))
+            lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["bds"], lock["bds"])
 
 
 if __name__ == "__main__":

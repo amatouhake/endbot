@@ -110,6 +110,14 @@ class ReleaseLayoutTests(unittest.TestCase):
                 with self.assertRaises(UpdateError):
                     read_members(archive)
 
+    def test_mixed_top_level_directories_are_refused_with_a_clear_message(self) -> None:
+        archive = self.root / "mixed.tar.gz"
+        with tarfile.open(archive, "w:gz") as bundle:
+            _add(bundle, f"{ROOT}/app/{VERSION}/python/bin/python3.12", b"python", 0o755)
+            _add(bundle, f"endbot-other/app/{VERSION}/node/bin/node", b"node", 0o755)
+        with self.assertRaisesRegex(UpdateError, "one endbot-<version>/ directory"):
+            read_members(archive)
+
     def test_hard_links_are_refused(self) -> None:
         archive = self.root / "hardlink.tar.gz"
         with tarfile.open(archive, "w:gz") as bundle:

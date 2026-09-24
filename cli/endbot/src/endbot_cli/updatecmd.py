@@ -149,6 +149,12 @@ def read_members(archive: Path) -> tuple[BundleMember, ...]:
     members = _strip_root(members)
     if not members:
         raise UpdateError(f"{archive}: the archive is empty")
+    roots = {member.parts[0] for member in members}
+    if APP_PREFIX not in roots:
+        raise UpdateError(
+            f"{archive}: expected one endbot-<version>/ directory holding app/, found top-level entries "
+            f"{sorted(roots)[:5]}; use a platform bundle produced by the release pipeline"
+        )
     for member in members:
         if member.link is not None and not _safe_link(member.parts, member.link):
             raise UpdateError(f"{archive}: symlink {member.name!r} -> {member.link!r} leaves its application tree")

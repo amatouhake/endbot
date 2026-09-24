@@ -291,6 +291,8 @@ def repack_as_next_version(archive: Path, destination_dir: Path, suffix: str = "
         with tarfile.open(target, "w:gz") as out:
             for member in members:
                 clone = member.replace(name=_rename(member.name, root, version, new_version), deep=True)
+                # Long names live in the PAX "path" header, which would override the new name on write.
+                clone.pax_headers.pop("path", None)
                 if member.isfile():
                     data = source.extractfile(member).read()
                     if clone.name.endswith("/app/current"):

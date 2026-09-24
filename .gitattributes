@@ -1,0 +1,4 @@
+# Keep the Endstone patch series byte-identical on every platform: the
+# release-candidate Windows job applies these patches with `git am` on a
+# windows-2022 runner, where a CRLF checkout would no longer apply cleanly.
+patches/endstone/*.patch text eol=lf

@@ -13,9 +13,35 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+LINUX_PLATFORM_TAG = "manylinux_x86_64"
+WINDOWS_PLATFORM_TAG = "win_amd64"
+
 
 class WheelBuildError(RuntimeError):
     pass
+
+
+def default_build_selector() -> str:
+    tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    if sys.platform == "win32":
+        return f"{tag}-{WINDOWS_PLATFORM_TAG}"
+    return f"{tag}-{LINUX_PLATFORM_TAG}"
+
+
+def check_repaired_wheel(repaired_wheel: Path, expected_version: str, build_selector: str) -> None:
+    if expected_version not in repaired_wheel.name:
+        raise WheelBuildError(
+            f"repaired wheel {repaired_wheel.name} does not contain locked package version {expected_version}"
+        )
+    if WINDOWS_PLATFORM_TAG in build_selector:
+        if (
+            WINDOWS_PLATFORM_TAG not in repaired_wheel.name
+            or "manylinux_" in repaired_wheel.name
+            or "-linux_" in repaired_wheel.name
+        ):
+            raise WheelBuildError(f"repair did not produce a win_amd64-tagged wheel: {repaired_wheel.name}")
+    elif "manylinux_" not in repaired_wheel.name or "-linux_" in repaired_wheel.name:
+        raise WheelBuildError(f"repair did not produce a manylinux-tagged wheel: {repaired_wheel.name}")
 
 
 def run(*args: str, env: dict[str, str] | None = None, cwd: Path | None = None) -> None:
@@ -61,10 +87,12 @@ def build(source: Path, output_directory: Path, build_selector: str) -> Path:
         }
     )
     # Clone the committed prepared tree so generated host build state (notably
-    # its local Conan cache) cannot leak into cibuildwheel's container. Pinned
+    # its local Conan cache) cannot leak into the wheel build. On Linux pinned
     # Endstone's pyproject selects its manylinux_2_31 image and invokes
-    # scripts/repair_wheel.py as the repair-wheel-command. The raw host-bound
-    # wheel remains inside that disposable container.
+    # scripts/repair_wheel.py as the repair-wheel-command inside cibuildwheel's
+    # container, so the raw host-bound wheel remains inside that disposable
+    # container; on Windows cibuildwheel builds natively with the same backend
+    # and repair command, so the clone keeps host build state out the same way.
     isolated_parent = ROOT / "build"
     isolated_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="endbot-endstone-wheel-", dir=isolated_parent) as temporary:
@@ -81,12 +109,7 @@ def build(source: Path, output_directory: Path, build_selector: str) -> Path:
             cwd=isolated_source,
         )
     repaired_wheel = one_wheel(output_directory, "repaired Endstone")
-    if expected_version not in repaired_wheel.name:
-        raise WheelBuildError(
-            f"repaired wheel {repaired_wheel.name} does not contain locked package version {expected_version}"
-        )
-    if "manylinux_" not in repaired_wheel.name or "-linux_" in repaired_wheel.name:
-        raise WheelBuildError(f"repair did not produce a manylinux-tagged wheel: {repaired_wheel.name}")
+    check_repaired_wheel(repaired_wheel, expected_version, build_selector)
     print(json.dumps({"build_selector": build_selector, "repaired_wheel": str(repaired_wheel)}, sort_keys=True))
     return repaired_wheel
 
@@ -97,8 +120,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist" / "endstone")
     parser.add_argument(
         "--build-selector",
-        default=f"cp{sys.version_info.major}{sys.version_info.minor}-manylinux_x86_64",
-        help="single cibuildwheel build selector (defaults to this interpreter's CPython manylinux wheel)",
+        default=default_build_selector(),
+        help="single cibuildwheel build selector (defaults to this interpreter's CPython wheel for this platform)",
     )
     return parser.parse_args()
 

@@ -51,7 +51,8 @@ contains exactly:
 
 | File | Contents |
 | --- | --- |
-| `endstone-0.11.12+endbot.1-*.whl` | Patched Endstone, repaired to a `manylinux_*` platform tag (Linux x86_64, CPython 3.12). The only supported Endstone artifact. |
+| `endstone-0.11.12+endbot.1-*-manylinux_*.whl` | Patched Endstone for Linux x86_64 (CPython 3.12), repaired to a `manylinux_*` platform tag. CI-built. Use this wheel on Linux; it does not install on Windows. |
+| `endstone-0.11.12+endbot.1-*-win_amd64.whl` | Patched Endstone for Windows x64 (CPython 3.12). CI-built by the release-candidate workflow's Windows job from the same `endstone.lock` + `patches/endstone/` inputs as the Linux wheel. Use this wheel on Windows; it does not install on Linux. |
 | `endstone_endbot-0.1.0-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.12+endbot.1`, so pip cannot substitute official unpatched `0.11.12`. |
 | `endbot-runtime-0.1.0.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
 | `endbot-config-0.1.0.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
@@ -119,13 +120,20 @@ inside the dependency's build check rather than with an Endbot error.
 
 ### Native Windows install and start
 
-The Linux wheel does not install on Windows. The supported Windows path reuses every release artifact except the
-Endstone wheel:
+Each platform installs its own Endstone wheel from the candidate; the remaining artifacts are shared:
 
-1. Build patched Endstone from source at the exact locked revision: unpack any checkout of this Endbot revision,
-   run `python scripts/prepare_endstone.py` (bare cache under `.cache\`, ordered patch series applied with
-   `git am`, local tag `v0.11.12+endbot.1`), then follow the toolchain and source-install steps in
-   [`WINDOWS_DEV.md`](WINDOWS_DEV.md). Verify `0.11.12+endbot.1` before continuing.
+1. Install the CI-built Windows wheel from the candidate directory into a virtual environment:
+   ```powershell
+   py -3.12 -m venv .venv; .\.venv\Scripts\Activate.ps1
+   python -m pip install .\endstone-0.11.12+endbot.1-*-win_amd64.whl
+   python -c "import importlib.metadata as m; print(m.version('endstone'))"
+   ```
+   Expected: `0.11.12+endbot.1`. Never install official `endstone==0.11.12` into this environment. The wheel
+   is produced by the release-candidate workflow's Windows job from the same `endstone.lock` +
+   `patches/endstone/` inputs as the Linux wheel, then inspected for its `win_amd64` tag, locked version,
+   and runtime DLL and install-tested with the plugin in a fresh venv. (Building patched Endstone from
+   source remains a development-only path documented in [`WINDOWS_DEV.md`](WINDOWS_DEV.md), not the
+   install path.) Verify `0.11.12+endbot.1` before continuing.
 2. Install the candidate plugin wheel into the same environment (`python -m pip install
    .\endstone_endbot-0.1.0-*.whl`); it is platform-independent and still pins the exact patched Endstone version.
 3. Unpack `endbot-runtime-0.1.0.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for

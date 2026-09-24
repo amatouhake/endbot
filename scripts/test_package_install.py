@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,6 +39,18 @@ def one_wheel(directory: Path, distribution: str) -> Path:
     return wheels[0]
 
 
+def file_url_to_path(url: str) -> Path:
+    """Convert a pip ``download_info`` file URL to a local path on any OS.
+
+    ``url2pathname`` turns ``/D:/a/b.whl`` into ``D:\a\b.whl`` on Windows;
+    plain ``unquote`` would leave a drive-less ``/D:/...`` path.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "file":
+        raise InstallTestError(f"expected a file URL, found {url}")
+    return Path(url2pathname(parsed.path)).resolve()
+
+
 def verify_install(endstone_wheel: Path, plugin_wheel: Path, expected_version: str, report_path: Path) -> None:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     installed = {item["metadata"]["name"]: item for item in report["install"]}
@@ -49,7 +63,7 @@ def verify_install(endstone_wheel: Path, plugin_wheel: Path, expected_version: s
     }
     for name, expected_wheel in expected_wheels.items():
         source_url = installed[name]["download_info"]["url"]
-        source_path = Path(unquote(urlparse(source_url).path)).resolve()
+        source_path = file_url_to_path(source_url)
         if source_path != expected_wheel:
             raise InstallTestError(f"{name} was installed from {source_path}, expected {expected_wheel}")
 
@@ -81,13 +95,18 @@ def integration_test(endstone_wheel_dir: Path, plugin_wheel_dir: Path) -> None:
         "manylinux_" not in endstone_wheel.name or "-linux_" in endstone_wheel.name
     ):
         raise InstallTestError(f"Endstone wheel is not a repaired manylinux artifact: {endstone_wheel.name}")
+    if sys.platform == "win32" and "win_amd64" not in endstone_wheel.name:
+        raise InstallTestError(f"Endstone wheel is not a win_amd64 artifact: {endstone_wheel.name}")
 
     with tempfile.TemporaryDirectory(prefix="endbot-package-install-") as temporary:
         test_root = Path(temporary)
         environment = test_root / "venv"
         report_path = test_root / "paired-install.json"
         run(sys.executable, "-m", "venv", str(environment))
-        python = environment / "bin" / "python"
+        if os.name == "nt":
+            python = environment / "Scripts" / "python.exe"
+        else:
+            python = environment / "bin" / "python"
 
         # Bootstrap only third-party runtime dependencies from the explicit patched
         # wheel, then remove Endstone so the paired installation starts absent.

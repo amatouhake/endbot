@@ -1,0 +1,73 @@
+name: Bundle consumer E2E
+
+# Drives each platform bundle exactly as a clean operator would, with no system
+# Python or Node.js reachable: setup --fresh (BDS through Endstone), start, one
+# Bot joining BDS through local-bot trust, console, doctor --live, clean stop.
+# Called by release-candidate.yml for its own bundles; can also be dispatched
+# against the bundles of an earlier release-candidate run.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: release-candidate run whose bundle artifacts to test
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  consumer:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            artifact: bundle-windows
+            archive: bundle/endbot-*-windows-x86_64.zip
+          - os: ubuntu-22.04
+            artifact: bundle-linux
+            archive: bundle/bundle/endbot-*-linux-x86_64.tar.gz
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      # Only the test harness runs on this interpreter; the bundle is driven
+      # with a sanitized PATH that exposes no Python or Node.js at all.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: bundle
+          run-id: ${{ inputs.run_id || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Run the clean-consumer E2E
+        run: |
+          archives=( ${{ matrix.archive }} )
+          if [ "${#archives[@]}" -ne 1 ] || [ ! -f "${archives[0]}" ]; then
+            echo "expected exactly one bundle archive, found: ${archives[*]}"
+            exit 1
+          fi
+          python scripts/e2e_consumer.py "${archives[0]}" --work-dir "$RUNNER_TEMP/endbot-e2e"
+
+      - name: Upload E2E logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/endbot-e2e/bundle/supervisor.log
+            ${{ runner.temp }}/endbot-e2e/bundle/*/state/run/
+          if-no-files-found: ignore

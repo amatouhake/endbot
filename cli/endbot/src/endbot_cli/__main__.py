@@ -7,9 +7,10 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from endbot_cli.commands import run_console, run_controllers_reset, run_start, run_stop
-from endbot_cli.doctor import DoctorContext, exit_code, run_doctor
+from endbot_cli.commands import first_start_tolerable, run_console, run_controllers_reset, run_start, run_stop
+from endbot_cli.doctor import FAIL, WARN, CheckResult, DoctorContext, exit_code, run_doctor
 from endbot_cli.instance import InstanceError, InstancePaths, resolve_instance_root
+from endbot_cli.runstate import LAST_EXIT
 from endbot_cli.setupcmd import run_setup
 from endbot_cli.updatecmd import run_rollback, run_update
 
@@ -106,6 +107,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     paths = InstancePaths.for_root(root)
     if args.command == "doctor":
         results = run_doctor(DoctorContext(paths=paths, live=args.live))
+        if not (paths.state_run / LAST_EXIT).exists():
+            # Setup tells operators to run doctor before their first start; the
+            # runtime only creates the owner keys and control token during that
+            # start, so their absence is expected until an instance has run once.
+            results = [
+                CheckResult(WARN, result.name, f"{result.message} (expected before the first `endbot start`)")
+                if result.status == FAIL and first_start_tolerable(result.name, paths)
+                else result
+                for result in results
+            ]
         for result in results:
             print(result.line())
         return exit_code(results)

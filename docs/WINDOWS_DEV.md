@@ -33,7 +33,7 @@ MSVC `cl` only for `sentry-native`. Precisely:
 | `clang-cl` and `lld-link`, LLVM 18+ | Visual Studio Installer component `Microsoft.VisualStudio.Component.VC.Llvm.Clang` ("C++ Clang Compiler for Windows"; VS 17.14 ships LLVM 19). `Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset` is optional. |
 | CMake 3.29+, Ninja, Conan 2+ | `pip install cmake ninja conan` inside the project `.venv` |
 | Python 3.10+ (python.org build, not the Microsoft Store build) | python.org |
-| Node.js 22+ and Git | nodejs.org, Git for Windows |
+| Node.js 24+ and Git | nodejs.org, Git for Windows |
 
 `scripts/check_windows_toolchain.py` reports each item as `ok`, `not-on-PATH`, `too-old`, or `missing` with the exact
 remedy, and never installs anything. `cl`, `clang-cl`, and `lld-link` are on `PATH` only inside a Visual Studio
@@ -68,13 +68,11 @@ npm test --prefix runtime
 ```
 
 `--allow-remote=root` is an npm 12 policy opt-in, not a Windows requirement: npm 12 refuses tarball URL dependencies
-by default, and `root` permits only the URLs already written in `runtime/package.json` (the pinned `bedrock-protocol`
-revision). Pass the flag on the npm 12 command line only; no tracked `.npmrc` change is needed, and CI keeps running
-plain `npm ci --prefix runtime` on npm 10. npm 12 also blocks dependency install scripts unless `package.json`
-approves them; `runtime/package.json` approves exactly `node-datachannel@0.31.0`, whose install step fetches the
-prebuilt WebRTC binary that the NetherNet transport loads. `raknet-native` ships its Windows prebuild inside the
-package and needs no script (its blocked install warning on npm 12 is expected). npm 10 ignores the tracked
-`allowScripts` field.
+by default, and `root` permits only the URLs already written in `runtime/package.json` (the pinned
+`prismarine-xbox-services` source tarball, which is not on the npm registry). Pass the flag on the npm 12 command line
+only; no tracked `.npmrc` change is needed. No dependency install script is needed: the NetherNet transport is pure
+JavaScript (`werift`), and `raknet-native`'s blocked install warning on npm 12 is expected and harmless because Endbot
+never uses the RakNet transport.
 
 ## Prepare and build patched Endstone
 
@@ -190,10 +188,8 @@ Stop the server after the first start, then configure:
 Restart the server. The log shows the Endbot plugin enabling, and `Local bot authentication is enabled for issuer
 'endbot://local-bot'` on the first login attempt. The runtime must be running before any `/bot <name> spawn`.
 
-BDS generates a new NetherNet DTLS identity on every start, so the runtime's saved `bds-nethernet.pin` matches only
-the server process that created it. After every intentional BDS restart, delete the pin file before resuming a Bot;
-otherwise the pinned identity fails closed as designed, and on the pinned runtime that pre-connect failure is not
-surfaced in status (the profile stays `connecting`/`reconnecting` with no `lastError`) until the runtime is restarted.
+BDS generates a new NetherNet DTLS identity on every start. The runtime does not pin it (see `docs/SECURITY.md`), so
+Bots resume after a BDS restart without manual steps; an old `bds-nethernet.pin` from rc.1 can be deleted.
 
 The Windows package of BDS `1.26.51.1` reports `Build ID: 51061361`; the Linux package of the same release, which the
 compatibility baseline records, reports `51061372`. Both were downloaded through Endstone's pinned metadata with

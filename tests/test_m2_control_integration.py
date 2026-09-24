@@ -20,7 +20,6 @@ class M2ControlIntegrationTests(unittest.TestCase):
                 "controlTokenPath": "./control.token",
                 "ownerPrivateKeyPath": "./owner-private.pem",
                 "ownerPublicKeyPath": "./owner-public.pem",
-                "serverIdentityPinPath": "./server.pin",
                 "controlPort": 0,
             }
             config_path = directory / "runtime.json"

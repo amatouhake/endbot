@@ -37,7 +37,7 @@ class Requirement:
 REQUIREMENTS = (
     Requirement("Python 3.10+", "python", "install CPython 3.10+ from python.org", minimum=(3, 10)),
     Requirement("Git", "git", "install Git for Windows"),
-    Requirement("Node.js 22+", "node", "install Node.js 22+", minimum=(22,)),
+    Requirement("Node.js 24+", "node", "install Node.js 24+", minimum=(24,)),
     Requirement("npm", "npm", "npm ships with Node.js"),
     Requirement("CMake 3.29+", "cmake", "pip install cmake in the project .venv, or install CMake", minimum=(3, 29)),
     Requirement("Ninja", "ninja", "pip install ninja in the project .venv"),

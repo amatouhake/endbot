@@ -22,27 +22,25 @@ trademarks of Microsoft; this project is not affiliated with or endorsed by Micr
 
 ## bedrock-protocol
 
-The Endbot runtime uses a NetherNet-capable revision of:
+The Endbot runtime uses the unmodified upstream npm release:
 
 - Project: bedrock-protocol
 - Upstream: <https://github.com/PrismarineJS/bedrock-protocol>
-- Endbot integration revision: <https://github.com/amatouhake/bedrock-protocol/commit/fb0af8e388127724c323fd46800e47ba004b1c55>
+- Version: 3.60.1
 - License: MIT
 - Copyright: PrismarineJS contributors
 
-The exact source archive is pinned in `runtime/package-lock.json`. Its transitive dependency notices remain available in
+The exact release and its dependency tree, including `nethernet` and `werift` (NetherNet transport) and the
+`prismarine-xbox-services` source tarball that is not published on the npm registry, are pinned in
+`runtime/package-lock.json`. Its transitive dependency notices remain available in
 their installed packages and must be retained when redistributing a runtime bundle.
 
 ## minecraft-data
 
-The Endbot runtime prepares the Bedrock 1.26.50/protocol-2193 schema from:
+The Endbot runtime uses the Bedrock 1.26.51/protocol-2193 schema shipped unmodified in:
 
 - Project: minecraft-data
 - Upstream: <https://github.com/PrismarineJS/minecraft-data>
-- Endbot integration revision: <https://github.com/amatouhake/minecraft-data/commit/7c1fe886dd92837c0550e8eff91440361c7d677f>
+- Version: 3.117.0 (npm release, pinned in `runtime/package-lock.json`)
 - License: MIT
 - Copyright: PrismarineJS contributors
-
-`runtime/scripts/prepare-minecraft-data.js` fetches that exact revision during `npm ci` and replaces only the generated
-data input inside the installed npm package before running its normal data generator. Endbot does not depend on a local
-or sibling checkout.

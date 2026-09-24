@@ -41,8 +41,8 @@ test('server teleport rotation can synchronize subsequent client input', () => {
 
 const require = createRequire(import.meta.url)
 const { createDeserializer, createSerializer } = require('bedrock-protocol/src/transforms/serializer')
-const serializer = createSerializer('1.26.50')
-const deserializer = createDeserializer('1.26.50')
+const serializer = createSerializer('1.26.51')
+const deserializer = createDeserializer('1.26.51')
 
 function serializeInputFlags (state) {
   const inputData = []
@@ -108,7 +108,7 @@ test('sneak holds down-state flags across ticks and releases cleanly', () => {
   assert.deepEqual(serializeInputFlags(inputs.step()), [])
 })
 
-test('M2 use transaction serializes with the pinned 1.26.50 schema', () => {
+test('use transaction serializes with the upstream 1.26.51 schema', () => {
   const heldItem = {
     network_id: 882,
     count: 1,
@@ -126,7 +126,7 @@ test('M2 use transaction serializes with the pinned 1.26.50 schema', () => {
   assert.equal(decoded.params.transaction.transaction_data.held_item.stack_id, 34)
 })
 
-test('M2 item release transaction serializes with the pinned 1.26.50 schema', () => {
+test('item release transaction serializes with the upstream 1.26.51 schema', () => {
   const heldItem = {
     network_id: 882,
     count: 1,
@@ -146,7 +146,7 @@ test('M2 item release transaction serializes with the pinned 1.26.50 schema', ()
   assert.deepEqual(decoded.transaction_data.head_pos, { x: 1, y: 65.62000274658203, z: 2 })
 })
 
-test('M2 entity attack transaction serializes with the pinned 1.26.50 schema', () => {
+test('entity attack transaction serializes with the upstream 1.26.51 schema', () => {
   const packet = createAttackTransaction({
     runtimeId: 7n,
     hotbarSlot: 0,
@@ -180,7 +180,7 @@ test('block interaction serializes in a server-authoritative input tick', () => 
       position: { x: 1, y: 64, z: 2 },
       move_vector: { x: 0, z: 0 },
       head_yaw: 0,
-      input_data: ['perform_item_interaction'],
+      input_data: ['item_interact'],
       input_mode: 'mouse',
       play_mode: 'normal',
       interaction_model: 'crosshair',
@@ -197,7 +197,7 @@ test('block interaction serializes in a server-authoritative input tick', () => 
       raw_move_vector: { x: 0, z: 0 }
     }
   })).data.params
-  assert.ok(input.input_data.includes('perform_item_interaction'))
+  assert.ok(input.input_data.includes('item_interact'))
   assert.equal(input.transaction.data.action_type, 'click_block')
   assert.equal(input.transaction.data.block_runtime_id, 987)
   assert.deepEqual(input.transaction.data.click_pos, { x: 0.5, y: 1, z: 0.5 })

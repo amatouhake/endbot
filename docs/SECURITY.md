@@ -57,6 +57,20 @@ Profile files reject symlinks/corruption; creation uses the same complete-before
 artifacts. Rename preserves UUID. The plugin rejects a rename colliding with an online real player; because Endstone
 does not expose a reliable complete offline GamerTag history, operators should also avoid known offline player names.
 
+## Runtime → BDS connection
+
+The runtime connects its Bots only to a BDS on the same host: the configuration loader and every session refuse a
+`serverHost` other than `127.0.0.1`, `::1`, or `localhost`. The runtime does not pin the server's NetherNet identity.
+BDS generates a new NetherNet DTLS identity on every start, so a persistent pin fails after every restart, and the
+upstream NetherNet client exposes no hook to verify it.
+
+Trust in that connection rests on the loopback path and on the local-bot token instead. A same-host process that
+impersonates BDS could observe a Bot's inputs and feed it a fake world. It cannot turn a captured token into a login on
+the real server: the token is owner-signed for one audience, lives at most the configured maximum lifetime, carries a
+single-use `jti`, and is bound to the Bot's client key (`cpk`), whose private key never leaves the runtime. A process
+able to take over BDS's loopback port already runs with privileges that can read the runtime's secrets directly, so
+host account isolation (above) is the control that matters.
+
 ## Reporting
 
 Do not include keys, tokens, XUIDs, world data, or credentials in a public report. Open a minimal private report to the

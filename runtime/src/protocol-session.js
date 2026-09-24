@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { EventEmitter } from 'node:events'
-import fs from 'node:fs'
 
-import { createLocalBotAuth, loadOrCreatePersistentArtifact, loadPersistentArtifact } from './local-identity.js'
+import { LOOPBACK_HOSTS } from './config.js'
+import { createLocalBotAuth } from './local-identity.js'
 import {
   addJumpInputFlags,
   addToggleInputFlags,
@@ -21,14 +21,6 @@ import {
 } from './packets.js'
 
 function vector (value) { return { x: value.x, y: value.y, z: value.z } }
-
-function loadServerIdentityPin (filename) {
-  const value = fs.readFileSync(filename, 'utf8').trim()
-  if (!/^sha256:[0-9a-f]{64}$/.test(value)) {
-    throw new Error('BDS NetherNet server identity pin is invalid')
-  }
-  return value
-}
 
 export class BedrockSession extends EventEmitter {
   constructor (profile, options) {
@@ -68,6 +60,13 @@ export class BedrockSession extends EventEmitter {
 
   async #connect () {
     if (this.disconnecting) throw new Error('Bedrock session connection was canceled')
+    // BDS regenerates its NetherNet DTLS identity on every start and upstream
+    // bedrock-protocol has no identity hook, so trust rests on the loopback
+    // path plus the owner-signed, cpk-bound, single-use Bot token
+    // (docs/SECURITY.md). Recheck here for sessions built without loadConfig.
+    if (!LOOPBACK_HOSTS.has(this.options.serverHost)) {
+      throw new Error('Endbot connects to loopback BDS servers only')
+    }
     const protocolModule = await (this.options.protocolLoader?.() ?? import('bedrock-protocol'))
     // Dynamic module loading cannot be aborted. Recheck ownership immediately
     // after it settles so a concurrent disconnect cannot create a late client.
@@ -81,11 +80,6 @@ export class BedrockSession extends EventEmitter {
       issuer: this.options.localAuthIssuer,
       audience: this.options.localAuthAudience
     })
-    const pin = loadPersistentArtifact(
-      this.options.serverIdentityPinPath,
-      loadServerIdentityPin,
-      'BDS NetherNet server identity pin'
-    ).value
     this.client = protocol.createClient({
       host: this.options.serverHost,
       port: this.options.serverPort,
@@ -94,18 +88,8 @@ export class BedrockSession extends EventEmitter {
       offline: false,
       authflow: auth.authflow,
       skinData: { SelfSignedId: this.profile.identityId },
-      raknetBackend: 'nethernet',
-      nethernetServerKeyPin: pin || undefined,
-      onNetherNetServerTrust: identity => {
-        if (!['127.0.0.1', 'localhost', '::1'].includes(this.options.serverHost)) return false
-        const winner = loadOrCreatePersistentArtifact(
-          this.options.serverIdentityPinPath,
-          () => `${identity.pin}\n`,
-          loadServerIdentityPin,
-          'BDS NetherNet server identity pin'
-        ).value
-        return winner === identity.pin
-      },
+      transport: 'nethernet',
+      nethernet: { signalling: 'lan' },
       connectTimeout: this.options.connectTimeoutMs
     })
     this.#wireClient()
@@ -459,7 +443,7 @@ export class BedrockSession extends EventEmitter {
     if (this.pendingInteraction) {
       const interaction = this.pendingInteraction
       this.pendingInteraction = undefined
-      inputData.push('perform_item_interaction')
+      inputData.push('item_interact')
       transaction = interaction.transaction
       this.interactionStopNextTick = interaction.stopAction
     }

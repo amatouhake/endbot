@@ -95,8 +95,16 @@ pickup inference, block mining, autocomplete redesign.
     trust → `console` → `doctor --live` → clean `stop`. This replaces a
     hand-prepared clean machine and found a Linux-only bundle defect
     (relocated `libpython` not found by BDS) that is now fixed.
-  - [ ] `endbot update` from one published candidate bundle to the next, and
-    `--rollback`.
+  - [x] `endbot update` / `--rollback` between real bundles: the published
+    rc.2 → rc.3 Windows bundles (with the update fix) plus, on every
+    candidate, the CI E2E updating to a renamed copy of the bundle, restarting,
+    rolling back, and restarting on both platforms. This found that rc.2/rc.3's
+    own `update` could not read real bundles (top-level directory, `app/current`,
+    Linux symlinks and executable bits) — fixed; operators on rc.2/rc.3 reinstall.
+  - [x] Another NetherNet host on the machine (a Minecraft world open to LAN):
+    Bots connect only to the BDS advertising this instance's `server-name` /
+    `level-name`, and `endbot start` refuses while another program holds UDP
+    7551 (verified with a decoy host).
 - [ ] Live matrix on the exact final candidate (needs a human Xbox client):
   normal Xbox human auth unchanged; a non-allowlisted human is still rejected
   with `allow-list=true` while an allowlisted human and a Bot both join;

@@ -569,9 +569,9 @@ class BundleContractTests(unittest.TestCase):
         # Assemble publishes exactly one plugin wheel and one CLI wheel:
         # the Linux-built pure pair. Both bundles join dist/ so SHA256SUMS
         # covers them alongside the existing wheels and tarballs.
-        self.assertIn("staging/bundle-linux/dist/plugin/*.whl", blocks["assemble"])
-        self.assertIn("staging/bundle-linux/dist/cli/*.whl", blocks["assemble"])
-        self.assertIn("staging/bundle-linux/dist/bundle/*", blocks["assemble"])
+        self.assertIn("staging/bundle-linux/plugin/*.whl", blocks["assemble"])
+        self.assertIn("staging/bundle-linux/cli/*.whl", blocks["assemble"])
+        self.assertIn("staging/bundle-linux/bundle/*", blocks["assemble"])
         self.assertIn("staging/bundle-windows/*", blocks["assemble"])
         self.assertIn("sha256sum ./* > SHA256SUMS", blocks["assemble"])
 

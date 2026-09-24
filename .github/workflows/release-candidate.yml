@@ -245,6 +245,8 @@ jobs:
           name: bundle-windows
           path: staging/bundle-windows
 
+      # upload-artifact strips the paths' common ancestor (dist/), so the
+      # bundle-linux artifact holds bundle/, plugin/ and cli/ at its root.
       # The pure-Python plugin and CLI wheels are built in each platform job
       # from the same commit; assemble publishes exactly one of each, taking
       # the Linux-built pair so the candidate checksums are unambiguous. The
@@ -265,9 +267,9 @@ jobs:
           mkdir -p dist
           cp staging/linux/*.whl staging/windows/*.whl dist/
           cp staging/linux/ENDSTONE_LICENSE dist/ENDSTONE_LICENSE
-          cp staging/bundle-linux/dist/plugin/*.whl staging/bundle-linux/dist/cli/*.whl dist/
-          python scripts/test_package_install.py --endstone-wheel-dir staging/linux --plugin-wheel-dir staging/bundle-linux/dist/plugin
-          cp staging/bundle-linux/dist/bundle/* staging/bundle-windows/* dist/
+          cp staging/bundle-linux/plugin/*.whl staging/bundle-linux/cli/*.whl dist/
+          python scripts/test_package_install.py --endstone-wheel-dir staging/linux --plugin-wheel-dir staging/bundle-linux/plugin
+          cp staging/bundle-linux/bundle/* staging/bundle-windows/* dist/
           tar -czf "dist/endbot-runtime-${CANDIDATE_VERSION}.tar.gz" \
             -C runtime package.json package-lock.json README.md endbot-runtime.example.json scripts src
           tar -czf "dist/endbot-config-${CANDIDATE_VERSION}.tar.gz" config LICENSE THIRD_PARTY_NOTICES.md

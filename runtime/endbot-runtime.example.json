@@ -9,7 +9,7 @@
   "controlRequestTimeoutMs": 8000,
   "serverHost": "127.0.0.1",
   "serverPort": 19132,
-  "gameVersion": "1.26.50",
+  "gameVersion": "1.26.51",
   "protocol": 2193,
   "connectTimeoutMs": 15000,
   "localAuthIssuer": "endbot://local-bot",

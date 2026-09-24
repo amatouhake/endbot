@@ -31,7 +31,6 @@ function connectedSession (directory, client) {
       protocolLoader: async () => ({ createClient: () => client }),
       ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
       ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
-      serverIdentityPinPath: path.join(directory, 'server.pin'),
       localAuthIssuer: 'endbot-test',
       localAuthAudience: 'endstone-test',
       serverHost: 'localhost',
@@ -50,7 +49,8 @@ test('disconnect waits for paused initialization and prevents late client creati
   const session = new BedrockSession(
     { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
     {
-      protocolLoader: () => protocolLoaded
+      protocolLoader: () => protocolLoaded,
+      serverHost: '127.0.0.1'
     }
   )
 
@@ -142,57 +142,26 @@ test('client errors retain session ownership until transport closure', async t =
   assert.match(closures[0].message, /recoverable parser failure/)
 })
 
-test('existing server identity pins retain persistent-artifact validation', async t => {
+test('non-loopback servers are refused before client creation', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  const target = path.join(directory, 'mutable-pin')
-  const pin = path.join(directory, 'server.pin')
-  fs.writeFileSync(target, 'attacker-controlled-pin\n')
-  try {
-    fs.symlinkSync(target, pin, process.platform === 'win32' ? 'file' : undefined)
-  } catch (error) {
-    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
-      return t.skip('Creating symlinks requires Windows Developer Mode or elevated privileges')
-    }
-    throw error
+  for (const serverHost of ['192.0.2.10', 'example.com', '0.0.0.0']) {
+    let createClientCalls = 0
+    const session = new BedrockSession(
+      { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
+      {
+        protocolLoader: async () => ({ createClient: () => { createClientCalls += 1 } }),
+        ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
+        ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
+        serverHost,
+        localAuthIssuer: 'endbot-test',
+        localAuthAudience: 'endstone-test'
+      }
+    )
+
+    await assert.rejects(session.connect(), /loopback/)
+    assert.equal(createClientCalls, 0)
   }
-  let createClientCalls = 0
-  const session = new BedrockSession(
-    { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
-    {
-      protocolLoader: async () => ({ createClient: () => { createClientCalls += 1 } }),
-      ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
-      ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
-      serverIdentityPinPath: pin,
-      localAuthIssuer: 'endbot-test',
-      localAuthAudience: 'endstone-test'
-    }
-  )
-
-  await assert.rejects(session.connect(), /regular file, not a symlink/)
-  assert.equal(createClientCalls, 0)
-})
-
-test('corrupt existing server identity pins fail before client creation', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  const pin = path.join(directory, 'server.pin')
-  fs.writeFileSync(pin, 'not-a-nethernet-identity-pin\n')
-  let createClientCalls = 0
-  const session = new BedrockSession(
-    { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
-    {
-      protocolLoader: async () => ({ createClient: () => { createClientCalls += 1 } }),
-      ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
-      ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
-      serverIdentityPinPath: pin,
-      localAuthIssuer: 'endbot-test',
-      localAuthAudience: 'endstone-test'
-    }
-  )
-
-  await assert.rejects(session.connect(), /server identity pin is invalid/)
-  assert.equal(createClientCalls, 0)
 })
 
 test('start-game rotation seeds the first serialized auth-input tick', async t => {
@@ -370,7 +339,7 @@ test('hotbar selection interaction and drop use player protocol paths', async t 
   assert.equal(startInteraction.face, 1)
   while (!queued.some(entry => entry.name === 'player_auth_input' && entry.packet.transaction)) await nextPacket()
   const interaction = queued.filter(entry => entry.name === 'player_auth_input' && entry.packet.transaction).at(-1).packet
-  assert.ok(interaction.input_data.includes('perform_item_interaction'))
+  assert.ok(interaction.input_data.includes('item_interact'))
   assert.equal(interaction.transaction.data.block_runtime_id, 987)
   assert.equal(interaction.block_action, undefined)
   while (queued.filter(entry => entry.name === 'player_action').length < 2) await nextPacket()

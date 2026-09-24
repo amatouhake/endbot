@@ -8,18 +8,14 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
-    "postinstall": "node scripts/prepare-minecraft-data.js",
     "test": "node --test",
     "check": "node scripts/check-syntax.js"
   },
   "dependencies": {
-    "bedrock-protocol": "https://github.com/amatouhake/bedrock-protocol/archive/fb0af8e388127724c323fd46800e47ba004b1c55.tar.gz"
+    "bedrock-protocol": "3.60.1"
   },
-  "license": "Apache-2.0",
-  "allowScripts": {
-    "node-datachannel@0.31.0": true
-  }
+  "license": "Apache-2.0"
 }

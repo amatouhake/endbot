@@ -11,12 +11,10 @@ cp runtime/endbot-runtime.example.json endbot-runtime.json
 node runtime/src/cli.js --config endbot-runtime.json
 ```
 
-The exact NetherNet-capable `bedrock-protocol` revision is pinned in `package-lock.json`. Its npm dependency currently
-lags the pinned BDS protocol, so `npm ci` runs `scripts/prepare-minecraft-data.js` to fetch an exact public
-`minecraft-data` revision and generate the 1.26.50/protocol-2193 schema in the installed package. No sibling checkout is
-used. Preparation applies a tested Endbot schema correction only to standalone inventory transactions while preserving
-the distinct `PlayerAuthInput` layout. Configuration paths are resolved relative to the configuration file. Keep the generated control token, owner
-private key, server identity pin, and profile directory outside source control. The owner public key is the only key
+The exact upstream `bedrock-protocol` release is pinned in `package-lock.json`. Its `minecraft-data` dependency already
+ships the Bedrock 1.26.51/protocol-2193 schema with the proven wire layouts, so no schema preparation step runs at
+install. Configuration paths are resolved relative to the configuration file. Keep the generated control token, owner
+private key, server identity pin path, and profile directory outside source control. The owner public key is the only key
 configured in patched Endstone.
 
 The control service refuses non-loopback binds and authenticates every request with the generated token. Unexpected
@@ -25,8 +23,8 @@ Per-profile lifecycle transitions are serialized, and a newer lifecycle intent i
 Replacement sessions wait for confirmed closure of the prior transport; a failed close is visible and retryable without
 opening a second session. Operator-initiated starts reset the retry budget while one automatic reconnect sequence retains
 its bounded attempt count. The default 8-second runtime request deadline covers the bounded 5-second close plus 1-second
-replacement delay and is shorter than the plugin's 10-second response deadline. The NetherNet server identity pin fails
-closed if BDS presents a different identity; rotate the pin only after independently verifying an intentional restart.
+replacement delay and is shorter than the plugin's 10-second response deadline. NetherNet sessions connect to loopback BDS servers only and refuse any other `serverHost` before creating a client.
+The replacement for the former server identity pin is an open orchestrator decision (see `TODO(trust)` in `src/config.js`).
 
 Private keys, tokens, server pins, and UUID artifacts use complete-before-publish creation and reject corrupt existing
 files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux

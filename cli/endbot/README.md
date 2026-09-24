@@ -19,13 +19,13 @@ The instance directory is resolved in this order:
 3. the directory containing the `endbot` / `endbot.cmd` launcher;
 4. the current working directory.
 
-It must contain `endbot.toml` (§2) and the §1 layout (`app/current`,
+It must contain `endbot.toml` (section 2) and the section 1 layout (`app/current`,
 `state/secrets`, `state/profiles`, `state/controllers.json`, `state/generated`,
 `state/run`, `backups`).
 
 ## endbot doctor
 
-Read-only health report (§7): one `PASS` / `WARN` / `FAIL` / `SKIP` line per
+Read-only health report (section 7): one `PASS` / `WARN` / `FAIL` / `SKIP` line per
 check, covering `endbot.toml`, the `server.properties` safety invariants
 (`online-mode=true`, `allow-cheats=false`), world creative/experiment history
 from `level.dat`, the locked BDS and Endstone versions, `[local-bot-auth]` key

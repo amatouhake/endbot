@@ -3,7 +3,7 @@
 A Bedrock ``level.dat`` is an 8-byte little-endian header (int32 storage
 version, int32 payload length) followed by a little-endian NBT document whose
 root compound holds the world history flags audited by ``endbot doctor``
-(docs/OPERATIONS.md §7). This module never writes the file and never trusts the
+(docs/OPERATIONS.md section 7). This module never writes the file and never trusts the
 input: truncated or corrupt data raises :class:`LevelDatError` with a clear
 message instead of a traceback or a false safety claim.
 

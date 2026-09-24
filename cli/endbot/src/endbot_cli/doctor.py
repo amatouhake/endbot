@@ -1,4 +1,4 @@
-"""Read-only health checks for one Endbot instance (docs/OPERATIONS.md §7).
+"""Read-only health checks for one Endbot instance (docs/OPERATIONS.md section 7).
 
 Every check prints one ``PASS`` / ``WARN`` / ``FAIL`` / ``SKIP`` line and
 nothing is ever written. Exit code is 0 when no check FAILs and 1 otherwise;
@@ -163,7 +163,7 @@ def check_bds_version(server: Path, lock: LockData) -> CheckResult:
             FAIL,
             name,
             f"{version_file} is missing; Endstone treats a server without version.txt as older than supported and "
-            "would re-download BDS and the vanilla packs over the existing ones (docs/OPERATIONS.md §6); "
+            "would re-download BDS and the vanilla packs over the existing ones (docs/OPERATIONS.md section 6); "
             "restore version.txt or run `endbot setup` before ever starting the server",
         )
     except OSError as error:
@@ -218,7 +218,7 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
         return CheckResult(
             FAIL,
             name,
-            f"{endstone_toml} is missing; create it with [local-bot-auth] (generated on every start, §2) "
+            f"{endstone_toml} is missing; create it with [local-bot-auth] (generated on every start, section 2) "
             "or run `endbot setup`",
         )
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
@@ -226,7 +226,9 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
 
     section = document.get("local-bot-auth")
     if not isinstance(section, dict):
-        return CheckResult(FAIL, name, f"key '[local-bot-auth]' is missing from {endstone_toml}; add it (see §2)")
+        return CheckResult(
+            FAIL, name, f"key '[local-bot-auth]' is missing from {endstone_toml}; add it (see OPERATIONS.md section 2)"
+        )
     if section.get("enabled") is not True:
         return CheckResult(
             FAIL,
@@ -296,7 +298,7 @@ def check_control_token(paths: InstancePaths) -> CheckResult:
         return CheckResult(
             FAIL,
             name,
-            f"{paths.control_token} is missing; the runtime creates it on first start (docs/OPERATIONS.md §1)",
+            f"{paths.control_token} is missing; the runtime creates it on first start (docs/OPERATIONS.md section 1)",
         )
     except (OSError, UnicodeDecodeError) as error:
         return CheckResult(FAIL, name, f"{paths.control_token} cannot be read: {error}; fix the file permissions")
@@ -355,7 +357,7 @@ def check_controllers(config: EndbotConfig, state: ControllerState) -> list[Chec
         binding = state.find(gamertag)
         if binding is None:
             results.append(
-                CheckResult(WARN, name, f"{gamertag} is pending; join once with this GamerTag to bind it (§3)")
+                CheckResult(WARN, name, f"{gamertag} is pending; join once with this GamerTag to bind it (section 3)")
             )
         else:
             results.append(CheckResult(PASS, name, f"{gamertag} is bound (since {binding.bound_at})"))
@@ -367,7 +369,7 @@ def check_controllers(config: EndbotConfig, state: ControllerState) -> list[Chec
                     WARN,
                     name,
                     f"{binding.gamertag} has a binding but is not in [controllers].gamertags; "
-                    "it is revoked on the next start (§3)",
+                    "it is revoked on the next start (section 3)",
                 )
             )
     return results
@@ -394,7 +396,7 @@ def check_controllers_legacy(server: Path) -> CheckResult:
     return CheckResult(
         WARN,
         name,
-        f"{legacy} legacy [authorization] pre-bound entries; migrate them to [controllers].gamertags (§3)",
+        f"{legacy} legacy [authorization] pre-bound entries; migrate them to [controllers].gamertags (section 3)",
     )
 
 
@@ -417,7 +419,7 @@ def check_runtime(context: DoctorContext, config: EndbotConfig | None, paths: In
 
 
 def run_doctor(context: DoctorContext) -> list[CheckResult]:
-    """Run every §7 check in order and return one or more results per check."""
+    """Run every section 7 check in order and return one or more results per check."""
 
     paths = context.paths
     results: list[CheckResult] = []

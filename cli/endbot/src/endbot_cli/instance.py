@@ -1,12 +1,12 @@
-"""Instance directory resolution and the docs/OPERATIONS.md §1 layout paths.
+"""Instance directory resolution and the docs/OPERATIONS.md section 1 layout paths.
 
-The instance directory (``<instance>`` in §1) is resolved in this order:
+The instance directory (``<instance>`` in section 1) is resolved in this order:
 
 1. the ``--instance PATH`` command-line argument;
 2. the ``ENDBOT_INSTANCE`` environment variable;
 3. the directory containing the launcher, when the CLI runs through the
    ``endbot`` / ``endbot.cmd`` / ``endbot.exe`` launcher that setup writes into
-   ``<instance>/`` (§1); a launcher directory only counts when it looks like an
+   ``<instance>/`` (section 1); a launcher directory only counts when it looks like an
    instance (it holds ``endbot.toml`` or ``app/current``), so the identically
    named console script in a Python environment does not match;
 4. the current working directory.
@@ -32,7 +32,7 @@ class InstanceError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class InstancePaths:
-    """The fixed §1 layout under one instance directory."""
+    """The fixed section 1 layout under one instance directory."""
 
     root: Path
     endbot_toml: Path

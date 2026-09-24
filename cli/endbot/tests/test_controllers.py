@@ -1,4 +1,4 @@
-"""Tests for state/controllers.json loading (docs/OPERATIONS.md §3 schema)."""
+"""Tests for state/controllers.json loading (docs/OPERATIONS.md section 3 schema)."""
 
 from __future__ import annotations
 

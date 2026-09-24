@@ -11,11 +11,11 @@ from endbot_cli.doctor import DoctorContext, exit_code, run_doctor
 from endbot_cli.instance import InstanceError, InstancePaths, resolve_instance_root
 
 PLACEHOLDER_COMMANDS = {
-    "setup": "create or adopt an instance (§6)",
-    "start": "start runtime and BDS (§5a)",
-    "stop": "stop BDS and the runtime (§5a)",
-    "update": "install a new application version (§6a)",
-    "controllers": "manage controller enrollment (§3)",
+    "setup": "create or adopt an instance (section 6)",
+    "start": "start runtime and BDS (section 5a)",
+    "stop": "stop BDS and the runtime (section 5a)",
+    "update": "install a new application version (section 6a)",
+    "controllers": "manage controller enrollment (section 3)",
 }
 
 
@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="instance directory (default: $ENDBOT_INSTANCE, else the launcher directory, else the working directory)",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
-    doctor = subcommands.add_parser("doctor", help="report instance health without changing anything (§7)")
+    doctor = subcommands.add_parser("doctor", help="report instance health without changing anything (section 7)")
     doctor.add_argument(
         "--live",
         action="store_true",

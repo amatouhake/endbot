@@ -264,6 +264,44 @@ def build_runtime(node: Path, npm_cli: Path, runtime_dir: Path) -> None:
         raise BundleError(
             f"installed bedrock-protocol {installed_protocol!r} does not match locked {expected_protocol!r}"
         )
+    prune_minecraft_data(node, runtime_dir)
+
+
+def prune_minecraft_data(node: Path, runtime_dir: Path) -> None:
+    """Keep only the minecraft-data files the runtime's Bedrock version resolves.
+
+    minecraft-data ships every Java and Bedrock version (~440 MB). Its data
+    getters are lazy, so removing the other version directories is safe as long
+    as every path listed for the runtime's game version survives; the bundled
+    node then loads each of them to prove it.
+    """
+    game_version = json.loads((runtime_dir / "endbot-runtime.example.json").read_text(encoding="utf-8"))["gameVersion"]
+    data_root = runtime_dir / "node_modules" / "minecraft-data" / "minecraft-data" / "data"
+    data_paths = json.loads((data_root / "dataPaths.json").read_text(encoding="utf-8"))
+    entry = (data_paths.get("bedrock") or {}).get(game_version)
+    if not entry:
+        raise BundleError(f"minecraft-data has no Bedrock {game_version} entry")
+    keep = {"bedrock/common", "pc/common"} | {str(value) for value in entry.values()}
+    removed = 0
+    for edition in ("bedrock", "pc"):
+        for directory in sorted((data_root / edition).iterdir()):
+            if directory.is_dir() and f"{edition}/{directory.name}" not in keep:
+                shutil.rmtree(directory)
+                removed += 1
+    script = (
+        "const data = require('minecraft-data')('bedrock_' + process.argv[1]);"
+        "if (!data) throw new Error('minecraft-data cannot load ' + process.argv[1]);"
+        "for (const key of JSON.parse(process.argv[2])) {"
+        "  if (data[key] === undefined) throw new Error('minecraft-data lost ' + key);"
+        "}"
+        "if (!data.defaultSkin) throw new Error('minecraft-data lost defaultSkin');"
+        "require('bedrock-protocol');"
+    )
+    # These dataPaths entries have no same-named accessor (steve backs
+    # defaultSkin, checked explicitly; proto/types are schema sources).
+    keys = sorted(key for key in entry if key not in {"proto", "types", "steve", "blocksB2J", "blocksJ2B"})
+    run(str(node), "-e", script, game_version, json.dumps(keys), cwd=runtime_dir)
+    print(f"bundle: pruned {removed} unused minecraft-data version directories (kept {sorted(keep)})")
 
 
 WINDOWS_LAUNCHER = """@echo off

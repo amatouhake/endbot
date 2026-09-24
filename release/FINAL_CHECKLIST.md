@@ -34,85 +34,70 @@ pickup inference, block mining, autocomplete redesign.
 
 ### Phase 0 — spikes and independent fixes
 
-- [ ] **`look at` resolves the Bot by identity UUID** instead of player name
-  (duplicate-name ghosts picked the wrong entity).
-- [ ] **Windows Endstone wheel built by CI.** rc.1 shipped a locally built
-  `win_amd64` wheel. `release-candidate.yml` gains a Windows build + inspect
-  + paired-install job and an assemble job, so both platforms share one CI
-  provenance.
-- [ ] **S1 — upstream `bedrock-protocol` audit.** On a branch: move to exact
-  `bedrock-protocol@3.60.1` (`transport: 'nethernet'` instead of the fork's
-  `raknetBackend`), drop `prepare-minecraft-data.js` and the custom protocol
-  2193 schema patch if upstream `minecraft-data` (>= 3.117.0) is correct,
-  rerun runtime tests, then real-BDS smoke of login, movement, PlayerAuthInput
-  transactions, interact, drop, inventory. Record what upstream cannot express
-  (the fork's `nethernetServerKeyPin` / `onNetherNetServerTrust`), and note the
-  Node `>=24` requirement plus the git-sourced `prismarine-xbox-services`
-  dependency for bundling.
-- [ ] **S2 — BDS allow-list spike.** Locate where BDS rejects a login that is
-  not on the allow-list (after `_validateLoginPacket`; Endstone holds the
-  `AllowList&` but does not model it) and whether a verified local Bot can be
-  exempted inside the existing local-bot auth hook without a new core hook.
+- [x] **`look at` resolves the Bot by identity UUID** instead of player name
+  (#12).
+- [x] **Windows Endstone wheel built by CI** (#20): `release-candidate.yml`
+  builds, inspects, and install-tests the `win_amd64` wheel next to the Linux
+  wheel, and one assemble job publishes both.
+- [x] **S1 — upstream `bedrock-protocol` audit**, landed in #15: exact
+  `bedrock-protocol@3.60.1` + `minecraft-data@3.117.0`, no fork, no
+  install-time schema rewrite, byte-level packet assertions unchanged, Node 24,
+  `prismarine-xbox-services` pinned as an HTTPS tarball (no git at install).
+  Live smoke on real BDS passed.
+- [x] **S2 — BDS allow-list spike.** With `allow-list=true` and an empty
+  `allowlist.json`, a Bot accepted by the local-bot path joins; the existing
+  auth hook's result is already exempt. No new core hook (see
+  `docs/OPERATIONS.md` section 4).
 
-### Phase 1 — contracts (decide once, document, then build on them)
+### Phase 1 — contracts
 
-- [ ] **App/data layout.** Replaceable app (private Python, patched Endstone,
-  plugin, bundled Node + runtime) versus persistent Endbot data (owner key,
-  control token, controller bindings, Bot profiles, server-identity state)
-  versus operator-owned BDS (worlds, `server.properties`, `allowlist.json`,
-  `permissions.json`, packs). Updates never touch the latter two.
-- [ ] **Config contract.** One operator config; generated state kept apart
-  from operator-edited files.
-- [ ] **NetherNet server trust.** BDS regenerates its NetherNet DTLS identity
-  on every start, so a persistent TOFU pin cannot survive restarts. Decided
-  direction: loopback-only connection plus a supervisor-managed pin that is
-  reset on each supervised BDS start, so the fork-only trust API can shrink
-  or go.
-- [ ] **Local Bot allow-list semantics.** Humans keep vanilla allow-list
-  behaviour. Preferred: exempt only identities that passed Endbot owner
-  signature verification, if S2 shows this fits the existing auth hook.
-  Otherwise the plugin keeps `allowlist.json` in sync through the vanilla
-  `allowlist add/remove` console commands on spawn / rename / forget, rather
-  than widening the Endstone core delta with a new hook.
-- [ ] **Artifact shape.** Per-platform bundle: standalone CPython 3.12,
-  bundled Node + runtime with pinned, prebuilt dependencies, and an `endbot`
-  launcher.
+- [x] **App/data layout**, **config contract**, and **artifact shape**:
+  `docs/OPERATIONS.md` (#13).
+- [x] **NetherNet server trust**: no server identity pin. Loopback-only BDS
+  connection plus the owner-signed, audience-bound, single-use, `cpk`-bound
+  Bot token (`docs/SECURITY.md`, #15).
+- [x] **Local Bot allow-list semantics**: humans keep vanilla allow-list
+  behaviour; verified local Bots are already exempt (S2).
 
 ### Phase 2 — implementation
 
-- [ ] Controller authorization: pending GamerTag → XUID/UUID binding on first
-  authenticated join; remove / re-enroll; GamerTag changes keep the binding.
-- [ ] Local Bot allow-list behaviour per the contract, with negative tests
-  (wrong issuer, wrong signature, local-bot-auth disabled, ordinary Xbox
-  player, non-allowlisted human all keep vanilla rejection).
-- [ ] Land the S1 migration (or rebase a minimal fork delta on 3.60.1 if S1
-  shows upstream cannot carry it safely).
-- [ ] Runtime platform artifact: bundled Node and `node_modules` built in CI;
-  no `npm ci` or native addon build on the operator machine.
-- [ ] Private Python bootstrap with patched Endstone + plugin preinstalled.
-- [ ] `endbot setup` (fresh or existing BDS; keys, token, config, controller
-  enrollment, preflight), `endbot doctor` (absorbs and extends
-  `scripts/preflight.py`: plugin TOML parses, token file exists, identifiers
-  are strings, `[local-bot-auth]` enabled with a readable key, BDS / runtime
-  reachability, compatibility pair), `endbot start` / `stop` (runtime then
-  Endstone/BDS, PID / log / exit capture, server-identity pin lifecycle).
-- [ ] Existing-BDS migration: dry-run → backup → planned-changes listing →
-  explicit apply; never loses worlds or operator config.
-- [ ] `docs/INSTALL.md` and `README.md` rewritten around the new entry point.
+- [x] Controller authorization: GamerTag → XUID/UUID binding on first
+  Xbox-authenticated join, revocation, reset (#17, #19).
+- [x] Land the S1 migration (#15).
+- [x] Runtime platform artifact and private Python bootstrap: per-platform
+  bundles with pinned CPython 3.12 and Node 24, production `node_modules`
+  built in CI, pruned `minecraft-data` (#22).
+- [x] `endbot doctor` (#18), `endbot start` / `stop` / `console` /
+  `controllers reset` with generated configs and a supervising process (#19),
+  `endbot setup` (fresh / existing) and `update` / `--rollback` (#21).
+- [x] Existing-BDS migration: dry-run → backup with SHA-256 manifest →
+  planned-changes listing → explicit apply (#21).
+- [x] `docs/INSTALL.md` and `README.md` lead with the bundle path (#21, #22).
 
 ### Phase 3 — final candidate and gates
 
-- [ ] CI builds Linux and Windows, then one assemble job emits the platform
-  bundles, manifest, and `SHA256SUMS`. No locally built file enters the
-  release.
-- [ ] Dogfood: fresh Windows machine, clean Linux consumer, and migration of
-  an existing BDS copy.
-- [ ] Live matrix on the exact final candidate: normal Xbox human auth
-  unchanged; human allow-list behaviour unchanged (`allow-list=true`
-  exercised with a human and a Bot); verified local Bot allow-list positive
-  case; invalid local token / wrong issuer / wrong key / local-bot-auth
-  disabled negative cases; GamerTag pending → XUID binding; bound controller
-  after rename and reconnect.
+- [x] CI builds Linux and Windows, then one assemble job emits both platform
+  bundles, wheels, manifest, and `SHA256SUMS` (#20, #22).
+- [ ] Dogfood:
+  - [x] Windows, CI-built bundle, operator commands only: extract →
+    `endbot.cmd setup --fresh --apply` (BDS downloaded through Endstone) →
+    `start` → Bot joins with `allow-list=true` → live smoke → clean `stop`.
+    Ran on the development machine, not a clean one.
+  - [x] Migration of an existing BDS copy (no `version.txt`, human allowlist
+    entry, custom pack file, custom port): refused without a world-backup
+    flag; with `--backup-worlds` it backed up 2,893 files, reinstalled BDS,
+    kept operator files, and the existing world loaded with a Bot joining.
+  - [ ] Clean Windows machine (no developer toolchain) with the published
+    bundle.
+  - [ ] Linux bundle on a real Linux host.
+  - [ ] `endbot update` from one published candidate bundle to the next, and
+    `--rollback`.
+- [ ] Live matrix on the exact final candidate (needs a human Xbox client):
+  normal Xbox human auth unchanged; a non-allowlisted human is still rejected
+  with `allow-list=true` while an allowlisted human and a Bot both join;
+  invalid local token / wrong issuer / wrong key / local-bot-auth disabled
+  negative cases; GamerTag pending → XUID binding with `/bot` working;
+  bound controller after reconnect; Bot has member (not operator) permissions.
 - [ ] **Xbox achievement gate with capture.** Manifest observations
   (`actual_xbox_achievement_unlock_observed`,
   `m2_actual_xbox_achievement_unlock_observed`) stay `false` until a normal
@@ -141,7 +126,9 @@ pickup inference, block mining, autocomplete redesign.
 ## Standing invariants (must hold at publication)
 
 - `online-mode=true`, `allow-cheats=false`, no experiments/packs, normal
-  Microsoft/Xbox path for humans, local-bot trust disabled by default.
+  Microsoft/Xbox path for humans. Local-bot trust stays disabled in the patched
+  Endstone default config; only `endbot start` enables it, pinned to the
+  instance's own owner public key.
 - BDS stays external (never bundled).
 - Historical M0/M2 evidence stays attributed to `0.11.11+endbot.1`; the
   current package never inherits it.

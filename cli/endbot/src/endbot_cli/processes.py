@@ -77,6 +77,28 @@ def _app_dir(paths: InstancePaths) -> Path | None:
     return paths.root / "app" / version
 
 
+def resolve_python(
+    paths: InstancePaths, environ: Mapping[str, str] | None = None, *, windows: bool | None = None
+) -> Path:
+    """Resolve only the Endbot Python interpreter (used for BDS acquisition).
+
+    Same rule as :func:`resolve_toolchain`, but Node.js and the runtime are not
+    required; ``endbot setup`` runs before anything else is needed.
+    """
+
+    environ = os.environ if environ is None else environ
+    on_windows = os.name == "nt" if windows is None else windows
+    app_dir = _app_dir(paths)
+    python_name = "python/python.exe" if on_windows else "python/bin/python3"
+    return _resolve_component(
+        environ,
+        ENV_PYTHON,
+        app_dir / python_name if app_dir is not None else None,
+        app_dir,
+        "the Endbot Python interpreter",
+    )
+
+
 def resolve_toolchain(
     paths: InstancePaths, environ: Mapping[str, str] | None = None, *, windows: bool | None = None
 ) -> Toolchain:

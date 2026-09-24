@@ -1,4 +1,4 @@
-"""Tests for instance directory resolution and §1 layout paths."""
+"""Tests for instance directory resolution and section 1 layout paths."""
 
 from __future__ import annotations
 

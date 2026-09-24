@@ -1,4 +1,4 @@
-"""End-to-end tests for `endbot doctor` against synthetic instances (§7)."""
+"""End-to-end tests for `endbot doctor` against synthetic instances (section 7)."""
 
 from __future__ import annotations
 

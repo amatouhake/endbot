@@ -1,4 +1,4 @@
-"""Minimal client for the local runtime control protocol (docs/OPERATIONS.md §7).
+"""Minimal client for the local runtime control protocol (docs/OPERATIONS.md section 7).
 
 Copied from ``plugin/endbot/src/endstone_endbot/control.py`` so the doctor can
 probe runtime reachability without importing the plugin (which would drag in

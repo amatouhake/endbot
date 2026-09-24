@@ -1,4 +1,4 @@
-"""Typed loading and validation of ``endbot.toml`` (docs/OPERATIONS.md §2).
+"""Typed loading and validation of ``endbot.toml`` (docs/OPERATIONS.md section 2).
 
 ``endbot.toml`` is the only file operators edit. Every error names the file,
 the offending key, and the fix so the operator can repair the file by hand.
@@ -58,7 +58,7 @@ def _fail(path: Path, key: str, problem: str, fix: str) -> ConfigError:
 def _require_table(path: Path, document: dict[str, Any], name: str) -> dict[str, Any]:
     table = document.get(name)
     if table is None:
-        raise _fail(path, name, "is missing", f"add a [{name}] section as shown in docs/OPERATIONS.md §2")
+        raise _fail(path, name, "is missing", f"add a [{name}] section as shown in docs/OPERATIONS.md section 2")
     if not isinstance(table, dict):
         raise _fail(path, name, "must be a table", f"write it as a [{name}] section")
     return table
@@ -149,7 +149,7 @@ def load_config(path: Path) -> EndbotConfig:
         raw = path.read_bytes()
     except FileNotFoundError as error:
         raise ConfigError(
-            f"{path}: file is missing; run `endbot setup` to create it (see docs/OPERATIONS.md §2)"
+            f"{path}: file is missing; run `endbot setup` to create it (see docs/OPERATIONS.md section 2)"
         ) from error
     except OSError as error:
         raise ConfigError(f"{path}: file cannot be read: {error}; fix the file permissions") from error

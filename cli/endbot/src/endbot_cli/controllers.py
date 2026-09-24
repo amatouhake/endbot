@@ -1,4 +1,4 @@
-"""Controller enrollment state (``state/controllers.json``, docs/OPERATIONS.md §3).
+"""Controller enrollment state (``state/controllers.json``, docs/OPERATIONS.md section 3).
 
 Schema (generated and maintained by the plugin; the CLI only reads it)::
 
@@ -37,7 +37,7 @@ class ControllerState:
     bindings: tuple[ControllerBinding, ...] = ()
 
     def find(self, gamertag: str) -> ControllerBinding | None:
-        """Return the binding for ``gamertag`` (case-insensitive, §3) if any."""
+        """Return the binding for ``gamertag`` (case-insensitive, section 3) if any."""
 
         wanted = gamertag.casefold()
         for binding in self.bindings:

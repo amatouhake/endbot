@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fakeinstance import build_instance
 
-from endbot_cli.__main__ import PLACEHOLDER_COMMANDS, main
+from endbot_cli.__main__ import main
 from endbot_cli.doctor import detect_endstone_version
 from endbot_cli.lock import load_lock
 
@@ -40,13 +40,37 @@ class MainTests(unittest.TestCase):
         for line in lines:
             self.assertRegex(line, r"^(PASS|WARN|FAIL|SKIP) [a-z-]+: .+")
 
-    def test_placeholder_commands_exit_two(self) -> None:
-        for name in PLACEHOLDER_COMMANDS:
-            with self.subTest(name=name):
-                code, stdout, stderr = self.run_main(["--instance", str(self.root), name])
-                self.assertEqual(code, 2)
-                self.assertEqual(stdout, "")
-                self.assertIn("not implemented yet", stderr)
+    def test_setup_is_wired_and_still_dry_run_only(self) -> None:
+        empty = Path(self.directory.name) / "empty"
+        empty.mkdir()
+        code, stdout, stderr = self.run_main(
+            ["--instance", str(empty), "setup", "--fresh", "--controller", "ExampleTag"]
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("plan (fresh)", stdout)
+        self.assertIn("download BDS", stdout)
+        self.assertFalse((empty / "endbot.toml").exists())
+
+    def test_setup_refuses_an_instance_that_already_exists(self) -> None:
+        code, _stdout, stderr = self.run_main(["--instance", str(self.root), "setup", "--fresh"])
+        self.assertEqual(code, 1)
+        self.assertIn("endbot.toml already exists", stderr)
+
+    def test_update_requires_exactly_one_of_archive_or_rollback(self) -> None:
+        code, _stdout, stderr = self.run_main(["--instance", str(self.root), "update"])
+        self.assertEqual(code, 2)
+        self.assertIn("exactly one", stderr)
+        code, _stdout, stderr = self.run_main(
+            ["--instance", str(self.root), "update", "bundle.zip", "--rollback"]
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("exactly one", stderr)
+
+    def test_update_rollback_is_wired(self) -> None:
+        code, _stdout, stderr = self.run_main(["--instance", str(self.root), "update", "--rollback"])
+        self.assertEqual(code, 1)
+        self.assertIn("app", stderr)  # no previous version in this instance
 
     def test_missing_instance_directory_fails(self) -> None:
         missing = self.root / "missing"

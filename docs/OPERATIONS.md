@@ -114,7 +114,8 @@ same-host impostor from turning a captured token into a real login. The full rat
 3. Check `<server>/version.txt` equals the locked BDS version. On mismatch, refuse and point at `endbot update`
    (never let Endstone update BDS implicitly during start).
 4. Start the runtime, wait for its `endbot_runtime_ready` line.
-5. Start Endstone/BDS (`python -m endstone -s <server>`, non-interactive), record PIDs, stdout/stderr logs, and exit
+5. Start Endstone/BDS (Endstone's own `python -m endstone -s <server>` entry, non-interactive, through
+   `endbot_cli.endstone_entry`, which only repoints the relocated interpreter's `LIBDIR` on Linux), record PIDs, stdout/stderr logs, and exit
    codes under `state/run/`.
 6. Desired-online Bots reconnect through the runtime's existing lifecycle.
 

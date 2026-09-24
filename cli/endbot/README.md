@@ -161,7 +161,7 @@ Outside a packaged instance (no `app/` directory) `endbot start` resolves the
 toolchain from these variables; each names an absolute path and takes
 precedence over `app/current` when set (never set them in production):
 
-- `ENDBOT_PYTHON` — the Python interpreter used to run `-m endstone`
+- `ENDBOT_PYTHON` — the Python interpreter used to run Endstone (`-m endbot_cli.endstone_entry`)
   (packaged default: `app/<v>/python/python.exe` or `app/<v>/python/bin/python3`);
 - `ENDBOT_NODE` — the Node.js interpreter running the runtime
   (packaged default: `app/<v>/node/node.exe` or `app/<v>/node/bin/node`);

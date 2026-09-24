@@ -73,10 +73,10 @@ def sanitized_environment(base: dict[str, str], shim_dir: Path | None) -> dict[s
             environment.pop(key)
     if os.name == "nt":
         system_root = base.get("SystemRoot", r"C:\Windows")
+        # %SystemRoot% itself is left out: CI images put the py launcher there.
         environment["PATH"] = os.pathsep.join(
             [
                 os.path.join(system_root, "System32"),
-                system_root,
                 os.path.join(system_root, "System32", "Wbem"),
                 os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0"),
             ]

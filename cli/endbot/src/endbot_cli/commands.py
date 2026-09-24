@@ -134,7 +134,14 @@ def run_start(
             str(generated.runtime_config),
         )
     if server_command is None:
-        server_command = (str(toolchain.python), "-m", "endstone", "-s", str(server), "--no-interactive")
+        server_command = (
+            str(toolchain.python),
+            "-m",
+            "endbot_cli.endstone_entry",
+            "-s",
+            str(server),
+            "--no-interactive",
+        )
 
     def recheck_local_bot_auth() -> str | None:
         result = check_local_bot_auth(server, paths)

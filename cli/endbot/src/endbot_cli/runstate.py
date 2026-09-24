@@ -132,6 +132,16 @@ def write_last_exit(run_dir: Path, record: dict) -> None:
     atomic_write_text(Path(run_dir) / LAST_EXIT, json.dumps(record, indent=2) + "\n")
 
 
+def read_last_exit(run_dir: Path) -> dict | None:
+    """Return the most recent supervisor exit record, or None if absent or unreadable."""
+
+    try:
+        record = json.loads((Path(run_dir) / LAST_EXIT).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
 def make_log_dir(run_dir: Path, keep: int = KEEP_LOG_STARTS) -> Path:
     """Create a fresh per-start log directory and prune all but the last ``keep``."""
 

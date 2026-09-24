@@ -32,6 +32,7 @@ from endbot_cli.runstate import (
     append_console_line,
     clean_supervisor_pid,
     inspect_supervisor,
+    read_last_exit,
     request_stop,
 )
 from endbot_cli.supervisor import Supervisor, SupervisorOptions
@@ -173,6 +174,22 @@ def _install_signal_handlers(supervisor: Supervisor) -> None:
         pass
 
 
+def _report_stopped(paths: InstancePaths, previous: dict | None) -> int:
+    """Report the supervisor's own exit record; an UNCLEAN stop is a failure (section 5a)."""
+
+    record = read_last_exit(paths.state_run)
+    if record is None or record == previous:
+        _print("stop: supervisor stopped (no new exit record)")
+        return 0
+    if record.get("unclean"):
+        return _fail(
+            f"FAIL stop: supervisor stopped UNCLEAN (runtime exit {record.get('runtimeExit')}, "
+            f"server exit {record.get('serverExit')}); see {record.get('logDir')}"
+        )
+    _print("stop: supervisor stopped cleanly")
+    return 0
+
+
 def run_stop(paths: InstancePaths, *, timeout: float = 120.0, poll_interval: float = 0.25) -> int:
     """Request a stop and wait for the supervisor to exit (section 5a)."""
 
@@ -185,17 +202,16 @@ def run_stop(paths: InstancePaths, *, timeout: float = 120.0, poll_interval: flo
         )
     if state.status != RUNNING:
         return _fail(f"FAIL stop: no supervisor is running ({paths.state_run / 'supervisor.pid'} is missing)")
+    previous = read_last_exit(paths.state_run)
     request_stop(paths.state_run)
     _print(f"stop: requested; waiting up to {timeout:g}s for supervisor pid {state.pid} to exit")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if not process_alive(state.pid):
-            _print("stop: supervisor stopped")
-            return 0
+            return _report_stopped(paths, previous)
         time.sleep(poll_interval)
     if not process_alive(state.pid):
-        _print("stop: supervisor stopped")
-        return 0
+        return _report_stopped(paths, previous)
     return _fail(
         f"FAIL stop: supervisor pid {state.pid} is still running after {timeout:g}s; "
         f"inspect {paths.state_run / 'last-exit.json'} and {paths.state_run / 'logs'}"

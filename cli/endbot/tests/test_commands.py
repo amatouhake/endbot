@@ -265,6 +265,27 @@ class StopAndConsoleTests(CommandTestCase):
         self.assertEqual(code, 1)
         self.assertIn("still running", stderr)
 
+    def test_stop_reports_an_unclean_supervisor_exit_as_failure(self) -> None:
+        from endbot_cli.commands import _report_stopped
+        from endbot_cli.runstate import write_last_exit
+
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        previous = {"startedAt": "earlier", "unclean": False}
+        write_last_exit(self.run_dir, previous)
+        code, _stdout, _stderr = self.run_captured(_report_stopped, self.paths, previous)
+        self.assertEqual(code, 0)
+        write_last_exit(
+            self.run_dir,
+            {"startedAt": "now", "runtimeExit": 1, "serverExit": 0, "unclean": True, "logDir": "logs/x"},
+        )
+        code, _stdout, stderr = self.run_captured(_report_stopped, self.paths, previous)
+        self.assertEqual(code, 1)
+        self.assertIn("UNCLEAN", stderr)
+        write_last_exit(self.run_dir, {"startedAt": "later", "runtimeExit": 0, "serverExit": 0, "unclean": False})
+        code, stdout, _stderr = self.run_captured(_report_stopped, self.paths, previous)
+        self.assertEqual(code, 0)
+        self.assertIn("cleanly", stdout)
+
     def test_console_queues_one_line_for_a_live_supervisor(self) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         (self.run_dir / "supervisor.pid").write_text(f"{os.getpid()}\n", encoding="utf-8")

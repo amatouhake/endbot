@@ -6,7 +6,14 @@ import json
 import unittest
 from pathlib import Path
 
-from endbot_cli.lock import LockError, bds_versions_match, load_lock, normalize_bds_version, packaged_lock_path
+from endbot_cli.lock import (
+    LockError,
+    bds_versions_match,
+    compare_bds_versions,
+    load_lock,
+    normalize_bds_version,
+    packaged_lock_path,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REPO_LOCK = REPO_ROOT / "endstone.lock"
@@ -48,6 +55,14 @@ class VersionComparisonTests(unittest.TestCase):
     def test_versions_match_on_first_three_components(self) -> None:
         self.assertTrue(bds_versions_match("26.51", "1.26.51.1"))
         self.assertTrue(bds_versions_match("1.26.51.1", "26.51.1"))
+
+    def test_compare_orders_versions(self) -> None:
+        self.assertEqual(compare_bds_versions("26.51", "1.26.51.1"), 0)
+        self.assertEqual(compare_bds_versions("26.51.1", "1.26.51.1"), 0)
+        self.assertEqual(compare_bds_versions("26.50", "1.26.51.1"), -1)
+        self.assertEqual(compare_bds_versions("1.21.51", "1.26.51.1"), -1)
+        self.assertEqual(compare_bds_versions("26.99", "1.26.51.1"), 1)
+        self.assertEqual(compare_bds_versions("26.51.2", "1.26.51.1"), 1)
         self.assertTrue(bds_versions_match("26.51.1", "26.51"))
         self.assertFalse(bds_versions_match("26.52", "1.26.51.1"))
         self.assertFalse(bds_versions_match("26.5", "1.26.51.1"))

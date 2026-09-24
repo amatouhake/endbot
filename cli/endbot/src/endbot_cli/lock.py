@@ -74,3 +74,19 @@ def bds_versions_match(found: str, expected: str) -> bool:
     expected_parts = normalize_bds_version(expected)[:3]
     shared = min(len(found_parts), len(expected_parts))
     return found_parts[:shared] == expected_parts[:shared]
+
+
+def compare_bds_versions(found: str, expected: str) -> int:
+    """Order two BDS version strings: -1 older, 0 matching, 1 newer.
+
+    Matching uses :func:`bds_versions_match` (missing trailing components on the
+    shorter side match). Non-matching versions differ within their shared
+    components, so the ordering is unambiguous there.
+    """
+
+    if bds_versions_match(found, expected):
+        return 0
+    found_parts = normalize_bds_version(found)[:3]
+    expected_parts = normalize_bds_version(expected)[:3]
+    shared = min(len(found_parts), len(expected_parts))
+    return -1 if found_parts[:shared] < expected_parts[:shared] else 1

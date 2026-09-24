@@ -137,12 +137,16 @@ BDS and exits non-zero.
 
 ## 6. Setup
 
-`endbot setup` has two paths and is always dry-run first: it prints every planned change and applies nothing until the
-operator confirms (`--apply` for non-interactive use).
+`endbot setup` has two paths and is always dry-run first: it prints every planned change (files to create or modify
+with a short reason, backups to take, and whether BDS will be downloaded or overwritten) and applies nothing until the
+operator confirms (`--apply` is the confirmation; the CLI never prompts). Setup refuses to run when `endbot.toml`
+already exists or when a supervisor is running.
 
 **Fresh BDS.** Creates `<instance>/server`, lets Endstone download the locked BDS through its normal acquisition path
 (Endbot never bundles BDS), applies the safety defaults (`online-mode=true`, `allow-cheats=false`, no experiments),
-creates `state/`, generates keys and token, and writes `endbot.toml` with the given controller GamerTags.
+creates `state/`, and writes `endbot.toml` with the given controller GamerTags. The world is not created here — BDS
+creates it on the first `endbot start`, which is also what generates the owner keys and control token (setup's doctor
+report marks those two checks as expected-not-yet-present).
 
 **Existing BDS.** Points `[server].path` at the existing directory. Before any change:
 
@@ -150,19 +154,33 @@ creates `state/`, generates keys and token, and writes `endbot.toml` with the gi
   confirmed, re-downloads the server binary and the vanilla `behavior_packs/`, `resource_packs/`, and `definitions/`
   over the existing ones (worlds, `server.properties` values, `allowlist.json`, `permissions.json` are kept). A BDS
   newer than the locked version is refused.
-- Back up `server.properties`, `allowlist.json`, `permissions.json`, `endstone.toml` if present, and the pack
-  directories that Endstone may overwrite into `backups/<timestamp>/`. Worlds are not copied by default (size); setup
-  requires the operator to confirm they have a world backup, or to pass `--backup-worlds`.
-- Verify the safety invariants on the existing `server.properties` and world. A world that already has creative,
-  cheat, or experiment history is reported; Endbot does not change world flags.
-- List the planned changes (BDS binary update if needed, `endstone.toml` `[local-bot-auth]`, `plugins/endbot/`),
-  then apply only on confirmation.
+- Back up `server.properties`, `allowlist.json`, `permissions.json`, `endstone.toml` if present,
+  `packetlimitconfig.json` if present, the server executable, and the pack directories that Endstone may overwrite
+  into `backups/<UTC timestamp>/`, with a `manifest.json` listing every backed-up file's SHA-256. Worlds are not
+  copied by default (size); setup requires the operator to confirm they have a world backup
+  (`--i-have-a-world-backup`), or to pass `--backup-worlds`.
+- Verify the safety invariants on the existing `server.properties` and world. An existing server's
+  `server.properties` is checked, never silently flipped (`online-mode=false` / `allow-cheats=true` FAIL the plan),
+  and a world that already has creative, cheat, or experiment history FAILs the plan; Endbot does not change world
+  flags. Unknown experiment keys are reported as warnings.
+- List the planned changes (BDS binary update if needed, `endstone.toml` `[local-bot-auth]`, `plugins/endbot/` — the
+  latter two are generated on the first start), then apply only on confirmation.
+
+After `--apply`, both paths run `endbot doctor` (non-live) and print the report plus the next steps (`endbot doctor`,
+`endbot start`, and joining once with each controller GamerTag to bind it).
 
 ## 6a. Update
 
 `endbot update <artifact>` installs a new `app/<version>` next to the current one, runs its doctor against the
-existing `state/` and server, switches `app/current`, and keeps the previous version for rollback. If the new version
-locks a different BDS version, it performs the §6 backup and preview before letting Endstone update BDS.
+existing `state/` and server, switches `app/current`, and keeps the previous version for rollback. The artifact is a
+platform bundle archive (`.zip` on Windows, `.tar.gz` on Linux) holding `app/<newversion>/` and the `endbot` /
+`endbot.cmd` launcher at its root; only those are extracted — `state/`, `endbot.toml`, the server directory, and the
+current application are never touched, and the launcher is replaced from the archive when the switch succeeds. The
+archive is verified against `--sums PATH` (or `SHA256SUMS` beside the archive when present); a mismatch refuses the
+update. If the new version locks a different BDS version (its doctor reports a `bds-version` FAIL), it performs the §6
+backup and preview before letting Endstone update BDS; any other doctor FAIL keeps the old version current and is
+reported. `endbot update --rollback` switches `app/current` back to the most recent previous version directory present
+in `app/`. Updates refuse to run while a supervisor is running.
 
 ## 7. Doctor
 

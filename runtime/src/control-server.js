@@ -15,7 +15,7 @@ function tokensEqual (left, right) {
 }
 
 export class ControlServer {
-  constructor ({ host = '127.0.0.1', port = 19142, token, lifecycle, requestTimeoutMs = 8_000 }) {
+  constructor ({ host = '127.0.0.1', port = 19142, token, lifecycle, requestTimeoutMs = 8_000, onShutdown } = {}) {
     if (!LOOPBACK.has(host)) throw new Error('Endbot control server must bind to loopback')
     if (typeof token !== 'string' || token.length < 32) throw new Error('Endbot control token is invalid')
     this.host = host
@@ -23,6 +23,7 @@ export class ControlServer {
     this.token = token
     this.lifecycle = lifecycle
     this.requestTimeoutMs = requestTimeoutMs
+    this.onShutdown = onShutdown
     this.sockets = new Set()
   }
 
@@ -71,6 +72,9 @@ export class ControlServer {
       }
       const result = await this.#dispatch(request.method, request.params ?? {})
       socket.end(`${JSON.stringify({ version: 1, id: request.id, ok: true, result })}\n`)
+      // The shutdown hook runs only after the response has left the socket,
+      // so the caller always learns that a graceful stop was accepted.
+      if (request.method === 'shutdown') socket.once('close', () => this.#invokeShutdown())
     } catch (error) {
       socket.end(`${JSON.stringify({
         version: 1,
@@ -81,9 +85,16 @@ export class ControlServer {
     }
   }
 
+  #invokeShutdown () {
+    const hook = this.onShutdown
+    this.onShutdown = undefined
+    if (hook) void Promise.resolve().then(hook).catch(() => {})
+  }
+
   #dispatch (method, params) {
     switch (method) {
       case 'ping': return { runtime: 'endbot', protocolVersion: 1 }
+      case 'shutdown': return { stopping: true }
       case 'list': return this.lifecycle.list()
       case 'status': return this.lifecycle.status(params.name)
       case 'spawn': return this.lifecycle.spawn(params.name)

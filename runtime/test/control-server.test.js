@@ -58,3 +58,52 @@ test('default control deadline permits a normal replacement operation', async ()
   assert.equal(response.ok, true)
   assert.equal(response.result.connectionState, 'reconnecting')
 })
+
+test('shutdown answers { stopping: true } then runs the shutdown hook', async () => {
+  const token = 'a'.repeat(43)
+  const calls = []
+  let notifyHooked
+  const hooked = new Promise(resolve => { notifyHooked = resolve })
+  const lifecycle = { close: async () => { calls.push('close') } }
+  const server = new ControlServer({
+    host: '127.0.0.1',
+    port: 0,
+    token,
+    lifecycle,
+    onShutdown: () => {
+      calls.push('shutdown')
+      return lifecycle.close().then(notifyHooked)
+    }
+  })
+  await server.listen()
+  test.after(() => server.close())
+  const response = await request(server.port, { version: 1, id: 'stop-1', token, method: 'shutdown' })
+  assert.equal(response.ok, true)
+  assert.deepEqual(response.result, { stopping: true })
+  await hooked
+  assert.deepEqual(calls, ['shutdown', 'close'])
+  const second = new ControlServer({ host: '127.0.0.1', port: 0, token, lifecycle })
+  await second.listen()
+  test.after(() => second.close())
+  const withoutHook = await request(second.port, { version: 1, id: 'stop-2', token, method: 'shutdown' })
+  assert.equal(withoutHook.ok, true)
+  assert.deepEqual(withoutHook.result, { stopping: true })
+})
+
+test('unauthorized shutdown never runs the shutdown hook', async () => {
+  const token = 'a'.repeat(43)
+  let hookCalls = 0
+  const server = new ControlServer({
+    host: '127.0.0.1',
+    port: 0,
+    token,
+    lifecycle: {},
+    onShutdown: () => { hookCalls++ }
+  })
+  await server.listen()
+  test.after(() => server.close())
+  const response = await request(server.port, { version: 1, id: 'stop-3', token: 'wrong', method: 'shutdown' })
+  assert.equal(response.error.code, 'unauthorized')
+  await new Promise(resolve => setTimeout(resolve, 50))
+  assert.equal(hookCalls, 0)
+})

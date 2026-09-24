@@ -72,3 +72,8 @@ class RuntimeControlClient:
                 str(detail.get("message", "runtime error")),
             )
         return decoded.get("result")
+
+    def shutdown(self):
+        """Ask the runtime to stop gracefully; the response arrives before it exits."""
+
+        return self.request("shutdown")

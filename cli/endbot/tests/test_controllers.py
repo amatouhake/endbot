@@ -7,7 +7,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from endbot_cli.controllers import CONTROLLERS_VERSION, ControllersError, load_controllers
+from endbot_cli.controllers import (
+    CONTROLLERS_VERSION,
+    ControllersError,
+    ControllerState,
+    load_controllers,
+    remove_binding,
+    save_controllers,
+)
 
 
 class ControllersTests(unittest.TestCase):
@@ -18,6 +25,36 @@ class ControllersTests(unittest.TestCase):
 
     def write(self, document: object) -> None:
         self.path.write_text(json.dumps(document), encoding="utf-8")
+
+    def test_remove_binding_returns_that_entry_to_pending(self) -> None:
+        self.write(
+            {
+                "version": 1,
+                "bindings": [
+                    {"gamertag": "One", "xuid": "1", "uuid": "u1", "boundAt": "t"},
+                    {"gamertag": "Two", "xuid": "2", "uuid": "u2", "boundAt": "t"},
+                ],
+            }
+        )
+        state = load_controllers(self.path)
+        reduced = remove_binding(state, "two")  # case-insensitive (section 3)
+        self.assertEqual([entry.gamertag for entry in reduced.bindings], ["One"])
+        self.assertIs(remove_binding(reduced, "missing"), reduced)
+
+    def test_save_controllers_round_trips_the_schema(self) -> None:
+        state = ControllerState()
+        save_controllers(self.path, state)
+        self.assertEqual(load_controllers(self.path).bindings, ())
+        self.write(
+            {
+                "version": 1,
+                "bindings": [{"gamertag": "One", "xuid": "1", "uuid": "u1", "boundAt": "t"}],
+            }
+        )
+        state = load_controllers(self.path)
+        save_controllers(self.path, remove_binding(state, "One"))
+        document = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(document, {"version": 1, "bindings": []})
 
     def test_missing_file_means_everything_pending(self) -> None:
         state = load_controllers(self.path)

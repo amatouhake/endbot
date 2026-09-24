@@ -25,7 +25,10 @@ const control = new ControlServer({
   port: config.controlPort,
   token,
   lifecycle,
-  requestTimeoutMs: config.controlRequestTimeoutMs
+  requestTimeoutMs: config.controlRequestTimeoutMs,
+  // `shutdown` control method (docs/OPERATIONS.md section 5a): respond first,
+  // then reuse the signal-driven stop path and exit 0.
+  onShutdown: () => { void stop().then(() => process.exit(0)) }
 })
 
 await control.listen()

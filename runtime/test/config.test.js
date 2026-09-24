@@ -34,3 +34,12 @@ test('non-loopback server hosts are refused at load', () => {
     assert.throws(() => loadConfig(writeConfig({ serverHost })), /loopback/)
   }
 })
+
+test('server identity is optional but must be complete and non-empty', () => {
+  const both = loadConfig(writeConfig({ serverName: 'Endstone Server', levelName: 'Bedrock level' }))
+  assert.equal(both.serverName, 'Endstone Server')
+  assert.equal(both.levelName, 'Bedrock level')
+  assert.equal(loadConfig(writeConfig({})).serverName, undefined)
+  assert.throws(() => loadConfig(writeConfig({ serverName: 'Endstone Server' })), /together/)
+  assert.throws(() => loadConfig(writeConfig({ serverName: '', levelName: 'x' })), /non-empty/)
+})

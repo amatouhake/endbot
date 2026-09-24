@@ -5,7 +5,10 @@ Extracts a platform bundle, then drives it only through its launcher with a
 sanitized environment in which no system Python or Node.js is reachable:
 ``setup --fresh --apply`` (BDS downloaded through Endstone), ``doctor``,
 ``start``, one Bot spawned over the runtime control protocol and seen joining
-BDS, a console command, ``doctor --live``, and a clean ``stop``.
+BDS, a console command, ``doctor --live``, and a clean ``stop``. With
+``--exercise-update`` it then updates to a renamed copy of the same bundle
+(the real layout, symlinks, and permission bits), restarts with the Bot
+resuming, rolls back, and restarts again.
 
 This proves the bundle does not depend on a developer toolchain. It does not
 replace the human-client release gates (Xbox authentication, achievements).
@@ -14,6 +17,7 @@ replace the human-client release gates (Xbox authentication, achievements).
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import shutil
@@ -176,12 +180,15 @@ def wait_for(description: str, predicate, timeout: float, supervisor: subprocess
     raise ConsumerError(f"timed out after {timeout:g}s waiting for {description}")
 
 
-def exercise(instance: Path, environment: dict[str, str], bot: str) -> None:
-    run_launcher(instance, environment, "setup", "--fresh", "--controller", CONTROLLER, "--apply")
-    run_launcher(instance, environment, "doctor")
+def current_version(instance: Path) -> str:
+    return (instance / "app" / "current").read_text(encoding="utf-8").strip()
 
-    log("$ endbot start (supervisor)")
-    supervisor_log = (instance.parent / "supervisor.log").open("w", encoding="utf-8", errors="replace")
+
+def session(instance: Path, environment: dict[str, str], bot: str, *, spawn: bool, label: str) -> None:
+    """One supervised start → Bot in BDS → checks → clean stop."""
+
+    log(f"$ endbot start (supervisor, {label}, app {current_version(instance)})")
+    supervisor_log = (instance.parent / f"supervisor-{label}.log").open("w", encoding="utf-8", errors="replace")
     supervisor = subprocess.Popen(
         launcher_command(instance, "start"),
         cwd=instance,
@@ -207,9 +214,10 @@ def exercise(instance: Path, environment: dict[str, str], bot: str) -> None:
         wait_for("runtime ping", runtime_answers, 120, supervisor)
         wait_for("Endbot plugin enabled in BDS", lambda: "Enabling endbot" in server_log_text(instance), 300, supervisor)
 
-        control_request(port, token, "spawn", name=bot)
+        if spawn:
+            control_request(port, token, "spawn", name=bot)
         wait_for(
-            f"{bot} online in the runtime",
+            f"{bot} online in the runtime ({'spawned' if spawn else 'resumed'})",
             lambda: control_request(port, token, "status", name=bot)["connectionState"] == "online",
             120,
             supervisor,
@@ -233,7 +241,7 @@ def exercise(instance: Path, environment: dict[str, str], bot: str) -> None:
         record = json.loads((instance / "state" / "run" / "last-exit.json").read_text(encoding="utf-8"))
         if record.get("unclean") or record.get("runtimeExit") != 0 or record.get("serverExit") != 0:
             raise ConsumerError(f"stop was not clean: {record}")
-        log(f"ok: clean stop {record}")
+        log(f"ok: clean stop ({label})")
     finally:
         if not stopped and supervisor.poll() is None:
             try:
@@ -243,14 +251,107 @@ def exercise(instance: Path, environment: dict[str, str], bot: str) -> None:
             try:
                 supervisor.wait(timeout=60)
             except subprocess.TimeoutExpired:
-                supervisor.kill()
+                kill_tree(supervisor)
         supervisor_log.close()
+
+
+def repack_as_next_version(archive: Path, destination_dir: Path, suffix: str = "-e2e-next") -> tuple[Path, str]:
+    """Rewrite a release bundle as a synthetic next version for update/rollback checks.
+
+    Only names change: ``endbot-<v>/`` and ``app/<v>/`` gain ``suffix`` and
+    ``app/current`` names the new version. Contents, permission bits, and
+    symlinks are copied as they are, so the update exercises the real layout.
+    """
+
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(archive) as source:
+            names = source.namelist()
+            root = names[0].split("/", 1)[0]
+            version = root.removeprefix("endbot-")
+            new_version = version + suffix
+            target = destination_dir / archive.name.replace(version, new_version, 1)
+            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as out:
+                for info in source.infolist():
+                    name = _rename(info.filename, root, version, new_version)
+                    data = source.read(info.filename)
+                    if name.endswith("/app/current"):
+                        data = f"{new_version}\n".encode()
+                    clone = zipfile.ZipInfo(name, date_time=info.date_time)
+                    clone.external_attr = info.external_attr
+                    clone.compress_type = zipfile.ZIP_DEFLATED
+                    out.writestr(clone, data)
+        return target, new_version
+    with tarfile.open(archive, "r:gz") as source:
+        members = source.getmembers()
+        root = members[0].name.split("/", 1)[0]
+        version = root.removeprefix("endbot-")
+        new_version = version + suffix
+        target = destination_dir / archive.name.replace(version, new_version, 1)
+        with tarfile.open(target, "w:gz") as out:
+            for member in members:
+                clone = member.replace(name=_rename(member.name, root, version, new_version), deep=True)
+                # Long names live in the PAX "path" header, which would override the new name on write.
+                clone.pax_headers.pop("path", None)
+                if member.isfile():
+                    data = source.extractfile(member).read()
+                    if clone.name.endswith("/app/current"):
+                        data = f"{new_version}\n".encode()
+                        clone.size = len(data)
+                    out.addfile(clone, io.BytesIO(data))
+                else:
+                    out.addfile(clone)
+    return target, new_version
+
+
+def _rename(name: str, root: str, version: str, new_version: str) -> str:
+    parts = name.split("/")
+    if parts[0] == root:
+        parts[0] = f"endbot-{new_version}"
+    if len(parts) > 2 and parts[1] == "app" and parts[2] == version:
+        parts[2] = new_version
+    return "/".join(parts)
+
+
+def exercise(instance: Path, environment: dict[str, str], bot: str, archive: Path, update: bool) -> None:
+    run_launcher(instance, environment, "setup", "--fresh", "--controller", CONTROLLER, "--apply")
+    run_launcher(instance, environment, "doctor")
+    original = current_version(instance)
+    session(instance, environment, bot, spawn=True, label="install")
+    if not update:
+        return
+
+    next_archive, next_version = repack_as_next_version(archive, instance.parent / "next")
+    run_launcher(instance, environment, "update", str(next_archive))
+    if current_version(instance) != next_version:
+        raise ConsumerError(f"update left app/current at {current_version(instance)}, expected {next_version}")
+    session(instance, environment, bot, spawn=False, label="updated")
+
+    run_launcher(instance, environment, "update", "--rollback")
+    if current_version(instance) != original:
+        raise ConsumerError(f"rollback left app/current at {current_version(instance)}, expected {original}")
+    session(instance, environment, bot, spawn=False, label="rolled-back")
+
+
+def kill_tree(process: subprocess.Popen) -> None:
+    """Kill a launcher and everything it started (cmd.exe does not forward kills)."""
+
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True, check=False)
+    else:
+        process.kill()
+    try:
+        process.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def dump_diagnostics(instance: Path | None) -> None:
     if instance is None:
         return
-    for path in [instance.parent / "supervisor.log", latest_server_log(instance)]:
+    for path in [*sorted(instance.parent.glob("supervisor-*.log")), latest_server_log(instance)]:
         if path is not None and path.is_file():
             print(f"----- tail of {path} -----")
             print("\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-80:]))
@@ -261,6 +362,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("archive", type=Path, help="platform bundle (.zip on Windows, .tar.gz on Linux)")
     parser.add_argument("--work-dir", type=Path, help="extraction directory (default: a new temporary directory)")
     parser.add_argument("--bot", default="E2EBot")
+    parser.add_argument(
+        "--exercise-update",
+        action="store_true",
+        help="after the first session, update to a renamed copy of the bundle, restart, roll back, restart",
+    )
     return parser.parse_args(argv)
 
 
@@ -273,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         shim = build_linux_shim(work / "shim") if os.name != "nt" else None
         environment = sanitized_environment(dict(os.environ), shim)
         assert_no_toolchain(environment)
-        exercise(instance, environment, args.bot)
+        exercise(instance, environment, args.bot, args.archive.resolve(), args.exercise_update)
     except (ConsumerError, OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
         print(f"e2e-consumer: FAIL: {error}", file=sys.stderr)
         dump_diagnostics(instance)

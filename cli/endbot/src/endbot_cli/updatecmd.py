@@ -1,9 +1,10 @@
 """``endbot update`` — install a new application version or roll back (section 6a).
 
 A platform bundle archive (``.zip`` on Windows, ``.tar.gz`` on Linux) produced
-by the release pipeline holds ``app/<newversion>/`` (the private Python with
-patched Endstone + plugin + CLI, the private Node.js, and the runtime) plus the
-``endbot`` / ``endbot.cmd`` launcher at the archive root. Update extracts only
+by the release pipeline holds one ``endbot-<version>/`` directory with
+``app/<newversion>/`` (the private Python with patched Endstone + plugin + CLI,
+the private Node.js, and the runtime) plus the ``endbot`` / ``endbot.cmd``
+launcher. Update extracts only
 those, never touching ``state/``, ``endbot.toml``, the server directory, or the
 current application, runs the NEW version's doctor against the instance with
 the new interpreter, and switches ``app/current`` (a text file) atomically only
@@ -17,6 +18,7 @@ previous version directory still present in ``app/``.
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -71,8 +73,10 @@ def _python_name(windows: bool) -> str:
 @dataclass(frozen=True, slots=True)
 class BundleMember:
     name: str  # exactly as stored in the archive
-    parts: tuple[str, ...]
+    parts: tuple[str, ...]  # relative to the bundle root (the single top-level directory is stripped)
     is_dir: bool
+    mode: int | None = None  # POSIX permission bits recorded in the archive, when present
+    link: str | None = None  # symlink target (tar bundles only)
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,8 +95,35 @@ def _safe_parts(name: str) -> tuple[str, ...] | None:
     return parts
 
 
+def _safe_link(parts: tuple[str, ...], link: str) -> bool:
+    """True when a symlink stays inside its ``app/<version>/`` tree."""
+
+    if not link or link.startswith("/") or re.match(r"^[A-Za-z]:", link) or "\\" in link:
+        return False
+    if len(parts) < 3 or parts[0] != APP_PREFIX:
+        return False
+    resolved = posixpath.normpath(posixpath.join(*parts[2:-1], link) if len(parts) > 3 else link)
+    return resolved != ".." and not resolved.startswith("../") and not resolved.startswith("/")
+
+
+def _strip_root(members: list[BundleMember]) -> list[BundleMember]:
+    """Drop the release pipeline's single top-level ``endbot-<version>/`` directory."""
+
+    roots = {member.parts[0] for member in members}
+    if len(roots) != 1:
+        return members
+    root = next(iter(roots))
+    if root == APP_PREFIX or root in LAUNCHER_NAMES or not any(len(member.parts) > 1 for member in members):
+        return members
+    return [
+        BundleMember(member.name, member.parts[1:], member.is_dir, member.mode, member.link)
+        for member in members
+        if len(member.parts) > 1
+    ]
+
+
 def read_members(archive: Path) -> tuple[BundleMember, ...]:
-    """Return every archive member with validated, relative path parts."""
+    """Return every archive member with validated path parts relative to the bundle root."""
 
     members: list[BundleMember] = []
     if _is_zip(archive):
@@ -101,18 +132,32 @@ def read_members(archive: Path) -> tuple[BundleMember, ...]:
                 parts = _safe_parts(info.filename)
                 if parts is None:
                     raise UpdateError(f"{archive}: member {info.filename!r} is not a safe relative path; refusing")
-                members.append(BundleMember(info.filename, parts, info.is_dir()))
+                mode = (info.external_attr >> 16) & 0o7777 or None
+                members.append(BundleMember(info.filename, parts, info.is_dir(), mode))
     else:
         with tarfile.open(archive, "r:*") as bundle:
             for info in bundle.getmembers():
-                if not (info.isfile() or info.isdir()):
-                    raise UpdateError(f"{archive}: member {info.name!r} is not a regular file; refusing")
+                if not (info.isfile() or info.isdir() or info.issym()):
+                    raise UpdateError(
+                        f"{archive}: member {info.name!r} is not a file, directory, or symlink; refusing"
+                    )
                 parts = _safe_parts(info.name)
                 if parts is None:
                     raise UpdateError(f"{archive}: member {info.name!r} is not a safe relative path; refusing")
-                members.append(BundleMember(info.name, parts, info.isdir()))
+                link = info.linkname if info.issym() else None
+                members.append(BundleMember(info.name, parts, info.isdir(), info.mode & 0o7777, link))
+    members = _strip_root(members)
     if not members:
         raise UpdateError(f"{archive}: the archive is empty")
+    roots = {member.parts[0] for member in members}
+    if APP_PREFIX not in roots:
+        raise UpdateError(
+            f"{archive}: expected one endbot-<version>/ directory holding app/, found top-level entries "
+            f"{sorted(roots)[:5]}; use a platform bundle produced by the release pipeline"
+        )
+    for member in members:
+        if member.link is not None and not _safe_link(member.parts, member.link):
+            raise UpdateError(f"{archive}: symlink {member.name!r} -> {member.link!r} leaves its application tree")
     return tuple(members)
 
 
@@ -124,7 +169,8 @@ def inspect_bundle(members: Sequence[BundleMember], archive: Path) -> BundleInfo
     """Return the single ``app/<version>/`` and the launcher names in the bundle."""
 
     versions = sorted(
-        {member.parts[1] for member in members if member.parts[0] == APP_PREFIX and len(member.parts) >= 2}
+        # app/current is a file in real bundles; only directories holding content name versions.
+        {member.parts[1] for member in members if member.parts[0] == APP_PREFIX and len(member.parts) >= 3}
     )
     if len(versions) != 1:
         raise UpdateError(
@@ -142,34 +188,52 @@ def inspect_bundle(members: Sequence[BundleMember], archive: Path) -> BundleInfo
     return BundleInfo(version=version, launchers=launchers)
 
 
+def _write_member(target: Path, member: BundleMember, source) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with open(target, "wb") as handle:
+        shutil.copyfileobj(source, handle)
+    if os.name != "nt" and member.mode:
+        os.chmod(target, member.mode & 0o777)
+
+
 def extract_bundle(
     archive: Path, members: Sequence[BundleMember], info: BundleInfo, *, app_target: Path, launcher_dir: Path
 ) -> None:
-    """Extract ``app/<version>/`` into ``app_target`` and the launchers into ``launcher_dir``."""
+    """Extract ``app/<version>/`` into ``app_target`` and the launchers into ``launcher_dir``.
+
+    Permission bits recorded in the archive are kept (the private Python,
+    Node.js, and the Linux launcher must stay executable), and symlinks are
+    recreated only after ``read_members`` proved they stay inside the tree.
+    """
 
     wanted = (APP_PREFIX, info.version)
+    by_name = {member.name: member for member in members}
     if _is_zip(archive):
         with zipfile.ZipFile(archive) as bundle:
             for member in members:
                 target = _member_target(member, wanted, app_target, launcher_dir, info)
                 if target is None or member.is_dir:
                     continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with bundle.open(member.name) as source, open(target, "wb") as handle:
-                    shutil.copyfileobj(source, handle)
+                with bundle.open(member.name) as source:
+                    _write_member(target, member, source)
     else:
         with tarfile.open(archive, "r:*") as bundle:
             for item in bundle.getmembers():
-                member = BundleMember(item.name, _safe_parts(item.name) or (), item.isdir())
+                member = by_name.get(item.name)
+                if member is None:
+                    continue
                 target = _member_target(member, wanted, app_target, launcher_dir, info)
                 if target is None or member.is_dir:
                     continue
-                target.parent.mkdir(parents=True, exist_ok=True)
+                if member.link is not None:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    os.symlink(member.link, target)
+                    continue
                 source = bundle.extractfile(item)
                 if source is None:
                     raise UpdateError(f"{archive}: member {item.name!r} cannot be read")
-                with source, open(target, "wb") as handle:
-                    shutil.copyfileobj(source, handle)
+                with source:
+                    _write_member(target, member, source)
 
 
 def _member_target(
@@ -411,7 +475,7 @@ def _run_update(
             source = launcher_dir / name
             destination = paths.root / name
             shutil.copyfile(source, destination)
-            if not name.lower().endswith(".cmd"):
+            if os.name != "nt" and not name.lower().endswith(".cmd"):
                 os.chmod(destination, 0o755)
         _print(f"update: app/current now names {info.version} (previous {previous} is kept in app/)")
         _print(f"update: launcher {', '.join(info.launchers)} replaced from the archive")

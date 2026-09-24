@@ -4,6 +4,7 @@
 import { EventEmitter } from 'node:events'
 
 import { LOOPBACK_HOSTS } from './config.js'
+import { discoverServer } from './discovery.js'
 import { createLocalBotAuth } from './local-identity.js'
 import {
   addJumpInputFlags,
@@ -72,6 +73,18 @@ export class BedrockSession extends EventEmitter {
     // after it settles so a concurrent disconnect cannot create a late client.
     if (this.disconnecting) throw new Error('Bedrock session connection was canceled')
     const protocol = protocolModule.default ?? protocolModule
+    // With expected server identity configured, connect only to the BDS that
+    // advertises it; otherwise keep upstream first-reply discovery.
+    let target
+    if (this.options.serverName !== undefined && this.options.levelName !== undefined) {
+      target = await (this.options.discover ?? discoverServer)({
+        host: this.options.serverHost,
+        serverName: this.options.serverName,
+        levelName: this.options.levelName,
+        timeoutMs: this.options.discoveryTimeoutMs
+      })
+      if (this.disconnecting) throw new Error('Bedrock session connection was canceled')
+    }
     const auth = createLocalBotAuth({
       username: this.profile.name,
       identityId: this.profile.identityId,
@@ -89,7 +102,8 @@ export class BedrockSession extends EventEmitter {
       authflow: auth.authflow,
       skinData: { SelfSignedId: this.profile.identityId },
       transport: 'nethernet',
-      nethernet: { signalling: 'lan' },
+      nethernet: target ? { signalling: 'lan', networkId: target.networkId } : { signalling: 'lan' },
+      skipPing: Boolean(target),
       connectTimeout: this.options.connectTimeoutMs
     })
     this.#wireClient()

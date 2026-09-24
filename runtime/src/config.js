@@ -14,6 +14,14 @@ export function loadConfig (filename) {
   // See docs/SECURITY.md: the BDS connection is trusted because it is
   // same-host loopback, not because the server identity is pinned.
   if (!LOOPBACK_HOSTS.has(serverHost)) throw new Error('Endbot serverHost must be a loopback address')
+  for (const key of ['serverName', 'levelName']) {
+    if (value[key] !== undefined && (typeof value[key] !== 'string' || value[key] === '')) {
+      throw new Error(`Endbot ${key} must be a non-empty string`)
+    }
+  }
+  if ((value.serverName === undefined) !== (value.levelName === undefined)) {
+    throw new Error('Endbot serverName and levelName must be configured together')
+  }
   return {
     dataDirectory: resolve('dataDirectory'),
     controlTokenPath: resolve('controlTokenPath'),
@@ -25,6 +33,11 @@ export function loadConfig (filename) {
     serverHost,
     serverPort: value.serverPort ?? 19132,
     gameVersion: value.gameVersion ?? '1.26.51',
+    // Expected BDS advertisement (server.properties server-name / level-name);
+    // when both are set the runtime connects only to that server.
+    serverName: value.serverName,
+    levelName: value.levelName,
+    discoveryTimeoutMs: value.discoveryTimeoutMs ?? 8_000,
     protocol: value.protocol ?? 2193,
     connectTimeoutMs: value.connectTimeoutMs ?? 15_000,
     localAuthIssuer: value.localAuthIssuer ?? 'endbot://local-bot',

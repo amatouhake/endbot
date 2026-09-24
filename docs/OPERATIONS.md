@@ -1,8 +1,7 @@
 # Operator contract (0.1.0 target)
 
 Status: **target contract, being implemented** for 0.1.0 (see `release/FINAL_CHECKLIST.md`). Where this file and the
-current code disagree, the code describes rc.1 behaviour and this file describes what 0.1.0 must do. Sections marked
-*Decision pending* are not settled yet.
+current code disagree, the code describes rc.1 behaviour and this file describes what 0.1.0 must do.
 
 The goal: a plain BDS operator runs Endbot as one product. Endbot internally uses Python (patched Endstone + plugin)
 and Node.js (headless Bedrock runtime), but the operator never installs Python or Node.js, never creates a venv, and
@@ -26,7 +25,7 @@ directory may live inside it (fresh setup) or anywhere else (existing server).
 │  ├─ profiles/              Bot profiles (<uuid>.json)
 │  ├─ controllers.json       controller enrollment state (generated, see §3)
 │  ├─ generated/             files derived from endbot.toml on every start (runtime JSON, plugin config)
-│  └─ run/                   PID files, per-start server-trust state, logs
+│  └─ run/                   PID files and logs
 ├─ backups/                  setup/update backups of operator-owned BDS files
 └─ endbot / endbot.cmd       launcher: execs app/<current>/python with the endbot CLI
 ```
@@ -99,23 +98,12 @@ Bot has member (not operator) permissions.
 
 ## 5. NetherNet server trust
 
-*Decision pending.* BDS generates a new NetherNet DTLS identity on every start, so rc.1's persistent
-trust-on-first-use pin (`bds-nethernet.pin`) fails closed after every BDS restart and must be deleted by hand.
-Upstream `bedrock-protocol` 3.60.x / `nethernet` 1.1.x exposes no hook to check the server's DTLS identity.
-
-Proposed: remove the persistent pin and rely on
-
-- a loopback-only runtime → BDS connection (`127.0.0.1`, `::1`, `localhost`; anything else is refused), and
-- the local-bot token properties in `docs/SECURITY.md`: owner-signed, audience-bound, at most 120 s lifetime,
-  single-use `jti`, and bound to the Bot's client key (`cpk`).
-
-A same-host process impersonating BDS could observe a Bot's inputs and feed it a fake world, but cannot turn a
-captured token into a login on the real server (no `cpk` private key, and the `jti` is single-use). A process able to
-own BDS's loopback port already runs with the operator's privileges and can read `state/secrets` directly.
-
-Alternative: keep a per-start pin managed by `endbot start` (cleared on each supervised BDS start). This needs a small
-patch on upstream `nethernet` to expose the answer's DTLS fingerprint, and protects only against an impostor that
-starts between BDS start and the first Bot connection.
+Decided: no server identity pin. BDS generates a new NetherNet DTLS identity on every start, so rc.1's persistent
+trust-on-first-use pin (`bds-nethernet.pin`) failed closed after every BDS restart, and upstream `bedrock-protocol`
+3.60.x / `nethernet` 1.1.x expose no hook to verify the identity. The runtime instead refuses any non-loopback BDS host,
+and the local-bot token (owner-signed, audience-bound, short-lived, single-use `jti`, bound to the Bot's `cpk`) keeps a
+same-host impostor from turning a captured token into a real login. The full rationale lives in `docs/SECURITY.md`
+("Runtime → BDS connection"). `endbot start` therefore needs no per-start trust state.
 
 ## 5a. Process lifecycle
 

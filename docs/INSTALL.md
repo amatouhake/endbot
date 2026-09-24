@@ -33,7 +33,7 @@ the candidate until the exact candidate passes the documented human/live gate.
 
 ## Linux install and start
 
-Requirements: Python 3.12, Node.js 22+, git, cmake, and a C++ compiler. Docker is not needed to install
+Requirements: Python 3.12, Node.js 24+, git, cmake, and a C++ compiler. Docker is not needed to install
 (only to build) the candidate. The compiler toolchain matters because `npm ci` falls back to building
 `raknet-native` from source when no published prebuild matches the platform; without it the install fails
 inside the dependency's build check rather than with an Endbot error.
@@ -90,7 +90,7 @@ Endstone wheel:
    .\endstone_endbot-0.1.0-*.whl`); it is platform-independent and still pins the exact patched Endstone version.
 3. Unpack `endbot-runtime-0.1.0.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for
    the pinned tarball dependency URL; see [`WINDOWS_DEV.md`](WINDOWS_DEV.md)), copy the example runtime
-   configuration outside the unpacked tree, and start the runtime with Node 22+.
+   configuration outside the unpacked tree, and start the runtime with Node 24+.
 4. Create the server folder with `endstone -s` (official Windows BDS `1.26.51.1` build `51061361`, same protocol
    `2193`), then apply the same `server.properties` / `endstone.toml` / plugin configuration as on Linux. Native
    Windows hosting is live-smoked but Linux remains the CI/release-artifact baseline.
@@ -104,9 +104,7 @@ Endstone wheel:
    Endstone) and unpack the new runtime/config tarballs next to the old ones. Re-apply only the operator-owned
    configuration values (token file, owner keys, allowlists); never copy generated secrets, pins, worlds, or
    machine-local paths between machines.
-4. If BDS itself restarted, delete the runtime's saved `bds-nethernet.pin` before resuming a Bot: the pin matches
-   only the server process that created it, and a stale pin fails closed by design.
-5. Start the runtime, then the server, and re-run the live regression matrix in [`WINDOWS_DEV.md`](WINDOWS_DEV.md)
+4. Start the runtime, then the server, and re-run the live regression matrix in [`WINDOWS_DEV.md`](WINDOWS_DEV.md)
    plus `/bot ping` before returning the server to normal use.
 
 ## What is intentionally out of scope

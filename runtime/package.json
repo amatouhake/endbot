@@ -15,7 +15,11 @@
     "check": "node scripts/check-syntax.js"
   },
   "dependencies": {
-    "bedrock-protocol": "3.60.1"
+    "bedrock-protocol": "3.60.1",
+    "prismarine-xbox-services": "https://codeload.github.com/PrismarineJS/prismarine-xbox-services/tar.gz/052a9676f514c5470a723651b1dbb1adcf238944"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "overrides": {
+    "prismarine-xbox-services": "$prismarine-xbox-services"
+  }
 }

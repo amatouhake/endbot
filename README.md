@@ -56,7 +56,7 @@ There is no second user-visible “Bot ID” and no hidden command-selection sta
 
 ## Prepare and test
 
-Requirements for the foundation tests are Python 3.10+, Node.js 22+, and Git. From a fresh clone:
+Requirements for the foundation tests are Python 3.10+, Node.js 24+, and Git. From a fresh clone:
 
 ```bash
 python3 scripts/prepare_endstone.py

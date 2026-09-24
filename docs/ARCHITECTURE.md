@@ -78,8 +78,8 @@ The protocol-2193 schema ships with upstream `minecraft-data`: the legacy-slot p
 `PlayerAuthInput` action-array layout already match the proven wire layouts asserted by the movement and action tests.
 Upstream renamed `InputData` entries 34/35 (`item_interact`, `block_action`) at unchanged ordinals, so the wire bytes
 are identical. Block interaction then follows a player-like start-action, packed authoritative interaction, and
-next-tick stop-action sequence. BDS remains authoritative for target legality and inventory changes. These narrow,
-serialization-tested corrections do not change the pinned protocol baseline.
+next-tick stop-action sequence. BDS remains authoritative for target legality and inventory changes. Serialization tests
+pin those byte layouts against the installed schema so a future dependency bump cannot silently change them.
 
 ## Patch lifecycle
 

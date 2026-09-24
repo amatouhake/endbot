@@ -3,7 +3,6 @@
   "controlTokenPath": "./secrets/control.token",
   "ownerPrivateKeyPath": "./secrets/owner-private.pem",
   "ownerPublicKeyPath": "./secrets/owner-public.pem",
-  "serverIdentityPinPath": "./secrets/bds-nethernet.pin",
   "controlHost": "127.0.0.1",
   "controlPort": 19142,
   "controlRequestTimeoutMs": 8000,

@@ -3,6 +3,7 @@
 
 import { EventEmitter } from 'node:events'
 
+import { LOOPBACK_HOSTS } from './config.js'
 import { createLocalBotAuth } from './local-identity.js'
 import {
   addJumpInputFlags,
@@ -59,10 +60,11 @@ export class BedrockSession extends EventEmitter {
 
   async #connect () {
     if (this.disconnecting) throw new Error('Bedrock session connection was canceled')
-    // Upstream bedrock-protocol exposes no server identity pin or trust
-    // callback; until the orchestrator decides the replacement trust model,
-    // NetherNet sessions are restricted to loopback BDS servers only.
-    if (!['127.0.0.1', 'localhost', '::1'].includes(this.options.serverHost)) {
+    // BDS regenerates its NetherNet DTLS identity on every start and upstream
+    // bedrock-protocol has no identity hook, so trust rests on the loopback
+    // path plus the owner-signed, cpk-bound, single-use Bot token
+    // (docs/SECURITY.md). Recheck here for sessions built without loadConfig.
+    if (!LOOPBACK_HOSTS.has(this.options.serverHost)) {
       throw new Error('Endbot connects to loopback BDS servers only')
     }
     const protocolModule = await (this.options.protocolLoader?.() ?? import('bedrock-protocol'))

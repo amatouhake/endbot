@@ -131,8 +131,8 @@ class ServerThreadWorld:
     def teleport(self, identity_id, parameters, sender):
         return self._bridge.call(lambda: self._world.teleport(identity_id, parameters, self._sender(sender)))
 
-    def look_at(self, name, coordinates):
-        return self._bridge.call(lambda: self._world.look_at(name, coordinates))
+    def look_at(self, identity_id, coordinates):
+        return self._bridge.call(lambda: self._world.look_at(identity_id, coordinates))
 
     def resolve_interaction(self, identity_id, parameters, sender):
         return self._bridge.call(

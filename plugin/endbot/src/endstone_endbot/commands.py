@@ -488,7 +488,8 @@ class BotCommandService:
             amount = "stack" if command.parameters["stack"] else "one item"
             return CommandResult(True, (f"Endbot: {result['name']} requested drop {amount}",))
         elif command.operation == "look" and "targetCoordinates" in command.parameters:
-            yaw, pitch = self.world.look_at(command.name, command.parameters["targetCoordinates"])
+            status = self.control.request("status", name=command.name)
+            yaw, pitch = self.world.look_at(status["identityId"], command.parameters["targetCoordinates"])
             result = self.control.request("look", name=command.name, yaw=yaw, pitch=pitch)
         elif command.operation == "rename":
             status = self.control.request("status", name=command.name)

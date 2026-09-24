@@ -47,6 +47,7 @@ class FakeWorld:
         self.cleared_placements = []
         self.collisions = {}
         self.invalid_dimensions = set()
+        self.look_targets = []
 
     def default_spawn(self, sender):
         return {"coordinates": [1, 2, 3], "dimension": "minecraft:overworld", "rotation": [0, 0]}
@@ -70,6 +71,10 @@ class FakeWorld:
 
     def observe(self, identity_id):
         return None
+
+    def look_at(self, identity_id, coordinates):
+        self.look_targets.append((identity_id, coordinates))
+        return (90.0, -10.0)
 
     def assert_name_available(self, name, identity_id=None):
         if name in self.collisions and self.collisions[name] != identity_id:
@@ -153,6 +158,21 @@ class CommandServiceTests(unittest.TestCase):
         )
         self.assertIn("Unknown dimension", result.message)
         self.assertNotIn("spawn", [call[0] for call in self.control.calls])
+
+    def test_look_at_resolves_bot_identity_before_facing_coordinates(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        identity_id = self.control.bots["Alice"]["identityId"]
+        self.control.calls.clear()
+
+        result = self.service.execute(["Alice", "look", "at", "1", "64", "2"], object())
+
+        self.assertEqual(self.world.look_targets, [(identity_id, [1.0, 64.0, 2.0])])
+        self.assertEqual(
+            [call[0] for call in self.control.calls],
+            ["status", "look"],
+        )
+        self.assertEqual(self.control.calls[-1], ("look", {"name": "Alice", "yaw": 90.0, "pitch": -10.0}))
+        self.assertIn("online", result.message)
 
     def test_player_primitives_route_authoritative_parameters(self) -> None:
         self.service.execute(["Alice", "spawn"], object())

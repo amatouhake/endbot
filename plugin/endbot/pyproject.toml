@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "endstone-endbot"
-version = "0.1.0"
+version = "0.1.0rc2"
 description = "Endstone control-plane plugin for Endbot"
 readme = "README.md"
 requires-python = ">=3.10"

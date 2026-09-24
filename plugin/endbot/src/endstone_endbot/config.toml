@@ -1,5 +1,12 @@
 [authorization]
-# Values are strings. An empty allowlist grants no player the control permission.
+# Xbox GamerTags allowed to control Bots. Each binds to that player's XUID on
+# its first Xbox-authenticated join; afterwards only the XUID grants control.
+# `endbot start` generates this from endbot.toml [controllers].gamertags.
+controller-gamertags = []
+# Binding state; relative paths resolve from the Endbot plugin data directory.
+controllers-file = "controllers.json"
+# Pre-bound identities (rc.1 style). Values are strings. Empty lists and no
+# GamerTags grant no player the control permission.
 allowed-uuids = []
 allowed-xuids = []
 

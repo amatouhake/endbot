@@ -81,6 +81,30 @@ class DispatchTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, {"identityId": "bot-uuid", "thread": main_thread})
 
+    def test_look_at_forwards_identity_id_across_the_bridge(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        main_thread = threading.get_ident()
+
+        class World:
+            def look_at(self, identity_id, coordinates):
+                return identity_id, coordinates, threading.get_ident()
+
+        world = ServerThreadWorld(World(), bridge, lambda source: source.sender)
+        result = {}
+
+        def worker():
+            result["value"] = world.look_at("bot-uuid", [1.0, 64.0, 2.0])
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        scheduled.run_next()
+        thread.join(1)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(result["value"], ("bot-uuid", [1.0, 64.0, 2.0], main_thread))
+
     def test_disconnected_player_is_not_retained_or_messaged(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

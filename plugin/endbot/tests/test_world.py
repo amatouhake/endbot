@@ -183,6 +183,35 @@ class WorldTests(unittest.TestCase):
         )
         self.assertEqual(result, {"blockPosition": [9, 64, -3], "blockRuntimeId": 42, "face": 1})
 
+    def test_look_at_resolves_the_bot_uuid_not_the_duplicate_name_ghost(self):
+        overworld = self.server.dimensions["Overworld"]
+        ghost = FakePlayer(
+            "00000000-0000-4000-8000-000000000009",
+            "Alice",
+            FakeLocation(overworld, 500, 1, -500),
+        )
+        self.server.players[str(ghost.unique_id)] = ghost
+        self.server.players[ghost.name.casefold()] = ghost
+        self.assertIs(self.server.get_player("Alice"), ghost)
+
+        yaw, pitch = self.world.look_at(str(self.alice.unique_id), [8.0, 70.0, 9.0])
+
+        expected = self.world._facing([0.0, 64.0, 0.0], [8.0, 70.0, 9.0])
+        self.assertAlmostEqual(yaw, expected[0])
+        self.assertAlmostEqual(pitch, expected[1])
+        ghost_facing = self.world._facing([500.0, 1.0, -500.0], [8.0, 70.0, 9.0])
+        self.assertNotAlmostEqual(yaw, ghost_facing[0])
+
+    def test_look_at_keeps_relative_coordinates_relative_to_the_bot(self):
+        yaw, pitch = self.world.look_at(str(self.steve.unique_id), [("relative", 1), 64.0, ("relative", -1)])
+        expected = self.world._facing([8.0, 70.0, 9.0], [9.0, 64.0, 8.0])
+        self.assertAlmostEqual(yaw, expected[0])
+        self.assertAlmostEqual(pitch, expected[1])
+
+    def test_look_at_reports_a_bot_missing_from_the_world(self):
+        with self.assertRaisesRegex(ValueError, "Bot is not present in the world"):
+            self.world.look_at("00000000-0000-4000-8000-00000000dead", [1.0, 64.0, 2.0])
+
 
 if __name__ == "__main__":
     unittest.main()

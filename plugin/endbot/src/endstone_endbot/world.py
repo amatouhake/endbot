@@ -128,12 +128,12 @@ class EndstoneWorld:
                 raise RuntimeError("Endstone rejected the teleport")
         return f"{location.dimension.name} {location.x:.2f} {location.y:.2f} {location.z:.2f}"
 
-    def look_at(self, name: str, coordinates: list[object]) -> tuple[float, float]:
-        player = self.server.get_player(name)
-        if player is None:
-            raise ValueError(f"Bot {name} is not present in the world")
-        target = self._resolve_coordinates(coordinates, player.location)
-        return self._facing(self._coordinates(player.location), target)
+    def look_at(self, identity_id: str, coordinates: list[object]) -> tuple[float, float]:
+        bot = self.server.get_player(UUID(identity_id))
+        if bot is None:
+            raise ValueError("Bot is not present in the world")
+        target = self._resolve_coordinates(coordinates, bot.location)
+        return self._facing(self._coordinates(bot.location), target)
 
     def resolve_interaction(self, identity_id: str, parameters: dict[str, object], sender) -> dict[str, object]:
         """Resolve a client block click without changing the world in the plugin."""

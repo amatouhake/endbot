@@ -95,7 +95,34 @@ def read_server_port(server: Path) -> tuple[int, list[str]]:
     return port, warnings
 
 
-def generate_runtime_config(paths: InstancePaths, config: EndbotConfig, server_port: int) -> Path:
+BDS_DEFAULT_SERVER_NAME = "Dedicated Server"
+BDS_DEFAULT_LEVEL_NAME = "Bedrock level"
+
+
+def read_server_identity(server: Path) -> tuple[str, str]:
+    """Return the ``server-name`` and ``level-name`` this BDS advertises over NetherNet.
+
+    The runtime uses them to pick this server among every NetherNet host
+    answering LAN discovery on the machine (docs/OPERATIONS.md section 5).
+    Missing keys fall back to the BDS defaults.
+    """
+
+    try:
+        properties = parse_properties(server / "server.properties")
+    except (FileNotFoundError, PreflightError, OSError):
+        properties = {}
+    return (
+        properties.get("server-name") or BDS_DEFAULT_SERVER_NAME,
+        properties.get("level-name") or BDS_DEFAULT_LEVEL_NAME,
+    )
+
+
+def generate_runtime_config(
+    paths: InstancePaths,
+    config: EndbotConfig,
+    server_port: int,
+    server_identity: tuple[str, str] | None = None,
+) -> Path:
     """Write ``state/generated/endbot-runtime.json`` with absolute paths (section 2)."""
 
     document = {
@@ -108,6 +135,8 @@ def generate_runtime_config(paths: InstancePaths, config: EndbotConfig, server_p
         "serverHost": CONTROL_HOST,
         "serverPort": server_port,
     }
+    if server_identity is not None:
+        document["serverName"], document["levelName"] = server_identity
     target = paths.state_generated / "endbot-runtime.json"
     atomic_write_text(target, json.dumps(document, indent=2) + "\n")
     return target
@@ -199,7 +228,7 @@ def generate_all(config: EndbotConfig, paths: InstancePaths, server: Path) -> Ge
     """Regenerate every derived config file (section 2) and report what happened."""
 
     server_port, messages = read_server_port(server)
-    runtime_config = generate_runtime_config(paths, config, server_port)
+    runtime_config = generate_runtime_config(paths, config, server_port, read_server_identity(server))
     plugin_config, plugin_messages = generate_plugin_config(server, paths, config)
     messages = [*messages, *plugin_messages]
     endstone_config = generate_endstone_config(server, paths)

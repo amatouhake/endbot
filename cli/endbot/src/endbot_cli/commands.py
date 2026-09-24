@@ -25,6 +25,7 @@ from endbot_cli.configgen import ConfigGenerationError, generate_all
 from endbot_cli.controllers import ControllersError, load_controllers, remove_binding, save_controllers
 from endbot_cli.doctor import FAIL, DoctorContext, check_local_bot_auth, run_doctor
 from endbot_cli.instance import InstancePaths
+from endbot_cli.netcheck import lan_discovery_port_problem
 from endbot_cli.processes import ToolchainError, process_alive, resolve_toolchain
 from endbot_cli.runstate import (
     RUNNING,
@@ -72,6 +73,7 @@ def run_start(
     runtime_command: Sequence[str] | None = None,
     server_command: Sequence[str] | None = None,
     installed_endstone_version: Callable[[], str | None] | None = None,
+    lan_port_check: Callable[[], str | None] | None = None,
     ready_timeout: float = 30.0,
     stop_timeout: float = 60.0,
     runtime_stop_timeout: float = 15.0,
@@ -119,6 +121,13 @@ def run_start(
             fatal = True
     if fatal:
         return _fail("FAIL start: refusing to start (fix the FAIL lines above)")
+
+    # Fake children in tests bring no BDS; production always checks the port.
+    if lan_port_check is None and server_command is None:
+        lan_port_check = lan_discovery_port_problem
+    problem = lan_port_check() if lan_port_check is not None else None
+    if problem is not None:
+        return _fail(f"FAIL start: {problem}")
 
     try:
         toolchain = resolve_toolchain(paths, environ)

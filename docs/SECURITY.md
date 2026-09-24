@@ -64,6 +64,10 @@ The runtime connects its Bots only to a BDS on the same host: the configuration 
 BDS generates a new NetherNet DTLS identity on every start, so a persistent pin fails after every restart, and the
 upstream NetherNet client exposes no hook to verify it.
 
+LAN discovery can surface other NetherNet hosts on the same machine. The runtime logs in only to the host advertising
+the configured `server-name` and `level-name`; it does not fall back to the first host that answers, so another local
+program is not sent Bot login tokens merely by answering discovery first.
+
 Trust in that connection rests on the loopback path and on the local-bot token instead. A same-host process that
 impersonates BDS could observe a Bot's inputs and feed it a fake world. It cannot turn a captured token into a login on
 the real server: the token is owner-signed for one audience, lives at most the configured maximum lifetime, carries a

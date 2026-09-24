@@ -173,6 +173,21 @@ class StartRefusalTests(CommandTestCase):
         self.assertIn("refusing to start", stderr)
         self.assertFalse(marker.exists())
 
+    def test_start_refuses_when_the_lan_discovery_port_is_taken(self) -> None:
+        command, marker = self.marker_command()
+        code, _stdout, stderr = self.run_captured(
+            run_start,
+            self.paths,
+            **self.start_kwargs(
+                runtime_command=command,
+                server_command=command,
+                lan_port_check=lambda: "UDP 7551 (NetherNet LAN discovery) is already in use",
+            ),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("UDP 7551", stderr)
+        self.assertFalse(marker.exists())
+
     def test_start_refuses_while_another_supervisor_is_live(self) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         (self.run_dir / "supervisor.pid").write_text(f"{os.getpid()}\n", encoding="utf-8")

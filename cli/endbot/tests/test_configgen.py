@@ -17,6 +17,7 @@ from endbot_cli.configgen import (
     generate_endstone_config,
     generate_plugin_config,
     generate_runtime_config,
+    read_server_identity,
     read_server_port,
 )
 from endbot_cli.instance import InstancePaths
@@ -64,6 +65,21 @@ class RuntimeConfigTests(ConfigGenTestCase):
         self.assertEqual(port, DEFAULT_SERVER_PORT)
         self.assertEqual(len(warnings), 1)
         self.assertIn("server-port", warnings[0])
+
+
+    def test_server_identity_comes_from_server_properties_with_bds_defaults(self) -> None:
+        (self.server / "server.properties").unlink(missing_ok=True)
+        self.assertEqual(read_server_identity(self.server), ("Dedicated Server", "Bedrock level"))
+        (self.server / "server.properties").write_text(
+            "server-name=Endstone Server\nlevel-name=My World\n", encoding="utf-8"
+        )
+        self.assertEqual(read_server_identity(self.server), ("Endstone Server", "My World"))
+        write_endbot_toml(self.root)
+        target = generate_runtime_config(
+            self.paths, self.config(), server_port=19132, server_identity=read_server_identity(self.server)
+        )
+        document = json.loads(target.read_text(encoding="utf-8"))
+        self.assertEqual((document["serverName"], document["levelName"]), ("Endstone Server", "My World"))
 
 
 class PluginConfigTests(ConfigGenTestCase):

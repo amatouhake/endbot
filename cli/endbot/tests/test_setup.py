@@ -198,6 +198,11 @@ class RefusalTests(SetupTestCase):
         self.assertEqual(code, 0)
         self.assertIn("does not exist", out)
 
+    def test_empty_controller_gamertag_is_refused(self) -> None:
+        code, _out, err = self.run_setup(fresh=True, existing=None, gamertags=[""], apply=False)
+        self.assertEqual(code, 1)
+        self.assertIn("non-empty strings", err)
+
 
 class ApplyTests(SetupTestCase):
     def test_apply_fresh_downloads_edits_properties_and_writes_the_instance(self) -> None:

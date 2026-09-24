@@ -338,6 +338,11 @@ def run_setup(
             f"FAIL setup: {paths.endbot_toml} already exists; edit it (section 2) or run `endbot update` "
             "to change the application — setup never touches an existing instance"
         )
+    if any(not tag for tag in gamertags):
+        return _fail(
+            "FAIL setup: --controller GamerTags must be non-empty strings "
+            '(identifiers are always strings, section 2); quote the GamerTag, e.g. --controller "ExampleTag"'
+        )
     state = inspect_supervisor(paths.state_run)
     if state.status == RUNNING:
         return _fail(

@@ -53,6 +53,9 @@ publish the final Release until every gate item below is satisfied.
 - Sneak ledge/collision simulation.
 - Block breaking/mining.
 - Endstone 0.11 autocomplete redesign / upstream Brigadier work.
+- `/bot <name> look at` name-lookup fragility when duplicate-name ghosts
+  exist (UUID-based teleport/observe paths are unaffected; narrow fix is to
+  resolve `look_at` via identity UUID).
 - Stale sessions after a BDS *force-kill* may need a runtime restart; the
   graceful `stop` path and bounded reconnect are the supported mechanisms.
 - The earlier silent runtime exits (3 events, all near BDS taskkill churn, no

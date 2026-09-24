@@ -118,8 +118,22 @@ same-host impostor from turning a captured token into a real login. The full rat
    codes under `state/run/`.
 6. Desired-online Bots reconnect through the runtime's existing lifecycle.
 
-`endbot stop`: send `stop` to the BDS console, wait for a clean exit with a timeout, then stop the runtime. A second
-`stop` after the timeout escalates to process termination and is reported as unclean.
+`endbot start` stays in the foreground and supervises both children. Lines typed on its stdin and lines queued in
+`state/run/console.request` (appended by `endbot console`, one line per request, forwarded to the BDS console and
+truncated by the supervisor) reach the BDS console. `endbot stop` writes `state/run/stop.request` and waits (default
+120 s) for the supervisor recorded in `state/run/supervisor.pid` to exit; Ctrl+C triggers the same stop sequence
+locally. `endbot stop`, `endbot console`, and `endbot controllers reset` refuse clearly when no live supervisor
+exists and clean up a stale `supervisor.pid`.
+
+Stop sequence: `stop` on the BDS console (up to 60 s), then a graceful runtime `shutdown` over the control port
+(up to 15 s). A timeout escalates to killing that process tree and is reported as an UNCLEAN stop with exit code 1.
+Bots keep their desired-online state and resume on the next start. Per-start logs live in `state/run/logs/<start>/`
+(`runtime.log`, `server.log`; the last 10 starts are kept) and the latest exit codes in `state/run/last-exit.json`.
+
+Supervision policy: when BDS exits on its own, the runtime is stopped gracefully and `endbot start` exits with BDS's
+exit code; BDS is never auto-restarted. When the runtime exits unexpectedly while BDS runs, the supervisor restarts
+it with exponential backoff (1 s, 2 s, 4 s ... capped at 30 s); after 5 failures within a 5-minute window it stops
+BDS and exits non-zero.
 
 ## 6. Setup
 

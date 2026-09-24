@@ -163,9 +163,9 @@ Stop the server after the first start, then configure:
 
 1. `server.properties`: keep `online-mode=true` and `allow-cheats=false`; do not enable experiments or packs. Check
    with `python scripts\preflight.py C:\endbot-local\server\server.properties --acknowledge-world-state-unverified`.
-   BDS `1.26.51` ships `allow-list=true`, which also blocks Bot names; for a local smoke server set `allow-list=false`
-   (it is an access list, not an authentication or achievement invariant) or add every human and Bot name to
-   `allowlist.json`. Leave `server-udp-ports` unset: delete the shipped `server-udp-ports=19132` line (or leave it
+   BDS `1.26.51` ships `allow-list=true`. It applies to humans only: a Bot accepted by the local-bot trust path joins
+   without an `allowlist.json` entry (see `docs/OPERATIONS.md`). Add every human tester to `allowlist.json`, or set
+   `allow-list=false` on a local smoke server (it is an access list, not an authentication or achievement invariant). Leave `server-udp-ports` unset: delete the shipped `server-udp-ports=19132` line (or leave it
    commented) and do not replace it with a range. Since upstream Endstone `v0.11.12`, Endstone no longer writes
    `server-udp-ports` on NetherNet servers, and the server shares a single UDP port (the signaling port) across
    sessions instead of allocating one port per client from that window. A bare single-port value narrows Bedrock's

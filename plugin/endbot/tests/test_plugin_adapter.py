@@ -1,8 +1,10 @@
 import importlib
 import re
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 
 
 class FakePlugin:
@@ -135,6 +137,37 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertTrue(plugin.on_command(sender, FakeCommand("bot"), ["ping"]))
         self.assertEqual(sender.messages, [])
         self.assertEqual(submissions, [(["ping"], sender)])
+
+    def test_join_binds_pending_controller_and_grants_only_control(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.module.EndbotPlugin()
+            plugin.config = {
+                "authorization": {"controller-gamertags": ["OwnerTag"], "controllers-file": "controllers.json"}
+            }
+            plugin.data_folder = Path(directory)
+            plugin.logger = types.SimpleNamespace(info=lambda message: None)
+            plugin.save_default_config = lambda: None
+            plugin.on_load()
+
+            def join(name: str, xuid: str, unique_id: str) -> list[tuple[str, bool]]:
+                attachments: list[tuple[str, bool]] = []
+                player = types.SimpleNamespace(
+                    name=name,
+                    xuid=xuid,
+                    unique_id=unique_id,
+                    add_attachment=lambda owner, permission, value: attachments.append((permission, value)),
+                )
+                plugin.on_player_join(types.SimpleNamespace(player=player))
+                return attachments
+
+            bot = join("OwnerTag", "", "3890c6b6-74cf-4bce-8fc3-6bf7f1cc513b")
+            owner = join("OwnerTag", "2535469543141592", "63572362-0c83-5f0a-8cec-e1b788101798")
+            impostor = join("OwnerTag", "2535400000000001", "526290d1-a78e-4a18-b32e-8c0d14e10850")
+
+            self.assertEqual(bot, [])
+            self.assertEqual(owner, [("endbot.command.control", True)])
+            self.assertEqual(impostor, [])
+            self.assertTrue((Path(directory) / "controllers.json").is_file())
 
 
 if __name__ == "__main__":

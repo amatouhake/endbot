@@ -148,7 +148,22 @@ def process_alive(pid: int) -> bool:
         return True
     except OSError:
         return False
-    return True
+    return not _posix_zombie(pid)
+
+
+def _posix_zombie(pid: int) -> bool:
+    """True when ``pid`` has exited but its parent has not reaped it yet.
+
+    ``os.kill(pid, 0)`` still succeeds for a zombie, so an exited supervisor
+    whose parent (a shell, a test, a service manager) has not waited on it
+    would look alive. Linux exposes the state in /proc; elsewhere assume alive.
+    """
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii", errors="replace")
+    except OSError:
+        return False
+    # The state follows the parenthesised command name, which may contain spaces.
+    return stat[stat.rfind(")") + 2 : stat.rfind(")") + 3] == "Z"
 
 
 def _windows_process_alive(pid: int) -> bool:

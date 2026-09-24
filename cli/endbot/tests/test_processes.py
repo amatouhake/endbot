@@ -120,3 +120,23 @@ class ProcessAliveTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProcessAliveTests(unittest.TestCase):
+    def test_current_process_is_alive(self) -> None:
+        from endbot_cli.processes import process_alive
+
+        self.assertTrue(process_alive(os.getpid()))
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "zombie state is read from /proc")
+    def test_unreaped_exited_child_is_not_alive(self) -> None:
+        import time
+
+        from endbot_cli.processes import process_alive
+
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        self.addCleanup(child.wait)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and process_alive(child.pid):
+            time.sleep(0.05)
+        self.assertFalse(process_alive(child.pid))

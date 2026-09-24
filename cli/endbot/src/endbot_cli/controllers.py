@@ -15,6 +15,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from endbot_cli.fsutil import atomic_write_text
+
 CONTROLLERS_VERSION = 1
 BINDING_KEYS = ("gamertag", "xuid", "uuid", "boundAt")
 
@@ -104,3 +106,31 @@ def load_controllers(path: Path) -> ControllerState:
         version=CONTROLLERS_VERSION,
         bindings=tuple(_load_binding(path, index, entry) for index, entry in enumerate(entries)),
     )
+
+
+def remove_binding(state: ControllerState, gamertag: str) -> ControllerState:
+    """Return ``state`` without the binding for ``gamertag`` (case-insensitive, section 3).
+
+    The GamerTag returns to pending and re-binds to its XUID on the next join.
+    """
+
+    binding = state.find(gamertag)
+    if binding is None:
+        return state
+    return ControllerState(
+        version=state.version,
+        bindings=tuple(entry for entry in state.bindings if entry is not binding),
+    )
+
+
+def save_controllers(path: Path, state: ControllerState) -> None:
+    """Write ``state/controllers.json`` atomically in the section 3 schema."""
+
+    document = {
+        "version": state.version,
+        "bindings": [
+            {"gamertag": entry.gamertag, "xuid": entry.xuid, "uuid": entry.uuid, "boundAt": entry.bound_at}
+            for entry in state.bindings
+        ],
+    }
+    atomic_write_text(path, json.dumps(document, indent=2) + "\n")

@@ -6,10 +6,15 @@ is synthetic and lives in a test-owned temporary directory.
 
 from __future__ import annotations
 
+import json
+import socket
+import sys
 from pathlib import Path
 
 from endbot_cli.instance import InstancePaths
 from endbot_cli.lock import LockData, normalize_bds_version
+
+FAKES_DIR = Path(__file__).resolve().parent
 
 ENDBOT_TOML_TEMPLATE = """\
 [server]
@@ -91,3 +96,76 @@ def build_instance(root: Path, lock: LockData) -> InstancePaths:
     paths.control_token.write_text(CONTROL_TOKEN, encoding="utf-8")
     write_endstone_toml(server)
     return paths
+
+
+def free_port() -> int:
+    """Return a loopback TCP port that was free a moment ago."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def write_runtime_config(
+    path: Path, *, data_dir: Path, token_path: Path, private_path: Path, public_path: Path, control_port: int
+) -> Path:
+    """Write the runtime JSON config the fake runtime child reads."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "dataDirectory": str(data_dir.resolve()),
+                "controlTokenPath": str(token_path.resolve()),
+                "ownerPrivateKeyPath": str(private_path.resolve()),
+                "ownerPublicKeyPath": str(public_path.resolve()),
+                "controlHost": "127.0.0.1",
+                "controlPort": control_port,
+                "serverHost": "127.0.0.1",
+                "serverPort": 19132,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def fake_runtime_command(runtime_config: Path) -> list[str]:
+    return [sys.executable, str(FAKES_DIR / "fakeruntime.py"), "--config", str(runtime_config)]
+
+
+def fake_server_command() -> list[str]:
+    return [
+        sys.executable,
+        str(FAKES_DIR / "fakebds.py"),
+        "-m",
+        "endstone",
+        "-s",
+        "server",
+        "--no-interactive",
+    ]
+
+
+class LineFeed:
+    """A blocking iterable of stdin lines the supervisor forwards to BDS."""
+
+    def __init__(self) -> None:
+        import queue
+
+        self._lines: queue.Queue = queue.Queue()
+
+    def feed(self, line: str) -> None:
+        self._lines.put(line + "\n")
+
+    def close(self) -> None:
+        self._lines.put(None)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> str:
+        line = self._lines.get()
+        if line is None:
+            raise StopIteration
+        return line

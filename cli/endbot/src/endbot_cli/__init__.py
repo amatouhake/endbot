@@ -1,3 +1,3 @@
 """Endbot operator CLI (docs/OPERATIONS.md)."""
 
-__version__ = "0.1.0rc2"
+__version__ = "0.1.0rc3"

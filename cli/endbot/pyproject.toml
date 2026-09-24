@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "endbot"
-version = "0.1.0rc2"
+version = "0.1.0rc3"
 description = "Operator CLI for Endbot"
 readme = "README.md"
 requires-python = ">=3.10"

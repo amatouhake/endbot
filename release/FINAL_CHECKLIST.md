@@ -87,9 +87,14 @@ pickup inference, block mining, autocomplete redesign.
     entry, custom pack file, custom port): refused without a world-backup
     flag; with `--backup-worlds` it backed up 2,893 files, reinstalled BDS,
     kept operator files, and the existing world loaded with a Bot joining.
-  - [ ] Clean Windows machine (no developer toolchain) with the published
-    bundle.
-  - [ ] Linux bundle on a real Linux host.
+  - [x] Clean-consumer E2E in CI on every release candidate
+    (`.github/workflows/bundle-e2e.yml`, gating `assemble`): each platform
+    bundle on a fresh `windows-2022` / `ubuntu-22.04` runner with a PATH that
+    exposes no Python, Node.js, npm, or pip — `setup --fresh --apply` (BDS
+    through Endstone) → `doctor` → `start` → Bot joins through local-bot
+    trust → `console` → `doctor --live` → clean `stop`. This replaces a
+    hand-prepared clean machine and found a Linux-only bundle defect
+    (relocated `libpython` not found by BDS) that is now fixed.
   - [ ] `endbot update` from one published candidate bundle to the next, and
     `--rollback`.
 - [ ] Live matrix on the exact final candidate (needs a human Xbox client):

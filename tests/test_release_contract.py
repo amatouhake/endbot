@@ -312,15 +312,16 @@ def _load_script(name: str):
 def _release_job_blocks() -> dict[str, str]:
     workflow = (ROOT / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
     linux = workflow.split("  linux:", 1)[1].split("  windows:", 1)[0]
-    windows, assemble = workflow.split("  windows:", 1)[1].split("  assemble:", 1)
-    return {"workflow": workflow, "linux": linux, "windows": windows, "assemble": assemble}
+    windows, rest = workflow.split("  windows:", 1)[1].split("  e2e:", 1)
+    e2e, assemble = rest.split("  assemble:", 1)
+    return {"workflow": workflow, "linux": linux, "windows": windows, "e2e": e2e, "assemble": assemble}
 
 
 class WindowsWheelContractTests(unittest.TestCase):
     def test_release_candidate_builds_both_platforms_then_assembles(self) -> None:
         blocks = _release_job_blocks()
         workflow = blocks["workflow"]
-        self.assertIn("needs: [linux, windows]", blocks["assemble"])
+        self.assertIn("needs: [linux, windows, e2e]", blocks["assemble"])
         self.assertIn("runs-on: ubuntu-22.04", blocks["linux"])
         self.assertIn("runs-on: windows-2022", blocks["windows"])
         self.assertIn('python-version: "3.12"', blocks["windows"])
@@ -594,3 +595,39 @@ class BundleContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BundleConsumerE2EContractTests(unittest.TestCase):
+    def test_candidate_is_assembled_only_after_both_bundles_pass_the_consumer_e2e(self) -> None:
+        blocks = _release_job_blocks()
+        self.assertIn("needs: [linux, windows]", blocks["e2e"])
+        self.assertIn("uses: ./.github/workflows/bundle-e2e.yml", blocks["e2e"])
+        self.assertIn("needs: [linux, windows, e2e]", blocks["assemble"])
+        e2e = (ROOT / ".github/workflows/bundle-e2e.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_call:", e2e)
+        self.assertIn("os: windows-2022", e2e)
+        self.assertIn("os: ubuntu-22.04", e2e)
+        self.assertIn("python scripts/e2e_consumer.py", e2e)
+
+    def test_sanitized_environment_exposes_no_developer_toolchain(self) -> None:
+        consumer = _load_script("e2e_consumer.py")
+        base = {
+            "PATH": os.pathsep.join(["/opt/python/bin", "/usr/local/node/bin", "/usr/bin"]),
+            "PYTHONPATH": "x",
+            "VIRTUAL_ENV": "y",
+            "NODE_OPTIONS": "z",
+            "ENDBOT_PYTHON": "w",
+            "SystemRoot": r"C:\Windows",
+            "LANG": "C.UTF-8",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            environment = consumer.sanitized_environment(base, Path(directory))
+        for key in ("PYTHONPATH", "VIRTUAL_ENV", "NODE_OPTIONS", "ENDBOT_PYTHON"):
+            self.assertNotIn(key, environment)
+        self.assertNotIn("python", environment["PATH"])
+        self.assertNotIn("node", environment["PATH"])
+        if os.name == "nt":
+            self.assertTrue(environment["PATH"].startswith("C:\\Windows\\System32"))
+            self.assertEqual(environment["LANG"], "C.UTF-8")
+        else:
+            self.assertEqual(environment["PATH"], directory)

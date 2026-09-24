@@ -40,6 +40,20 @@ class MainTests(unittest.TestCase):
         for line in lines:
             self.assertRegex(line, r"^(PASS|WARN|FAIL|SKIP) [a-z-]+: .+")
 
+    def test_doctor_before_the_first_start_warns_about_missing_secrets(self) -> None:
+        self.paths.control_token.unlink(missing_ok=True)
+        self.paths.owner_public_key.unlink(missing_ok=True)
+        (self.paths.state_run / "last-exit.json").unlink(missing_ok=True)
+        _code, stdout, _stderr = self.run_main(["--instance", str(self.root), "doctor"])
+        self.assertIn("WARN control-token:", stdout)
+        self.assertIn("expected before the first `endbot start`", stdout)
+        self.assertNotIn("FAIL control-token:", stdout)
+
+        self.paths.state_run.mkdir(parents=True, exist_ok=True)
+        (self.paths.state_run / "last-exit.json").write_text("{}", encoding="utf-8")
+        _code, stdout, _stderr = self.run_main(["--instance", str(self.root), "doctor"])
+        self.assertIn("FAIL control-token:", stdout)
+
     def test_setup_is_wired_and_still_dry_run_only(self) -> None:
         empty = Path(self.directory.name) / "empty"
         empty.mkdir()

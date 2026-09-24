@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   linux:
@@ -204,8 +205,13 @@ jobs:
           path: dist/bundle/
           if-no-files-found: error
 
-  assemble:
+  e2e:
+    # Clean-consumer run of both bundles before anything is assembled.
     needs: [linux, windows]
+    uses: ./.github/workflows/bundle-e2e.yml
+
+  assemble:
+    needs: [linux, windows, e2e]
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:

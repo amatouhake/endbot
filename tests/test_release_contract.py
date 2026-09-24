@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -139,19 +140,22 @@ class ReleaseWheelContractTests(unittest.TestCase):
     def test_release_candidate_version_must_match_package_metadata(self) -> None:
         workflow = (ROOT / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
         check = workflow.index('python scripts/check_release_version.py "$CANDIDATE_VERSION"')
-        plugin_build = workflow.index("python -m build --wheel --outdir dist plugin/endbot", check)
-        manifest = workflow.index("python scripts/generate_compatibility_manifest.py", plugin_build)
-        self.assertLess(check, plugin_build)
-        self.assertLess(plugin_build, manifest)
+        manifest = workflow.index("python scripts/generate_compatibility_manifest.py", check)
+        self.assertLess(check, manifest)
 
         runtime_version = json.loads((ROOT / "runtime/package.json").read_text(encoding="utf-8"))["version"]
         plugin_version = tomllib.loads(
             (ROOT / "plugin/endbot/pyproject.toml").read_text(encoding="utf-8")
         )["project"]["version"]
-        # First-release alignment: the tracked runtime and plugin versions agree
-        # (npm spelling and PEP 440 spelling of the same release), so the
-        # release-candidate workflow input matches both package metadata files.
+        cli_version = tomllib.loads((ROOT / "cli/endbot/pyproject.toml").read_text(encoding="utf-8"))[
+            "project"
+        ]["version"]
+        # First-release alignment: the tracked runtime, plugin, and CLI
+        # versions agree (npm spelling and PEP 440 spelling of the same
+        # release), so the release-candidate workflow input matches all
+        # package metadata files.
         self.assertEqual(runtime_version, plugin_version)
+        self.assertEqual(runtime_version, cli_version)
 
         accepted = subprocess.run(
             (sys.executable, "scripts/check_release_version.py", runtime_version),
@@ -327,14 +331,20 @@ class WindowsWheelContractTests(unittest.TestCase):
         self.assertIn("python scripts/check_portability.py", blocks["windows"])
         self.assertIn("python -m unittest discover -s tests", blocks["windows"])
         self.assertIn("python -m unittest discover -s plugin/endbot/tests", blocks["windows"])
-        # The published plugin wheel and tarballs are built once, in assemble,
-        # so the candidate checksums are unambiguous.
+        # The pure-Python plugin and CLI wheels are built in each platform
+        # job from the same commit; assemble publishes exactly one of each,
+        # taking the Linux-built pair, so the wheel is never built there.
         self.assertEqual(
-            workflow.count("python -m build --wheel --outdir dist plugin/endbot"), 1
+            workflow.count("python -m build --wheel --outdir dist/plugin plugin/endbot"), 2
+        )
+        self.assertEqual(workflow.count("python -m build --wheel --outdir dist/cli cli/endbot"), 2)
+        self.assertIn(
+            "python -m build --wheel --outdir dist/plugin plugin/endbot", blocks["linux"]
         )
         self.assertIn(
-            "python -m build --wheel --outdir dist plugin/endbot", blocks["assemble"]
+            "python -m build --wheel --outdir dist/plugin plugin/endbot", blocks["windows"]
         )
+        self.assertNotIn("python -m build", blocks["assemble"])
         self.assertIn("actions/download-artifact@v4", blocks["assemble"])
         self.assertIn("endstone-linux-wheel", workflow)
         self.assertIn("endstone-windows-wheel", workflow)
@@ -493,6 +503,93 @@ class WindowsWheelContractTests(unittest.TestCase):
             manifest = json.loads(output.read_text(encoding="utf-8"))
             lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
             self.assertEqual(manifest["bds"], lock["bds"])
+
+
+class BundleContractTests(unittest.TestCase):
+    def test_toolchain_lock_pins_both_platforms(self) -> None:
+        lock = json.loads((ROOT / "packaging/toolchain.lock.json").read_text(encoding="utf-8"))
+        for component in ("python", "node"):
+            with self.subTest(component=component):
+                platforms = lock[component]["platforms"]
+                self.assertEqual(sorted(platforms), ["linux-x86_64", "windows-x86_64"])
+                for platform, entry in platforms.items():
+                    with self.subTest(platform=platform):
+                        self.assertTrue(entry["url"].startswith("https://"), entry["url"])
+                        self.assertRegex(entry["sha256"], r"\A[0-9a-f]{64}\Z")
+
+    def test_toolchain_lock_pins_expected_releases(self) -> None:
+        lock = json.loads((ROOT / "packaging/toolchain.lock.json").read_text(encoding="utf-8"))
+        self.assertTrue(lock["python"]["version"].startswith("3.12."))
+        self.assertEqual(lock["python"]["flavour"], "install_only")
+        self.assertTrue(lock["node"]["version"].startswith("24."))
+        python_url = lock["python"]["platforms"]["windows-x86_64"]["url"]
+        self.assertIn("x86_64-pc-windows-msvc", python_url)
+        self.assertIn("x86_64-unknown-linux-gnu", lock["python"]["platforms"]["linux-x86_64"]["url"])
+        self.assertIn("win-x64", lock["node"]["platforms"]["windows-x86_64"]["url"])
+        self.assertIn("linux-x64", lock["node"]["platforms"]["linux-x86_64"]["url"])
+
+    def test_bundle_builder_refuses_the_wrong_platform(self) -> None:
+        other = "linux-x86_64" if os.name == "nt" else "windows-x86_64"
+        completed = subprocess.run(
+            (
+                sys.executable,
+                "scripts/build_bundle.py",
+                "--version", "0.0.0-test",
+                "--platform", other,
+                "--plugin-wheel", "dist/plugin/endstone_endbot-0.1.0-py3-none-any.whl",
+                "--cli-wheel", "dist/cli/endbot-0.1.0-py3-none-any.whl",
+                "--output-dir", "dist/bundle",
+            ),
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("must be built ON the target platform", completed.stderr)
+
+    def test_release_candidate_builds_platform_bundles_then_assembles(self) -> None:
+        blocks = _release_job_blocks()
+        workflow = blocks["workflow"]
+        for platform, job in (("linux-x86_64", "linux"), ("windows-x86_64", "windows")):
+            with self.subTest(platform=platform):
+                self.assertIn("python scripts/build_bundle.py", blocks[job])
+                self.assertIn(f"--platform {platform}", blocks[job])
+                self.assertIn("--endstone-wheel", blocks[job])
+                self.assertIn("--plugin-wheel", blocks[job])
+                self.assertIn("--cli-wheel", blocks[job])
+                self.assertIn("--endstone-license", blocks[job])
+        # Each platform job uploads its self-tested bundle as an
+        # intermediate artifact; assemble is the only job that publishes.
+        self.assertIn("bundle-linux", workflow)
+        self.assertIn("bundle-windows", workflow)
+        self.assertIn("name: bundle-linux", blocks["linux"])
+        self.assertIn("name: bundle-windows", blocks["windows"])
+        self.assertIn("name: endbot-${{ inputs.version }}-candidate", blocks["assemble"])
+        # Assemble publishes exactly one plugin wheel and one CLI wheel:
+        # the Linux-built pure pair. Both bundles join dist/ so SHA256SUMS
+        # covers them alongside the existing wheels and tarballs.
+        self.assertIn("staging/bundle-linux/dist/plugin/*.whl", blocks["assemble"])
+        self.assertIn("staging/bundle-linux/dist/cli/*.whl", blocks["assemble"])
+        self.assertIn("staging/bundle-linux/dist/bundle/*", blocks["assemble"])
+        self.assertIn("staging/bundle-windows/*", blocks["assemble"])
+        self.assertIn("sha256sum ./* > SHA256SUMS", blocks["assemble"])
+
+    def test_bundle_self_test_covers_the_operator_path(self) -> None:
+        builder = (ROOT / "scripts/build_bundle.py").read_text(encoding="utf-8")
+        self.assertIn("test_bundle.py", builder)
+        tester = (ROOT / "scripts/test_bundle.py").read_text(encoding="utf-8")
+        for required in (
+            "--bundle-root",
+            "--allow-missing-endstone",
+            "launcher --help",
+            "doctor",
+            "importlib.metadata.version('endstone')",
+            "check-syntax.js",
+            "python-freeze.txt",
+            "bedrock-protocol",
+        ):
+            self.assertIn(required, tester)
 
 
 if __name__ == "__main__":

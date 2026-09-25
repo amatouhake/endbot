@@ -32,7 +32,8 @@ signatures and mismatched `cpk`; release qualification must repeat live negative
 ## Command authorization
 
 `endbot.command.control` defaults to false. The plugin attaches only that Endstone permission, on join, to players that
-are either bound controllers or listed in the pre-bound UUID/XUID allowlists. It does not make them operators or grant
+are either bound controllers or listed in the pre-bound UUID/XUID allowlists, and to the server console, which belongs to
+the operator who installed Endbot. Operator (op) players get no Endbot permission from being op. It does not make them operators or grant
 vanilla command permissions. Invalid allowlist or binding data prevents safe plugin initialization rather than granting
 broadly.
 

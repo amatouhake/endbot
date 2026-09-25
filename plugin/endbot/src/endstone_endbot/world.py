@@ -35,9 +35,15 @@ class EndstoneWorld:
             "dimension": location.dimension.name,
         }
 
-    def default_spawn(self, sender) -> dict[str, object]:
+    def default_spawn(self, sender) -> dict[str, object] | None:
+        """Place a player-issued spawn at its caller.
+
+        The console has no position; None leaves placement to BDS, which puts a
+        new identity at the world spawn point and returns a known one to where it
+        last was. Endstone 0.11 exposes no world spawn location to teleport to.
+        """
         if not self._is_player(sender):
-            raise ValueError("Console spawn requires: spawn at <x> <y> <z> [in <dimension>]")
+            return None
         return self._snapshot(sender.location)
 
     def resolve_spawn_placement(self, placement: dict[str, object], sender) -> dict[str, object]:

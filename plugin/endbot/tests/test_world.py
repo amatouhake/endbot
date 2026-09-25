@@ -90,6 +90,9 @@ class WorldTests(unittest.TestCase):
         self.assertEqual((location.yaw, location.pitch), (90, 10))
         self.assertIn("Nether", result)
 
+    def test_console_default_spawn_leaves_placement_to_bds(self):
+        self.assertIsNone(self.world.default_spawn(object()))
+
     def test_pending_spawn_placement_targets_uuid_only(self):
         placement = self.world.default_spawn(self.steve)
         placement = self.world.resolve_spawn_placement(placement, self.steve)

@@ -52,8 +52,9 @@ reads in Bedrock chat without dense pipe-separated one-liners.
 /bot <name> rename <new-name>
 ```
 
-`spawn` creates a profile if necessary and places the arriving UUID at the caller by default. Console sources must give
-an explicit position and dimension. Spawning an existing offline profile reuses its UUID but applies the requested
+`spawn` creates a profile if necessary and places the arriving UUID at the caller by default. From the server console,
+`spawn` without coordinates leaves placement to BDS: a new Bot appears at the world spawn point and a known Bot where it
+last was; `spawn at <x> <y> <z> in <dimension>` places it explicitly. Spawning an existing offline profile reuses its UUID but applies the requested
 placement. `resume` reconnects an existing profile without relocation, allowing BDS native player persistence to win.
 `reconnect` tears down and reconnects without changing identity or location. `despawn` is intentional offline state and
 cancels automatic reconnect. `forget` requires an offline profile and removes only Endbot registration; it does not

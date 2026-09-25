@@ -524,7 +524,7 @@ class BundleContractTests(unittest.TestCase):
     def test_toolchain_lock_pins_expected_releases(self) -> None:
         lock = json.loads((ROOT / "packaging/toolchain.lock.json").read_text(encoding="utf-8"))
         self.assertTrue(lock["python"]["version"].startswith("3.12."))
-        self.assertEqual(lock["python"]["flavour"], "install_only")
+        self.assertEqual(lock["python"]["flavour"], "install_only_stripped")
         self.assertTrue(lock["node"]["version"].startswith("24."))
         python_url = lock["python"]["platforms"]["windows-x86_64"]["url"]
         self.assertIn("x86_64-pc-windows-msvc", python_url)
@@ -646,3 +646,95 @@ class ProvenanceContractTests(unittest.TestCase):
         # Attest after SHA256SUMS exists so it is covered too, and before upload.
         self.assertLess(assemble.index("sha256sum ./* > SHA256SUMS"), attest)
         self.assertLess(attest, assemble.index("Upload candidate (never publish)"))
+
+EXPECTED_STRIPPED_PYTHON = {
+    "windows-x86_64": (
+        (
+            "https://github.com/astral-sh/python-build-standalone/releases/download/"
+            "20260901/cpython-3.12.14%2B20260901-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
+        ),
+        "7c45c9622400d578709a9b2cddbe8124cc21d382409d9f13406d706d28e31b14",
+    ),
+    "linux-x86_64": (
+        (
+            "https://github.com/astral-sh/python-build-standalone/releases/download/"
+            "20260901/cpython-3.12.14%2B20260901-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+        ),
+        "72748da13197c1fb161e3afeef20a6a385ff24f2165e6e2758e47008e7faba4c",
+    ),
+}
+
+
+class SlimBundleContractTests(unittest.TestCase):
+    EXPECTED_PYTHON_RELEASE = "20260901"
+    EXPECTED_PYTHON_VERSION = "3.12.14"
+
+    def test_toolchain_lock_pins_stripped_python_for_both_platforms(self) -> None:
+        lock = json.loads((ROOT / "packaging/toolchain.lock.json").read_text(encoding="utf-8"))
+        python = lock["python"]
+        self.assertEqual(python["version"], self.EXPECTED_PYTHON_VERSION)
+        self.assertEqual(python["release"], self.EXPECTED_PYTHON_RELEASE)
+        self.assertEqual(python["flavour"], "install_only_stripped")
+        self.assertEqual(sorted(python["platforms"]), ["linux-x86_64", "windows-x86_64"])
+        for platform, (url, sha256) in EXPECTED_STRIPPED_PYTHON.items():
+            with self.subTest(platform=platform):
+                entry = python["platforms"][platform]
+                self.assertEqual(entry["url"], url)
+                self.assertEqual(entry["sha256"], sha256)
+
+    def test_bundle_builder_prunes_after_installs(self) -> None:
+        builder = (ROOT / "scripts/build_bundle.py").read_text(encoding="utf-8")
+        # The explicit prune list exists: typescript and raknet-node go,
+        # raknet-native stays (bedrock-protocol ping() requires it eagerly).
+        self.assertIn("RUNTIME_PRUNE_MODULES", builder)
+        self.assertIn('"typescript"', builder)
+        self.assertIn('"raknet-node"', builder)
+        self.assertIn("raknet-native", builder)
+        self.assertIn("def prune_bundle", builder)
+        self.assertIn("def prove_runtime_modules_unused", builder)
+        self.assertIn("def prove_runtime_modules_removed", builder)
+        self.assertIn("require.cache", builder)
+        # The prune step runs after all installs: pip installs the wheels
+        # and the bundled npm runs npm ci first, because both tools are
+        # needed during the build but never at runtime.
+        installs = builder.index("install_python_wheels(python,")
+        runtime = builder.index("build_runtime(node,")
+        prune = builder.index("prune_bundle(python_dir,")
+        self.assertLess(installs, prune)
+        self.assertLess(runtime, prune)
+
+    def test_bundle_self_test_covers_the_pruned_tree(self) -> None:
+        tester = (ROOT / "scripts/test_bundle.py").read_text(encoding="utf-8")
+        for required in (
+            "typescript",
+            "raknet-node",
+            "raknet-native",
+            "cryptography",
+            "tomlkit",
+            "ensurepip",
+            "tkinter",
+            "idlelib",
+            "turtledemo",
+            "nethernet",
+        ):
+            self.assertIn(required, tester)
+
+
+class BinShimPruneTests(unittest.TestCase):
+    def test_bin_entries_into_pruned_packages_are_removed(self) -> None:
+        builder = _load_script("build_bundle.py")
+        with tempfile.TemporaryDirectory() as directory:
+            bin_dir = Path(directory) / ".bin"
+            bin_dir.mkdir()
+            (bin_dir / "tsc.cmd").write_text(r'@"%~dp0\..\typescript\bin\tsc" %*' + "\r\n", encoding="utf-8")
+            (bin_dir / "tsc").write_text('#!/bin/sh\nexec node "$basedir/../typescript/bin/tsc"\n', encoding="utf-8")
+            (bin_dir / "mkdirp.cmd").write_text(r'@"%~dp0\..\mkdirp\bin\cmd.js" %*' + "\r\n", encoding="utf-8")
+            if os.name != "nt":
+                kept_target = Path(directory) / "mkdirp" / "bin" / "cmd.js"
+                kept_target.parent.mkdir(parents=True)
+                kept_target.write_text("// kept package\n", encoding="utf-8")
+                os.symlink("../typescript/bin/tsserver", bin_dir / "tsserver")
+                os.symlink("../mkdirp/bin/cmd.js", bin_dir / "mkdirp")
+            builder.prune_dangling_bin_entries(bin_dir, ("typescript", "raknet-node"))
+            kept = sorted(path.name for path in bin_dir.iterdir())
+        self.assertEqual(kept, ["mkdirp.cmd"] if os.name == "nt" else ["mkdirp", "mkdirp.cmd"])

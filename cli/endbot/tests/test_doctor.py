@@ -80,6 +80,7 @@ class HealthyInstanceTests(DoctorTestCase):
             "endstone-version": PASS,
             "control-token": PASS,
             "controllers": WARN,
+            "allowlist": PASS,
             "runtime": SKIP,
         }
         for name, status in expected.items():
@@ -134,6 +135,7 @@ class FreshInstanceTests(DoctorTestCase):
         self.assertEqual(self.status_of(results, "config"), FAIL)
         self.assertIn("endbot setup", self.messages_of(results, "config")[0])
         self.assertEqual(self.status_of(results, "server-dir"), SKIP)
+        self.assertEqual(self.status_of(results, "allowlist"), SKIP)
         self.assertEqual(self.status_of(results, "runtime"), SKIP)
         for result in results:
             self.assertIn(result.status, {PASS, WARN, FAIL, SKIP})
@@ -283,6 +285,96 @@ class ControlTokenTests(DoctorTestCase):
         self.paths.control_token.unlink()
         results = self.doctor()
         self.assertEqual(self.status_of(results, "control-token"), FAIL)
+
+
+class AllowlistTests(DoctorTestCase):
+    """The read-only `allowlist` check (sections 4 and 7)."""
+
+    def write_properties(self, allow_list: str | None = None) -> None:
+        text = "online-mode=true\nallow-cheats=false\nlevel-name=world\n"
+        if allow_list is not None:
+            text += f"allow-list={allow_list}\n"
+        (self.server / "server.properties").write_text(text, encoding="utf-8")
+
+    def write_allowlist(self, entries: object) -> None:
+        (self.server / "allowlist.json").write_text(json.dumps(entries), encoding="utf-8")
+
+    def test_allow_list_off_passes(self) -> None:
+        self.write_properties("false")
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 0)
+        self.assertEqual(self.status_of(results, "allowlist"), PASS)
+        self.assertIn("allow-list is off", self.messages_of(results, "allowlist")[0])
+
+    def test_missing_allow_list_key_passes(self) -> None:
+        self.write_properties()
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "allowlist"), PASS)
+
+    def test_every_controller_listed_passes_case_insensitively(self) -> None:
+        self.write_properties("true")
+        self.write_allowlist([{"ignoresPlayerLimit": False, "name": "exampletag"}])
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 0)
+        self.assertEqual(self.status_of(results, "allowlist"), PASS)
+
+    def test_bound_xuid_entry_passes_even_with_another_name(self) -> None:
+        self.write_properties("true")
+        self.paths.state_controllers.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "bindings": [
+                        {"gamertag": "ExampleTag", "xuid": "2535412345678901", "uuid": "u", "boundAt": "t"}
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.write_allowlist([{"ignoresPlayerLimit": False, "name": "RenamedTag", "xuid": "2535412345678901"}])
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "allowlist"), PASS)
+
+    def test_no_controllers_configured_passes(self) -> None:
+        self.write_properties("true")
+        self.write_allowlist([])
+        write_endbot_toml(self.root, gamertags="[]")
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "allowlist"), PASS)
+
+    def test_missing_controllers_warn_with_the_fix(self) -> None:
+        self.write_properties("true")
+        self.write_allowlist([])
+        write_endbot_toml(self.root, gamertags='["Alice", "Bob"]')
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 0)  # WARN, not FAIL
+        self.assertEqual(self.status_of(results, "allowlist"), WARN)
+        message = self.messages_of(results, "allowlist")[0]
+        self.assertIn("Alice", message)
+        self.assertIn("Bob", message)
+        self.assertIn("endbot console allowlist add <GamerTag>", message)
+        self.assertIn("allowlist.json while the server is stopped", message)
+
+    def test_missing_file_warns_when_allow_list_is_on(self) -> None:
+        self.write_properties("true")
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "allowlist"), WARN)
+        self.assertIn("ExampleTag", self.messages_of(results, "allowlist")[0])
+
+    def test_invalid_allowlist_warns_but_never_fails(self) -> None:
+        self.write_properties("true")
+        (self.server / "allowlist.json").write_text("{not json", encoding="utf-8")
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 0)
+        self.assertEqual(self.status_of(results, "allowlist"), WARN)
+        message = self.messages_of(results, "allowlist")[0]
+        self.assertIn("allowlist.json", message)
+        self.assertIn("BDS treats allowlist.json as its own file", message)
+
+    def test_unreadable_properties_skip_the_check(self) -> None:
+        (self.server / "server.properties").unlink()
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "allowlist"), SKIP)
 
 
 class RuntimeLiveTests(DoctorTestCase):

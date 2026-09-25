@@ -50,6 +50,8 @@ class FakeWorld:
         self.look_targets = []
 
     def default_spawn(self, sender):
+        if getattr(sender, "is_console", False):
+            return None
         return {"coordinates": [1, 2, 3], "dimension": "minecraft:overworld", "rotation": [0, 0]}
 
     def resolve_spawn_placement(self, placement, sender):
@@ -92,6 +94,29 @@ class CommandServiceTests(unittest.TestCase):
         self.assertIn("created and connecting", result.message)
         self.assertEqual([call[0] for call in self.control.calls], ["status", "spawn"])
         self.assertEqual(self.world.placements[0][1]["coordinates"], [1, 2, 3])
+
+    def test_console_spawn_without_coordinates_leaves_placement_to_bds(self) -> None:
+        console = type("Console", (), {"is_console": True})()
+        result = self.service.execute(["Alice", "spawn"], console)
+        self.assertIn("created and connecting (at the world spawn)", result.message)
+        self.assertEqual(self.world.placements, [])
+        identity_id = self.control.bots["Alice"]["identityId"]
+        self.assertIn(identity_id, self.world.cleared_placements)
+
+        # A known offline profile: the fake runtime reports it as not created.
+        self.control.request = lambda operation, **parameters: (
+            {"identityId": identity_id, "name": "Alice", "connectionState": "connecting", "created": False}
+            if operation in {"status", "spawn"}
+            else {}
+        )
+        result = self.service.execute(["Alice", "spawn"], console)
+        self.assertIn("connecting (where it last was)", result.message)
+        self.assertEqual(self.world.placements, [])
+
+    def test_console_spawn_at_coordinates_still_places_the_bot(self) -> None:
+        console = type("Console", (), {"is_console": True})()
+        self.service.execute(["Alice", "spawn", "at", "5", "70", "5", "in", "overworld"], console)
+        self.assertEqual(self.world.placements[0][1]["coordinates"], [5.0, 70.0, 5.0])
 
     def test_commands_target_independent_names(self) -> None:
         self.service.execute(["Alice", "spawn"], object())

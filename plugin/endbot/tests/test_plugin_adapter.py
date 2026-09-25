@@ -127,6 +127,27 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertEqual(plugin_class.commands["bot"]["permissions"], ["endbot.command.control"])
         self.assertIs(plugin_class.permissions["endbot.command.control"]["default"], False)
 
+    def test_enable_grants_control_to_the_server_console_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.module.EndbotPlugin()
+            plugin.config = {"runtime": {"token-file": "control.token"}}
+            plugin.data_folder = Path(directory)
+            attachments: list[tuple[str, bool]] = []
+            console = types.SimpleNamespace(
+                add_attachment=lambda owner, permission, value: attachments.append((permission, value))
+            )
+            plugin.server = types.SimpleNamespace(
+                command_sender=console,
+                scheduler=types.SimpleNamespace(run_task=lambda owner, task: None),
+                get_player=lambda identifier: None,
+            )
+            plugin.register_events = lambda listener: None
+            plugin.on_enable()
+            self.addCleanup(plugin.on_disable)
+
+            self.assertEqual(attachments, [("endbot.command.control", True)])
+            self.assertIs(self.module.EndbotPlugin.permissions["endbot.command.control"]["default"], False)
+
     def test_adapter_sends_pong(self) -> None:
         plugin = self.module.EndbotPlugin()
         sender = FakeSender()

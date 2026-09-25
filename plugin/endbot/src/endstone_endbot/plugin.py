@@ -152,6 +152,9 @@ class EndbotPlugin(Plugin):
         command_world = ServerThreadWorld(self._world, self._server_thread, resolve_sender)
         self._bot_commands = BotCommandService(control, command_world)
         self._command_runner = AsyncCommandRunner(self._bot_commands, self._server_thread, resolve_sender)
+        # The server console belongs to the operator who installed Endbot; it
+        # gets the control permission directly. Operator players do not.
+        self.server.command_sender.add_attachment(self, "endbot.command.control", True)
         self.register_events(self)
 
     def on_disable(self) -> None:

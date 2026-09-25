@@ -52,6 +52,7 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ("spawn", "spawn at <x> <y> <z> [facing <yaw> <pitch>] [in <dimension>]"),
         (
             "First spawn creates a profile and places the arriving Bot at its caller.",
+            "From the server console, spawn without coordinates uses the world spawn.",
             "Spawning an offline profile reuses its identity with the new placement.",
         ),
     ),
@@ -461,13 +462,19 @@ class BotCommandService:
                 if error.code != "not_found":
                     raise
             placement = command.parameters or self.world.default_spawn(sender)
-            placement = self.world.resolve_spawn_placement(placement, sender)
+            if placement is not None:
+                placement = self.world.resolve_spawn_placement(placement, sender)
             self.world.assert_name_available(command.name, existing.get("identityId") if existing else None)
             result = self.control.request("spawn", name=command.name)
             if result.get("alreadyOnline"):
                 return CommandResult(True, (f"Endbot: {result['name']} is already online",))
-            self.world.queue_spawn_placement(result["identityId"], placement)
             verb = "created and connecting" if result.get("created") else "connecting"
+            if placement is None:
+                # Console spawn without coordinates: BDS places the Bot.
+                self.world.clear_pending_placement(result["identityId"])
+                where = "at the world spawn" if result.get("created") else "where it last was"
+                return CommandResult(True, (f"Endbot: {result['name']} {verb} ({where})",))
+            self.world.queue_spawn_placement(result["identityId"], placement)
             return CommandResult(True, (f"Endbot: {result['name']} {verb}",))
         if command.operation == "teleport":
             status = self.control.request("status", name=command.name)

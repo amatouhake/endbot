@@ -214,6 +214,14 @@ jobs:
     needs: [linux, windows, e2e]
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      # Sigstore-backed build provenance for every candidate file, so anyone
+      # can check with `gh attestation verify <file> --repo amatouhake/endbot`
+      # that it was built by this workflow from the recorded commit.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -282,6 +290,11 @@ jobs:
           python scripts/generate_compatibility_manifest.py dist/compatibility-manifest.json --endbot-version "$CANDIDATE_VERSION"
           cd dist
           sha256sum ./* > SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
 
       - name: Upload candidate (never publish)
         uses: actions/upload-artifact@v4

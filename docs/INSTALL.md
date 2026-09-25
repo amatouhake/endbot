@@ -11,11 +11,18 @@ official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition
    `linux-x86_64`) and its `SHA256SUMS` from the release, and verify the archive:
 
    ```bash
-   sha256sum -c SHA256SUMS                       # Linux
+   sha256sum -c SHA256SUMS --ignore-missing      # Linux
    certutil -hashfile endbot-<version>-<platform>.zip SHA256   # Windows: compare with SHA256SUMS by hand
    ```
 
-2. Extract the bundle into an empty instance directory (for example `/srv/endbot` or `C:\endbot`). It contains
+   Every release file also carries build provenance. With the GitHub CLI you can check that it was built by this
+   repository's release workflow (and from which commit) rather than uploaded by hand:
+
+   ```bash
+   gh attestation verify endbot-<version>-<platform>.zip --repo amatouhake/endbot
+   ```
+
+2. Extract the bundle into an empty instance directory (for example `/srv/endbot` or `%USERPROFILE%\endbot`). It contains
    `app/<version>/` (the application) and the `endbot` / `endbot.cmd` launcher; that is the whole install.
 3. Run setup (a dry run first if you want to see the plan; `--apply` is the confirmation, the CLI never prompts):
 

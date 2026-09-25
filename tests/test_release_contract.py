@@ -634,3 +634,15 @@ class BundleConsumerE2EContractTests(unittest.TestCase):
             self.assertEqual(environment["LANG"], "C.UTF-8")
         else:
             self.assertEqual(environment["PATH"], directory)
+
+
+class ProvenanceContractTests(unittest.TestCase):
+    def test_every_candidate_file_gets_build_provenance(self) -> None:
+        assemble = _release_job_blocks()["assemble"]
+        self.assertIn("id-token: write", assemble)
+        self.assertIn("attestations: write", assemble)
+        attest = assemble.index("actions/attest-build-provenance@v2")
+        self.assertIn("subject-path: dist/*", assemble)
+        # Attest after SHA256SUMS exists so it is covered too, and before upload.
+        self.assertLess(assemble.index("sha256sum ./* > SHA256SUMS"), attest)
+        self.assertLess(attest, assemble.index("Upload candidate (never publish)"))

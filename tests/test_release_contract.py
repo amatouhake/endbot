@@ -730,6 +730,9 @@ class BinShimPruneTests(unittest.TestCase):
             (bin_dir / "tsc").write_text('#!/bin/sh\nexec node "$basedir/../typescript/bin/tsc"\n', encoding="utf-8")
             (bin_dir / "mkdirp.cmd").write_text(r'@"%~dp0\..\mkdirp\bin\cmd.js" %*' + "\r\n", encoding="utf-8")
             if os.name != "nt":
+                kept_target = Path(directory) / "mkdirp" / "bin" / "cmd.js"
+                kept_target.parent.mkdir(parents=True)
+                kept_target.write_text("// kept package\n", encoding="utf-8")
                 os.symlink("../typescript/bin/tsserver", bin_dir / "tsserver")
                 os.symlink("../mkdirp/bin/cmd.js", bin_dir / "mkdirp")
             builder.prune_dangling_bin_entries(bin_dir, ("typescript", "raknet-node"))

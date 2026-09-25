@@ -101,10 +101,10 @@ def check_python_imports(python: Path, allow_missing_endstone: bool) -> None:
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     expected = lock["endstone"]["package_version"]
     if allow_missing_endstone:
-        script = "import endbot_cli; print('cli-ok')"
+        script = "import endbot_cli, cryptography, tomlkit; print('cli-ok')"
     else:
         script = (
-            "import endstone, endstone_endbot, endbot_cli; "
+            "import endstone, endstone_endbot, endbot_cli, cryptography, tomlkit; "
             "import importlib.metadata; "
             f"assert importlib.metadata.version('endstone') == {expected!r}, importlib.metadata.version('endstone'); "
             "print('imports-ok')"
@@ -132,6 +132,31 @@ def check_node_syntax(node: Path, runtime_dir: Path) -> None:
     print("bundle-test: bundled node runs runtime check-syntax.js")
 
 
+def check_node_runtime_imports(node: Path, runtime_dir: Path) -> None:
+    # The NetherNet path must resolve without the pruned modules: requiring
+    # bedrock-protocol/nethernet and importing the runtime entry modules
+    # (the cli.js closure, minus cli.js itself which would start the runtime)
+    # must never touch typescript or raknet-node, which are asserted absent
+    # below. raknet-native is deliberately kept (bedrock-protocol ping()
+    # requires it even for NetherNet discovery fallback) and must be present.
+    script = (
+        "const { createRequire } = require('node:module');"
+        "const bundleRequire = createRequire(process.argv[1]);"
+        "bundleRequire('bedrock-protocol');"
+        "bundleRequire('nethernet');"
+        "const sep = require('node:path').sep;"
+        "const cache = Object.keys(bundleRequire.cache).filter(k =>"
+        "  k.split(sep).includes('typescript') ||"
+        "  k.split(sep).includes('raknet-node'));"
+        "if (cache.length) throw new Error('pruned modules loaded: ' + cache);"
+        "console.log('node-runtime-ok');"
+    )
+    completed = run(str(node), "-e", script, str(runtime_dir / "package.json"), cwd=runtime_dir)
+    if "node-runtime-ok" not in completed.stdout:
+        raise BundleTestError(f"bundled node runtime import check failed: {completed.stdout[:1000]!r}")
+    print("bundle-test: bundled node loads bedrock-protocol without pruned modules")
+
+
 def check_tree(bundle_root: Path, version: str) -> None:
     if (bundle_root / "app" / "current").read_text(encoding="utf-8").strip() != version:
         raise BundleTestError("app/current does not contain the bundle version")
@@ -152,6 +177,77 @@ def check_tree(bundle_root: Path, version: str) -> None:
     print("bundle-test: staging tree layout, freeze, licenses, and runtime pin look right")
 
 
+def check_pruned(bundle_root: Path, version: str) -> None:
+    # The slim-bundle prune step (scripts/build_bundle.py prune_bundle) must
+    # have removed build-time-only files; the kept runtime must still be there.
+    missing: list[str] = []
+
+    def absent(path: Path) -> None:
+        if path.exists() or path.is_symlink():
+            missing.append(f"should have been pruned: {path}")
+
+    def present(path: Path) -> None:
+        if not path.exists():
+            missing.append(f"should have been kept: {path}")
+
+    app = bundle_root / "app" / version
+    if os.name == "nt":
+        node_dir = app / "node"
+        absent(node_dir / "node_modules")
+        for name in ("npm", "npm.cmd", "npm.ps1"):
+            absent(node_dir / name)
+        for pattern in ("npx*", "corepack*"):
+            for leftover in sorted(node_dir.glob(pattern)):
+                missing.append(f"should have been pruned: {leftover}")
+        present(node_dir / "node.exe")
+        present(node_dir / "LICENSE")
+        site_packages = app / "python" / "Lib" / "site-packages"
+        stdlib = app / "python" / "Lib"
+        absent(app / "python" / "include")
+        absent(app / "python" / "libs")
+        absent(app / "python" / "tcl")
+        dlls = app / "python" / "DLLs"
+        for pattern in ("_tkinter*", "tcl*.dll", "tk*.dll"):
+            for leftover in sorted(dlls.glob(pattern)):
+                missing.append(f"should have been pruned: {leftover}")
+    else:
+        node_dir = app / "node"
+        absent(node_dir / "lib" / "node_modules")
+        for name in ("npm", "npx", "corepack"):
+            absent(node_dir / "bin" / name)
+        absent(node_dir / "include")
+        absent(node_dir / "share" / "doc")
+        present(node_dir / "bin" / "node")
+        present(node_dir / "LICENSE")
+        stdlib = app / "python" / "lib" / "python3.12"
+        site_packages = stdlib / "site-packages"
+        absent(app / "python" / "include")
+        lib = app / "python" / "lib"
+        for pattern in ("tcl*", "tk*", "itcl*", "libtcl*", "libtk*"):
+            for leftover in sorted(lib.glob(pattern)):
+                missing.append(f"should have been pruned: {leftover}")
+        for leftover in sorted((stdlib / "lib-dynload").glob("_tkinter*")):
+            missing.append(f"should have been pruned: {leftover}")
+    if not site_packages.is_dir():
+        missing.append(f"should have been kept: {site_packages}")
+    else:
+        absent(site_packages / "pip")
+        for leftover in sorted(site_packages.glob("pip-*.dist-info")):
+            missing.append(f"should have been pruned: {leftover}")
+    for name in ("ensurepip", "tkinter", "idlelib", "turtledemo"):
+        absent(stdlib / name)
+    runtime_modules = app / "runtime" / "node_modules"
+    absent(runtime_modules / "typescript")
+    absent(runtime_modules / "raknet-node")
+    present(runtime_modules / "raknet-native")
+    present(runtime_modules / "bedrock-protocol")
+    present(runtime_modules / "nethernet")
+    present(runtime_modules / "jsp-raknet")
+    if missing:
+        raise BundleTestError("prune check failed:\n" + "\n".join(missing))
+    print("bundle-test: pruned files are absent and the kept runtime is present")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle-root", type=Path, required=True,
@@ -170,10 +266,12 @@ def main(argv: list[str] | None = None) -> int:
         if not version:
             raise BundleTestError("bundle version is empty")
         check_tree(bundle_root, version)
+        check_pruned(bundle_root, version)
         check_launcher_help(launcher_path(bundle_root))
         check_doctor_empty_instance(launcher_path(bundle_root))
         check_python_imports(bundled_python(bundle_root, version), args.allow_missing_endstone)
         check_node_syntax(bundled_node(bundle_root, version), bundle_root / "app" / version / "runtime")
+        check_node_runtime_imports(bundled_node(bundle_root, version), bundle_root / "app" / version / "runtime")
         print(f"bundle-test: {bundle_root.name} passed")
     except (BundleTestError, subprocess.CalledProcessError, OSError) as error:
         print(f"bundle-test: ERROR: {error}", file=sys.stderr)

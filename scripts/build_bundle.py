@@ -304,6 +304,255 @@ def prune_minecraft_data(node: Path, runtime_dir: Path) -> None:
     print(f"bundle: pruned {removed} unused minecraft-data version directories (kept {sorted(keep)})")
 
 
+RUNTIME_PRUNE_MODULES = ("typescript", "raknet-node")
+"""Top-level ``node_modules`` entries removed after the runtime is built.
+
+``typescript`` is a build-time dependency of ``jsp-raknet`` (which stays) and
+is never required at runtime; ``raknet-node`` is an *optional* dependency of
+``bedrock-protocol`` that is only loaded when the ``raknetBackend`` option
+explicitly selects it, which the NetherNet-only runtime never does.
+
+``raknet-native`` is deliberately KEPT even though the runtime never selects
+the RakNet transport: ``bedrock-protocol``'s ``ping()`` unconditionally
+requires it (``initRaknet('raknet-native')`` in ``src/createClient.js``),
+even for a pure-NetherNet ping, and the runtime reaches that fallback
+whenever its own LAN discovery yields no target (``skipPing: false``).
+Removing it turns that fallback into ``Cannot find module 'raknet-native'``
+(verified 2026-09-26), so it stays until upstream makes the require lazy.
+"""
+
+# Runtime entry modules whose import closure the prune proof exercises.
+# ``src/cli.js`` itself is excluded on purpose: importing it would start the
+# runtime (top-level listen/start). These are exactly the modules it pulls in
+# plus the protocol entry points the NetherNet path resolves.
+RUNTIME_PROOF_MODULES = (
+    "config.js",
+    "control-server.js",
+    "lifecycle.js",
+    "local-identity.js",
+    "profile-store.js",
+    "discovery.js",
+    "protocol-session.js",
+    "packets.js",
+    "actions.js",
+)
+
+RUNTIME_PROOF_SCRIPT = """
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const runtimeDir = process.argv[1];
+const mode = process.argv[2];
+const removed = JSON.parse(process.argv[3]);
+const modules = JSON.parse(process.argv[4]);
+const require = createRequire(path.join(runtimeDir, 'package.json'));
+require('bedrock-protocol');
+require('nethernet');
+for (const mod of modules) {
+  await import(pathToFileURL(path.join(runtimeDir, 'src', mod)).href);
+}
+const hits = Object.keys(require.cache).filter(key => {
+  const parts = key.split(/[/\\\\]/);
+  const at = parts.lastIndexOf('node_modules');
+  return at >= 0 && removed.includes(parts[at + 1]);
+});
+if (hits.length) throw new Error('pruned runtime modules were loaded: ' + hits.join(', '));
+if (mode === 'post') {
+  for (const name of removed) {
+    if (fs.existsSync(path.join(runtimeDir, 'node_modules', name))) {
+      throw new Error('pruned runtime module still present: ' + name);
+    }
+    try {
+      require.resolve(name);
+      throw new Error('pruned runtime module still resolvable: ' + name);
+    } catch (error) {
+      if (error.message.startsWith('pruned runtime module still resolvable')) throw error;
+    }
+  }
+}
+console.log(`runtime prune proof (${mode}): entry imports resolve without ` + removed.join(', '));
+"""
+
+
+def prove_runtime_modules_unused(node: Path, runtime_dir: Path) -> None:
+    """Pre-prune proof: the modules slated for removal are never loaded.
+
+    Runs against the full ``npm ci`` tree: if a future dependency starts
+    requiring one of them, the build fails here instead of shipping a
+    broken pruned bundle.
+    """
+
+    run(
+        str(node),
+        "--input-type=module",
+        "-e",
+        RUNTIME_PROOF_SCRIPT,
+        str(runtime_dir),
+        "pre",
+        json.dumps(list(RUNTIME_PRUNE_MODULES)),
+        json.dumps(list(RUNTIME_PROOF_MODULES)),
+        cwd=runtime_dir,
+    )
+
+
+def prove_runtime_modules_removed(node: Path, runtime_dir: Path) -> None:
+    """Post-prune proof: the modules are gone and the runtime still imports."""
+
+    run(
+        str(node),
+        "--input-type=module",
+        "-e",
+        RUNTIME_PROOF_SCRIPT,
+        str(runtime_dir),
+        "post",
+        json.dumps(list(RUNTIME_PRUNE_MODULES)),
+        json.dumps(list(RUNTIME_PROOF_MODULES)),
+        cwd=runtime_dir,
+    )
+
+
+def _remove_path(path: Path, anchor: Path) -> int:
+    """Remove ``path`` (file, symlink, or tree) under ``anchor``; return bytes freed."""
+
+    try:
+        resolved, base = path.resolve(), anchor.resolve()
+    except OSError:
+        return 0
+    if resolved != base and base not in resolved.parents:
+        raise BundleError(f"refusing to prune outside the bundle: {path}")
+    if path.is_symlink() or path.is_file():
+        try:
+            freed = path.lstat().st_size
+        except OSError:
+            return 0
+        path.unlink()
+        return freed
+    if path.is_dir():
+        freed = 0
+        for child in sorted(path.rglob("*")):
+            if child.is_symlink() or child.is_file():
+                try:
+                    freed += child.lstat().st_size
+                except OSError:
+                    pass
+        shutil.rmtree(path)
+        return freed
+    return 0
+
+
+def prune_toolchain_node(node_dir: Path, platform: str) -> list[tuple[str, int]]:
+    """Remove npm/corepack/headers from the private Node.js (never used at runtime)."""
+
+    pruned: list[tuple[str, int]] = []
+
+    def drop(category: str, *relatives: str, glob: str | None = None) -> None:
+        freed = 0
+        targets = [node_dir / relative for relative in relatives]
+        if glob is not None:
+            targets.extend(sorted(node_dir.glob(glob)))
+        for target in targets:
+            freed += _remove_path(target, node_dir)
+        if freed:
+            pruned.append((category, freed))
+
+    if platform == "windows-x86_64":
+        drop("node-npm", "node_modules", "npm", "npm.cmd", "npm.ps1", glob="npx*")
+        drop("node-corepack", glob="corepack*")
+    else:
+        drop("node-npm", "lib/node_modules", "bin/npm", "bin/npx", "bin/corepack")
+        drop("node-headers", "include")
+        drop("node-doc", "share/doc")
+    return pruned
+
+
+def prune_bundled_python(python_dir: Path, platform: str) -> list[tuple[str, int]]:
+    """Remove pip/ensurepip/tcl-tk from the private CPython (never used at runtime)."""
+
+    pruned: list[tuple[str, int]] = []
+
+    def drop(category: str, paths: list[Path]) -> None:
+        freed = sum(_remove_path(target, python_dir) for target in paths)
+        if freed:
+            pruned.append((category, freed))
+
+    if platform == "windows-x86_64":
+        site_packages = python_dir / "Lib" / "site-packages"
+        stdlib = python_dir / "Lib"
+        drop(
+            "python-pip",
+            [site_packages / "pip", *sorted(site_packages.glob("pip-*.dist-info"))],
+        )
+        drop(
+            "python-stdlib-unused",
+            [stdlib / name for name in ("ensurepip", "tkinter", "idlelib", "turtledemo")],
+        )
+        drop("python-tcltk", [python_dir / "tcl"])
+        drop(
+            "python-tk-dlls",
+            [
+                *((python_dir / "DLLs").glob("_tkinter*") if (python_dir / "DLLs").is_dir() else []),
+                *((python_dir / "DLLs").glob("tcl*.dll") if (python_dir / "DLLs").is_dir() else []),
+                *((python_dir / "DLLs").glob("tk*.dll") if (python_dir / "DLLs").is_dir() else []),
+            ],
+        )
+        drop("python-headers", [python_dir / "include"])
+        drop("python-import-libs", [python_dir / "libs"])
+    else:
+        stdlib = python_dir / "lib" / "python3.12"
+        site_packages = stdlib / "site-packages"
+        lib = python_dir / "lib"
+        drop(
+            "python-pip",
+            [site_packages / "pip", *sorted(site_packages.glob("pip-*.dist-info"))],
+        )
+        drop(
+            "python-stdlib-unused",
+            [stdlib / name for name in ("ensurepip", "tkinter", "idlelib", "turtledemo")],
+        )
+        drop(
+            "python-tcltk",
+            [
+                *(sorted(lib.glob("tcl*")) if lib.is_dir() else []),
+                *(sorted(lib.glob("tk*")) if lib.is_dir() else []),
+                *(sorted(lib.glob("itcl*")) if lib.is_dir() else []),
+                *(sorted(lib.glob("libtcl*")) if lib.is_dir() else []),
+                *(sorted(lib.glob("libtk*")) if lib.is_dir() else []),
+                *((stdlib / "lib-dynload").glob("_tkinter*")
+                if (stdlib / "lib-dynload").is_dir()
+                else []),
+            ],
+        )
+        drop("python-headers", [python_dir / "include"])
+    return pruned
+
+
+def prune_bundle(python_dir: Path, node_dir: Path, runtime_dir: Path, platform: str) -> None:
+    """Prune build-time-only files AFTER all installs; print a one-line summary.
+
+    npm and pip are needed during the build (``npm ci`` runs on the bundled
+    npm; the wheels install through the bundled pip), so this runs only once
+    both are done. Every category removed here is either proven unused by the
+    runtime import proof above or is plainly build tooling (package managers,
+    C headers, Tcl/Tk) that neither Endstone, the plugin, the CLI, nor the
+    runtime imports.
+    """
+
+    node = bundled_node(node_dir, platform)
+    prove_runtime_modules_unused(node, runtime_dir)
+    pruned: list[tuple[str, int]] = []
+    for name in RUNTIME_PRUNE_MODULES:
+        freed = _remove_path(runtime_dir / "node_modules" / name, runtime_dir)
+        if freed:
+            pruned.append((f"runtime-{name}", freed))
+    prove_runtime_modules_removed(node, runtime_dir)
+    pruned.extend(prune_toolchain_node(node_dir, platform))
+    pruned.extend(prune_bundled_python(python_dir, platform))
+    total = sum(freed for _, freed in pruned)
+    detail = "; ".join(f"{category} {freed / 1_000_000:.1f} MB" for category, freed in pruned)
+    print(f"bundle: pruned {len(pruned)} categories, freed {total / 1_000_000:.1f} MB ({detail})")
+
+
 WINDOWS_LAUNCHER = """@echo off
 rem Endbot operator launcher: runs the bundled private CPython with the endbot CLI.
 rem The instance directory is the directory holding this launcher.
@@ -456,6 +705,7 @@ def main(argv: list[str] | None = None) -> int:
 
         install_python_wheels(python, endstone_wheel, plugin_wheel, cli_wheel, app_version / "python-freeze.txt")
         build_runtime(node, find_npm_cli(node_dir), app_version / "runtime")
+        prune_bundle(python_dir, node_dir, app_version / "runtime", args.platform)
         write_launchers(bundle_root, args.platform, args.version)
         copy_licenses(bundle_root, python_dir, node_dir, args.platform, args.endstone_license)
 

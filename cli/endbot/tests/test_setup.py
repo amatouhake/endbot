@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from fakeinstance import build_bds_dir, simulate_bds_download
 
+from endbot_cli.allowlist import add_gamertags
 from endbot_cli.instance import InstancePaths
 from endbot_cli.lock import load_lock
 from endbot_cli.properties import parse_properties
@@ -287,6 +289,129 @@ class ApplyTests(SetupTestCase):
         self.assertEqual(code, 1)
         self.assertIn("download failed", err)
         self.assertFalse(self.paths.endbot_toml.exists())
+
+
+class AllowlistTests(SetupTestCase):
+    """setup and the BDS allow-list (sections 4 and 6)."""
+
+    ALLOW_LIST_PROPERTIES = "online-mode=true\nallow-cheats=false\nallow-list=true\nlevel-name=world\n"
+
+    @staticmethod
+    def read_allowlist(server: Path) -> list:
+        return json.loads((server / "allowlist.json").read_text(encoding="utf-8"))
+
+    def test_fresh_plan_lists_the_allowlist_additions_but_writes_nothing(self) -> None:
+        code, out, err = self.run_setup(fresh=True, existing=None, gamertags=["Alice", "Bob"], apply=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+        self.assertIn("add Alice to allowlist.json (a fresh BDS enables allow-list=true)", out)
+        self.assertIn("add Bob to allowlist.json (a fresh BDS enables allow-list=true)", out)
+        self.assertFalse((self.root / "server" / "allowlist.json").exists())
+
+    def test_fresh_apply_adds_controllers_and_creates_the_file(self) -> None:
+        acquire = RecordingAcquire()
+        code, out, err = self.run_setup(
+            fresh=True, existing=None, gamertags=["Alice", "Bob"], apply=True, acquire_bds=acquire
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(
+            self.read_allowlist(self.root / "server"),
+            [
+                {"ignoresPlayerLimit": False, "name": "Alice"},
+                {"ignoresPlayerLimit": False, "name": "Bob"},
+            ],
+        )
+        self.assertIn("added Alice to allowlist.json (a fresh BDS enables allow-list=true)", out)
+        self.assertIn("added Bob to allowlist.json", out)
+
+    def test_fresh_apply_keeps_existing_entries_order_and_is_idempotent(self) -> None:
+        server = self.root / "server"
+        server.mkdir()
+        original = '[\n  {"ignoresPlayerLimit": true, "name": "alice", "xuid": "123"},\n  {"name": "Carol"}\n]\n'
+        (server / "allowlist.json").write_text(original, encoding="utf-8")
+        acquire = RecordingAcquire()
+        code, _out, err = self.run_setup(
+            fresh=True, existing=None, gamertags=["Alice", "Bob"], apply=True, acquire_bds=acquire
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(
+            self.read_allowlist(server),
+            [
+                {"ignoresPlayerLimit": True, "name": "alice", "xuid": "123"},  # kept as-is (case-insensitive match)
+                {"name": "Carol"},
+                {"ignoresPlayerLimit": False, "name": "Bob"},  # appended
+            ],
+        )
+        before = (server / "allowlist.json").read_bytes()
+        self.assertEqual(add_gamertags(server / "allowlist.json", ["Alice", "BOB"]), [])  # idempotent
+        self.assertEqual((server / "allowlist.json").read_bytes(), before)
+
+    def test_fresh_plan_is_idempotent_and_case_insensitive(self) -> None:
+        server = self.root / "server"
+        server.mkdir()
+        (server / "allowlist.json").write_text('[{"name": "alice"}]\n', encoding="utf-8")
+        code, out, _err = self.run_setup(fresh=True, existing=None, gamertags=["Alice"], apply=False)
+        self.assertEqual(code, 0)
+        self.assertNotIn("add Alice to allowlist.json", out)
+
+    def test_fresh_refuses_a_malformed_allowlist_without_overwriting(self) -> None:
+        for text in ("{not json", '{"name": "Alice"}', "[1, 2]"):
+            with self.subTest(text=text):
+                server = self.root / "server"
+                server.mkdir(exist_ok=True)
+                path = server / "allowlist.json"
+                path.write_text(text, encoding="utf-8")
+                code, out, _err = self.run_setup(
+                    fresh=True, existing=None, gamertags=["Alice"], apply=False
+                )
+                self.assertEqual(code, 0)  # dry-run prints the FAIL
+                self.assertIn("allowlist.json", out)
+                self.assertIn("FAIL", out)
+                self.assertIn("nothing was changed", out)
+                code, _out, err = self.run_setup(
+                    fresh=True, existing=None, gamertags=["Alice"], apply=True, acquire_bds=RecordingAcquire()
+                )
+                self.assertEqual(code, 1)
+                self.assertIn("refusing to apply", err)
+                self.assertEqual(path.read_text(encoding="utf-8"), text)  # never overwritten
+                path.unlink()
+
+    def test_existing_never_edits_allowlist_and_prints_the_console_hint(self) -> None:
+        server = build_bds_dir(self.root / "server", properties=self.ALLOW_LIST_PROPERTIES)
+        path = server / "allowlist.json"
+        path.write_text("[]\n", encoding="utf-8")
+        code, out, _err = self.run_setup(**self.existing_args(server))
+        self.assertEqual(code, 0)
+        self.assertIn("run `endbot console allowlist add ExampleTag` after `endbot start`", out)
+        self.assertIn("or add it to allowlist.json while the server is stopped", out)
+        before = path.read_bytes()
+        code, _out, err = self.run_setup(**self.existing_args(server, apply=True, acquire_bds=RecordingAcquire()))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_existing_skips_the_hint_when_allow_list_is_off_or_controllers_are_listed(self) -> None:
+        properties = self.ALLOW_LIST_PROPERTIES.replace("allow-list=true", "allow-list=false")
+        server = build_bds_dir(self.root / "server-off", properties=properties)
+        (server / "allowlist.json").write_text("[]\n", encoding="utf-8")
+        _code, out, _err = self.run_setup(**self.existing_args(server))
+        self.assertNotIn("allowlist add", out)
+
+        listed = build_bds_dir(self.root / "server-listed", properties=self.ALLOW_LIST_PROPERTIES)
+        (listed / "allowlist.json").write_text('[{"name": "exampletag"}]\n', encoding="utf-8")
+        _code, out, _err = self.run_setup(**self.existing_args(listed))
+        self.assertNotIn("allowlist add", out)
+
+    def test_existing_malformed_allowlist_warns_but_the_plan_applies(self) -> None:
+        server = build_bds_dir(self.root / "server", properties=self.ALLOW_LIST_PROPERTIES)
+        path = server / "allowlist.json"
+        path.write_text("{not json", encoding="utf-8")
+        code, out, _err = self.run_setup(**self.existing_args(server))
+        self.assertEqual(code, 0)
+        self.assertIn("setup: WARN", out)
+        self.assertIn("allowlist.json", out)
+        code, _out, err = self.run_setup(**self.existing_args(server, apply=True, acquire_bds=RecordingAcquire()))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(path.read_text(encoding="utf-8"), "{not json")
 
 
 class BdsPlanTests(SetupTestCase):

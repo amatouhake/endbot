@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from endbot_cli.allowlist import AllowlistError, add_gamertags, missing_gamertags, read_allowlist
 from endbot_cli.backup import EXECUTABLE_NAMES, BackupEntry, collect_backup_entries, create_backup, describe_entries
 from endbot_cli.bds import BdsError, run_install
 from endbot_cli.commands import first_start_tolerable
@@ -221,6 +222,30 @@ def compute_setup_plan(
             elif world.status == WARN:
                 warnings.append(f"world check: {world.message}")
 
+    allowlist_path = server / "allowlist.json"
+    if fresh:
+        # A fresh BDS ships allow-list=true with an empty allowlist.json, which would
+        # reject the controllers until someone runs `allowlist add` on the console.
+        try:
+            entries = read_allowlist(allowlist_path)
+        except AllowlistError as error:
+            failures.append(str(error))
+        else:
+            for tag in missing_gamertags(entries, gamertags):
+                lines.append(f"add {tag} to allowlist.json (a fresh BDS enables allow-list=true)")
+    elif properties is not None and (properties.get("allow-list") or "").strip().lower() == "true":
+        try:
+            entries = read_allowlist(allowlist_path)
+        except AllowlistError as error:
+            warnings.append(str(error))
+        else:
+            for tag in missing_gamertags(entries, gamertags):
+                lines.append(
+                    f"{tag} is not in allowlist.json while allow-list=true; run "
+                    f"`endbot console allowlist add {tag}` after `endbot start` "
+                    "(or add it to allowlist.json while the server is stopped)"
+                )
+
     lines.append(
         f"generate [local-bot-auth] in {server / 'endstone.toml'} and {server / 'plugins' / 'endbot' / 'config.toml'} "
         "on the first `endbot start` (derived files, section 2)"
@@ -397,7 +422,7 @@ def run_setup(
             acquire_bds=acquire_bds,
             installed_endstone_version=installed_endstone_version,
         )
-    except (BdsError, ToolchainError) as error:
+    except (BdsError, ToolchainError, AllowlistError) as error:
         return _fail(f"FAIL setup: {error}")
 
 
@@ -418,6 +443,10 @@ def _apply(
     if plan.bds.action != BDS_NONE:
         _print(f"setup: acquiring BDS through Endstone's acquisition step ({plan.bds.action}) ...")
         acquire_bds(plan.server)
+
+    if plan.mode == "fresh":
+        for tag in add_gamertags(plan.server / "allowlist.json", plan.gamertags):
+            _print(f"setup: added {tag} to allowlist.json (a fresh BDS enables allow-list=true)")
 
     properties_path = plan.server / "server.properties"
     if plan.mode == "fresh":

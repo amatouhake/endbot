@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from endbot_cli.allowlist import AllowlistError, entry_matches, read_allowlist
 from endbot_cli.compat import tomllib
 from endbot_cli.config import ConfigError, EndbotConfig, load_config
 from endbot_cli.control_client import RuntimeControlClient, RuntimeControlError
@@ -348,6 +349,37 @@ def check_plugin_port(server: Path, config: EndbotConfig) -> CheckResult:
     return CheckResult(PASS, name, f"plugin and runtime agree on control port {port}")
 
 
+def check_allowlist(
+    server: Path, properties: dict[str, str], config: EndbotConfig, state: ControllerState
+) -> CheckResult:
+    """Section 7 allow-list check (read-only): humans must pass BDS's allow-list."""
+
+    name = "allowlist"
+    allowlist_path = server / "allowlist.json"
+    if (properties.get("allow-list") or "").strip().lower() != "true":
+        return CheckResult(PASS, name, "allow-list is off; controllers are not filtered")
+    try:
+        entries = read_allowlist(allowlist_path)
+    except AllowlistError as error:
+        return CheckResult(WARN, name, f"{error}; BDS treats allowlist.json as its own file, fix it by hand")
+    if not config.controllers.gamertags:
+        return CheckResult(PASS, name, "allow-list=true; no controllers are configured (nothing to allow-list)")
+    missing: list[str] = []
+    for tag in config.controllers.gamertags:
+        binding = state.find(tag)
+        xuid = binding.xuid if binding is not None else None
+        if not any(entry_matches(entry, tag, xuid) for entry in entries):
+            missing.append(tag)
+    if not missing:
+        return CheckResult(PASS, name, f"allow-list=true and every configured controller is in {allowlist_path}")
+    return CheckResult(
+        WARN,
+        name,
+        f"allow-list=true but {allowlist_path} is missing {', '.join(missing)}; while the server runs, fix each with "
+        "`endbot console allowlist add <GamerTag>`, or add it to allowlist.json while the server is stopped",
+    )
+
+
 def check_controllers(config: EndbotConfig, state: ControllerState) -> list[CheckResult]:
     name = "controllers"
     if not config.controllers.gamertags:
@@ -460,6 +492,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
     results.append(check_endstone_version(context))
     results.append(check_control_token(paths))
 
+    state: ControllerState | None = None
     if config is None:
         results.append(CheckResult(SKIP, "controllers", "endbot.toml is invalid"))
     else:
@@ -469,6 +502,15 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
             results.append(CheckResult(FAIL, "controllers", str(error)))
         else:
             results.extend(check_controllers(config, state))
+
+    if server is None:
+        results.append(CheckResult(SKIP, "allowlist", "server directory is unavailable"))
+    elif config is None:
+        results.append(CheckResult(SKIP, "allowlist", "endbot.toml is invalid"))
+    elif properties is None:
+        results.append(CheckResult(SKIP, "allowlist", "server.properties is unreadable"))
+    else:
+        results.append(check_allowlist(server, properties, config, state or ControllerState()))
 
     results.append(check_runtime(context, config, paths))
     return results

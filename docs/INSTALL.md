@@ -29,6 +29,11 @@ official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition
    `--backup-worlds` to copy `worlds/` into the `backups/<UTC timestamp>/` safety backup). Setup enforces
    `online-mode=true`, `allow-cheats=false`, and no experiment history; a server or world that violates those is
    refused with an explanation rather than silently changed.
+
+   A fresh setup also adds every `--controller` GamerTag to `<instance>/server/allowlist.json` (a fresh BDS enables
+   `allow-list=true` with an empty list and would otherwise reject the controllers). When adopting an existing server
+   with `allow-list=true`, add yourself to the allow-list first: `endbot console allowlist add <GamerTag>` after
+   `endbot start`, or edit `allowlist.json` while the server is stopped (setup prints the exact fix per controller).
 4. Start the stack in the foreground: `endbot start`. The first start generates the owner keys and control token in
    `state/secrets/`; `endbot doctor` reports instance health at any time.
 5. Join the server **once** with each controller GamerTag so it binds to its XUID (section 3 of

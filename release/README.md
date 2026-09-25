@@ -28,3 +28,8 @@ The eventual release job must add built artifact checksums and include the licen
 `THIRD_PARTY_NOTICES.md`. It must not include BDS and must not publish solely because CI is green.
 See `docs/INSTALL.md` for the candidate contents and the Linux/Windows installation, start, configuration, and
 update paths supported by the current artifact model.
+
+Every file in the candidate (bundles, wheels, tarballs, manifest, `SHA256SUMS`) receives a GitHub build provenance
+attestation in the `assemble` job (`actions/attest-build-provenance`). Anyone can verify a downloaded file with
+`gh attestation verify <file> --repo amatouhake/endbot`; the attestation binds its SHA-256 to this repository, the
+`release-candidate.yml` workflow, and the commit it ran on. Publish the attested files unchanged.

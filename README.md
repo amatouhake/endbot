@@ -25,6 +25,9 @@ through Endstone's official acquisition path.
 
    To adopt an existing server instead, use `--existing <path-to-bds>`; it backs up everything it may touch first.
 3. `endbot start`, join once with your GamerTag (this binds control to your XUID), then run `/bot Alice spawn`.
+   Fresh setup allow-lists each `--controller` GamerTag automatically; on an adopted server with `allow-list=true`,
+   add yourself first (`endbot console allowlist add <YourGamerTag>` after `endbot start`, or edit `allowlist.json`
+   while the server is stopped).
 4. `endbot stop` shuts down BDS and the runtime cleanly; `endbot doctor` checks the whole instance; `endbot update
    <bundle>` installs a new release next to the current one and `endbot update --rollback` returns to it.
 

@@ -78,6 +78,10 @@ Operators name controllers by GamerTag. GamerTags are a bootstrap identifier, ne
 - Players with an empty XUID (including every local Bot) can never bind.
 - Removing a GamerTag from `endbot.toml` revokes its binding on the next start. `endbot controllers reset <tag>` returns
   a binding to pending for re-enrollment.
+- Joining at all requires passing the BDS allow-list (§4). `endbot setup --fresh` adds every `--controller` GamerTag to
+  `<server>/allowlist.json`; on an adopted server with `allow-list=true` the operator must add each controller first
+  (`endbot console allowlist add <GamerTag>` after `endbot start`, or by editing `allowlist.json` while the server is
+  stopped). The `allowlist` doctor check (§7) reports any controller missing from it.
 - The old `[authorization] allowed-uuids / allowed-xuids` lists remain accepted as pre-bound entries for rc.1 users.
 
 Risk accepted: between setup and the owner's first join, a pending GamerTag can be claimed by whoever currently holds
@@ -153,7 +157,13 @@ already exists or when a supervisor is running.
 
 **Fresh BDS.** Creates `<instance>/server`, lets Endstone download the locked BDS through its normal acquisition path
 (Endbot never bundles BDS), applies the safety defaults (`online-mode=true`, `allow-cheats=false`, no experiments),
-creates `state/`, and writes `endbot.toml` with the given controller GamerTags. The world is not created here — BDS
+creates `state/`, and writes `endbot.toml` with the given controller GamerTags. It also adds every `--controller`
+GamerTag to `<server>/allowlist.json` right after the BDS acquisition — a fresh BDS enables `allow-list=true` with an
+empty list and would otherwise reject the controllers on join. Each entry uses the format `allowlist add <name>` writes
+on the console, `{"ignoresPlayerLimit": false, "name": "<GamerTag>"}` with no `xuid` (BDS fills it on the first join);
+every existing entry and its order is preserved, the write is atomic, and a name already listed (case-insensitively) is
+not added again. A `allowlist.json` that is not a JSON list of entry objects FAILs the plan and is never overwritten.
+The world is not created here — BDS
 creates it on the first `endbot start`, which is also what generates the owner keys and control token (setup's doctor
 report marks those two checks as expected-not-yet-present).
 
@@ -172,6 +182,9 @@ report marks those two checks as expected-not-yet-present).
   `server.properties` is checked, never silently flipped (`online-mode=false` / `allow-cheats=true` FAIL the plan),
   and a world that already has creative, cheat, or experiment history FAILs the plan; Endbot does not change world
   flags. Unknown experiment keys are reported as warnings.
+- Never edit `allowlist.json`. While `allow-list=true`, the plan prints for each controller GamerTag missing from the
+  allow-list how to fix it: `endbot console allowlist add <GamerTag>` after `endbot start` (or add it to
+  `allowlist.json` while the server is stopped).
 - List the planned changes (BDS binary update if needed, `endstone.toml` `[local-bot-auth]`, `plugins/endbot/` — the
   latter two are generated on the first start), then apply only on confirmation.
 
@@ -202,6 +215,11 @@ in `app/`. Updates refuse to run while a supervisor is running.
 - Control token present and readable; runtime and plugin agree on port.
 - `<server>/version.txt` matches the lock; installed Endstone package version matches the lock.
 - Controllers: bound, pending, and legacy pre-bound entries.
+- Allow-list: when `allow-list` is not `true`, PASS (controllers are not filtered); when it is, PASS while every
+  configured controller GamerTag is in `allowlist.json` (case-insensitive name match, or a bound controller's XUID in
+  an entry's `xuid`), otherwise WARN naming each missing GamerTag and the fix (`endbot console allowlist add
+  <GamerTag>` while the server runs, or an `allowlist.json` edit while it is stopped). An unreadable or malformed
+  `allowlist.json` WARNs only — BDS treats it as its own file. The check never writes.
 - When running: runtime reachable over the control port, BDS process alive, each desired-online Bot's state and last
   error.
 

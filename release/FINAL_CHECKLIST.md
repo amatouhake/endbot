@@ -115,23 +115,23 @@ pickup inference, block mining, autocomplete redesign.
 
 ### Remaining changes before the final candidate (decided 2026-09-26)
 
-- [ ] **`/bot` from the server console.** The console is trusted and gets the
+- [x] **`/bot` from the server console.** (#30) The console is trusted and gets the
   full command surface. A console `spawn` without coordinates places a new Bot
   at the world spawn point; position-relative forms such as `tp me` explain
   that they need a player.
-- [ ] **Controllers and the BDS allow-list.** `setup --fresh` adds each
+- [x] **Controllers and the BDS allow-list.** (#31) `setup --fresh` adds each
   `--controller` GamerTag to `allowlist.json` (a fresh BDS ships
   `allow-list=true` with an empty list, which rejected the operator in the
   rc.3 pre-check). `setup --existing` never edits the allow-list; `doctor`
   warns when `allow-list=true` and a controller is missing from it.
-- [ ] **Slimmer bundles** (measured on rc.3: Windows zip 171 → about 117 MB,
+- [x] **Slimmer bundles** (#32; Windows zip measured 171.3 → 118.1 MB, Linux tar.gz about 165 MB) (measured on rc.3: Windows zip 171 → about 117 MB,
   Linux tar.gz 283 → about 170 MB): python-build-standalone
   `install_only_stripped` (drops debug symbols, the bulk of Linux
   `libpython`/`python3.12`), and drop what the runtime never loads — the
   `typescript` package pulled in by `jsp-raknet`, Node's npm/corepack/headers,
   Python's pip/ensurepip/tcl-tk, and the unused RakNet native modules if a
   real-BDS smoke confirms they are not needed.
-- [ ] **Build provenance attestations** for every release asset
+- [x] **Build provenance attestations** (#29; verified with `gh attestation verify`, tampered file rejected) for every release asset
   (`actions/attest-build-provenance`), so anyone can verify with
   `gh attestation verify` that a bundle was built by this repository's
   workflow from a given commit.

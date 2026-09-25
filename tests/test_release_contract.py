@@ -726,9 +726,9 @@ class BinShimPruneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             bin_dir = Path(directory) / ".bin"
             bin_dir.mkdir()
-            (bin_dir / "tsc.cmd").write_text('@"%~dp0\..\typescript\bin\tsc" %*\r\n', encoding="utf-8")
+            (bin_dir / "tsc.cmd").write_text(r'@"%~dp0\..\typescript\bin\tsc" %*' + "\r\n", encoding="utf-8")
             (bin_dir / "tsc").write_text('#!/bin/sh\nexec node "$basedir/../typescript/bin/tsc"\n', encoding="utf-8")
-            (bin_dir / "mkdirp.cmd").write_text('@"%~dp0\..\mkdirp\bin\cmd.js" %*\r\n', encoding="utf-8")
+            (bin_dir / "mkdirp.cmd").write_text(r'@"%~dp0\..\mkdirp\bin\cmd.js" %*' + "\r\n", encoding="utf-8")
             if os.name != "nt":
                 os.symlink("../typescript/bin/tsserver", bin_dir / "tsserver")
                 os.symlink("../mkdirp/bin/cmd.js", bin_dir / "mkdirp")

@@ -239,6 +239,11 @@ def check_pruned(bundle_root: Path, version: str) -> None:
     runtime_modules = app / "runtime" / "node_modules"
     absent(runtime_modules / "typescript")
     absent(runtime_modules / "raknet-node")
+    for shim in ("tsc", "tsc.cmd", "tsc.ps1", "tsserver", "tsserver.cmd", "tsserver.ps1"):
+        absent(runtime_modules / ".bin" / shim)
+    for path in bundle_root.rglob("*"):
+        if path.is_symlink() and not path.exists():
+            missing.append(f"dangling symlink: {path} -> {os.readlink(path)}")
     present(runtime_modules / "raknet-native")
     present(runtime_modules / "bedrock-protocol")
     present(runtime_modules / "nethernet")

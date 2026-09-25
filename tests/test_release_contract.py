@@ -718,3 +718,20 @@ class SlimBundleContractTests(unittest.TestCase):
             "nethernet",
         ):
             self.assertIn(required, tester)
+
+
+class BinShimPruneTests(unittest.TestCase):
+    def test_bin_entries_into_pruned_packages_are_removed(self) -> None:
+        builder = _load_script("build_bundle.py")
+        with tempfile.TemporaryDirectory() as directory:
+            bin_dir = Path(directory) / ".bin"
+            bin_dir.mkdir()
+            (bin_dir / "tsc.cmd").write_text('@"%~dp0\..\typescript\bin\tsc" %*\r\n', encoding="utf-8")
+            (bin_dir / "tsc").write_text('#!/bin/sh\nexec node "$basedir/../typescript/bin/tsc"\n', encoding="utf-8")
+            (bin_dir / "mkdirp.cmd").write_text('@"%~dp0\..\mkdirp\bin\cmd.js" %*\r\n', encoding="utf-8")
+            if os.name != "nt":
+                os.symlink("../typescript/bin/tsserver", bin_dir / "tsserver")
+                os.symlink("../mkdirp/bin/cmd.js", bin_dir / "mkdirp")
+            builder.prune_dangling_bin_entries(bin_dir, ("typescript", "raknet-node"))
+            kept = sorted(path.name for path in bin_dir.iterdir())
+        self.assertEqual(kept, ["mkdirp.cmd"] if os.name == "nt" else ["mkdirp", "mkdirp.cmd"])

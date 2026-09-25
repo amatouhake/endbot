@@ -441,6 +441,36 @@ def _remove_path(path: Path, anchor: Path) -> int:
     return 0
 
 
+def prune_dangling_bin_entries(bin_dir: Path, removed: tuple[str, ...]) -> int:
+    """Drop ``node_modules/.bin`` entries that pointed into removed packages.
+
+    On Linux they are symlinks (``tsc -> ../typescript/bin/tsc``) that would
+    dangle and break archiving; on Windows they are ``.cmd``/``.ps1``/sh shims
+    naming the package directory.
+    """
+
+    if not bin_dir.is_dir():
+        return 0
+    freed = 0
+    markers = [f"/{name}/" for name in removed]
+    for entry in sorted(bin_dir.iterdir()):
+        if entry.is_symlink():
+            target = os.readlink(entry).replace("\\", "/")
+            if any(target.startswith(f"../{name}/") for name in removed) or not entry.exists():
+                freed += entry.lstat().st_size
+                entry.unlink()
+            continue
+        if entry.is_file():
+            try:
+                text = entry.read_text(encoding="utf-8", errors="replace").replace("\\", "/")
+            except OSError:
+                continue
+            if any(marker in text for marker in markers):
+                freed += entry.stat().st_size
+                entry.unlink()
+    return freed
+
+
 def prune_toolchain_node(node_dir: Path, platform: str) -> list[tuple[str, int]]:
     """Remove npm/corepack/headers from the private Node.js (never used at runtime)."""
 
@@ -545,6 +575,9 @@ def prune_bundle(python_dir: Path, node_dir: Path, runtime_dir: Path, platform: 
         freed = _remove_path(runtime_dir / "node_modules" / name, runtime_dir)
         if freed:
             pruned.append((f"runtime-{name}", freed))
+    freed = prune_dangling_bin_entries(runtime_dir / "node_modules" / ".bin", RUNTIME_PRUNE_MODULES)
+    if freed:
+        pruned.append(("runtime-bin-shims", freed))
     prove_runtime_modules_removed(node, runtime_dir)
     pruned.extend(prune_toolchain_node(node_dir, platform))
     pruned.extend(prune_bundled_python(python_dir, platform))

@@ -78,7 +78,7 @@ pickup inference, block mining, autocomplete redesign.
 
 - [x] CI builds Linux and Windows, then one assemble job emits both platform
   bundles, wheels, manifest, and `SHA256SUMS` (#20, #22).
-- [ ] Dogfood:
+- [x] Dogfood:
   - [x] Windows, CI-built bundle, operator commands only: extract →
     `endbot.cmd setup --fresh --apply` (BDS downloaded through Endstone) →
     `start` → Bot joins with `allow-list=true` → live smoke → clean `stop`.
@@ -142,11 +142,11 @@ The final candidate is built once, already versioned `0.1.0`, and the exact
 bytes that pass the gates are what gets published — no rebuild after the
 evidence is captured.
 
-- [ ] `scripts/set_version.py 0.1.0` on `main` after the changes above; run
+- [x] `scripts/set_version.py 0.1.0` on `main` after the changes above; run
   `release-candidate.yml` (clean-consumer E2E with update/rollback on both
   platforms gates `assemble`); attach the artifacts to a **draft** GitHub
-  release `v0.1.0`.
-- [ ] Live matrix on those exact artifacts (needs a human Xbox client):
+  release `v0.1.0`. (#34; run 36189148021 from `b51fc3c`)
+- [x] Live matrix on those exact artifacts (needs a human Xbox client):
   normal Xbox human auth unchanged; a non-allowlisted human is rejected with
   `allow-list=true` while an allowlisted human and a Bot both join; GamerTag
   pending → XUID binding with `/bot` working from the client and from the
@@ -155,7 +155,13 @@ evidence is captured.
   has member (not operator) permissions; invalid local token / wrong issuer /
   wrong key / local-bot-auth disabled negative cases. Joining from outside the
   LAN depends on the operator's network and is not a release gate.
-- [ ] **Xbox achievement gate with capture.** A normal Microsoft/Xbox human
+  **Done 2026-09-27 with scope recorded in `docs/ACHIEVEMENTS.md`:**
+  - Exercised: Xbox auth, `--fresh` allow-list enrollment, GamerTag → XUID binding, client and console `/bot`, and the
+    four negative auth cases.
+  - Not exercised: a second account and a second device. Allow-list rejection is covered by the rc.3 pre-check, and
+    non-controller refusal by tests.
+- [x] **Xbox achievement gate with capture.** (2026-09-27: `Archer`, recorded in
+  `docs/ACHIEVEMENTS.md`) A normal Microsoft/Xbox human
   client unlocks a *still-locked* vanilla Survival Xbox achievement in the
   exact final-candidate environment, with capturable evidence (in-game
   notification video, client/BDS versions, timestamps, candidate SHA +
@@ -166,8 +172,12 @@ evidence is captured.
   artifact is build-time data and keeps its observation flags `false`; the
   captured evidence is recorded against the artifact SHA-256 list in
   `docs/ACHIEVEMENTS.md` and the release notes instead of rebuilding.
-- [ ] Publish the draft `v0.1.0` unchanged (tag = the built commit), then
+- [x] Publish the draft `v0.1.0` unchanged (tag = the built commit), then
   re-verify checksums and a clean install from the published assets.
+  **Done 2026-09-27:**
+  - `v0.1.0` was published at `b51fc3c`.
+  - The downloaded assets pass `SHA256SUMS` and `gh attestation verify`.
+  - The clean-consumer E2E passed from the published Windows zip.
 
 ### After 0.1.0 (direction)
 

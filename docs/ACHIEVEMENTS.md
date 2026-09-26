@@ -82,3 +82,68 @@ The session also exposed ordinary correctness defects, later repaired without ch
 safety settings. Post-remediation Linux smoke is recorded separately in [`M2_VALIDATION.md`](M2_VALIDATION.md); it does
 not replace or retroactively alter the recorded human achievement observation. Future revisions and compatibility-pair
 updates still require the explicit release gate rather than inheriting this result automatically.
+
+## Completed 0.1.0 release gate
+
+On 2026-09-27 JST, the exact draft `v0.1.0` artifacts were exercised by the operator. These artifacts were built once
+from `main` `b51fc3c4e3ff1220a6c8b598d3ea0d6946155b33` by release-candidate run `36189148021`, and the same bytes
+were then published without a rebuild.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `endbot-0.1.0-windows-x86_64.zip` | `8e50ff30d6b63fc8c60a2f591e310c11f2b3e31e2c808cc56955b24126e28e22` |
+| `endbot-0.1.0-linux-x86_64.tar.gz` | `e74c67cbfcf90e84e4a0536e8130fabe6c6d1975aa009ae98383a486038bbecb` |
+
+The full per-asset list is the release's `SHA256SUMS`. It is covered by a build-provenance attestation, like both
+bundles.
+
+Pinned pair: patched Endstone `0.11.12+endbot.1` on official BDS `1.26.51.1` (protocol `2193`), obtained through
+Endstone.
+
+### What the operator did on the Windows bundle
+
+1. Ran `endbot setup --fresh --controller <GamerTag> --apply` and then `endbot start`, using only the operator commands.
+   No Python or Node.js was installed manually.
+2. Joined from a normal Windows Bedrock client through Microsoft/Xbox authentication. No manual `allowlist add` was
+   needed.
+3. The GamerTag bound to the XUID on this first join. `doctor` recorded the binding as `2026-09-26T17:35:10Z` (UTC).
+4. Exercised `/bot` from the client: `spawn`, `move`, `jump`, `look`, `look at`, `tp me`, `tp x y z`, nether `tp`,
+   `reconnect`, `rename`, and `despawn`.
+5. In the same session, unlocked the still-locked vanilla Survival Xbox achievement **Archer** ("Kill a Creeper with Bow
+   and Arrows", 10 Gamerscore). The in-game notification was recorded on video. The Xbox achievement view shows it
+   completed on 09/27/26.
+6. Afterwards, briefly exercised `bot ...` from the server console.
+
+The [unlisted YouTube recording](https://youtu.be/l8YEslnEBjY) is a convenience copy of that session.
+
+### Post-session `endbot doctor`
+
+- Every check passed: `online-mode=true`, `allow-cheats=false`, the level.dat creative/experiment history, and GameType
+  0 (Survival).
+- Local-bot auth uses a P-384 owner key pair.
+- The controller is bound.
+- `allow-list=true` with the controller listed.
+- The installed Endstone and BDS versions match the lock.
+
+### Checked by Claude on the same artifacts
+
+- SHA256SUMS and the attestations verify.
+- Negative local-bot auth on the Windows bundle against a real BDS: an owner-signed Bot is accepted. A wrong owner key,
+  a wrong issuer, a wrong audience, and local-bot-auth disabled are each refused.
+- The CI clean-consumer E2E, with update and rollback, passed for both platform bundles.
+
+### Not exercised in this gate
+
+The following were not run on the 0.1.0 artifacts:
+
+- A second Xbox account.
+- A second LAN device.
+- Joining from outside the LAN.
+- A human session on Linux; the Linux bundle is covered by CI E2E only.
+
+Evidence for the allow-list behaviour comes from the rc.3 operator pre-check. It showed a non-allowlisted human being
+rejected, then joining after being added, while Bots join regardless of the list. That a non-controller cannot use
+`/bot` is covered by tests.
+
+The build-time compatibility manifest inside the artifacts keeps its observation flags `false` by design; this section
+is the observation record. No player identity, world, key, token, or machine-local path is committed.

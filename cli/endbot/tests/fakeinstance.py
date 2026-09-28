@@ -32,6 +32,7 @@ control-port = {control_port}
 SERVER_PROPERTIES = """\
 online-mode=true
 allow-cheats=false
+transport=nethernet
 level-name=world
 """
 

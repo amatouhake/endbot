@@ -156,7 +156,8 @@ operator confirms (`--apply` is the confirmation; the CLI never prompts). Setup 
 already exists or when a supervisor is running.
 
 **Fresh BDS.** Creates `<instance>/server`, lets Endstone download the locked BDS through its normal acquisition path
-(Endbot never bundles BDS), applies the safety defaults (`online-mode=true`, `allow-cheats=false`, no experiments),
+(Endbot never bundles BDS), applies the safety defaults (`online-mode=true`, `allow-cheats=false`, no experiments)
+plus the runtime transport requirement (`transport=nethernet`; the runtime always dials BDS over NetherNet),
 creates `state/`, and writes `endbot.toml` with the given controller GamerTags. It also adds every `--controller`
 GamerTag to `<server>/allowlist.json` right after the BDS acquisition — a fresh BDS enables `allow-list=true` with an
 empty list and would otherwise reject the controllers on join. Each entry uses the format `allowlist add <name>` writes
@@ -178,8 +179,10 @@ report marks those two checks as expected-not-yet-present).
   into `backups/<UTC timestamp>/`, with a `manifest.json` listing every backed-up file's SHA-256. Worlds are not
   copied by default (size); setup requires the operator to confirm they have a world backup
   (`--i-have-a-world-backup`), or to pass `--backup-worlds`.
-- Verify the safety invariants on the existing `server.properties` and world. An existing server's
-  `server.properties` is checked, never silently flipped (`online-mode=false` / `allow-cheats=true` FAIL the plan),
+- Verify the safety invariants on the existing `server.properties` and world, plus the runtime transport
+  requirement. An existing server's `server.properties` is checked, never silently flipped
+  (`online-mode=false` / `allow-cheats=true` / missing or non-`nethernet` `transport` FAIL the plan with a
+  manual `transport=nethernet` fix),
   and a world that already has creative, cheat, or experiment history FAILs the plan; Endbot does not change world
   flags. Unknown experiment keys are reported as warnings.
 - Never edit `allowlist.json`. While `allow-list=true`, the plan prints for each controller GamerTag missing from the
@@ -210,7 +213,8 @@ in `app/`. Updates refuse to run while a supervisor is running.
 
 - `endbot.toml` parses; identifiers are strings; paths exist.
 - Safety invariants: `online-mode=true`, `allow-cheats=false`, no experiments, no Beta APIs / GameTest, world history
-  flags (existing `scripts/preflight.py` checks move here).
+  flags (existing `scripts/preflight.py` checks move here); plus the runtime transport requirement
+  `transport=nethernet` (separate from safety: the runtime always dials BDS over NetherNet).
 - `endstone.toml [local-bot-auth]` enabled with a readable P-384 public key matching `state/secrets/owner-private.pem`.
 - Control token present and readable; runtime and plugin agree on port.
 - `<server>/version.txt` matches the lock; installed Endstone package version matches the lock.

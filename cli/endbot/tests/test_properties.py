@@ -6,7 +6,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from endbot_cli.properties import PreflightError, edit_properties, parse_properties, verify_server_properties
+from endbot_cli.properties import (
+    PreflightError,
+    edit_properties,
+    parse_properties,
+    verify_runtime_properties,
+    verify_server_properties,
+)
 
 SAFE = "online-mode=true\nallow-cheats=false\nlevel-name=world\n"
 
@@ -32,6 +38,24 @@ class PropertiesTests(unittest.TestCase):
         self.path.write_text("online-mode=true\n", encoding="utf-8")
         with self.assertRaisesRegex(PreflightError, "allow-cheats"):
             verify_server_properties(self.path)
+
+    def test_transport_nethernet_passes(self) -> None:
+        self.path.write_text("transport=nethernet\n", encoding="utf-8")
+        self.assertEqual(verify_runtime_properties(self.path), ["PASS transport=nethernet"])
+
+    def test_transport_is_case_insensitive(self) -> None:
+        self.path.write_text("transport=NetherNet\n", encoding="utf-8")
+        self.assertEqual(verify_runtime_properties(self.path), ["PASS transport=nethernet"])
+
+    def test_missing_transport_fails_with_fix_hint(self) -> None:
+        self.path.write_text("online-mode=true\n", encoding="utf-8")
+        with self.assertRaisesRegex(PreflightError, "transport.*nethernet"):
+            verify_runtime_properties(self.path)
+
+    def test_wrong_transport_fails_with_fix_hint(self) -> None:
+        self.path.write_text("transport=raknet\n", encoding="utf-8")
+        with self.assertRaisesRegex(PreflightError, "transport must be nethernet"):
+            verify_runtime_properties(self.path)
 
     def test_malformed_lines_fail(self) -> None:
         self.path.write_text("online-mode=true\nallow-cheats\n", encoding="utf-8")

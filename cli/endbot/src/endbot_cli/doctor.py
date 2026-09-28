@@ -21,7 +21,7 @@ from endbot_cli.controllers import ControllersError, ControllerState, load_contr
 from endbot_cli.instance import InstancePaths
 from endbot_cli.leveldat import LevelDatError, parse_level_dat
 from endbot_cli.lock import LockData, LockError, bds_versions_match, load_lock
-from endbot_cli.properties import PreflightError, parse_properties, verify_server_properties
+from endbot_cli.properties import PreflightError, parse_properties, verify_runtime_properties, verify_server_properties
 
 PASS = "PASS"
 WARN = "WARN"
@@ -100,7 +100,12 @@ def check_server_properties(server: Path) -> tuple[CheckResult, dict[str, str] |
         )
     except (PreflightError, OSError) as error:
         return (
-            CheckResult(FAIL, name, f"{error}; fix {properties_path} (required: online-mode=true, allow-cheats=false)"),
+            CheckResult(
+                FAIL,
+                name,
+                f"{error}; fix {properties_path} "
+                "(required: online-mode=true, allow-cheats=false, transport=nethernet)",
+            ),
             None,
         )
     try:
@@ -114,7 +119,23 @@ def check_server_properties(server: Path) -> tuple[CheckResult, dict[str, str] |
             ),
             properties,
         )
-    return CheckResult(PASS, name, f"online-mode=true, allow-cheats=false in {properties_path}"), properties
+    try:
+        verify_runtime_properties(properties_path)
+    except PreflightError as error:
+        return (
+            CheckResult(
+                FAIL,
+                name,
+                f"{properties_path}: {error} (Endbot runtime requires NetherNet)",
+            ),
+            properties,
+        )
+    return (
+        CheckResult(
+            PASS, name, f"online-mode=true, allow-cheats=false, transport=nethernet in {properties_path}"
+        ),
+        properties,
+    )
 
 
 def check_world(server: Path, properties: dict[str, str] | None) -> CheckResult:

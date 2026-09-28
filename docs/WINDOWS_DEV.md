@@ -10,7 +10,8 @@ It exists so that WSL-hosted behavior (which needs `hostAddressLoopback` network
 loopback-only native topology. It is not a release or packaging path, it does not change the pinned Endstone/BDS pair,
 and every safety invariant in the README applies unchanged: `online-mode=true`, `allow-cheats=false`, no experiments,
 Beta APIs, GameTest, or required packs, the normal Microsoft/Xbox path for people, and local bot auth disabled unless
-the operator enables it with the runtime-generated owner public key.
+the operator enables it with the runtime-generated owner public key. In addition the Endbot runtime requires
+`transport=nethernet` (separate from safety; `scripts/preflight.py` does not check it).
 
 Native Windows hosting of the runtime and server was designed for but was not part of the recorded M2 validation; see
 [`COMPATIBILITY.md`](COMPATIBILITY.md).
@@ -159,8 +160,12 @@ command yourself from an elevated prompt, otherwise the client will not see the 
 
 Stop the server after the first start, then configure:
 
-1. `server.properties`: keep `online-mode=true` and `allow-cheats=false`; do not enable experiments or packs. Check
-   with `python scripts\preflight.py C:\endbot-local\server\server.properties --acknowledge-world-state-unverified`.
+1. `server.properties`: keep `online-mode=true` and `allow-cheats=false`, and set `transport=nethernet` (the runtime
+   always dials BDS over NetherNet; a shipped `transport=raknet` leaves human clients working while Bots never
+   connect); do not enable experiments or packs. Check safety
+   with `python scripts\preflight.py C:\endbot-local\server\server.properties --acknowledge-world-state-unverified`
+   (`preflight` is safety-only; `transport=nethernet` is a separate Endbot runtime requirement checked by
+   `endbot doctor`).
    BDS `1.26.51` ships `allow-list=true`. It applies to humans only: a Bot accepted by the local-bot trust path joins
    without an `allowlist.json` entry (see `docs/OPERATIONS.md`). Add every human tester to `allowlist.json`, or set
    `allow-list=false` on a local smoke server (it is an access list, not an authentication or achievement invariant). Leave `server-udp-ports` unset: delete the shipped `server-udp-ports=19132` line (or leave it

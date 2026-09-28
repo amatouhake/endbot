@@ -166,7 +166,42 @@ class CommandServiceTests(unittest.TestCase):
     def test_existing_bot_may_reuse_its_own_online_name(self) -> None:
         self.service.execute(["Alice", "spawn"], object())
         identity_id = self.control.bots["Alice"]["identityId"]
+        self.control.bots["Alice"] = {**self.control.bots["Alice"], "connectionState": "online"}
         self.world.collisions = {"Alice": identity_id}
+        result = self.service.execute(["Alice", "spawn"], object())
+        self.assertIn("already online", result.message)
+
+    def test_spawn_reports_connecting_instead_of_online(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        self.control.bots["Alice"] = {
+            **self.control.bots["Alice"],
+            "connectionState": "connecting",
+        }
+        result = self.service.execute(["Alice", "spawn"], object())
+        self.assertIn("already connecting", result.message)
+        self.assertNotIn("already online", result.message)
+
+    def test_spawn_reports_reconnecting_instead_of_online(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        self.control.bots["Alice"] = {
+            **self.control.bots["Alice"],
+            "connectionState": "reconnecting",
+        }
+        result = self.service.execute(["Alice", "spawn"], object())
+        self.assertIn("already reconnecting", result.message)
+        self.assertNotIn("already online", result.message)
+
+    def test_spawn_without_connection_state_stays_already_online(self) -> None:
+        # Older runtimes omit connectionState; keep the previous message.
+        original = self.control.request
+
+        def without_state(operation, **parameters):
+            result = original(operation, **parameters)
+            result.pop("connectionState", None)
+            return result
+
+        self.service.execute(["Alice", "spawn"], object())
+        self.control.request = without_state
         result = self.service.execute(["Alice", "spawn"], object())
         self.assertIn("already online", result.message)
 

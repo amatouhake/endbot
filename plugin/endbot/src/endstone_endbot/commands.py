@@ -467,6 +467,11 @@ class BotCommandService:
             self.world.assert_name_available(command.name, existing.get("identityId") if existing else None)
             result = self.control.request("spawn", name=command.name)
             if result.get("alreadyOnline"):
+                state = result.get("connectionState")
+                if state == "connecting":
+                    return CommandResult(True, (f"Endbot: {result['name']} is already connecting",))
+                if state == "reconnecting":
+                    return CommandResult(True, (f"Endbot: {result['name']} is already reconnecting",))
                 return CommandResult(True, (f"Endbot: {result['name']} is already online",))
             verb = "created and connecting" if result.get("created") else "connecting"
             if placement is None:

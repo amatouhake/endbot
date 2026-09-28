@@ -33,7 +33,8 @@ export function loadConfig (filename) {
     serverHost,
     serverPort: value.serverPort ?? 19132,
     gameVersion: value.gameVersion ?? '1.26.51',
-    // Expected BDS advertisement (server.properties server-name / level-name);
+    // Expected BDS advertisement (server.properties server-name and the world
+    // display name from level.dat LevelName, falling back to level-name);
     // when both are set the runtime connects only to that server.
     serverName: value.serverName,
     levelName: value.levelName,

@@ -244,6 +244,46 @@ class SafetyInvariantTests(DoctorTestCase):
         self.assertEqual(self.status_of(results, "world"), FAIL)
         self.assertIn("corrupt", self.messages_of(results, "world")[0])
 
+    def test_world_directory_without_level_dat_fails(self) -> None:
+        world = self.root / "server" / "worlds" / "world"
+        world.mkdir(parents=True)
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 1)
+        self.assertEqual(self.status_of(results, "world"), FAIL)
+        self.assertIn("level.dat", self.messages_of(results, "world")[0])
+        self.assertIn("falls back", self.messages_of(results, "world")[0])
+
+    def test_missing_level_name_checks_the_default_world(self) -> None:
+        # A missing level-name is valid BDS: the default world must still be inspected.
+        (self.server / "server.properties").write_text(
+            "online-mode=true\nallow-cheats=false\n", encoding="utf-8"
+        )
+        world = self.server / "worlds" / "Bedrock level"
+        world.mkdir(parents=True)
+        (world / "level.dat").write_bytes(
+            fakenbt.level_dat({"GameType": fakenbt.int32(0), "cheatsEnabled": fakenbt.byte(0)})
+        )
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "world"), PASS)
+        self.assertIn("Bedrock level", self.messages_of(results, "world")[0])
+
+    def test_missing_level_name_with_default_dir_but_no_level_dat_fails(self) -> None:
+        (self.server / "server.properties").write_text(
+            "online-mode=true\nallow-cheats=false\n", encoding="utf-8"
+        )
+        (self.server / "worlds" / "Bedrock level").mkdir(parents=True)
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 1)
+        self.assertEqual(self.status_of(results, "world"), FAIL)
+        self.assertIn("level.dat", self.messages_of(results, "world")[0])
+
+    def test_missing_level_name_without_default_dir_skips(self) -> None:
+        (self.server / "server.properties").write_text(
+            "online-mode=true\nallow-cheats=false\n", encoding="utf-8"
+        )
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "world"), SKIP)
+
 
 class VersionTests(DoctorTestCase):
     def test_missing_version_txt_explains_the_redownload_risk(self) -> None:

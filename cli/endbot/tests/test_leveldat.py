@@ -97,6 +97,26 @@ class LevelDatTests(unittest.TestCase):
         summary = parse_level_dat(data)
         self.assertEqual(summary.game_type, 1)
 
+    def test_level_name_is_decoded(self) -> None:
+        data = fakenbt.level_dat({"LevelName": fakenbt.string("マイ ワールド")})
+        summary = parse_level_dat(data)
+        self.assertEqual(summary.level_name, "マイ ワールド")
+
+    def test_level_name_data_fallback(self) -> None:
+        data = fakenbt.level_dat({"Data": fakenbt.compound({"LevelName": fakenbt.string("Fallback")})})
+        summary = parse_level_dat(data)
+        self.assertEqual(summary.level_name, "Fallback")
+
+    def test_missing_level_name_is_none(self) -> None:
+        summary = parse_level_dat(fakenbt.level_dat({}))
+        self.assertIsNone(summary.level_name)
+
+    def test_empty_or_non_string_level_name_is_none(self) -> None:
+        summary = parse_level_dat(fakenbt.level_dat({"LevelName": fakenbt.string("")}))
+        self.assertIsNone(summary.level_name)
+        summary = parse_level_dat(fakenbt.level_dat({"LevelName": fakenbt.int32(7)}))
+        self.assertIsNone(summary.level_name)
+
     def test_truncated_header_is_a_clear_error(self) -> None:
         with self.assertRaisesRegex(LevelDatError, "header is incomplete"):
             parse_level_dat(b"\x0a\x00")

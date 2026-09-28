@@ -111,11 +111,14 @@ same-host impostor from turning a captured token into a real login. The full rat
 
 Server selection. Bots find BDS through NetherNet LAN discovery on UDP 7551, and the advertisement carries no port, so
 other NetherNet hosts on the machine (a Minecraft client with a world open to LAN, another BDS) answer as well. The
-runtime connects only to the host advertising this instance's `server.properties` `server-name` and `level-name`
-(written into the generated runtime config on every start); otherwise the Bot stays disconnected with a `lastError`
-naming the advertisements it saw. Only one program can own UDP 7551: when another one holds it, BDS cannot answer
-discovery at all, so `endbot start` checks the port before starting anything and refuses with that explanation.
-Use distinct `server-name` / `level-name` values when several Endbot instances share a machine.
+runtime connects only to the host advertising this instance's `server.properties` `server-name` and world display
+name (`worlds/<level-name>/level.dat` `LevelName`, falling back to `server.properties` `level-name` before the
+world exists; written into the generated runtime config on every start); otherwise the Bot stays disconnected with
+a `lastError` naming the advertisements it saw. The advertised display name can differ from the world directory
+name, so renaming a world to match is never required. Only one program can own UDP 7551: when another one holds
+it, BDS cannot answer discovery at all, so `endbot start` checks the port before starting anything and refuses with
+that explanation. Use distinct `server-name` values (or world display names) when several Endbot instances share
+a machine.
 
 ## 5a. Process lifecycle
 

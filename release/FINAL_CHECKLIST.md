@@ -105,6 +105,10 @@ pickup inference, block mining, autocomplete redesign.
     Bots connect only to the BDS advertising this instance's `server-name` /
     `level-name`, and `endbot start` refuses while another program holds UDP
     7551 (verified with a decoy host).
+    Note (post-0.1.0, #37): expected `levelName` resolution changed after this gate —
+    `worlds/<level-name>/level.dat` `LevelName` is now preferred over the `level-name`
+    directory name (unit-tested; live decoy-host regression for the new resolution
+    was not part of the 0.1.0 gate).
 - [x] Operator pre-check on the published rc.3 Windows bundle (informational,
   2026-09-25): `setup --fresh --controller <GamerTag> --apply`, basic Bot
   control, a non-allowlisted human is rejected with `allow-list=true` and

@@ -191,8 +191,8 @@ class CommandServiceTests(unittest.TestCase):
         self.assertIn("already reconnecting", result.message)
         self.assertNotIn("already online", result.message)
 
-    def test_spawn_without_connection_state_stays_already_online(self) -> None:
-        # Older runtimes omit connectionState; keep the previous message.
+    def test_spawn_without_connection_state_stays_neutral(self) -> None:
+        # Older runtimes omit connectionState; stay neutral rather than claiming online.
         original = self.control.request
 
         def without_state(operation, **parameters):
@@ -203,7 +203,8 @@ class CommandServiceTests(unittest.TestCase):
         self.service.execute(["Alice", "spawn"], object())
         self.control.request = without_state
         result = self.service.execute(["Alice", "spawn"], object())
-        self.assertIn("already online", result.message)
+        self.assertIn("already active", result.message)
+        self.assertNotIn("already online", result.message)
 
     def test_invalid_console_placement_has_no_lifecycle_side_effect(self) -> None:
         result = self.service.execute(["Alice", "spawn", "at", "1", "64", "2"], None)

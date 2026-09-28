@@ -472,7 +472,10 @@ class BotCommandService:
                     return CommandResult(True, (f"Endbot: {result['name']} is already connecting",))
                 if state == "reconnecting":
                     return CommandResult(True, (f"Endbot: {result['name']} is already reconnecting",))
-                return CommandResult(True, (f"Endbot: {result['name']} is already online",))
+                if state == "online":
+                    return CommandResult(True, (f"Endbot: {result['name']} is already online",))
+                # Missing or unknown states stay neutral rather than claiming online.
+                return CommandResult(True, (f"Endbot: {result['name']} is already active",))
             verb = "created and connecting" if result.get("created") else "connecting"
             if placement is None:
                 # Console spawn without coordinates: BDS places the Bot.

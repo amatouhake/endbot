@@ -74,7 +74,7 @@ class PlanTests(SetupTestCase):
         self.assertIn("Endstone's acquisition path", out)
         self.assertIn("create endbot.toml", out)
         self.assertIn("state/secrets", out)
-        self.assertIn("online-mode=true and allow-cheats=false", out)
+        self.assertIn("transport=nethernet", out)
         self.assertIn("nothing was changed", out)
         self.assertFalse(self.paths.endbot_toml.exists())
         self.assertFalse((self.root / "state").exists())
@@ -230,10 +230,12 @@ class ApplyTests(SetupTestCase):
         self.assertIn("# Bedrock Dedicated Server properties", properties_text)
         self.assertIn("online-mode = true", properties_text)  # only the value changed
         self.assertIn("allow-cheats = false", properties_text)
+        self.assertIn("transport=nethernet", properties_text)
         self.assertIn("level-name=world", properties_text)
         properties = parse_properties(self.root / "server" / "server.properties")
         self.assertEqual(properties["online-mode"], "true")
         self.assertEqual(properties["allow-cheats"], "false")
+        self.assertEqual(properties["transport"], "nethernet")
 
         self.assertIn("doctor after apply:", out)
         self.assertIn("the first `endbot start` generates the owner keys and control token", out)
@@ -246,6 +248,30 @@ class ApplyTests(SetupTestCase):
         properties = parse_properties(self.root / "server" / "server.properties")
         self.assertEqual(properties["online-mode"], "true")
         self.assertEqual(properties["allow-cheats"], "false")
+        self.assertEqual(properties["transport"], "nethernet")
+
+    def test_existing_without_transport_fails_with_manual_fix_hint(self) -> None:
+        server = build_bds_dir(
+            self.root / "server",
+            properties="online-mode=true\nallow-cheats=false\nlevel-name=world\n",
+        )
+        code, out, _err = self.run_setup(**self.existing_args(server))
+        self.assertEqual(code, 0)  # dry-run prints the FAIL
+        self.assertIn("transport", out)
+        self.assertIn("nethernet", out)
+        self.assertIn("never silently changes", out)
+        code, _out, err = self.run_setup(**self.existing_args(server, apply=True))
+        self.assertEqual(code, 1)
+        self.assertIn("refusing to apply", err)
+        self.assertFalse(self.paths.endbot_toml.exists())
+
+    def test_existing_with_wrong_transport_fails_the_plan(self) -> None:
+        server = build_bds_dir(
+            self.root / "server",
+            properties="online-mode=true\nallow-cheats=false\ntransport=raknet\nlevel-name=world\n",
+        )
+        _code, out, _err = self.run_setup(**self.existing_args(server))
+        self.assertIn("transport must be nethernet", out)
 
     def test_apply_existing_equal_version_skips_bds_and_backs_up(self) -> None:
         server = build_bds_dir(self.root / "elsewhere", version="26.51", worlds=True)
@@ -294,7 +320,9 @@ class ApplyTests(SetupTestCase):
 class AllowlistTests(SetupTestCase):
     """setup and the BDS allow-list (sections 4 and 6)."""
 
-    ALLOW_LIST_PROPERTIES = "online-mode=true\nallow-cheats=false\nallow-list=true\nlevel-name=world\n"
+    ALLOW_LIST_PROPERTIES = (
+        "online-mode=true\nallow-cheats=false\ntransport=nethernet\nallow-list=true\nlevel-name=world\n"
+    )
 
     @staticmethod
     def read_allowlist(server: Path) -> list:

@@ -149,6 +149,35 @@ class SafetyInvariantTests(DoctorTestCase):
         self.assertEqual(self.status_of(results, "server-properties"), FAIL)
         self.assertIn("online-mode", self.messages_of(results, "server-properties")[0])
 
+    def test_missing_transport_fails_with_nethernet_hint(self) -> None:
+        (self.server / "server.properties").write_text(
+            "online-mode=true\nallow-cheats=false\nlevel-name=world\n", encoding="utf-8"
+        )
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 1)
+        self.assertEqual(self.status_of(results, "server-properties"), FAIL)
+        self.assertIn("transport", self.messages_of(results, "server-properties")[0])
+        self.assertIn("nethernet", self.messages_of(results, "server-properties")[0])
+
+    def test_wrong_transport_fails(self) -> None:
+        (self.server / "server.properties").write_text(
+            "online-mode=true\nallow-cheats=false\ntransport=raknet\nlevel-name=world\n",
+            encoding="utf-8",
+        )
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 1)
+        self.assertEqual(self.status_of(results, "server-properties"), FAIL)
+        self.assertIn("transport", self.messages_of(results, "server-properties")[0])
+
+    def test_nethernet_transport_passes(self) -> None:
+        (self.server / "server.properties").write_text(
+            "online-mode=true\nallow-cheats=false\ntransport=nethernet\nlevel-name=world\n",
+            encoding="utf-8",
+        )
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "server-properties"), PASS)
+        self.assertIn("transport=nethernet", self.messages_of(results, "server-properties")[0])
+
     def test_numeric_gamertag_is_rejected_with_quoting_hint(self) -> None:
         write_endbot_toml(self.root, gamertags="[1234]")
         results = self.doctor()
@@ -291,7 +320,7 @@ class AllowlistTests(DoctorTestCase):
     """The read-only `allowlist` check (sections 4 and 7)."""
 
     def write_properties(self, allow_list: str | None = None) -> None:
-        text = "online-mode=true\nallow-cheats=false\nlevel-name=world\n"
+        text = "online-mode=true\nallow-cheats=false\ntransport=nethernet\nlevel-name=world\n"
         if allow_list is not None:
             text += f"allow-list={allow_list}\n"
         (self.server / "server.properties").write_text(text, encoding="utf-8")

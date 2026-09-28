@@ -29,7 +29,13 @@ from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import InstancePaths
 from endbot_cli.lock import LockData, LockError, compare_bds_versions, load_lock
 from endbot_cli.processes import ToolchainError, resolve_python
-from endbot_cli.properties import PreflightError, edit_properties, parse_properties, verify_server_properties
+from endbot_cli.properties import (
+    PreflightError,
+    edit_properties,
+    parse_properties,
+    verify_runtime_properties,
+    verify_server_properties,
+)
 from endbot_cli.runstate import RUNNING, STALE, clean_supervisor_pid, inspect_supervisor
 
 BDS_DOWNLOAD = "download"
@@ -38,6 +44,10 @@ BDS_NONE = "none"
 
 STATE_SUBDIRS = ("secrets", "profiles", "generated", "run")
 SAFETY_UPDATES = {"online-mode": "true", "allow-cheats": "false"}
+# Endbot runtime compatibility (issue #36): the runtime always dials BDS over
+# NetherNet, so a fresh server must set transport=nethernet. Existing servers
+# are never silently flipped; their plan FAILs with a manual fix instead.
+RUNTIME_UPDATES = {"transport": "nethernet"}
 
 
 def _print(message: str) -> None:
@@ -184,12 +194,13 @@ def compute_setup_plan(
     if fresh:
         if properties_path.is_file():
             lines.append(
-                f"ensure {properties_path} sets online-mode=true and allow-cheats=false "
-                "(only those keys are edited; comments and other keys are preserved)"
+                f"ensure {properties_path} sets online-mode=true, allow-cheats=false "
+                "and transport=nethernet (only those keys are edited; comments and other keys are preserved)"
             )
         else:
             lines.append(
-                f"create {properties_path} with online-mode=true and allow-cheats=false after the BDS download"
+                f"create {properties_path} with online-mode=true, allow-cheats=false "
+                "and transport=nethernet after the BDS download"
             )
         if (server / "worlds").is_dir():
             warnings.append(
@@ -202,6 +213,7 @@ def compute_setup_plan(
             try:
                 properties = parse_properties(properties_path)
                 verify_server_properties(properties_path)
+                verify_runtime_properties(properties_path)
             except FileNotFoundError:
                 failures.append(
                     f"{properties_path} is missing; restore it before adopting this server "
@@ -209,13 +221,17 @@ def compute_setup_plan(
                 )
             except PreflightError as error:
                 failures.append(
-                    f"{properties_path}: {error}; set online-mode=true and allow-cheats=false yourself first "
+                    f"{properties_path}: {error}; set online-mode=true, allow-cheats=false "
+                    "and transport=nethernet yourself first "
                     "(Endbot never silently changes an existing server's settings)"
                 )
             except OSError as error:
                 failures.append(f"{properties_path} cannot be read: {error}; fix the file permissions")
             else:
-                lines.append(f"keep {properties_path} unchanged (verified online-mode=true, allow-cheats=false)")
+                lines.append(
+                    f"keep {properties_path} unchanged "
+                    "(verified online-mode=true, allow-cheats=false, transport=nethernet)"
+                )
             world = check_world(server, properties)
             if world.status == FAIL:
                 failures.append(f"world check: {world.message}")
@@ -450,13 +466,17 @@ def _apply(
 
     properties_path = plan.server / "server.properties"
     if plan.mode == "fresh":
-        for message in edit_properties(properties_path, SAFETY_UPDATES):
+        for message in edit_properties(properties_path, {**SAFETY_UPDATES, **RUNTIME_UPDATES}):
             _print(f"setup: server.properties: {message}")
     try:
         verify_server_properties(properties_path)
+        verify_runtime_properties(properties_path)
     except (PreflightError, FileNotFoundError, OSError) as error:
-        return _fail(f"FAIL setup: {properties_path}: {error} (required: online-mode=true, allow-cheats=false)")
-    _print(f"setup: {properties_path}: verified online-mode=true, allow-cheats=false")
+        return _fail(
+            f"FAIL setup: {properties_path}: {error} "
+            "(required: online-mode=true, allow-cheats=false, transport=nethernet)"
+        )
+    _print(f"setup: {properties_path}: verified online-mode=true, allow-cheats=false, transport=nethernet")
 
     create_state_dirs(paths)
     write_endbot_toml(paths, plan)

@@ -25,6 +25,14 @@ REQUIRED_PROPERTIES = {
     "allow-cheats": "false",
 }
 
+# Endbot runtime compatibility (separate from the safety invariants above):
+# the runtime always creates Bedrock sessions with transport=nethernet, so a
+# server without it accepts human clients while Bots never reach the login
+# path (issue #36).
+RUNTIME_REQUIRED_PROPERTIES = {
+    "transport": "nethernet",
+}
+
 
 class PreflightError(ValueError):
     pass
@@ -56,6 +64,27 @@ def verify_server_properties(path: Path) -> list[str]:
         actual = properties[key].lower()
         if actual != expected:
             raise PreflightError(f"{key} must be {expected}, found {properties[key]!r}")
+        messages.append(f"PASS {key}={expected}")
+    return messages
+
+
+def verify_runtime_properties(path: Path) -> list[str]:
+    """Check the Endbot runtime compatibility requirement (transport=nethernet)."""
+
+    properties = parse_properties(path)
+    messages: list[str] = []
+    for key, expected in RUNTIME_REQUIRED_PROPERTIES.items():
+        if key not in properties:
+            raise PreflightError(
+                f"required property {key!r} is missing; "
+                f"set {key}={expected} in {path} (Endbot runtime requires NetherNet)"
+            )
+        actual = properties[key].lower()
+        if actual != expected:
+            raise PreflightError(
+                f"{key} must be {expected}, found {properties[key]!r}; "
+                f"set {key}={expected} in {path} (Endbot runtime requires NetherNet)"
+            )
         messages.append(f"PASS {key}={expected}")
     return messages
 

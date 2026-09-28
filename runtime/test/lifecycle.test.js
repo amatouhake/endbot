@@ -306,3 +306,33 @@ test('operator resume resets an exhausted automatic reconnect budget', async () 
   assert.equal(lifecycle.status('Alice').connectionState, 'online')
   assert.equal(lifecycle.status('Alice').reconnectAttempt, 0)
 })
+
+test('spawn and resume report the current connection state with alreadyOnline', async () => {
+  let releaseConnect
+  const gate = new Promise(resolve => { releaseConnect = resolve })
+  class BlockingSession extends FakeSession {
+    async connect () { await gate }
+  }
+  const { lifecycle } = fixture({
+    sessionFactory: profile => new BlockingSession(profile)
+  })
+  const first = lifecycle.spawn('Alice')
+  await turn()
+  assert.equal(lifecycle.status('Alice').connectionState, 'connecting')
+
+  const second = await lifecycle.spawn('Alice')
+  assert.equal(second.alreadyOnline, true)
+  assert.equal(second.connectionState, 'connecting')
+
+  const resumed = await lifecycle.resume('Alice')
+  assert.equal(resumed.alreadyOnline, true)
+  assert.equal(resumed.connectionState, 'connecting')
+
+  releaseConnect()
+  await first
+  await turn()
+  assert.equal(lifecycle.status('Alice').connectionState, 'online')
+  const third = await lifecycle.spawn('Alice')
+  assert.equal(third.alreadyOnline, true)
+  assert.equal(third.connectionState, 'online')
+})

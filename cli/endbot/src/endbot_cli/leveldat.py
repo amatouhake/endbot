@@ -57,6 +57,7 @@ class LevelSummary:
     experiments_ever_used: bool | None = None
     saved_with_toggled_experiments: bool | None = None
     other_experiment_keys: tuple[str, ...] = ()
+    level_name: str | None = None
 
     def unsafe_flags(self) -> tuple[str, ...]:
         """Names of the history flags that are set truthy (achievement killers)."""
@@ -203,6 +204,7 @@ def parse_level_dat(data: bytes) -> LevelSummary:
         return _flag(value) if value is not None else _flag(_lookup(root, name))
 
     game_type = _lookup(root, "GameType")
+    level_name = _lookup(root, "LevelName")
     return LevelSummary(
         storage_version=storage_version,
         commands_enabled=_flag(_lookup(root, "commandsEnabled")),
@@ -212,4 +214,5 @@ def parse_level_dat(data: bytes) -> LevelSummary:
         experiments_ever_used=experiment_flag("experiments_ever_used"),
         saved_with_toggled_experiments=experiment_flag("saved_with_toggled_experiments"),
         other_experiment_keys=tuple(sorted(name for name in experiments if name not in _NAMED_EXPERIMENT_FLAGS)),
+        level_name=level_name if isinstance(level_name, str) and level_name else None,
     )

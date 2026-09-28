@@ -26,7 +26,8 @@ function describe (advertisement) {
 // example a Minecraft client with a world open to LAN next to BDS), and the
 // advertisement carries no port. Upstream bedrock-protocol connects to the
 // first reply, so pick the configured BDS by the names it advertises, which
-// are its server.properties server-name (motd) and level-name.
+// are its server.properties server-name (motd) and world display name
+// (level.dat LevelName; server.properties level-name is only the fallback).
 export async function discoverServer ({
   host,
   serverName,

@@ -81,6 +81,32 @@ class RuntimeConfigTests(ConfigGenTestCase):
         document = json.loads(target.read_text(encoding="utf-8"))
         self.assertEqual((document["serverName"], document["levelName"]), ("Endstone Server", "My World"))
 
+    def test_server_identity_prefers_level_dat_display_name(self) -> None:
+        import fakenbt
+
+        (self.server / "server.properties").write_text(
+            "server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8"
+        )
+        world = self.server / "worlds" / "local_world"
+        world.mkdir(parents=True)
+        (world / "level.dat").write_bytes(fakenbt.level_dat({"LevelName": fakenbt.string("マイ ワールド")}))
+        self.assertEqual(read_server_identity(self.server), ("biiSMP", "マイ ワールド"))
+
+    def test_server_identity_falls_back_to_level_name_without_level_dat(self) -> None:
+        (self.server / "server.properties").write_text(
+            "server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8"
+        )
+        self.assertEqual(read_server_identity(self.server), ("biiSMP", "local_world"))
+
+    def test_server_identity_ignores_corrupt_level_dat(self) -> None:
+        (self.server / "server.properties").write_text(
+            "server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8"
+        )
+        world = self.server / "worlds" / "local_world"
+        world.mkdir(parents=True)
+        (world / "level.dat").write_bytes(b"not a level.dat")
+        self.assertEqual(read_server_identity(self.server), ("biiSMP", "local_world"))
+
 
 class PluginConfigTests(ConfigGenTestCase):
     def test_gamertags_and_paths_are_written_with_literal_paths(self) -> None:

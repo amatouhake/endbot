@@ -23,6 +23,7 @@ from endbot_cli.compat import tomllib
 from endbot_cli.config import EndbotConfig
 from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import InstancePaths
+from endbot_cli.leveldat import LevelDatError, parse_level_dat
 from endbot_cli.properties import PreflightError, parse_properties
 
 DEFAULT_SERVER_PORT = 19132
@@ -99,22 +100,45 @@ BDS_DEFAULT_SERVER_NAME = "Dedicated Server"
 BDS_DEFAULT_LEVEL_NAME = "Bedrock level"
 
 
+def _read_advertised_level_name(server: Path, level_dir_name: str | None) -> str | None:
+    """Return the world display name from ``level.dat``, or None to keep the fallback."""
+
+    if not level_dir_name:
+        return None
+    level_dat = server / "worlds" / level_dir_name / "level.dat"
+    try:
+        raw = level_dat.read_bytes()
+    except OSError:
+        return None
+    try:
+        summary = parse_level_dat(raw)
+    except LevelDatError:  # corrupt level.dat must not break config generation
+        return None
+    return summary.level_name
+
+
 def read_server_identity(server: Path) -> tuple[str, str]:
-    """Return the ``server-name`` and ``level-name`` this BDS advertises over NetherNet.
+    """Return the ``server-name`` and advertised world name this BDS uses over NetherNet.
 
     The runtime uses them to pick this server among every NetherNet host
     answering LAN discovery on the machine (docs/OPERATIONS.md section 5).
     Missing keys fall back to the BDS defaults.
+
+    The advertised ``levelName`` is the world's display name, not necessarily
+    the ``server.properties`` ``level-name`` directory name (issue #37): when
+    ``worlds/<level-name>/level.dat`` exists and carries a non-empty
+    ``LevelName`` tag, that value is used; otherwise the ``level-name`` value
+    (or its default) is kept so pre-creation configs still resolve.
     """
 
     try:
         properties = parse_properties(server / "server.properties")
     except (FileNotFoundError, PreflightError, OSError):
         properties = {}
-    return (
-        properties.get("server-name") or BDS_DEFAULT_SERVER_NAME,
-        properties.get("level-name") or BDS_DEFAULT_LEVEL_NAME,
-    )
+    server_name = properties.get("server-name") or BDS_DEFAULT_SERVER_NAME
+    level_name = properties.get("level-name") or BDS_DEFAULT_LEVEL_NAME
+    advertised = _read_advertised_level_name(server, properties.get("level-name"))
+    return (server_name, advertised or level_name)
 
 
 def generate_runtime_config(

@@ -126,6 +126,14 @@ def check_world(server: Path, properties: dict[str, str] | None) -> CheckResult:
         return CheckResult(SKIP, name, "key 'level-name' is missing from server.properties; world cannot be located")
     level_dat = server / "worlds" / level_name / "level.dat"
     if not level_dat.is_file():
+        if level_dat.parent.is_dir():
+            return CheckResult(
+                FAIL,
+                name,
+                f"{level_dat} is missing but {level_dat.parent} exists; "
+                "config generation falls back to the directory name and discovery may miss the server; "
+                "restore level.dat from a backup or remove the incomplete world directory",
+            )
         return CheckResult(SKIP, name, f"{level_dat} does not exist yet; world history is checked after world creation")
     try:
         summary = parse_level_dat(level_dat.read_bytes())

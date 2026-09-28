@@ -103,7 +103,7 @@ pickup inference, block mining, autocomplete redesign.
     Linux symlinks and executable bits) — fixed; operators on rc.2/rc.3 reinstall.
   - [x] Another NetherNet host on the machine (a Minecraft world open to LAN):
     Bots connect only to the BDS advertising this instance's `server-name` /
-    `level-name`, and `endbot start` refuses while another program holds UDP
+    world display name (`level.dat` `LevelName`), and `endbot start` refuses while another program holds UDP
     7551 (verified with a decoy host).
 - [x] Operator pre-check on the published rc.3 Windows bundle (informational,
   2026-09-25): `setup --fresh --controller <GamerTag> --apply`, basic Bot

@@ -66,7 +66,8 @@ BDS generates a new NetherNet DTLS identity on every start, so a persistent pin 
 upstream NetherNet client exposes no hook to verify it.
 
 LAN discovery can surface other NetherNet hosts on the same machine. The runtime logs in only to the host advertising
-the configured `server-name` and `level-name`; it does not fall back to the first host that answers, so another local
+the configured `server-name` and world display name (`level.dat` `LevelName`, falling back to `level-name` before
+the world exists); it does not fall back to the first host that answers, so another local
 program is not sent Bot login tokens merely by answering discovery first.
 
 Trust in that connection rests on the loopback path and on the local-bot token instead. A same-host process that

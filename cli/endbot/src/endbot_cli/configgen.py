@@ -137,7 +137,7 @@ def read_server_identity(server: Path) -> tuple[str, str]:
         properties = {}
     server_name = properties.get("server-name") or BDS_DEFAULT_SERVER_NAME
     level_name = properties.get("level-name") or BDS_DEFAULT_LEVEL_NAME
-    advertised = _read_advertised_level_name(server, properties.get("level-name"))
+    advertised = _read_advertised_level_name(server, level_name)
     return (server_name, advertised or level_name)
 
 

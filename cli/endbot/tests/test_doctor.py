@@ -215,6 +215,15 @@ class SafetyInvariantTests(DoctorTestCase):
         self.assertEqual(self.status_of(results, "world"), FAIL)
         self.assertIn("corrupt", self.messages_of(results, "world")[0])
 
+    def test_world_directory_without_level_dat_fails(self) -> None:
+        world = self.root / "server" / "worlds" / "world"
+        world.mkdir(parents=True)
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 1)
+        self.assertEqual(self.status_of(results, "world"), FAIL)
+        self.assertIn("level.dat", self.messages_of(results, "world")[0])
+        self.assertIn("falls back", self.messages_of(results, "world")[0])
+
 
 class VersionTests(DoctorTestCase):
     def test_missing_version_txt_explains_the_redownload_risk(self) -> None:

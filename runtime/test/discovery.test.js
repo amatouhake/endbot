@@ -67,7 +67,7 @@ test('no matching advertisement fails with the names that were seen', async () =
   assert.equal(created[0].closed, true)
 })
 
-test('level-name must match as well as server-name', async () => {
+test('advertised level name must match as well as server-name', async () => {
   const { module } = fakeNethernet([advertise(9n, 'Endstone Server', 'Other World')])
   await assert.rejects(
     discoverServer({

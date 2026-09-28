@@ -103,8 +103,12 @@ pickup inference, block mining, autocomplete redesign.
     Linux symlinks and executable bits) — fixed; operators on rc.2/rc.3 reinstall.
   - [x] Another NetherNet host on the machine (a Minecraft world open to LAN):
     Bots connect only to the BDS advertising this instance's `server-name` /
-    world display name (`level.dat` `LevelName`), and `endbot start` refuses while another program holds UDP
+    `level-name`, and `endbot start` refuses while another program holds UDP
     7551 (verified with a decoy host).
+    Note (post-0.1.0, #37): expected `levelName` resolution changed after this gate —
+    `worlds/<level-name>/level.dat` `LevelName` is now preferred over the `level-name`
+    directory name (unit-tested; live decoy-host regression for the new resolution
+    was not part of the 0.1.0 gate).
 - [x] Operator pre-check on the published rc.3 Windows bundle (informational,
   2026-09-25): `setup --fresh --controller <GamerTag> --apply`, basic Bot
   control, a non-allowlisted human is rejected with `allow-list=true` and

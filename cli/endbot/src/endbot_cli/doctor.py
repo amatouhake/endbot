@@ -16,6 +16,7 @@ from pathlib import Path
 from endbot_cli.allowlist import AllowlistError, entry_matches, read_allowlist
 from endbot_cli.compat import tomllib
 from endbot_cli.config import ConfigError, EndbotConfig, load_config
+from endbot_cli.configgen import BDS_DEFAULT_LEVEL_NAME
 from endbot_cli.control_client import RuntimeControlClient, RuntimeControlError
 from endbot_cli.controllers import ControllersError, ControllerState, load_controllers
 from endbot_cli.instance import InstancePaths
@@ -121,9 +122,9 @@ def check_world(server: Path, properties: dict[str, str] | None) -> CheckResult:
     name = "world"
     if properties is None:
         return CheckResult(SKIP, name, "server.properties is unreadable")
-    level_name = properties.get("level-name")
-    if not level_name:
-        return CheckResult(SKIP, name, "key 'level-name' is missing from server.properties; world cannot be located")
+    # A missing level-name is valid BDS: the server uses the default world,
+    # and configgen resolves the same default when locating level.dat.
+    level_name = properties.get("level-name") or BDS_DEFAULT_LEVEL_NAME
     level_dat = server / "worlds" / level_name / "level.dat"
     if not level_dat.is_file():
         if level_dat.parent.is_dir():

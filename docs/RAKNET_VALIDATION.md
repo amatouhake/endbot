@@ -95,8 +95,8 @@ Record that upstream warning without treating this narrow live success as a
 general or future-version support guarantee.
 
 **Still untested/deferred:** allow-list rejection for humans, an actual new Xbox
-achievement unlock, Linux RakNet live compatibility, unexpected BDS restart recovery,
-or sustained/multi-Bot load. Packaged Windows startup/resume evidence is recorded below.
+achievement unlock, Linux RakNet with a human client, unexpected BDS restart recovery,
+or sustained/multi-Bot load. Packaged Windows startup/resume evidence and CI Linux Bot evidence are recorded below.
 
 ## Reproduce from a standalone clone
 
@@ -166,8 +166,13 @@ portability checks passed. Runtime tests passed all 80 with `--test-concurrency=
 hit an existing short-timer lifecycle test once (retry-budget resume still reconnecting at its assertion).
 No transport implementation change was made in response to that timing-sensitive assertion.
 
-The consumer CI matrix now covers both transports on Windows and Linux. That workflow has not been run
-for these uncommitted changes; Linux RakNet and its native bundle remain unverified.
+The consumer CI matrix covers both transports on Windows and Linux. Release-candidate run
+[37688666654](https://github.com/amatouhake/endbot/actions/runs/37688666654) on this branch (2026-10-08) built both
+platform bundles and passed all four consumer jobs (`windows-2022` and `ubuntu-22.04`, each with `nethernet` and
+`raknet`). The jobs ran with no system Python or Node.js and covered: fresh setup through Endstone, a local-auth Bot
+joining real BDS, console, `doctor --live`, synthetic update/rollback with Bot resume, and a clean stop. This is the
+first Linux RakNet evidence and shows the Linux bundle's `raknet-native` loads. It is CI evidence only; no human
+client joined over Linux RakNet.
 
 ## Runtime behavior and next decision
 
@@ -182,7 +187,7 @@ NetherNet remains the default while the remaining compatibility gates are open. 
 1. The Windows human/Bot coexistence gate passed provisionally. Actual Xbox
    unlock validation is deferred until a dedicated achievement/release gate;
    do not inherit historical achievement observations for this RakNet path.
-2. Run the same live smoke on Linux and verify the native backend in both bundles.
+2. Done in CI for Bots (see the consumer matrix above); a human client over Linux RakNet remains open.
 3. Validate unexpected server restart recovery, sustained/multi-Bot load, and reviewed release artifacts
    before deliberately changing defaults or support claims. Fresh/existing setup has unit coverage;
    Windows packaged fresh setup and synthetic update/rollback have the live evidence above.

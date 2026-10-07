@@ -207,6 +207,20 @@ class StartRefusalTests(CommandTestCase):
 
 
 class StartHappyPathTests(CommandTestCase):
+    def test_raknet_start_ignores_unrelated_nethernet_discovery_port(self) -> None:
+        write_endbot_toml(self.root, control_port=self.port, transport="raknet")
+        path = self.root / "server/server.properties"
+        path.write_text(path.read_text().replace("transport=nethernet", "transport=raknet"), encoding="utf-8")
+        checked = []
+        self.start_in_thread(lan_port_check=lambda: checked.append(True) or "UDP 7551 busy")
+        self.wait_for_echo("fake BDS ready")
+        request_stop(self.run_dir)
+        self.assertEqual(self.join(), 0)
+        self.assertEqual(checked, [])
+        generated = json.loads(self.runtime_config.read_text())
+        self.assertEqual(generated["transport"], "raknet")
+        self.assertNotIn("serverName", generated)
+
     def test_first_start_creates_secrets_and_stops_via_stop_request(self) -> None:
         # The runtime creates the token and owner keys on the very first start,
         # after config generation: preflight tolerates their absence and the

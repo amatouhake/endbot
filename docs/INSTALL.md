@@ -34,10 +34,16 @@ official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition
    To adopt an existing vanilla BDS (or earlier Endstone) directory instead, use
    `endbot setup --existing <path> --controller <GamerTag> --i-have-a-world-backup --apply` (or pass
    `--backup-worlds` to copy `worlds/` into the `backups/<UTC timestamp>/` safety backup). Setup enforces
-   `online-mode=true`, `allow-cheats=false`, and no experiment history, plus the runtime transport requirement
-   `transport=nethernet` (fresh setups set it; existing servers must already have it — the plan FAILs with a
-   manual fix instead of silently changing it); a server or world that violates those is
+   `online-mode=true`, `allow-cheats=false`, and no experiment history, plus a supported, matching transport;
+   a server or world that violates those is
    refused with an explanation rather than silently changed.
+
+   In the current development build, `--fresh --transport raknet` selects direct-loopback RakNet; omission keeps
+   NetherNet. `--existing` keeps the BDS transport and records it in `endbot.toml`; an explicit `--transport` must
+   match the BDS setting. Published `v0.1.x` bundles do not have this option. For a later transport change, stop
+   the instance, set both `[server] transport` in `endbot.toml` and `transport` in `server.properties`, then run
+   `doctor` and `start`. See [RakNet validation](RAKNET_VALIDATION.md) for the evidence boundary. A rollback to an
+   older CLI that cannot read `server.transport` refuses safely; restore a compatible NetherNet configuration first.
 
    A fresh setup also adds every `--controller` GamerTag to `<instance>/server/allowlist.json` (a fresh BDS enables
    `allow-list=true` with an empty list and would otherwise reject the controllers). When adopting an existing server
@@ -115,13 +121,13 @@ inside the dependency's build check rather than with an Endbot error.
    mkdir -p /srv/endbot-server && endstone -s /srv/endbot-server
    ```
    Stop the server, then configure:
-   - `server.properties`: keep `online-mode=true`, `allow-cheats=false`, and set `transport=nethernet` (the runtime
-     always dials BDS over NetherNet; a shipped `transport=raknet` leaves human clients working while Bots never
-     connect); leave `server-udp-ports` unset (do not set
+   - `server.properties`: keep `online-mode=true`, `allow-cheats=false`, and select the runtime's transport:
+     `transport=nethernet` by default, or `transport=raknet` with explicit `"transport": "raknet"` in runtime JSON
+     from the current source. The published `v0.1.0` runtime only uses NetherNet. On NetherNet, leave `server-udp-ports` unset (do not set
      a single port or a range; since upstream `v0.11.12` the server shares one UDP port across NetherNet sessions).
      Check safety with `python3 scripts/preflight.py /srv/endbot-server/server.properties
      --acknowledge-world-state-unverified` from a checkout (`preflight` covers only the safety invariants —
-     `transport=nethernet` is a separate Endbot runtime requirement, checked by `endbot doctor`), or apply the same values by hand.
+     the matching transport is a separate Endbot runtime requirement, checked by `endbot doctor`), or apply the same values by hand.
    - `endstone.toml`: set the `[local-bot-auth]` table from the unpacked `config/endstone.local-auth.example.toml`
      with `enabled = true` and `public-key-file` pointing at the runtime's `owner-public.pem`. Only the public key
      is ever configured in Endstone. The `[network]` `stun-servers` default needs no change for local/loopback use.

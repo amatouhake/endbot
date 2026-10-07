@@ -23,8 +23,19 @@ class ConfigTests(unittest.TestCase):
         self.write("[server]\npath = 'server'\n\n[controllers]\ngamertags = [\"ExampleTag\"]\n")
         config = load_config(self.path)
         self.assertEqual(config.server.path, "server")
+        self.assertEqual(config.server.transport, "nethernet")
         self.assertEqual(config.controllers.gamertags, ("ExampleTag",))
         self.assertEqual(config.runtime.control_port, DEFAULT_CONTROL_PORT)
+
+    def test_transport_is_explicit_and_validated(self) -> None:
+        for transport in ('"raknet"', '"nethernet"'):
+            self.write(f"[server]\npath='server'\ntransport={transport}\n[controllers]\ngamertags=[]\n")
+            self.assertEqual(load_config(self.path).server.transport, transport.strip('"'))
+        for transport in ('"auto"', '"RakNet"', '""', "1", "true", "[]"):
+            with self.subTest(transport=transport):
+                self.write(f"[server]\npath='server'\ntransport={transport}\n[controllers]\ngamertags=[]\n")
+                with self.assertRaisesRegex(ConfigError, "server.transport"):
+                    load_config(self.path)
 
     def test_control_port_is_configurable(self) -> None:
         self.write("[server]\npath = 'server'\n[controllers]\ngamertags = []\n[runtime]\ncontrol-port = 1\n")
@@ -112,8 +123,7 @@ class ConfigTests(unittest.TestCase):
         for value in ("0", "65536", '"19142"', "true"):
             with self.subTest(value=value):
                 self.write(
-                    "[server]\npath = 'server'\n[controllers]\ngamertags = []\n"
-                    f"[runtime]\ncontrol-port = {value}\n"
+                    f"[server]\npath = 'server'\n[controllers]\ngamertags = []\n[runtime]\ncontrol-port = {value}\n"
                 )
                 with self.assertRaises(ConfigError) as caught:
                     load_config(self.path)

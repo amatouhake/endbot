@@ -1,8 +1,14 @@
 # endbot — the Endbot operator CLI
 
 `endbot` is the single operator-facing command for one Endbot instance
-(docs/OPERATIONS.md). Status: released (0.1.x) — `setup`, `update`,
+(docs/OPERATIONS.md). `setup`, `update`,
 `doctor`, `start`, `stop`, `console`, and `controllers reset` are implemented.
+
+Current source supports `setup --fresh --transport raknet|nethernet` (fresh default NetherNet).
+Existing-BDS setup keeps its transport unless an explicit selection disagrees, in which case it refuses without
+editing BDS. `[server] transport` in `endbot.toml` drives generated runtime config and must match BDS;
+legacy configs without that key keep NetherNet. RakNet does not need UDP 7551 or NetherNet advertisement names.
+Published `v0.1.x` bundles predate this option; see `docs/RAKNET_VALIDATION.md` for provisional validation.
 
 ## Usage
 

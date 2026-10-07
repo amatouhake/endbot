@@ -24,6 +24,12 @@ combines both wheels with the Linux-built plugin and CLI wheels (exactly one of 
 bundles, the runtime/config tarballs, license, manifest, and checksums into the single candidate.
 The Windows wheel is no longer a local build.
 
+Bundle assembly and self-tests require `raknet-native` to load after production dependency pruning.
+The consumer E2E workflow runs both `nethernet` and `raknet` on Windows and Linux, including fresh setup,
+Bot join/resume, clean stop, and synthetic same-code update/rollback. RakNet is exercised with UDP 7551
+occupied. Passing those jobs is artifact evidence; it does not replace human/Xbox gates or deliberately
+update the compatibility lock. See `docs/RAKNET_VALIDATION.md` for observed and still-pending results.
+
 The eventual release job must add built artifact checksums and include the licenses/notices described in
 `THIRD_PARTY_NOTICES.md`. It must not include BDS and must not publish solely because CI is green.
 See `docs/INSTALL.md` for the candidate contents and the Linux/Windows installation, start, configuration, and

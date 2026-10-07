@@ -144,6 +144,7 @@ def check_node_runtime_imports(node: Path, runtime_dir: Path) -> None:
         "const bundleRequire = createRequire(process.argv[1]);"
         "bundleRequire('bedrock-protocol');"
         "bundleRequire('nethernet');"
+        "bundleRequire('raknet-native');"
         "const sep = require('node:path').sep;"
         "const cache = Object.keys(bundleRequire.cache).filter(k =>"
         "  k.split(sep).includes('typescript') ||"

@@ -310,10 +310,11 @@ RUNTIME_PRUNE_MODULES = ("typescript", "raknet-node")
 ``typescript`` is a build-time dependency of ``jsp-raknet`` (which stays) and
 is never required at runtime; ``raknet-node`` is an *optional* dependency of
 ``bedrock-protocol`` that is only loaded when the ``raknetBackend`` option
-explicitly selects it, which the NetherNet-only runtime never does.
+explicitly selects it; neither the standard NetherNet path nor the experimental
+``raknet-native`` path selects ``raknet-node``.
 
-``raknet-native`` is deliberately KEPT even though the runtime never selects
-the RakNet transport: ``bedrock-protocol``'s ``ping()`` unconditionally
+``raknet-native`` is deliberately KEPT: the experimental RakNet path selects
+it, and ``bedrock-protocol``'s ``ping()`` unconditionally
 requires it (``initRaknet('raknet-native')`` in ``src/createClient.js``),
 even for a pure-NetherNet ping, and the runtime reaches that fallback
 whenever its own LAN discovery yields no target (``skipPing: false``).
@@ -349,6 +350,7 @@ const modules = JSON.parse(process.argv[4]);
 const require = createRequire(path.join(runtimeDir, 'package.json'));
 require('bedrock-protocol');
 require('nethernet');
+require('raknet-native');
 for (const mod of modules) {
   await import(pathToFileURL(path.join(runtimeDir, 'src', mod)).href);
 }

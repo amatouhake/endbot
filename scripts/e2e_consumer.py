@@ -17,6 +17,7 @@ replace the human-client release gates (Xbox authentication, achievements).
 from __future__ import annotations
 
 import argparse
+import errno
 import io
 import json
 import os
@@ -184,10 +185,24 @@ def current_version(instance: Path) -> str:
     return (instance / "app" / "current").read_text(encoding="utf-8").strip()
 
 
-def session(instance: Path, environment: dict[str, str], bot: str, *, spawn: bool, label: str) -> None:
+def session(
+    instance: Path, environment: dict[str, str], bot: str, *, spawn: bool, label: str, transport: str = "nethernet"
+) -> None:
     """One supervised start → Bot in BDS → checks → clean stop."""
 
-    log(f"$ endbot start (supervisor, {label}, app {current_version(instance)})")
+    # A RakNet start must not depend on owning NetherNet's LAN port.
+    lan_blocker = None
+    if transport == "raknet":
+        lan_blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            lan_blocker.bind(("127.0.0.1", 7551))
+        except OSError as error:
+            lan_blocker.close()
+            lan_blocker = None  # Already occupied is an equally useful control.
+            if error.errno != errno.EADDRINUSE:
+                raise
+        log("RakNet control: UDP 7551 is occupied independently of BDS")
+    log(f"$ endbot start (supervisor, {label}, app {current_version(instance)}, {transport})")
     supervisor_log = (instance.parent / f"supervisor-{label}.log").open("w", encoding="utf-8", errors="replace")
     supervisor = subprocess.Popen(
         launcher_command(instance, "start"),
@@ -212,20 +227,34 @@ def session(instance: Path, environment: dict[str, str], bot: str, *, spawn: boo
                 return False
 
         wait_for("runtime ping", runtime_answers, 120, supervisor)
-        wait_for("Endbot plugin enabled in BDS", lambda: "Enabling endbot" in server_log_text(instance), 300, supervisor)
+        generated = json.loads((instance / "state/generated/endbot-runtime.json").read_text(encoding="utf-8"))
+        if generated.get("transport", "nethernet") != transport:
+            raise ConsumerError("generated runtime transport differs from setup selection")
+        if transport == "raknet" and ("serverName" in generated or "levelName" in generated):
+            raise ConsumerError("RakNet unexpectedly depends on NetherNet advertisement identity")
+        wait_for(
+            "Endbot plugin enabled in BDS", lambda: "Enabling endbot" in server_log_text(instance), 300, supervisor
+        )
 
         if spawn:
             control_request(port, token, "spawn", name=bot)
-        wait_for(
-            f"{bot} online in the runtime ({'spawned' if spawn else 'resumed'})",
-            lambda: control_request(port, token, "status", name=bot)["connectionState"] == "online",
-            120,
-            supervisor,
-        )
+        try:
+            wait_for(
+                f"{bot} online in the runtime ({'spawned' if spawn else 'resumed'})",
+                lambda: control_request(port, token, "status", name=bot)["connectionState"] == "online",
+                120,
+                supervisor,
+            )
+        except ConsumerError:
+            status = control_request(port, token, "status", name=bot)
+            log(f"Bot diagnostic: state={status['connectionState']}, lastError={status.get('lastError')}")
+            raise
         wait_for(
             f"BDS accepted {bot} through local-bot trust",
-            lambda: f"Accepted local bot '{bot}'" in server_log_text(instance)
-            and f"{bot} joined the game" in server_log_text(instance),
+            lambda: (
+                f"Accepted local bot '{bot}'" in server_log_text(instance)
+                and f"{bot} joined the game" in server_log_text(instance)
+            ),
             60,
             supervisor,
         )
@@ -253,6 +282,8 @@ def session(instance: Path, environment: dict[str, str], bot: str, *, spawn: boo
             except subprocess.TimeoutExpired:
                 kill_tree(supervisor)
         supervisor_log.close()
+        if lan_blocker is not None:
+            lan_blocker.close()
 
 
 def repack_as_next_version(archive: Path, destination_dir: Path, suffix: str = "-e2e-next") -> tuple[Path, str]:
@@ -313,11 +344,14 @@ def _rename(name: str, root: str, version: str, new_version: str) -> str:
     return "/".join(parts)
 
 
-def exercise(instance: Path, environment: dict[str, str], bot: str, archive: Path, update: bool) -> None:
-    run_launcher(instance, environment, "setup", "--fresh", "--controller", CONTROLLER, "--apply")
+def exercise(
+    instance: Path, environment: dict[str, str], bot: str, archive: Path, update: bool, transport: str = "nethernet"
+) -> None:
+    options = ["--transport", transport] if transport != "nethernet" else []
+    run_launcher(instance, environment, "setup", "--fresh", "--controller", CONTROLLER, *options, "--apply")
     run_launcher(instance, environment, "doctor")
     original = current_version(instance)
-    session(instance, environment, bot, spawn=True, label="install")
+    session(instance, environment, bot, spawn=True, label="install", transport=transport)
     if not update:
         return
 
@@ -325,12 +359,12 @@ def exercise(instance: Path, environment: dict[str, str], bot: str, archive: Pat
     run_launcher(instance, environment, "update", str(next_archive))
     if current_version(instance) != next_version:
         raise ConsumerError(f"update left app/current at {current_version(instance)}, expected {next_version}")
-    session(instance, environment, bot, spawn=False, label="updated")
+    session(instance, environment, bot, spawn=False, label="updated", transport=transport)
 
     run_launcher(instance, environment, "update", "--rollback")
     if current_version(instance) != original:
         raise ConsumerError(f"rollback left app/current at {current_version(instance)}, expected {original}")
-    session(instance, environment, bot, spawn=False, label="rolled-back")
+    session(instance, environment, bot, spawn=False, label="rolled-back", transport=transport)
 
 
 def kill_tree(process: subprocess.Popen) -> None:
@@ -362,6 +396,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("archive", type=Path, help="platform bundle (.zip on Windows, .tar.gz on Linux)")
     parser.add_argument("--work-dir", type=Path, help="extraction directory (default: a new temporary directory)")
     parser.add_argument("--bot", default="E2EBot")
+    parser.add_argument("--transport", choices=("nethernet", "raknet"), default="nethernet")
     parser.add_argument(
         "--exercise-update",
         action="store_true",
@@ -372,14 +407,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    work = args.work_dir or Path(tempfile.mkdtemp(prefix="endbot-e2e-"))
+    work = (args.work_dir or Path(tempfile.mkdtemp(prefix="endbot-e2e-"))).resolve()
     instance = None
     try:
         instance = extract(args.archive.resolve(), work / "bundle")
         shim = build_linux_shim(work / "shim") if os.name != "nt" else None
         environment = sanitized_environment(dict(os.environ), shim)
         assert_no_toolchain(environment)
-        exercise(instance, environment, args.bot, args.archive.resolve(), args.exercise_update)
+        exercise(instance, environment, args.bot, args.archive.resolve(), args.exercise_update, args.transport)
     except (ConsumerError, OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
         print(f"e2e-consumer: FAIL: {error}", file=sys.stderr)
         dump_diagnostics(instance)

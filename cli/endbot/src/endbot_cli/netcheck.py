@@ -1,6 +1,6 @@
 """Pre-start check that BDS can own the NetherNet LAN discovery port.
 
-Bots reach BDS through NetherNet LAN discovery on UDP 7551. When another
+NetherNet Bots reach BDS through LAN discovery on UDP 7551. When another
 program already holds that port (typically a Minecraft client with a world open
 to LAN on the same machine), BDS cannot answer discovery, so Bots can never
 join. ``endbot start`` refuses up front with this explanation instead of

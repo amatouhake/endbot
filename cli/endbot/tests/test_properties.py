@@ -43,6 +43,17 @@ class PropertiesTests(unittest.TestCase):
         self.path.write_text("transport=nethernet\n", encoding="utf-8")
         self.assertEqual(verify_runtime_properties(self.path), ["PASS transport=nethernet"])
 
+    def test_raknet_matches_only_the_selected_transport_and_requires_a_valid_port(self) -> None:
+        self.path.write_text("transport=raknet\nserver-port=20000\n", encoding="utf-8")
+        self.assertEqual(verify_runtime_properties(self.path, "raknet"), ["PASS transport=raknet"])
+        for port in ("oops", "0", "65536"):
+            self.path.write_text(f"transport=raknet\nserver-port={port}\n", encoding="utf-8")
+            with self.assertRaisesRegex(PreflightError, "server-port"):
+                verify_runtime_properties(self.path, "raknet")
+        self.path.write_text("transport=nethernet\n", encoding="utf-8")
+        with self.assertRaisesRegex(PreflightError, "transport must be raknet"):
+            verify_runtime_properties(self.path, "raknet")
+
     def test_transport_is_case_insensitive(self) -> None:
         self.path.write_text("transport=NetherNet\n", encoding="utf-8")
         self.assertEqual(verify_runtime_properties(self.path), ["PASS transport=nethernet"])

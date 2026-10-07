@@ -37,6 +37,27 @@ class ConfigGenTestCase(unittest.TestCase):
 
 
 class RuntimeConfigTests(ConfigGenTestCase):
+    def test_raknet_generation_uses_the_selected_port_without_discovery_identity(self) -> None:
+        from unittest.mock import patch
+
+        write_endbot_toml(self.root, transport="raknet")
+        (self.server / "server.properties").write_text("transport=raknet\nserver-port=20000\n", encoding="utf-8")
+        with patch("endbot_cli.configgen.read_server_identity", side_effect=AssertionError("must not discover")):
+            generated = generate_all(self.config(), self.paths, self.server)
+        document = json.loads(generated.runtime_config.read_text())
+        self.assertEqual(document["transport"], "raknet")
+        self.assertEqual(document["serverPort"], 20000)
+        self.assertNotIn("serverName", document)
+        self.assertNotIn("levelName", document)
+
+    def test_raknet_invalid_port_cannot_silently_dial_the_default_server(self) -> None:
+        from endbot_cli.configgen import ConfigGenerationError
+
+        write_endbot_toml(self.root, transport="raknet")
+        (self.server / "server.properties").write_text("transport=raknet\nserver-port=oops\n", encoding="utf-8")
+        with self.assertRaisesRegex(ConfigGenerationError, "valid server-port"):
+            generate_all(self.config(), self.paths, self.server)
+
     def test_paths_are_absolute_and_values_come_from_the_instance(self) -> None:
         write_endbot_toml(self.root, control_port=19999)
         (self.server / "server.properties").write_text(
@@ -66,7 +87,6 @@ class RuntimeConfigTests(ConfigGenTestCase):
         self.assertEqual(len(warnings), 1)
         self.assertIn("server-port", warnings[0])
 
-
     def test_server_identity_comes_from_server_properties_with_bds_defaults(self) -> None:
         (self.server / "server.properties").unlink(missing_ok=True)
         self.assertEqual(read_server_identity(self.server), ("Dedicated Server", "Bedrock level"))
@@ -84,24 +104,18 @@ class RuntimeConfigTests(ConfigGenTestCase):
     def test_server_identity_prefers_level_dat_display_name(self) -> None:
         import fakenbt
 
-        (self.server / "server.properties").write_text(
-            "server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8"
-        )
+        (self.server / "server.properties").write_text("server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8")
         world = self.server / "worlds" / "local_world"
         world.mkdir(parents=True)
         (world / "level.dat").write_bytes(fakenbt.level_dat({"LevelName": fakenbt.string("マイ ワールド")}))
         self.assertEqual(read_server_identity(self.server), ("biiSMP", "マイ ワールド"))
 
     def test_server_identity_falls_back_to_level_name_without_level_dat(self) -> None:
-        (self.server / "server.properties").write_text(
-            "server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8"
-        )
+        (self.server / "server.properties").write_text("server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8")
         self.assertEqual(read_server_identity(self.server), ("biiSMP", "local_world"))
 
     def test_server_identity_ignores_corrupt_level_dat(self) -> None:
-        (self.server / "server.properties").write_text(
-            "server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8"
-        )
+        (self.server / "server.properties").write_text("server-name=biiSMP\nlevel-name=local_world\n", encoding="utf-8")
         world = self.server / "worlds" / "local_world"
         world.mkdir(parents=True)
         (world / "level.dat").write_bytes(b"not a level.dat")
@@ -167,7 +181,7 @@ class EndstoneConfigTests(ConfigGenTestCase):
         target.write_text(
             "# operator header comment\n"
             "[local-bot-auth]\n"
-            'enabled = false # kept comment\n'
+            "enabled = false # kept comment\n"
             'public-key-file = "old.pem"\n'
             'operator-note = "keep me"\n'
             "\n"

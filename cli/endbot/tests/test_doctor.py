@@ -178,6 +178,17 @@ class SafetyInvariantTests(DoctorTestCase):
         self.assertEqual(self.status_of(results, "server-properties"), PASS)
         self.assertIn("transport=nethernet", self.messages_of(results, "server-properties")[0])
 
+    def test_raknet_passes_with_matching_config_but_not_with_nethernet_bds(self) -> None:
+        write_endbot_toml(self.root, transport="raknet")
+        path = self.root / "server/server.properties"
+        path.write_text("online-mode=true\nallow-cheats=false\ntransport=raknet\nlevel-name=world\n", encoding="utf-8")
+        results = self.doctor()
+        self.assertIn("transport=raknet", self.messages_of(results, "server-properties")[0])
+        self.assertEqual(next(r.status for r in results if r.name == "server-properties"), PASS)
+        path.write_text(path.read_text().replace("transport=raknet", "transport=nethernet"), encoding="utf-8")
+        results = self.doctor()
+        self.assertEqual(next(r.status for r in results if r.name == "server-properties"), FAIL)
+
     def test_numeric_gamertag_is_rejected_with_quoting_hint(self) -> None:
         write_endbot_toml(self.root, gamertags="[1234]")
         results = self.doctor()
@@ -255,9 +266,7 @@ class SafetyInvariantTests(DoctorTestCase):
 
     def test_missing_level_name_checks_the_default_world(self) -> None:
         # A missing level-name is valid BDS: the default world must still be inspected.
-        (self.server / "server.properties").write_text(
-            "online-mode=true\nallow-cheats=false\n", encoding="utf-8"
-        )
+        (self.server / "server.properties").write_text("online-mode=true\nallow-cheats=false\n", encoding="utf-8")
         world = self.server / "worlds" / "Bedrock level"
         world.mkdir(parents=True)
         (world / "level.dat").write_bytes(
@@ -268,9 +277,7 @@ class SafetyInvariantTests(DoctorTestCase):
         self.assertIn("Bedrock level", self.messages_of(results, "world")[0])
 
     def test_missing_level_name_with_default_dir_but_no_level_dat_fails(self) -> None:
-        (self.server / "server.properties").write_text(
-            "online-mode=true\nallow-cheats=false\n", encoding="utf-8"
-        )
+        (self.server / "server.properties").write_text("online-mode=true\nallow-cheats=false\n", encoding="utf-8")
         (self.server / "worlds" / "Bedrock level").mkdir(parents=True)
         results = self.doctor()
         self.assertEqual(exit_code(results), 1)
@@ -278,9 +285,7 @@ class SafetyInvariantTests(DoctorTestCase):
         self.assertIn("level.dat", self.messages_of(results, "world")[0])
 
     def test_missing_level_name_without_default_dir_skips(self) -> None:
-        (self.server / "server.properties").write_text(
-            "online-mode=true\nallow-cheats=false\n", encoding="utf-8"
-        )
+        (self.server / "server.properties").write_text("online-mode=true\nallow-cheats=false\n", encoding="utf-8")
         results = self.doctor()
         self.assertEqual(self.status_of(results, "world"), SKIP)
 
@@ -393,9 +398,7 @@ class AllowlistTests(DoctorTestCase):
             json.dumps(
                 {
                     "version": 1,
-                    "bindings": [
-                        {"gamertag": "ExampleTag", "xuid": "2535412345678901", "uuid": "u", "boundAt": "t"}
-                    ],
+                    "bindings": [{"gamertag": "ExampleTag", "xuid": "2535412345678901", "uuid": "u", "boundAt": "t"}],
                 }
             ),
             encoding="utf-8",

@@ -122,10 +122,10 @@ def run_start(
     if fatal:
         return _fail("FAIL start: refusing to start (fix the FAIL lines above)")
 
-    # Fake children in tests bring no BDS; production always checks the port.
-    if lan_port_check is None and server_command is None:
+    # Fake children bring no BDS; production NetherNet checks its LAN port.
+    if config.server.transport == "nethernet" and lan_port_check is None and server_command is None:
         lan_port_check = lan_discovery_port_problem
-    problem = lan_port_check() if lan_port_check is not None else None
+    problem = lan_port_check() if config.server.transport == "nethernet" and lan_port_check is not None else None
     if problem is not None:
         return _fail(f"FAIL start: {problem}")
 

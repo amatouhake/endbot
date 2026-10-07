@@ -4,7 +4,7 @@ Endbot is a practical Fake Player foundation for the official Minecraft Bedrock 
 [Endstone](https://github.com/EndstoneMC/endstone) as the extension platform. It preserves the normal Microsoft/Xbox
 authentication path for people while adding a narrow, server-owner-controlled ES384 trust path for accountless bots.
 
-Endbot is pre-alpha. It provides persistent multi-bot profiles, real NetherNet client sessions, lifecycle/reconnect,
+Endbot is pre-alpha. It provides persistent multi-bot profiles, real NetherNet/RakNet client sessions, lifecycle/reconnect,
 server-API teleport, rename, movement/actions, hotbar selection, block interaction, and item drop behind the validated
 `/bot` authorization surface. Groups, macros, work tasks, Discord, blueprints, web UI, and AI behavior are not
 implemented.
@@ -32,6 +32,10 @@ through Endstone's official acquisition path.
    <bundle>` installs a new release next to the current one and `endbot update --rollback` returns to it.
 
 See [installation](docs/INSTALL.md), the [operator contract](docs/OPERATIONS.md), and [commands](docs/COMMANDS.md).
+The current development build also accepts `endbot setup --fresh --transport raknet`.
+NetherNet remains the default; existing-server setup keeps its current transport unless explicitly checked against
+`--transport`. See [RakNet validation](docs/RAKNET_VALIDATION.md) for the provisional Windows evidence and outstanding gates.
+Published `v0.1.x` bundles predate this CLI option.
 The sections below describe the developer and source-build workflow.
 
 ## Safety invariants
@@ -69,7 +73,7 @@ pinned official Endstone + patches/endstone series -> disposable patched checkou
 
 Endbot plugin  -> commands, human authorization, BDS observation and teleport
        | authenticated JSON request/response on loopback
-Endbot runtime -> profiles, local identity, NetherNet sessions, reconnect and inputs
+Endbot runtime -> profiles, local identity, NetherNet/RakNet sessions, reconnect and inputs
 ```
 
 The core patch is necessary because BDS rejects an accountless login inside its login-validation path before a normal

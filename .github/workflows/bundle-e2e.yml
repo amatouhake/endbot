@@ -26,9 +26,19 @@ jobs:
       matrix:
         include:
           - os: windows-2022
+            transport: nethernet
             artifact: bundle-windows
             archive: bundle/endbot-*-windows-x86_64.zip
           - os: ubuntu-22.04
+            transport: nethernet
+            artifact: bundle-linux
+            archive: bundle/bundle/endbot-*-linux-x86_64.tar.gz
+          - os: windows-2022
+            transport: raknet
+            artifact: bundle-windows
+            archive: bundle/endbot-*-windows-x86_64.zip
+          - os: ubuntu-22.04
+            transport: raknet
             artifact: bundle-linux
             archive: bundle/bundle/endbot-*-linux-x86_64.tar.gz
     runs-on: ${{ matrix.os }}
@@ -60,13 +70,13 @@ jobs:
             echo "expected exactly one bundle archive, found: ${archives[*]}"
             exit 1
           fi
-          python scripts/e2e_consumer.py "${archives[0]}" --work-dir "$RUNNER_TEMP/endbot-e2e" --exercise-update
+          python scripts/e2e_consumer.py "${archives[0]}" --work-dir "$RUNNER_TEMP/endbot-e2e" --exercise-update --transport ${{ matrix.transport }}
 
       - name: Upload E2E logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-logs-${{ matrix.os }}
+          name: e2e-logs-${{ matrix.os }}-${{ matrix.transport }}
           path: |
             ${{ runner.temp }}/endbot-e2e/bundle/supervisor-*.log
             ${{ runner.temp }}/endbot-e2e/bundle/*/state/run/

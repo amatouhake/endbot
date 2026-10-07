@@ -1,7 +1,7 @@
 # endbot — the Endbot operator CLI
 
 `endbot` is the single operator-facing command for one Endbot instance
-(docs/OPERATIONS.md). Status: 0.1.0 in progress — `setup`, `update`,
+(docs/OPERATIONS.md). Status: released (0.1.x) — `setup`, `update`,
 `doctor`, `start`, `stop`, `console`, and `controllers reset` are implemented.
 
 ## Usage

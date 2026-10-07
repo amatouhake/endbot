@@ -183,9 +183,25 @@ evidence is captured.
   - The downloaded assets pass `SHA256SUMS` and `gh attestation verify`.
   - The clean-consumer E2E passed from the published Windows zip.
 
+### 0.1.1 patch release (decided 2026-10-08)
+
+Scope: only the post-0.1.0 fixes on `main` — #36 (`transport=nethernet` enforced by fresh setup and doctor),
+#37 (expected `levelName` from `level.dat` `LevelName`), #38 (spawn reports connecting/reconnecting instead of
+online). `endstone.lock` and `patches/endstone/` are unchanged from 0.1.0, so no new Endstone/BDS pair is claimed.
+
+- [ ] `scripts/set_version.py 0.1.1` on `main`; `release-candidate.yml` with `0.1.1` (clean-consumer E2E with
+  update/rollback on both platforms); attach the exact artifacts to a **draft** release `v0.1.1`.
+- [ ] Bot-side live check on the exact Windows bundle: `setup --fresh` writes `transport=nethernet`; a world whose
+  `level.dat` `LevelName` differs from `level-name` (the #37 report) is selected and a Bot joins; a decoy NetherNet
+  host advertising other names is not joined; `endbot update` from the published 0.1.0 bundle succeeds.
+- Human/Xbox gates are **not re-run** for 0.1.1 (decided 2026-10-08): the lock and patches are identical and the
+  fixes do not touch authentication or world flags. The release notes cite the 0.1.0 gate and say so explicitly.
+- [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
+
 ### After 0.1.0 (direction)
 
-- 0.2.0: a runtime-download installer becomes the primary distribution. The
+- 0.2.0: opt-in direct-loopback RakNet transport (decided 2026-10-08; see `docs/RAKNET_VALIDATION.md`).
+- 0.3.0: a runtime-download installer becomes the primary distribution. The
   release then carries only Endbot's own artifacts (patched Endstone wheel,
   plugin, CLI, runtime source; about 25 MB on Windows and 50 MB on Linux), and
   the installer fetches CPython, Node.js, and third-party packages from their

@@ -1,6 +1,6 @@
 # Operator contract
 
-This describes the current source. Published `v0.1.x` bundles predate the transport selection added on 2026-10-08;
+This describes Endbot 0.2.0. Published `v0.1.x` bundles predate the transport selection (opt-in, experimental RakNet);
 see `RAKNET_VALIDATION.md` for its validation scope. The first-release record is in `release/FINAL_CHECKLIST.md`.
 
 The goal: a plain BDS operator runs Endbot as one product. Endbot internally uses Python (patched Endstone + plugin)

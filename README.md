@@ -32,10 +32,10 @@ through Endstone's official acquisition path.
    <bundle>` installs a new release next to the current one and `endbot update --rollback` returns to it.
 
 See [installation](docs/INSTALL.md), the [operator contract](docs/OPERATIONS.md), and [commands](docs/COMMANDS.md).
-The current development build also accepts `endbot setup --fresh --transport raknet`.
+From 0.2.0, `endbot setup --fresh --transport raknet` selects the opt-in, experimental direct-loopback RakNet transport.
 NetherNet remains the default; existing-server setup keeps its current transport unless explicitly checked against
 `--transport`. See [RakNet validation](docs/RAKNET_VALIDATION.md) for the provisional Windows evidence and outstanding gates.
-Published `v0.1.x` bundles predate this CLI option.
+Published `v0.1.x` bundles predate this option.
 The sections below describe the developer and source-build workflow.
 
 ## Safety invariants

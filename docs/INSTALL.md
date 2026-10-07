@@ -38,7 +38,7 @@ official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition
    a server or world that violates those is
    refused with an explanation rather than silently changed.
 
-   In the current development build, `--fresh --transport raknet` selects direct-loopback RakNet; omission keeps
+   From 0.2.0, `--fresh --transport raknet` selects the opt-in, experimental direct-loopback RakNet; omission keeps
    NetherNet. `--existing` keeps the BDS transport and records it in `endbot.toml`; an explicit `--transport` must
    match the BDS setting. Published `v0.1.x` bundles do not have this option. For a later transport change, stop
    the instance, set both `[server] transport` in `endbot.toml` and `transport` in `server.properties`, then run
@@ -123,7 +123,7 @@ inside the dependency's build check rather than with an Endbot error.
    Stop the server, then configure:
    - `server.properties`: keep `online-mode=true`, `allow-cheats=false`, and select the runtime's transport:
      `transport=nethernet` by default, or `transport=raknet` with explicit `"transport": "raknet"` in runtime JSON
-     from the current source. The published `v0.1.0` runtime only uses NetherNet. On NetherNet, leave `server-udp-ports` unset (do not set
+     from 0.2.0 on. Published `v0.1.x` runtimes only use NetherNet. On NetherNet, leave `server-udp-ports` unset (do not set
      a single port or a range; since upstream `v0.11.12` the server shares one UDP port across NetherNet sessions).
      Check safety with `python3 scripts/preflight.py /srv/endbot-server/server.properties
      --acknowledge-world-state-unverified` from a checkout (`preflight` covers only the safety invariants —

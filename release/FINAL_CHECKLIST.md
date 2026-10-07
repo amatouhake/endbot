@@ -189,14 +189,19 @@ Scope: only the post-0.1.0 fixes on `main` — #36 (`transport=nethernet` enforc
 #37 (expected `levelName` from `level.dat` `LevelName`), #38 (spawn reports connecting/reconnecting instead of
 online). `endstone.lock` and `patches/endstone/` are unchanged from 0.1.0, so no new Endstone/BDS pair is claimed.
 
-- [ ] `scripts/set_version.py 0.1.1` on `main`; `release-candidate.yml` with `0.1.1` (clean-consumer E2E with
+- [x] `scripts/set_version.py 0.1.1` on `main`; `release-candidate.yml` with `0.1.1` (clean-consumer E2E with
   update/rollback on both platforms); attach the exact artifacts to a **draft** release `v0.1.1`.
-- [ ] Bot-side live check on the exact Windows bundle: `setup --fresh` writes `transport=nethernet`; a world whose
-  `level.dat` `LevelName` differs from `level-name` (the #37 report) is selected and a Bot joins; a decoy NetherNet
-  host advertising other names is not joined; `endbot update` from the published 0.1.0 bundle succeeds.
+  (#42; run 37688550948 from `337da22`)
+- [x] Bot-side live check on the exact Windows bundle (2026-10-08): `setup --fresh` writes `transport=nethernet`; a
+  world whose `level.dat` `LevelName` differs from `level-name` (Japanese display name vs `Bedrock level`) is
+  selected and a Bot joins, while rolled-back 0.1.0 on the same world stays disconnected with the expected
+  level-name mismatch (this control run replaced a separate decoy host; selection rejection is unchanged code with
+  unit coverage); `endbot update` from the published 0.1.0 bundle is refused without `transport` (0.1.0 kept
+  current) and succeeds with `--force` once it is restored; repeated spawn reports `already online`.
 - Human/Xbox gates are **not re-run** for 0.1.1 (decided 2026-10-08): the lock and patches are identical and the
   fixes do not touch authentication or world flags. The release notes cite the 0.1.0 gate and say so explicitly.
-- [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
+- [x] Publish the draft unchanged, then re-verify checksums from the published assets. (2026-10-08: published
+  `SHA256SUMS` identical to the candidate's; Windows bundle attestation verified)
 
 ### After 0.1.0 (direction)
 

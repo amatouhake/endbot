@@ -89,7 +89,7 @@ def read_server_port(server: Path) -> tuple[int, list[str]]:
         port = -1
     if not 1 <= port <= 65535:
         warnings.append(
-            f"WARN config-gen: server-port {raw!r} in {server / 'server.properties'} is not a valid TCP port; "
+            f"WARN config-gen: server-port {raw!r} in {server / 'server.properties'} is not a valid port; "
             f"using {DEFAULT_SERVER_PORT}"
         )
         return DEFAULT_SERVER_PORT, warnings
@@ -158,8 +158,9 @@ def generate_runtime_config(
         "controlPort": config.runtime.control_port,
         "serverHost": CONTROL_HOST,
         "serverPort": server_port,
+        "transport": config.server.transport,
     }
-    if server_identity is not None:
+    if config.server.transport == "nethernet" and server_identity is not None:
         document["serverName"], document["levelName"] = server_identity
     target = paths.state_generated / "endbot-runtime.json"
     atomic_write_text(target, json.dumps(document, indent=2) + "\n")
@@ -174,9 +175,13 @@ def _read_legacy_allowlists(plugin_config: Path) -> tuple[list[str], list[str], 
     except FileNotFoundError:
         return [], [], None
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
-        return [], [], (
-            f"WARN config-gen: {plugin_config} cannot be parsed ({error}); "
-            "legacy [authorization] pre-bound entries are not preserved"
+        return (
+            [],
+            [],
+            (
+                f"WARN config-gen: {plugin_config} cannot be parsed ({error}); "
+                "legacy [authorization] pre-bound entries are not preserved"
+            ),
         )
     authorization = document.get("authorization", {})
     if not isinstance(authorization, dict):
@@ -252,7 +257,12 @@ def generate_all(config: EndbotConfig, paths: InstancePaths, server: Path) -> Ge
     """Regenerate every derived config file (section 2) and report what happened."""
 
     server_port, messages = read_server_port(server)
-    runtime_config = generate_runtime_config(paths, config, server_port, read_server_identity(server))
+    if config.server.transport == "raknet" and messages:
+        raise ConfigGenerationError(
+            "RakNet requires a readable server.properties with a valid server-port: " + "; ".join(messages)
+        )
+    identity = read_server_identity(server) if config.server.transport == "nethernet" else None
+    runtime_config = generate_runtime_config(paths, config, server_port, identity)
     plugin_config, plugin_messages = generate_plugin_config(server, paths, config)
     messages = [*messages, *plugin_messages]
     endstone_config = generate_endstone_config(server, paths)

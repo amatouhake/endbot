@@ -21,6 +21,7 @@ FAKES_DIR = Path(__file__).resolve().parent
 ENDBOT_TOML_TEMPLATE = """\
 [server]
 path = '{server_path}'
+{transport_line}
 
 [controllers]
 gamertags = {gamertags}
@@ -113,11 +114,21 @@ def generate_key_pem() -> tuple[bytes, bytes]:
 
 
 def write_endbot_toml(
-    root: Path, *, gamertags: str = '["ExampleTag"]', control_port: int = 19142, server_path: str = "server"
+    root: Path,
+    *,
+    gamertags: str = '["ExampleTag"]',
+    control_port: int = 19142,
+    server_path: str = "server",
+    transport: str | None = None,
 ) -> Path:
     path = root / "endbot.toml"
     path.write_text(
-        ENDBOT_TOML_TEMPLATE.format(gamertags=gamertags, control_port=control_port, server_path=server_path),
+        ENDBOT_TOML_TEMPLATE.format(
+            gamertags=gamertags,
+            control_port=control_port,
+            server_path=server_path,
+            transport_line=f"transport = '{transport}'" if transport is not None else "",
+        ),
         encoding="utf-8",
     )
     return path

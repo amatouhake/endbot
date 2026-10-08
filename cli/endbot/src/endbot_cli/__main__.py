@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from endbot_cli.commands import first_start_tolerable, run_console, run_controllers_reset, run_start, run_stop
+from endbot_cli.config import TRANSPORTS
 from endbot_cli.doctor import FAIL, WARN, CheckResult, DoctorContext, exit_code, run_doctor
 from endbot_cli.instance import InstanceError, InstancePaths, resolve_instance_root
 from endbot_cli.runstate import LAST_EXIT
@@ -44,9 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     controllers_subcommands = controllers.add_subparsers(dest="controllers_command", required=True)
     reset = controllers_subcommands.add_parser("reset", help="return one controller binding to pending (section 3)")
     reset.add_argument("gamertag", help="the GamerTag whose binding should be removed")
-    setup = subcommands.add_parser(
-        "setup", help="create or adopt an instance; prints the full plan first (section 6)"
-    )
+    setup = subcommands.add_parser("setup", help="create or adopt an instance; prints the full plan first (section 6)")
     mode = setup.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fresh", action="store_true", help="create <instance>/server and download the locked BDS")
     mode.add_argument(
@@ -63,6 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Xbox GamerTag of a controller to enroll (repeatable, section 3)",
     )
     setup.add_argument("--apply", action="store_true", help="execute the printed plan (without it, only print)")
+    setup.add_argument(
+        "--transport",
+        choices=TRANSPORTS,
+        default=None,
+        help="Bot/BDS transport (fresh default: nethernet; existing: keep its current transport)",
+    )
     setup.add_argument(
         "--backup-worlds", action="store_true", help="copy worlds/ into the setup backup (--existing only)"
     )
@@ -134,6 +139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             fresh=args.fresh,
             existing=args.existing,
             gamertags=args.controller,
+            transport=args.transport,
             apply=args.apply,
             backup_worlds=args.backup_worlds,
             have_world_backup=args.i_have_a_world_backup,

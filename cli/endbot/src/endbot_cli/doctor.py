@@ -85,7 +85,7 @@ def check_server_dir(config: EndbotConfig, paths: InstancePaths) -> tuple[CheckR
     return CheckResult(PASS, "server-dir", f"{server} exists"), server
 
 
-def check_server_properties(server: Path) -> tuple[CheckResult, dict[str, str] | None]:
+def check_server_properties(server: Path, transport: str = "nethernet") -> tuple[CheckResult, dict[str, str] | None]:
     name = "server-properties"
     properties_path = server / "server.properties"
     try:
@@ -105,7 +105,7 @@ def check_server_properties(server: Path) -> tuple[CheckResult, dict[str, str] |
                 FAIL,
                 name,
                 f"{error}; fix {properties_path} "
-                "(required: online-mode=true, allow-cheats=false, transport=nethernet)",
+                f"(required: online-mode=true, allow-cheats=false, transport={transport})",
             ),
             None,
         )
@@ -121,20 +121,18 @@ def check_server_properties(server: Path) -> tuple[CheckResult, dict[str, str] |
             properties,
         )
     try:
-        verify_runtime_properties(properties_path)
+        verify_runtime_properties(properties_path, transport)
     except PreflightError as error:
         return (
             CheckResult(
                 FAIL,
                 name,
-                f"{properties_path}: {error} (Endbot runtime requires NetherNet)",
+                f"{properties_path}: {error}",
             ),
             properties,
         )
     return (
-        CheckResult(
-            PASS, name, f"online-mode=true, allow-cheats=false, transport=nethernet in {properties_path}"
-        ),
+        CheckResult(PASS, name, f"online-mode=true, allow-cheats=false, transport={transport} in {properties_path}"),
         properties,
     )
 
@@ -501,7 +499,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
         results.append(CheckResult(SKIP, "server-properties", "server directory is unavailable"))
         results.append(CheckResult(SKIP, "world", "server directory is unavailable"))
     else:
-        properties_result, properties = check_server_properties(server)
+        properties_result, properties = check_server_properties(server, config.server.transport)
         results.append(properties_result)
         results.append(check_world(server, properties))
 

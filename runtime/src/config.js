@@ -6,6 +6,11 @@ import path from 'node:path'
 
 export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
 
+export function serverTransport (value = 'nethernet') {
+  if (!['nethernet', 'raknet'].includes(value)) throw new Error('Endbot transport must be nethernet or raknet')
+  return value
+}
+
 export function loadConfig (filename) {
   const root = path.dirname(path.resolve(filename))
   const value = JSON.parse(fs.readFileSync(filename, 'utf8'))
@@ -31,6 +36,8 @@ export function loadConfig (filename) {
     controlPort: value.controlPort ?? 19142,
     controlRequestTimeoutMs: value.controlRequestTimeoutMs ?? 8_000,
     serverHost,
+    // Preserve legacy configs; operator setup can explicitly select either transport.
+    transport: serverTransport(value.transport),
     serverPort: value.serverPort ?? 19132,
     gameVersion: value.gameVersion ?? '1.26.51',
     // Expected BDS advertisement (server.properties server-name and the world

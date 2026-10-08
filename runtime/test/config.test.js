@@ -43,3 +43,12 @@ test('server identity is optional but must be complete and non-empty', () => {
   assert.throws(() => loadConfig(writeConfig({ serverName: 'Endstone Server' })), /together/)
   assert.throws(() => loadConfig(writeConfig({ serverName: '', levelName: 'x' })), /non-empty/)
 })
+
+test('transport defaults to NetherNet and RakNet remains an explicit loopback choice', () => {
+  assert.equal(loadConfig(writeConfig({})).transport, 'nethernet')
+  assert.equal(loadConfig(writeConfig({ transport: 'raknet' })).transport, 'raknet')
+  for (const transport of ['auto', '', null, 1]) {
+    assert.throws(() => loadConfig(writeConfig({ transport })), /transport must/)
+  }
+  assert.throws(() => loadConfig(writeConfig({ transport: 'raknet', serverHost: '192.0.2.10' })), /loopback/)
+})

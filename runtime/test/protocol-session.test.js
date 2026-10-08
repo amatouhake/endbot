@@ -42,6 +42,62 @@ function connectedSession (directory, client) {
   return { session, connecting: session.connect() }
 }
 
+for (const transport of [undefined, 'raknet']) {
+  test(`${transport ?? 'default NetherNet'} preserves local auth and selects only its own connection path`, async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-transport-'))
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+    const client = fakeLiveClient()
+    let options
+    let discoveries = 0
+    const session = new BedrockSession(
+      { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
+      {
+        transport,
+        serverHost: '127.0.0.1',
+        serverPort: 29432,
+        serverName: 'Selected BDS',
+        levelName: 'World',
+        gameVersion: '1.26.51',
+        ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
+        ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
+        protocolLoader: async () => ({ createClient: value => { options = value; return client } }),
+        discover: async () => { discoveries++; return { networkId: 123n } }
+      }
+    )
+    t.after(() => session.disconnect('test cleanup'))
+    const connecting = session.connect()
+    await turn()
+    client.emit('spawn')
+    await connecting
+    assert.equal(options.transport, transport ?? 'nethernet')
+    assert.equal(options.host, '127.0.0.1')
+    assert.equal(options.port, 29432)
+    assert.equal(options.version, '1.26.51')
+    assert.equal(options.offline, false)
+    assert.equal(typeof options.authflow.getMinecraftBedrockToken, 'function')
+    assert.equal(options.skinData.SelfSignedId, session.profile.identityId)
+    assert.equal(options.skipPing, true)
+    if (transport === 'raknet') {
+      assert.equal(discoveries, 0)
+      assert.equal('nethernet' in options, false)
+      assert.equal(options.followPort, false)
+      assert.equal(options.raknetBackend, 'raknet-native')
+    } else {
+      assert.equal(discoveries, 1)
+      assert.deepEqual(options.nethernet, { signalling: 'lan', networkId: 123n })
+    }
+  })
+}
+
+test('sessions reject an unknown transport before loading protocol code', async () => {
+  const session = new BedrockSession({}, {
+    transport: 'auto',
+    serverHost: '127.0.0.1',
+    protocolLoader: () => { throw new Error('must not load') }
+  })
+  await assert.rejects(session.connect(), /transport must/)
+})
+
 test('disconnect waits for paused initialization and prevents late client creation', async () => {
   let releaseProtocol
   let createClientCalls = 0

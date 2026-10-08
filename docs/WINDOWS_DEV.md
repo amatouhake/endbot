@@ -10,8 +10,9 @@ It exists so that WSL-hosted behavior (which needs `hostAddressLoopback` network
 loopback-only native topology. It is not a release or packaging path, it does not change the pinned Endstone/BDS pair,
 and every safety invariant in the README applies unchanged: `online-mode=true`, `allow-cheats=false`, no experiments,
 Beta APIs, GameTest, or required packs, the normal Microsoft/Xbox path for people, and local bot auth disabled unless
-the operator enables it with the runtime-generated owner public key. In addition the Endbot runtime requires
-`transport=nethernet` (separate from safety; `scripts/preflight.py` does not check it).
+the operator enables it with the runtime-generated owner public key. The runtime transport must match BDS:
+`nethernet` by default, or explicit `raknet` (separate from safety; `scripts/preflight.py` does not check it).
+The [RakNet validation record](RAKNET_VALIDATION.md) describes the current Windows evidence and remaining gates.
 
 Native Windows hosting of the runtime and server was designed for but was not part of the recorded M2 validation; see
 [`COMPATIBILITY.md`](COMPATIBILITY.md).
@@ -20,7 +21,8 @@ Current status after PR #4: native Windows hosting has additionally been live-sm
 `0.11.11+endbot.2`, official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Alice local Bot alongside a
 normal Microsoft/Xbox human client). Linux nevertheless remains the CI/release-artifact baseline, and the PR #4 smoke
 added no new Xbox-achievement observation for `+endbot.2`. The current package is `0.11.12+endbot.1` on upstream
-`v0.11.12` (same BDS pair); that rebase awaits its own live regression and new achievement observation.
+`v0.11.12` (same BDS pair). Its October 2026 RakNet Windows smoke and provisional human gate are recorded in
+[`RAKNET_VALIDATION.md`](RAKNET_VALIDATION.md); a new Xbox-achievement observation remains deferred.
 
 ## Prerequisites
 
@@ -71,9 +73,10 @@ npm test --prefix runtime
 `--allow-remote=root` is an npm 12 policy opt-in, not a Windows requirement: npm 12 refuses tarball URL dependencies
 by default, and `root` permits only the URLs already written in `runtime/package.json` (the pinned
 `prismarine-xbox-services` source tarball, which is not on the npm registry). Pass the flag on the npm 12 command line
-only; no tracked `.npmrc` change is needed. No dependency install script is needed: the NetherNet transport is pure
-JavaScript (`werift`), and `raknet-native`'s blocked install warning on npm 12 is expected and harmless because Endbot
-never uses the RakNet transport.
+only; no tracked `.npmrc` change is needed. NetherNet uses pure JavaScript (`werift`). RakNet requires a working
+`raknet-native` addon; an available prebuild can load even if npm blocks its install script. Verify with
+`node -e "require('raknet-native')"` from `runtime/` before selecting RakNet. Bundle assembly checks the addon
+both before and after dependency pruning.
 
 ## Prepare and build patched Endstone
 
@@ -160,12 +163,12 @@ command yourself from an elevated prompt, otherwise the client will not see the 
 
 Stop the server after the first start, then configure:
 
-1. `server.properties`: keep `online-mode=true` and `allow-cheats=false`, and set `transport=nethernet` (the runtime
-   always dials BDS over NetherNet; a shipped `transport=raknet` leaves human clients working while Bots never
-   connect); do not enable experiments or packs. Check safety
+1. `server.properties`: keep `online-mode=true` and `allow-cheats=false`, and select the runtime's transport:
+   `transport=nethernet` by default, or `transport=raknet` together with `"transport": "raknet"` in runtime JSON.
+   With the operator CLI, select `[server] transport` in `endbot.toml` instead of editing generated JSON.
+   Do not enable experiments or packs. Check safety
    with `python scripts\preflight.py C:\endbot-local\server\server.properties --acknowledge-world-state-unverified`
-   (`preflight` is safety-only; `transport=nethernet` is a separate Endbot runtime requirement checked by
-   `endbot doctor`).
+   (`preflight` is safety-only; matching transport is checked separately by `endbot doctor`).
    BDS `1.26.51` ships `allow-list=true`. It applies to humans only: a Bot accepted by the local-bot trust path joins
    without an `allowlist.json` entry (see `docs/OPERATIONS.md`). Add every human tester to `allowlist.json`, or set
    `allow-list=false` on a local smoke server (it is an access list, not an authentication or achievement invariant). Leave `server-udp-ports` unset: delete the shipped `server-udp-ports=19132` line (or leave it

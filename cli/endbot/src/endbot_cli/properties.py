@@ -20,17 +20,11 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
+from endbot_cli.config import DEFAULT_TRANSPORT, TRANSPORTS
+
 REQUIRED_PROPERTIES = {
     "online-mode": "true",
     "allow-cheats": "false",
-}
-
-# Endbot runtime compatibility (separate from the safety invariants above):
-# the runtime always creates Bedrock sessions with transport=nethernet, so a
-# server without it accepts human clients while Bots never reach the login
-# path (issue #36).
-RUNTIME_REQUIRED_PROPERTIES = {
-    "transport": "nethernet",
 }
 
 
@@ -68,25 +62,31 @@ def verify_server_properties(path: Path) -> list[str]:
     return messages
 
 
-def verify_runtime_properties(path: Path) -> list[str]:
-    """Check the Endbot runtime compatibility requirement (transport=nethernet)."""
-
+def verify_runtime_properties(path: Path, transport: str = DEFAULT_TRANSPORT) -> list[str]:
+    """Require BDS to match the operator's selected transport (separate from safety)."""
+    if transport not in TRANSPORTS:
+        raise PreflightError(f"unsupported Endbot transport {transport!r}; choose nethernet or raknet")
     properties = parse_properties(path)
-    messages: list[str] = []
-    for key, expected in RUNTIME_REQUIRED_PROPERTIES.items():
-        if key not in properties:
+    actual = properties.get("transport")
+    if actual is None or actual.lower() != transport:
+        detail = (
+            "required property 'transport' is missing"
+            if actual is None
+            else f"transport must be {transport}, found {actual!r}"
+        )
+        raise PreflightError(
+            f"{detail}; set transport={transport} in {path} to match [server] transport in endbot.toml"
+        )
+    if transport == "raknet" and "server-port" in properties:
+        try:
+            port = int(properties["server-port"])
+        except ValueError:
+            port = 0
+        if not 1 <= port <= 65535:
             raise PreflightError(
-                f"required property {key!r} is missing; "
-                f"set {key}={expected} in {path} (Endbot runtime requires NetherNet)"
+                f"server-port must be a valid UDP port (1..65535), found {properties['server-port']!r}"
             )
-        actual = properties[key].lower()
-        if actual != expected:
-            raise PreflightError(
-                f"{key} must be {expected}, found {properties[key]!r}; "
-                f"set {key}={expected} in {path} (Endbot runtime requires NetherNet)"
-            )
-        messages.append(f"PASS {key}={expected}")
-    return messages
+    return [f"PASS transport={transport}"]
 
 
 _LINE_ENDING = re.compile(r"(\r\n|\n|\r)$")

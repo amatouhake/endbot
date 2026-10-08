@@ -163,9 +163,7 @@ class RefusalTests(SetupTestCase):
         self.assertFalse(self.paths.backups.exists())
 
     def test_allow_cheats_true_fails_the_plan(self) -> None:
-        server = build_bds_dir(
-            self.root / "server", properties="online-mode=true\nallow-cheats=true\n", version=None
-        )
+        server = build_bds_dir(self.root / "server", properties="online-mode=true\nallow-cheats=true\n", version=None)
         _code, out, _err = self.run_setup(**self.existing_args(server))
         self.assertIn("allow-cheats must be false", out)
 
@@ -265,13 +263,37 @@ class ApplyTests(SetupTestCase):
         self.assertIn("refusing to apply", err)
         self.assertFalse(self.paths.endbot_toml.exists())
 
-    def test_existing_with_wrong_transport_fails_the_plan(self) -> None:
+    def test_existing_preserves_raknet_and_records_it_in_operator_config(self) -> None:
         server = build_bds_dir(
             self.root / "server",
             properties="online-mode=true\nallow-cheats=false\ntransport=raknet\nlevel-name=world\n",
         )
-        _code, out, _err = self.run_setup(**self.existing_args(server))
-        self.assertIn("transport must be nethernet", out)
+        original = (server / "server.properties").read_bytes()
+        code, out, err = self.run_setup(**self.existing_args(server, apply=True))
+        self.assertEqual(code, 0, err)
+        self.assertIn("transport=raknet", out)
+        self.assertIn('transport = "raknet"', self.paths.endbot_toml.read_text())
+        self.assertEqual((server / "server.properties").read_bytes(), original)
+
+    def test_existing_transport_mismatch_refuses_without_editing(self) -> None:
+        server = build_bds_dir(self.root / "server")
+        before = (server / "server.properties").read_bytes()
+        code, out, _err = self.run_setup(**self.existing_args(server, apply=True, transport="raknet"))
+        self.assertEqual(code, 1)
+        self.assertIn("transport must be raknet", out)
+        self.assertFalse(self.paths.endbot_toml.exists())
+        self.assertEqual((server / "server.properties").read_bytes(), before)
+
+    def test_fresh_raknet_setup_sets_both_configs_and_keeps_safety(self) -> None:
+        acquire = RecordingAcquire()
+        code, out, err = self.run_setup(fresh=True, existing=None, transport="raknet", apply=True, acquire_bds=acquire)
+        self.assertEqual(code, 0, err)
+        properties = parse_properties(self.root / "server/server.properties")
+        self.assertEqual(properties["transport"], "raknet")
+        self.assertEqual(properties["online-mode"], "true")
+        self.assertEqual(properties["allow-cheats"], "false")
+        self.assertIn('transport = "raknet"', self.paths.endbot_toml.read_text())
+        self.assertIn("PASS server-properties", out)
 
     def test_apply_existing_equal_version_skips_bds_and_backs_up(self) -> None:
         server = build_bds_dir(self.root / "elsewhere", version="26.51", worlds=True)
@@ -389,9 +411,7 @@ class AllowlistTests(SetupTestCase):
                 server.mkdir(exist_ok=True)
                 path = server / "allowlist.json"
                 path.write_text(text, encoding="utf-8")
-                code, out, _err = self.run_setup(
-                    fresh=True, existing=None, gamertags=["Alice"], apply=False
-                )
+                code, out, _err = self.run_setup(fresh=True, existing=None, gamertags=["Alice"], apply=False)
                 self.assertEqual(code, 0)  # dry-run prints the FAIL
                 self.assertIn("allowlist.json", out)
                 self.assertIn("FAIL", out)

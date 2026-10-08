@@ -16,6 +16,8 @@ from typing import Any
 from endbot_cli.compat import tomllib
 
 DEFAULT_CONTROL_PORT = 19142
+DEFAULT_TRANSPORT = "nethernet"
+TRANSPORTS = ("nethernet", "raknet")
 SECTIONS = ("server", "controllers", "runtime")
 
 
@@ -26,6 +28,7 @@ class ConfigError(ValueError):
 @dataclass(frozen=True, slots=True)
 class ServerConfig:
     path: str
+    transport: str = DEFAULT_TRANSPORT
 
     def resolve(self, instance_root: Path) -> Path:
         """Return the BDS directory; relative paths resolve against the instance."""
@@ -77,13 +80,21 @@ def _reject_unknown_keys(path: Path, table: dict[str, Any], section: str, known:
 
 def _load_server(path: Path, document: dict[str, Any]) -> ServerConfig:
     table = _require_table(path, document, "server")
-    _reject_unknown_keys(path, table, "server", ("path",))
+    _reject_unknown_keys(path, table, "server", ("path", "transport"))
     if "path" not in table:
         raise _fail(path, "server.path", "is missing", "add [server] path = 'server' (the BDS directory)")
     value = table["path"]
     if not isinstance(value, str) or not value:
         raise _fail(path, "server.path", "must be a non-empty string", "quote the value, e.g. path = 'server'")
-    return ServerConfig(path=value)
+    transport = table.get("transport", DEFAULT_TRANSPORT)
+    if not isinstance(transport, str) or transport not in TRANSPORTS:
+        raise _fail(
+            path,
+            "server.transport",
+            f"must be one of {TRANSPORTS}, found {transport!r}",
+            'use transport = "nethernet" or "raknet" to match server.properties',
+        )
+    return ServerConfig(path=value, transport=transport)
 
 
 def _load_controllers(path: Path, document: dict[str, Any]) -> ControllersConfig:

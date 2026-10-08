@@ -34,10 +34,16 @@ official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition
    To adopt an existing vanilla BDS (or earlier Endstone) directory instead, use
    `endbot setup --existing <path> --controller <GamerTag> --i-have-a-world-backup --apply` (or pass
    `--backup-worlds` to copy `worlds/` into the `backups/<UTC timestamp>/` safety backup). Setup enforces
-   `online-mode=true`, `allow-cheats=false`, and no experiment history, plus the runtime transport requirement
-   `transport=nethernet` (fresh setups set it; existing servers must already have it — the plan FAILs with a
-   manual fix instead of silently changing it); a server or world that violates those is
+   `online-mode=true`, `allow-cheats=false`, and no experiment history, plus a supported, matching transport;
+   a server or world that violates those is
    refused with an explanation rather than silently changed.
+
+   From 0.2.0, `--fresh --transport raknet` selects the opt-in, experimental direct-loopback RakNet; omission keeps
+   NetherNet. `--existing` keeps the BDS transport and records it in `endbot.toml`; an explicit `--transport` must
+   match the BDS setting. Published `v0.1.x` bundles do not have this option. For a later transport change, stop
+   the instance, set both `[server] transport` in `endbot.toml` and `transport` in `server.properties`, then run
+   `doctor` and `start`. See [RakNet validation](RAKNET_VALIDATION.md) for the evidence boundary. A rollback to an
+   older CLI that cannot read `server.transport` refuses safely; restore a compatible NetherNet configuration first.
 
    A fresh setup also adds every `--controller` GamerTag to `<instance>/server/allowlist.json` (a fresh BDS enables
    `allow-list=true` with an empty list and would otherwise reject the controllers). When adopting an existing server
@@ -67,9 +73,9 @@ contains exactly:
 | --- | --- |
 | `endstone-0.11.12+endbot.1-*-manylinux_*.whl` | Patched Endstone for Linux x86_64 (CPython 3.12), repaired to a `manylinux_*` platform tag. CI-built. Use this wheel on Linux; it does not install on Windows. |
 | `endstone-0.11.12+endbot.1-*-win_amd64.whl` | Patched Endstone for Windows x64 (CPython 3.12). CI-built by the release-candidate workflow's Windows job from the same `endstone.lock` + `patches/endstone/` inputs as the Linux wheel. Use this wheel on Windows; it does not install on Linux. |
-| `endstone_endbot-0.1.1-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.12+endbot.1`, so pip cannot substitute official unpatched `0.11.12`. |
-| `endbot-runtime-0.1.1.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
-| `endbot-config-0.1.1.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
+| `endstone_endbot-0.2.0-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.12+endbot.1`, so pip cannot substitute official unpatched `0.11.12`. |
+| `endbot-runtime-0.2.0.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
+| `endbot-config-0.2.0.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
 | `ENDSTONE_LICENSE` | Upstream Endstone license carried from the pinned checkout. |
 | `compatibility-manifest.json` | Machine-readable binding of Endbot revision, Endstone tag/commit/package, BDS version/build/protocol, patch revision, and validation state (schema: `release/compatibility-manifest.schema.json`). |
 | `SHA256SUMS` | SHA-256 checksums of every file above. |
@@ -97,13 +103,13 @@ inside the dependency's build check rather than with an Endbot error.
    Endstone wheel carries no LLVM runtime dependency:
    ```bash
    python3 -m venv .venv && . .venv/bin/activate
-   python -m pip install ./endstone-0.11.12+endbot.1-*.whl ./endstone_endbot-0.1.1-*.whl
+   python -m pip install ./endstone-0.11.12+endbot.1-*.whl ./endstone_endbot-0.2.0-*.whl
    python -c "import importlib.metadata as m; print(m.version('endstone'))"
    ```
    Expected: `0.11.12+endbot.1`. Never install official `endstone==0.11.12` into this environment.
 2. Unpack the runtime bundle outside the server folder and install its pinned dependencies:
    ```bash
-   mkdir -p /opt/endbot && tar -xzf endbot-runtime-0.1.1.tar.gz -C /opt/endbot
+   mkdir -p /opt/endbot && tar -xzf endbot-runtime-0.2.0.tar.gz -C /opt/endbot
    npm ci --prefix /opt/endbot
    cp /opt/endbot/endbot-runtime.example.json /opt/endbot/endbot-runtime.json
    node /opt/endbot/src/cli.js --config /opt/endbot/endbot-runtime.json
@@ -115,13 +121,13 @@ inside the dependency's build check rather than with an Endbot error.
    mkdir -p /srv/endbot-server && endstone -s /srv/endbot-server
    ```
    Stop the server, then configure:
-   - `server.properties`: keep `online-mode=true`, `allow-cheats=false`, and set `transport=nethernet` (the runtime
-     always dials BDS over NetherNet; a shipped `transport=raknet` leaves human clients working while Bots never
-     connect); leave `server-udp-ports` unset (do not set
+   - `server.properties`: keep `online-mode=true`, `allow-cheats=false`, and select the runtime's transport:
+     `transport=nethernet` by default, or `transport=raknet` with explicit `"transport": "raknet"` in runtime JSON
+     from 0.2.0 on. Published `v0.1.x` runtimes only use NetherNet. On NetherNet, leave `server-udp-ports` unset (do not set
      a single port or a range; since upstream `v0.11.12` the server shares one UDP port across NetherNet sessions).
      Check safety with `python3 scripts/preflight.py /srv/endbot-server/server.properties
      --acknowledge-world-state-unverified` from a checkout (`preflight` covers only the safety invariants —
-     `transport=nethernet` is a separate Endbot runtime requirement, checked by `endbot doctor`), or apply the same values by hand.
+     the matching transport is a separate Endbot runtime requirement, checked by `endbot doctor`), or apply the same values by hand.
    - `endstone.toml`: set the `[local-bot-auth]` table from the unpacked `config/endstone.local-auth.example.toml`
      with `enabled = true` and `public-key-file` pointing at the runtime's `owner-public.pem`. Only the public key
      is ever configured in Endstone. The `[network]` `stun-servers` default needs no change for local/loopback use.
@@ -152,8 +158,8 @@ Each platform installs its own Endstone wheel from the candidate; the remaining 
    source remains a development-only path documented in [`WINDOWS_DEV.md`](WINDOWS_DEV.md), not the
    install path.) Verify `0.11.12+endbot.1` before continuing.
 2. Install the candidate plugin wheel into the same environment (`python -m pip install
-   .\endstone_endbot-0.1.1-*.whl`); it is platform-independent and still pins the exact patched Endstone version.
-3. Unpack `endbot-runtime-0.1.1.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for
+   .\endstone_endbot-0.2.0-*.whl`); it is platform-independent and still pins the exact patched Endstone version.
+3. Unpack `endbot-runtime-0.2.0.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for
    the pinned tarball dependency URL; see [`WINDOWS_DEV.md`](WINDOWS_DEV.md)), copy the example runtime
    configuration outside the unpacked tree, and start the runtime with Node 24+.
 4. Create the server folder with `endstone -s` (official Windows BDS `1.26.51.1` build `51061361`, same protocol

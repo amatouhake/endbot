@@ -203,6 +203,23 @@ online). `endstone.lock` and `patches/endstone/` are unchanged from 0.1.0, so no
 - [x] Publish the draft unchanged, then re-verify checksums from the published assets. (2026-10-08: published
   `SHA256SUMS` identical to the candidate's; Windows bundle attestation verified)
 
+### 0.2.0 release — opt-in RakNet transport (decided 2026-10-08)
+
+Scope: `[server] transport = "nethernet" | "raknet"` (#43). NetherNet stays the default; RakNet is opt-in and
+documented as experimental. `endstone.lock` and `patches/endstone/` are unchanged, so no new Endstone/BDS pair is
+claimed. Evidence and open items: `docs/RAKNET_VALIDATION.md`.
+
+- [x] CI consumer E2E on both transports × Windows/Linux, including update/rollback (branch run 37688666654).
+- [ ] `release-candidate.yml` with `0.2.0` on the merged `main`; attach the exact artifacts to a **draft** `v0.2.0`.
+- [ ] Bot-side live check on the exact Windows bundle: `setup --fresh --transport raknet` → start with UDP 7551
+  held by another program → Bot joins → stop; `endbot update` from published 0.1.1 keeps NetherNet with no
+  `endbot.toml` change.
+- [ ] **Human gate on RakNet (operator, before publication):** an Xbox-authenticated human joins the RakNet
+  instance alongside a Bot, `/bot` works from the client, and the world flags stay clean afterwards. Decide
+  explicitly whether an actual Xbox achievement unlock on RakNet is required for 0.2.0 or recorded as not run
+  (`RAKNET_VALIDATION.md` currently records it as not run).
+- [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
+
 ### After 0.1.0 (direction)
 
 - 0.2.0: opt-in direct-loopback RakNet transport (decided 2026-10-08; see `docs/RAKNET_VALIDATION.md`).

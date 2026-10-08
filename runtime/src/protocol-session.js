@@ -3,7 +3,7 @@
 
 import { EventEmitter } from 'node:events'
 
-import { LOOPBACK_HOSTS } from './config.js'
+import { LOOPBACK_HOSTS, serverTransport } from './config.js'
 import { discoverServer } from './discovery.js'
 import { createLocalBotAuth } from './local-identity.js'
 import {
@@ -68,6 +68,7 @@ export class BedrockSession extends EventEmitter {
     if (!LOOPBACK_HOSTS.has(this.options.serverHost)) {
       throw new Error('Endbot connects to loopback BDS servers only')
     }
+    const transport = serverTransport(this.options.transport)
     const protocolModule = await (this.options.protocolLoader?.() ?? import('bedrock-protocol'))
     // Dynamic module loading cannot be aborted. Recheck ownership immediately
     // after it settles so a concurrent disconnect cannot create a late client.
@@ -76,7 +77,7 @@ export class BedrockSession extends EventEmitter {
     // With expected server identity configured, connect only to the BDS that
     // advertises it; otherwise keep upstream first-reply discovery.
     let target
-    if (this.options.serverName !== undefined && this.options.levelName !== undefined) {
+    if (transport === 'nethernet' && this.options.serverName !== undefined && this.options.levelName !== undefined) {
       target = await (this.options.discover ?? discoverServer)({
         host: this.options.serverHost,
         serverName: this.options.serverName,
@@ -101,9 +102,13 @@ export class BedrockSession extends EventEmitter {
       offline: false,
       authflow: auth.authflow,
       skinData: { SelfSignedId: this.profile.identityId },
-      transport: 'nethernet',
-      nethernet: target ? { signalling: 'lan', networkId: target.networkId } : { signalling: 'lan' },
-      skipPing: Boolean(target),
+      transport,
+      ...(transport === 'nethernet'
+        ? { nethernet: target ? { signalling: 'lan', networkId: target.networkId } : { signalling: 'lan' } }
+        : { raknetBackend: 'raknet-native', followPort: false }),
+      // RakNet must dial the configured loopback port directly. Do not discover
+      // another server or follow an advertised port; the locked version is explicit.
+      skipPing: transport === 'raknet' || Boolean(target),
       connectTimeout: this.options.connectTimeoutMs
     })
     this.#wireClient()

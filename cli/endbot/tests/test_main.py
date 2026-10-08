@@ -71,13 +71,19 @@ class MainTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("endbot.toml already exists", stderr)
 
+    def test_setup_transport_option_reaches_the_dry_run_plan(self) -> None:
+        empty = self.root / "empty"
+        empty.mkdir()
+        code, out, err = self.run_main(["--instance", str(empty), "setup", "--fresh", "--transport", "raknet"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("transport=raknet", out)
+        self.assertFalse((empty / "endbot.toml").exists())
+
     def test_update_requires_exactly_one_of_archive_or_rollback(self) -> None:
         code, _stdout, stderr = self.run_main(["--instance", str(self.root), "update"])
         self.assertEqual(code, 2)
         self.assertIn("exactly one", stderr)
-        code, _stdout, stderr = self.run_main(
-            ["--instance", str(self.root), "update", "bundle.zip", "--rollback"]
-        )
+        code, _stdout, stderr = self.run_main(["--instance", str(self.root), "update", "bundle.zip", "--rollback"])
         self.assertEqual(code, 2)
         self.assertIn("exactly one", stderr)
 

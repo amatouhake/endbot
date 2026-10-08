@@ -23,7 +23,7 @@ from endbot_cli.allowlist import AllowlistError, add_gamertags, missing_gamertag
 from endbot_cli.backup import EXECUTABLE_NAMES, BackupEntry, collect_backup_entries, create_backup, describe_entries
 from endbot_cli.bds import BdsError, run_install
 from endbot_cli.commands import first_start_tolerable
-from endbot_cli.config import DEFAULT_CONTROL_PORT
+from endbot_cli.config import DEFAULT_CONTROL_PORT, DEFAULT_TRANSPORT, TRANSPORTS
 from endbot_cli.doctor import FAIL, WARN, DoctorContext, check_world, run_doctor
 from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import InstancePaths
@@ -44,10 +44,6 @@ BDS_NONE = "none"
 
 STATE_SUBDIRS = ("secrets", "profiles", "generated", "run")
 SAFETY_UPDATES = {"online-mode": "true", "allow-cheats": "false"}
-# Endbot runtime compatibility (issue #36): the runtime always dials BDS over
-# NetherNet, so a fresh server must set transport=nethernet. Existing servers
-# are never silently flipped; their plan FAILs with a manual fix instead.
-RUNTIME_UPDATES = {"transport": "nethernet"}
 
 
 def _print(message: str) -> None:
@@ -76,6 +72,7 @@ class SetupPlan:
     server_path_value: str  # the [server].path value to write
     gamertags: tuple[str, ...]
     control_port: int
+    transport: str
     bds: BdsPlan
     backup_entries: tuple[BackupEntry, ...]
     backup_worlds: bool
@@ -155,6 +152,7 @@ def compute_setup_plan(
     gamertags: Sequence[str] = (),
     backup_worlds: bool = False,
     control_port: int = DEFAULT_CONTROL_PORT,
+    transport: str | None = None,
     lock: LockData | None = None,
 ) -> SetupPlan:
     """Compute the section 6 plan without changing anything."""
@@ -165,6 +163,9 @@ def compute_setup_plan(
     warnings: list[str] = []
     failures: list[str] = []
     lines: list[str] = []
+    selected_transport = transport or DEFAULT_TRANSPORT
+    if transport is not None and transport not in TRANSPORTS:
+        failures.append(f"unsupported transport {transport!r}; choose nethernet or raknet")
 
     if fresh:
         server = root / "server"
@@ -177,11 +178,6 @@ def compute_setup_plan(
         if not server.is_dir():
             failures.append(f"{server} (--existing) does not exist or is not a directory")
 
-    tags_display = "[" + ", ".join(f'"{tag}"' for tag in gamertags) + "]"
-    lines.append(
-        f"create endbot.toml with [server] path = '{server_path_value}', "
-        f"gamertags = {tags_display}, control-port = {control_port} (the only file you edit, section 2)"
-    )
     lines.append(f"create state/{', state/'.join(STATE_SUBDIRS)}/ (persistent Endbot state, section 1)")
 
     bds = plan_bds(server, lock) if server.is_dir() or fresh else BdsPlan(BDS_NONE)
@@ -195,12 +191,13 @@ def compute_setup_plan(
         if properties_path.is_file():
             lines.append(
                 f"ensure {properties_path} sets online-mode=true, allow-cheats=false "
-                "and transport=nethernet (only those keys are edited; comments and other keys are preserved)"
+                f"and transport={selected_transport} "
+                "(only those keys are edited; comments and other keys are preserved)"
             )
         else:
             lines.append(
                 f"create {properties_path} with online-mode=true, allow-cheats=false "
-                "and transport=nethernet after the BDS download"
+                f"and transport={selected_transport} after the BDS download"
             )
         if (server / "worlds").is_dir():
             warnings.append(
@@ -212,8 +209,10 @@ def compute_setup_plan(
         else:
             try:
                 properties = parse_properties(properties_path)
+                if transport is None:
+                    selected_transport = properties.get("transport", DEFAULT_TRANSPORT).lower()
                 verify_server_properties(properties_path)
-                verify_runtime_properties(properties_path)
+                verify_runtime_properties(properties_path, selected_transport)
             except FileNotFoundError:
                 failures.append(
                     f"{properties_path} is missing; restore it before adopting this server "
@@ -222,7 +221,7 @@ def compute_setup_plan(
             except PreflightError as error:
                 failures.append(
                     f"{properties_path}: {error}; set online-mode=true, allow-cheats=false "
-                    "and transport=nethernet yourself first "
+                    f"and a matching transport={selected_transport} yourself first "
                     "(Endbot never silently changes an existing server's settings)"
                 )
             except OSError as error:
@@ -230,7 +229,7 @@ def compute_setup_plan(
             else:
                 lines.append(
                     f"keep {properties_path} unchanged "
-                    "(verified online-mode=true, allow-cheats=false, transport=nethernet)"
+                    f"(verified online-mode=true, allow-cheats=false, transport={selected_transport})"
                 )
             world = check_world(server, properties)
             if world.status == FAIL:
@@ -238,6 +237,12 @@ def compute_setup_plan(
             elif world.status == WARN:
                 warnings.append(f"world check: {world.message}")
 
+    tags_display = "[" + ", ".join(f'"{tag}"' for tag in gamertags) + "]"
+    lines.insert(
+        0,
+        f"create endbot.toml with [server] path = '{server_path_value}', transport = '{selected_transport}', "
+        f"gamertags = {tags_display}, control-port = {control_port} (the only file you edit, section 2)",
+    )
     allowlist_path = server / "allowlist.json"
     if fresh:
         # A fresh BDS ships allow-list=true with an empty allowlist.json, which would
@@ -292,6 +297,7 @@ def compute_setup_plan(
         server_path_value=server_path_value,
         gamertags=tuple(gamertags),
         control_port=control_port,
+        transport=selected_transport,
         bds=bds,
         backup_entries=backup_entries,
         backup_worlds=backup_worlds,
@@ -317,6 +323,7 @@ def write_endbot_toml(paths: InstancePaths, plan: SetupPlan) -> Path:
     document = tomlkit.document()
     server = tomlkit.table()
     server["path"] = _toml_string(plan.server_path_value)
+    server["transport"] = plan.transport
     document.add("server", server)
     controllers = tomlkit.table()
     controllers["gamertags"] = list(plan.gamertags)
@@ -366,6 +373,7 @@ def run_setup(
     backup_worlds: bool = False,
     have_world_backup: bool = False,
     control_port: int = DEFAULT_CONTROL_PORT,
+    transport: str | None = None,
     windows: bool | None = None,
     environ: Mapping[str, str] | None = None,
     acquire_bds: Callable[[Path], None] | None = None,
@@ -400,6 +408,7 @@ def run_setup(
         gamertags=gamertags,
         backup_worlds=backup_worlds,
         control_port=control_port,
+        transport=transport,
         lock=lock,
     )
     _print(f"setup: plan ({plan.mode}) for instance {plan.root}:")
@@ -466,17 +475,17 @@ def _apply(
 
     properties_path = plan.server / "server.properties"
     if plan.mode == "fresh":
-        for message in edit_properties(properties_path, {**SAFETY_UPDATES, **RUNTIME_UPDATES}):
+        for message in edit_properties(properties_path, {**SAFETY_UPDATES, "transport": plan.transport}):
             _print(f"setup: server.properties: {message}")
     try:
         verify_server_properties(properties_path)
-        verify_runtime_properties(properties_path)
+        verify_runtime_properties(properties_path, plan.transport)
     except (PreflightError, FileNotFoundError, OSError) as error:
         return _fail(
             f"FAIL setup: {properties_path}: {error} "
-            "(required: online-mode=true, allow-cheats=false, transport=nethernet)"
+            f"(required: online-mode=true, allow-cheats=false, transport={plan.transport})"
         )
-    _print(f"setup: {properties_path}: verified online-mode=true, allow-cheats=false, transport=nethernet")
+    _print(f"setup: {properties_path}: verified online-mode=true, allow-cheats=false, transport={plan.transport}")
 
     create_state_dirs(paths)
     write_endbot_toml(paths, plan)

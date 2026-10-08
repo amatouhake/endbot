@@ -23,10 +23,17 @@ Per-profile lifecycle transitions are serialized, and a newer lifecycle intent i
 Replacement sessions wait for confirmed closure of the prior transport; a failed close is visible and retryable without
 opening a second session. Operator-initiated starts reset the retry budget while one automatic reconnect sequence retains
 its bounded attempt count. The default 8-second runtime request deadline covers the bounded 5-second close plus 1-second
-replacement delay and is shorter than the plugin's 10-second response deadline. NetherNet sessions connect to loopback BDS servers only: the configuration loader and every session refuse any other
+replacement delay and is shorter than the plugin's 10-second response deadline. Bedrock sessions connect to loopback BDS servers only: the configuration loader and every session refuse any other
 `serverHost`. There is no persistent server identity pin (BDS regenerates its NetherNet identity on every start); see
 `docs/SECURITY.md` for why the loopback path plus the Bot token properties carry that trust. A `serverIdentityPinPath`
 left in an older configuration is ignored, and an old `bds-nethernet.pin` file can be deleted.
+
+The default transport is NetherNet. An explicit `"transport": "raknet"` in runtime JSON enables the optional
+direct-loopback path with `raknet-native`, no LAN discovery, no ping, and no advertised-port following. It reuses the
+same local-bot authentication and requires a BDS configured with `transport=raknet`. Current `endbot setup/start/doctor`
+carry the `[server] transport` selection through both configs and reject mismatches; choose `setup --fresh --transport raknet`
+instead of editing generated JSON. The isolated [RakNet feasibility runner](../docs/RAKNET_VALIDATION.md) reproduces
+the experiment and negative auth gates independently of the operator lifecycle.
 
 Private keys, tokens, and UUID artifacts use complete-before-publish creation and reject corrupt existing
 files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux

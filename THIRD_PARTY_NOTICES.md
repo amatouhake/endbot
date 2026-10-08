@@ -6,13 +6,13 @@ Endbot prepares a modified Endstone build from:
 
 - Project: Endstone
 - Upstream: <https://github.com/EndstoneMC/endstone>
-- Tag: `v0.11.12`
-- Commit: `1c71186cba896c5e0bc432384a8a8e72dfb2a626`
+- Tag: `v0.11.13`
+- Commit: `3491c609ddfde392cee2b062e3063e39aae87274`
 - License: Apache License 2.0
 - Copyright: The Endstone Project contributors
 
 The resulting build is **modified by Endbot**. The Endbot patch-set revision is SHA-256
-`8987a26347dc02675ba5f03626fdac75be9dce3acadbbcff366fd1c35f7b20e2`; its ordered sources are listed in
+`3a4215f678de3e26fe8abf5843a7800a117510caf137bac1b8d51266177860eb`; its ordered sources are listed in
 `patches/endstone/series`. Upstream source notices are retained by the patches. Distributions of the modified build
 must include this file, Endbot's `LICENSE`, Endstone's upstream license/notice material, and the generated compatibility
 manifest.

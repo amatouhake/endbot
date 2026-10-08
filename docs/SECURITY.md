@@ -45,6 +45,16 @@ GamerTag change. Local Bots have no XUID and can never bind. Removing a GamerTag
 binding on the next load. Until the owner's first join, whoever currently holds a pending GamerTag could claim it, so
 operators should join once right after setup; `endbot doctor` lists pending entries.
 
+### Operators and achievements
+
+From Endstone `v0.11.13`, permissions alone decide who may run a command: upstream marks every command as not
+requiring cheats. An operator can therefore run `/give`, `/gamemode`, `/tp`, and similar commands while
+`allow-cheats=false`, and the world keeps achievements enabled. `allow-cheats=false` no longer means "nobody can
+cheat"; it means that only operators can. This is upstream behavior that Endbot does not patch (the Endstone delta stays
+limited to local-bot authentication). Bots are never operators, and controllers get no operator permission from Endbot.
+`endbot doctor` WARNs when `permissions.json` lists operators or `default-player-permission-level=operator` makes every
+player one. Keep the operator list to people you trust not to cheat, or empty, if fair achievement history matters.
+
 ## Runtime control
 
 The controller listens only on `127.0.0.1`, `::1`, or `localhost`; both runtime and plugin reject other configured

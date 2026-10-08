@@ -210,10 +210,13 @@ documented as experimental. `endstone.lock` and `patches/endstone/` are unchange
 claimed. Evidence and open items: `docs/RAKNET_VALIDATION.md`.
 
 - [x] CI consumer E2E on both transports × Windows/Linux, including update/rollback (branch run 37688666654).
-- [ ] `release-candidate.yml` with `0.2.0` on the merged `main`; attach the exact artifacts to a **draft** `v0.2.0`.
-- [ ] Bot-side live check on the exact Windows bundle: `setup --fresh --transport raknet` → start with UDP 7551
-  held by another program → Bot joins → stop; `endbot update` from published 0.1.1 keeps NetherNet with no
-  `endbot.toml` change.
+- [x] `release-candidate.yml` with `0.2.0` on the merged `main`; attach the exact artifacts to a **draft** `v0.2.0`.
+  (run 37727279011 from `aec5789`; all four consumer jobs passed)
+- [x] Bot-side live check on the exact Windows bundle (2026-10-08): `setup --fresh --transport raknet` wrote and
+  verified `transport=raknet`; with another process holding UDP 7551, `start` succeeded, a Bot joined over RakNet,
+  `doctor --live` passed, the stop was clean, and the world history flags stayed clean; a published-0.1.1 instance
+  updated to 0.2.0 with `endbot.toml` byte-identical, doctor passed with `transport=nethernet`, and its Bot resumed
+  over NetherNet.
 - [ ] **Human gate on RakNet (operator, before publication):** an Xbox-authenticated human joins the RakNet
   instance alongside a Bot, `/bot` works from the client, and the world flags stay clean afterwards. Decide
   explicitly whether an actual Xbox achievement unlock on RakNet is required for 0.2.0 or recorded as not run

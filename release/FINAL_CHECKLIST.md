@@ -232,13 +232,16 @@ Scope: the validated compatibility update (#48): Endstone `v0.11.13`, BDS `1.26.
 context-only patch rebase, and the `operators` doctor WARN. Compatibility evidence is in `docs/COMPATIBILITY.md`
 (gate run on the branch candidate, including an observed Xbox achievement unlock).
 
-- [ ] `release-candidate.yml` with `0.2.1` on `main`; attach the exact artifacts to a **draft** `v0.2.1`.
-- [ ] Bot-side live check on the exact Windows bundle: fresh setup acquires BDS `1.26.52.3` and a Bot joins;
-  `endbot update` from published 0.2.0 performs the BDS backup/update to `1.26.52.3` and the Bot resumes;
-  doctor shows the `operators` check.
+- [x] `release-candidate.yml` with `0.2.1` on `main`; attach the exact artifacts to a **draft** `v0.2.1`.
+  (run 37854937634 from `f62a059`; all four consumer jobs passed)
+- [x] Bot-side live check on the exact Windows bundle (2026-10-09): fresh setup acquired BDS `1.26.52.3` and a Bot
+  joined over NetherNet; a published-0.2.0 RakNet instance updated to 0.2.1 backed up 2886 files, moved BDS to
+  `1.26.52.3` with `endbot.toml` byte-identical, and its Bot resumed with `doctor --live` passing and clean world
+  flags; doctor showed `operators` PASS without operators and WARN with one.
 - Human/Xbox gate: covered by the 2026-10-09 compatibility gate on the branch candidate (same lock, patches, and
   runtime); not re-run on the 0.2.1 bytes, and the release notes say so.
-- [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
+- [x] Publish the draft unchanged, then re-verify checksums from the published assets. (2026-10-09: tag `v0.2.1`
+  = `f62a059`; every published asset matches the candidate `SHA256SUMS`; both bundle attestations verified)
 
 ### After 0.1.0 (direction)
 

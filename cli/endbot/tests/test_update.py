@@ -72,7 +72,7 @@ class UpdateTestCase(unittest.TestCase):
         self.root = Path(self.directory.name)
         self.paths = InstancePaths.for_root(self.root)
         self.lock = load_lock()
-        build_bds_dir(self.root / "server", version="26.51", worlds=True)
+        build_bds_dir(self.root / "server", version="26.52", worlds=True)
         self.paths.endbot_toml.parent.mkdir(exist_ok=True)
         self.paths.endbot_toml.write_text(
             "[server]\npath = 'server'\n[controllers]\ngamertags = []\n[runtime]\ncontrol-port = 19142\n",
@@ -248,7 +248,7 @@ class DoctorGateTests(UpdateTestCase):
 class BdsChangeTests(UpdateTestCase):
     def test_bds_version_mismatch_triggers_backup_and_install_step(self) -> None:
         doctor = FakeDoctor(
-            (1, ["FAIL bds-version: version.txt says '26.51' but endstone.lock locks '26.99.1'"]),
+            (1, ["FAIL bds-version: version.txt says '26.52' but endstone.lock locks '26.99.1'"]),
             (0, ["PASS bds-version: matching locked BDS"]),
         )
         acquire = RecordingAcquire()

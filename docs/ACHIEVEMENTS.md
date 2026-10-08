@@ -9,7 +9,8 @@ Two claims must remain separate:
   were preserved in the validated baseline with ten concurrent external bots.
 - **Observed Xbox achievement unlock:** a signed-in Bedrock client actually unlocks a previously unearned Xbox
   achievement in the test world. The recorded M0 observation was completed against patched Endstone
-  `0.11.11+endbot.1`; the current `0.11.12+endbot.1` artifact has no new achievement observation.
+  `0.11.11+endbot.1`. On 2026-10-09 the `0.11.13+endbot.1` candidate (BDS `1.26.52.3`) observed an unlock of
+  **Rabbit Season** in a session that also used operator `/give` (`COMPATIBILITY.md`).
 
 `scripts/preflight.py` robustly checks only the two relevant `server.properties` values. Endbot deliberately does not ship a
 partial `level.dat` parser: format/version ambiguity would turn unknown state into a false safety claim. Without the

@@ -42,8 +42,9 @@ def main() -> int:
     # Current-artifact safety state must not inherit historical human/Xbox
     # observations. Historical M0/M2 gates were recorded against
     # 0.11.11+endbot.1 (see docs/ACHIEVEMENTS.md, docs/M2_VALIDATION.md);
-    # the current 0.11.12+endbot.1 rebase has no new human observation
-    # yet. Historical provenance is preserved explicitly below.
+    # observations of later packages (0.11.13+endbot.1, docs/COMPATIBILITY.md)
+    # are recorded against artifact checksums in the docs, not baked into the
+    # build-time manifest. Historical provenance is preserved explicitly below.
     manifest = {
         "schema_version": 2,
         "endbot": {"version": args.endbot_version, "revision": git_revision()},

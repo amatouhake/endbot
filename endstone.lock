@@ -9,8 +9,8 @@
   },
   "bds": {
     "version": "1.26.52.3",
-    "build": 51061372,
+    "build": 51798919,
     "protocol": 2193
   },
-  "support_status": "candidate"
+  "support_status": "validated-baseline"
 }

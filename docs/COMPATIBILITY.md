@@ -2,9 +2,42 @@
 
 ## Current baseline
 
-The only pinned baseline is Endstone `v0.11.12` at
-`1c71186cba896c5e0bc432384a8a8e72dfb2a626`, with BDS `1.26.51.1` build `51061372` and protocol `2193`.
-`endstone.lock` is the machine-readable authority.
+The only pinned baseline is Endstone `v0.11.13` at
+`3491c609ddfde392cee2b062e3063e39aae87274`, with BDS `1.26.52.3` (Linux build `51798919`, Windows build `51798905`)
+and protocol `2193`. `endstone.lock` is the machine-readable authority and records the Linux build.
+
+Upstream `v0.11.13` adds BDS `1.26.52` support with the same protocol `2193`, so the runtime schema is unchanged. The
+Endbot patch series needed only a context rebase (the new upstream `stun-servers` default line beside
+`[local-bot-auth]`). Upstream also marks every command as not requiring cheats: operators can run `/give` and similar
+commands with `allow-cheats=false`, the world keeps achievements enabled, and `level.dat` records no cheat or command
+history. See `SECURITY.md` and the `operators` doctor check.
+
+### 0.11.13 / 1.26.52.3 compatibility gate — 2026-10-09
+
+Candidate run 37835410128 (branch `feat/endstone-0.11.13`) built and upstream-tested the patched Endstone on Linux and
+Windows and passed the consumer E2E for NetherNet and RakNet on both platforms. On the Windows candidate bundle:
+
+- Fresh setup acquired BDS `1.26.52.3` through Endstone (`version.txt` `26.52`), and a Bot joined over NetherNet and
+  over RakNet.
+- Against real BDS over RakNet, a wrong owner key, a wrong issuer, a wrong audience, and a valid token with
+  `[local-bot-auth] enabled = false` (after a real BDS restart) each sent Login, were kicked, never spawned, and
+  produced no accepted-local-bot entry. Replay, expiry, and `cpk` binding remain covered by the patch's unit tests.
+- An official vanilla `1.26.52.3` server (no `version.txt`) with a world was adopted with `setup --existing`: the plan
+  backed up 2885 files with a SHA-256 manifest, re-acquired the same BDS through Endstone, kept the world and
+  settings, and doctor passed the world and version checks.
+- On that migrated server an Xbox-authenticated human joined alongside the Bot, bound as controller, and ran
+  `/bot ping` and `/bot Alice tp me`. As an operator they then ran `/give` and `/effect`, saw no
+  achievements-disabled notice, and unlocked the previously locked vanilla Xbox achievement **Rabbit Season** in that
+  session. After a clean stop, every `level.dat` history flag was still false with `GameType=0`.
+
+That unlock shows actual Xbox achievement unlocks work on this pair. Because operator cheat commands were used in the
+same session, it is also direct evidence that upstream operator commands do not disable achievements; it is not
+evidence of a cheat-free session.
+
+### Previous baseline (`v0.11.12` / BDS `1.26.51.1`)
+
+Endstone `v0.11.12` at `1c71186cba896c5e0bc432384a8a8e72dfb2a626`, with BDS `1.26.51.1` build `51061372` and protocol
+`2193`, was the baseline for Endbot 0.1.0 through 0.2.0.
 
 Upstream `v0.11.12` keeps the same BDS `1.26.51.1` / protocol `2193` pair as `v0.11.11`. It stops narrowing
 NetherNet to a single UDP port, fixes cross-dimension Actor/Player teleport, adds `network.stun-servers`, and fixes

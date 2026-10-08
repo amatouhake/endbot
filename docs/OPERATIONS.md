@@ -242,6 +242,9 @@ take Bot or human connections anyway) or restore `level.dat`, then rerun `endbot
   an entry's `xuid`), otherwise WARN naming each missing GamerTag and the fix (`endbot console allowlist add
   <GamerTag>` while the server runs, or an `allowlist.json` edit while it is stopped). An unreadable or malformed
   `allowlist.json` WARNs only — BDS treats it as its own file. The check never writes.
+- Operators: WARN when `permissions.json` lists an `operator` entry or `default-player-permission-level=operator`,
+  because the locked Endstone lets operators run cheat commands without disabling achievements (`SECURITY.md`);
+  PASS otherwise. An unreadable `permissions.json` WARNs only. The check never writes.
 - When running: runtime reachable over the control port, BDS process alive, each desired-online Bot's state and last
   error.
 

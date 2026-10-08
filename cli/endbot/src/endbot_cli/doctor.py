@@ -9,6 +9,7 @@ but that do not violate a safety invariant.
 from __future__ import annotations
 
 import importlib.metadata
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -408,6 +409,52 @@ def check_allowlist(
     )
 
 
+def check_operators(server: Path, properties: dict[str, str]) -> CheckResult:
+    """Section 7 operator check (read-only): operators can cheat without disabling achievements.
+
+    The locked Endstone lets permissions alone decide who runs a command, so an
+    operator can use /give, /gamemode, or /tp with allow-cheats=false and the
+    world keeps achievements enabled. That is upstream behavior, not an Endbot
+    safety violation, so it is a WARN the operator can knowingly accept.
+    """
+
+    name = "operators"
+    consequence = (
+        "operators can run cheat commands such as /give or /gamemode while allow-cheats=false "
+        "keeps achievements enabled (docs/SECURITY.md)"
+    )
+    if (properties.get("default-player-permission-level") or "").strip().lower() == "operator":
+        return CheckResult(
+            WARN,
+            name,
+            f"default-player-permission-level=operator makes every player an operator; {consequence}; "
+            "set it to member unless that is intended",
+        )
+    permissions_path = server / "permissions.json"
+    try:
+        document = json.loads(permissions_path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return CheckResult(PASS, name, "no permissions.json; nobody is an operator")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return CheckResult(WARN, name, f"{permissions_path} cannot be read ({error}); operators cannot be checked")
+    if not isinstance(document, list):
+        return CheckResult(WARN, name, f"{permissions_path} is not a JSON list; operators cannot be checked")
+    operators = [
+        entry
+        for entry in document
+        if isinstance(entry, dict) and str(entry.get("permission", "")).lower() == "operator"
+    ]
+    if not operators:
+        return CheckResult(PASS, name, f"no operator entries in {permissions_path}")
+    count = f"{len(operators)} operator entr{'y' if len(operators) == 1 else 'ies'}"
+    return CheckResult(
+        WARN,
+        name,
+        f"{count} in {permissions_path}; {consequence}; "
+        "keep only operators you trust with that, or remove them while the server is stopped",
+    )
+
+
 def check_controllers(config: EndbotConfig, state: ControllerState) -> list[CheckResult]:
     name = "controllers"
     if not config.controllers.gamertags:
@@ -539,6 +586,13 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
         results.append(CheckResult(SKIP, "allowlist", "server.properties is unreadable"))
     else:
         results.append(check_allowlist(server, properties, config, state or ControllerState()))
+
+    if server is None:
+        results.append(CheckResult(SKIP, "operators", "server directory is unavailable"))
+    elif properties is None:
+        results.append(CheckResult(SKIP, "operators", "server.properties is unreadable"))
+    else:
+        results.append(check_operators(server, properties))
 
     results.append(check_runtime(context, config, paths))
     return results

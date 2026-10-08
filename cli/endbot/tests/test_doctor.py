@@ -81,6 +81,7 @@ class HealthyInstanceTests(DoctorTestCase):
             "control-token": PASS,
             "controllers": WARN,
             "allowlist": PASS,
+            "operators": PASS,
             "runtime": SKIP,
         }
         for name, status in expected.items():
@@ -447,6 +448,45 @@ class AllowlistTests(DoctorTestCase):
         (self.server / "server.properties").unlink()
         results = self.doctor()
         self.assertEqual(self.status_of(results, "allowlist"), SKIP)
+
+
+class OperatorTests(DoctorTestCase):
+    """The read-only `operators` check (section 7): operators can cheat without losing achievements."""
+
+    PROPERTIES = "online-mode=true\nallow-cheats=false\ntransport=nethernet\nlevel-name=world\n"
+
+    def write_permissions(self, document: object) -> None:
+        (self.server / "permissions.json").write_text(json.dumps(document), encoding="utf-8")
+
+    def test_no_permissions_file_passes(self) -> None:
+        self.assertEqual(self.status_of(self.doctor(), "operators"), PASS)
+
+    def test_member_entries_pass(self) -> None:
+        self.write_permissions([{"permission": "member", "xuid": "1"}])
+        self.assertEqual(self.status_of(self.doctor(), "operators"), PASS)
+
+    def test_operator_entry_warns_without_failing(self) -> None:
+        self.write_permissions([{"permission": "operator", "xuid": "1"}, {"permission": "member", "xuid": "2"}])
+        results = self.doctor()
+        self.assertEqual(exit_code(results), 0)
+        self.assertEqual(self.status_of(results, "operators"), WARN)
+        message = self.messages_of(results, "operators")[0]
+        self.assertIn("1 operator entry", message)
+        self.assertIn("achievements enabled", message)
+
+    def test_default_operator_permission_level_warns(self) -> None:
+        (self.server / "server.properties").write_text(
+            self.PROPERTIES + "default-player-permission-level=operator\n", encoding="utf-8"
+        )
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "operators"), WARN)
+        self.assertIn("every player an operator", self.messages_of(results, "operators")[0])
+
+    def test_malformed_permissions_warns(self) -> None:
+        (self.server / "permissions.json").write_text("{not json", encoding="utf-8")
+        self.assertEqual(self.status_of(self.doctor(), "operators"), WARN)
+        self.write_permissions({"permission": "operator"})
+        self.assertEqual(self.status_of(self.doctor(), "operators"), WARN)
 
 
 class RuntimeLiveTests(DoctorTestCase):

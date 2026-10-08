@@ -100,7 +100,7 @@ that GamerTag. Pending entries are therefore shown by `endbot doctor`, and setup
 
 Humans keep vanilla allow-list behaviour. A Bot accepted by the local-bot trust path needs no `allowlist.json` entry.
 
-Observed on the current baseline (patched Endstone `0.11.12+endbot.1`, BDS 1.26.51.1): with `allow-list=true` and
+Observed on the 0.1.x baseline (patched Endstone `0.11.12+endbot.1`, BDS 1.26.51.1): with `allow-list=true` and
 an empty `allowlist.json`, a Bot accepted by the local-bot path joins, and nothing is written to `allowlist.json`. The
 authentication result the existing hook returns (a local identity with `is_local` set and no XUID) is already exempt,
 so no additional Endstone core hook is needed. Logins that are not accepted by the local-bot path take the stock BDS validator and allow-list unchanged.
@@ -224,6 +224,11 @@ Updating from 0.1.0: 0.1.1 doctor also requires `transport=nethernet` in `server
 directory that exists without `level.dat` (#37). An instance missing either keeps 0.1.0 current and the update
 reports the FAIL; add `transport=nethernet` (BDS only accepts NetherNet in this release, so such an instance could not
 take Bot or human connections anyway) or restore `level.dat`, then rerun `endbot update --force` (the refused attempt left `app/0.1.1` in place).
+
+Updating from 0.2.0 to 0.2.1 also moves the locked BDS from `1.26.51.1` to `1.26.52.3`. The new version's doctor reports
+the `bds-version` mismatch, so `endbot update` performs the §6 backup and preview and lets Endstone update BDS; the world
+is opened by the newer BDS afterwards. Back up `worlds/` first: rolling back to 0.2.0 would put an older BDS in front of
+a world the newer one has saved.
 
 ## 7. Doctor
 

@@ -35,7 +35,7 @@ def patch_revision() -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--endbot-version", default="0.2.0")
+    parser.add_argument("--endbot-version", default="0.2.1")
     args = parser.parse_args()
 
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))

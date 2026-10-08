@@ -12,7 +12,7 @@ node runtime/src/cli.js --config endbot-runtime.json
 ```
 
 The exact upstream `bedrock-protocol` release is pinned in `package-lock.json`. Its `minecraft-data` dependency already
-ships the Bedrock 1.26.51/protocol-2193 schema with the proven wire layouts, so no schema preparation step runs at
+ships the Bedrock 1.26.51/protocol-2193 schema with the proven wire layouts (BDS 1.26.52 uses the same protocol 2193), so no schema preparation step runs at
 install. Configuration paths are resolved relative to the configuration file. Keep the generated control token, owner
 private key, and profile directory outside source control. The owner public key is the only key
 configured in patched Endstone.

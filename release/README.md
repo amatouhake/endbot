@@ -9,8 +9,9 @@ python3 scripts/generate_compatibility_manifest.py dist/compatibility-manifest.j
 The compatibility manifest distinguishes current-artifact validation state from historical evidence. A current patched
 package does not inherit human/Xbox achievement observations from an earlier patched-package revision merely because it
 uses the same upstream Endstone/BDS pair. Historical M0/M2 evidence remains recorded with the patched Endstone package
-against which it was actually observed (currently `0.11.11+endbot.1`; current package `0.11.12+endbot.1` has no new
-human/Xbox observation).
+against which it was actually observed (`0.11.11+endbot.1`). The current package `0.11.13+endbot.1` has its own
+2026-10-09 human/Xbox observation in `docs/COMPATIBILITY.md`, recorded in the docs rather than in the build-time
+manifest.
 
 Release-candidate workflow input must exactly match `runtime/package.json`; the Python plugin and CLI versions must be its
 PEP 440-equivalent form. `scripts/check_release_version.py` enforces that contract before any candidate is assembled.

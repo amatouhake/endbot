@@ -226,6 +226,20 @@ claimed. Evidence and open items: `docs/RAKNET_VALIDATION.md`.
 - [x] Publish the draft unchanged, then re-verify checksums from the published assets. (2026-10-09: tag `v0.2.0`
   = `aec5789`; every published asset matches the candidate `SHA256SUMS`; both bundle attestations verified)
 
+### 0.2.1 release — Endstone v0.11.13 / BDS 1.26.52.3 (decided 2026-10-09)
+
+Scope: the validated compatibility update (#48): Endstone `v0.11.13`, BDS `1.26.52.3`, protocol `2193`, the
+context-only patch rebase, and the `operators` doctor WARN. Compatibility evidence is in `docs/COMPATIBILITY.md`
+(gate run on the branch candidate, including an observed Xbox achievement unlock).
+
+- [ ] `release-candidate.yml` with `0.2.1` on `main`; attach the exact artifacts to a **draft** `v0.2.1`.
+- [ ] Bot-side live check on the exact Windows bundle: fresh setup acquires BDS `1.26.52.3` and a Bot joins;
+  `endbot update` from published 0.2.0 performs the BDS backup/update to `1.26.52.3` and the Bot resumes;
+  doctor shows the `operators` check.
+- Human/Xbox gate: covered by the 2026-10-09 compatibility gate on the branch candidate (same lock, patches, and
+  runtime); not re-run on the 0.2.1 bytes, and the release notes say so.
+- [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
+
 ### After 0.1.0 (direction)
 
 - 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).

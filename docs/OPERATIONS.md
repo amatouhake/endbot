@@ -223,7 +223,7 @@ in `app/`. Updates refuse to run while a supervisor is running.
 Updating from 0.1.0: 0.1.1 doctor also requires `transport=nethernet` in `server.properties` (#36) and FAILs a world
 directory that exists without `level.dat` (#37). An instance missing either keeps 0.1.0 current and the update
 reports the FAIL; add `transport=nethernet` (BDS only accepts NetherNet in this release, so such an instance could not
-take Bot or human connections anyway) or restore `level.dat`, then rerun `endbot update`.
+take Bot or human connections anyway) or restore `level.dat`, then rerun `endbot update --force` (the refused attempt left `app/0.1.1` in place).
 
 ## 7. Doctor
 

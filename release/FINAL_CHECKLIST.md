@@ -223,11 +223,12 @@ claimed. Evidence and open items: `docs/RAKNET_VALIDATION.md`.
   the settings screen showed no achievements-disabled notice, and after a clean stop every `level.dat` history flag
   was false with `GameType=0`. **Actual Xbox achievement unlock: not run for 0.2.0** (operator decision, 2026-10-09);
   the release notes say so.
-- [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
+- [x] Publish the draft unchanged, then re-verify checksums from the published assets. (2026-10-09: tag `v0.2.0`
+  = `aec5789`; every published asset matches the candidate `SHA256SUMS`; both bundle attestations verified)
 
 ### After 0.1.0 (direction)
 
-- 0.2.0: opt-in direct-loopback RakNet transport (decided 2026-10-08; see `docs/RAKNET_VALIDATION.md`).
+- 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).
 - 0.3.0: a runtime-download installer becomes the primary distribution. The
   release then carries only Endbot's own artifacts (patched Endstone wheel,
   plugin, CLI, runtime source; about 25 MB on Windows and 50 MB on Linux), and

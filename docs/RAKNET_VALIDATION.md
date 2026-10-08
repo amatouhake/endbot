@@ -174,6 +174,16 @@ joining real BDS, console, `doctor --live`, synthetic update/rollback with Bot r
 first Linux RakNet evidence and shows the Linux bundle's `raknet-native` loads. It is CI evidence only; no human
 client joined over Linux RakNet.
 
+## 0.2.0 release-candidate gate — 2026-10-09
+
+On the exact draft `v0.2.0` Windows bundle (release-candidate run 37727279011 from `aec5789`), a fresh
+`setup --transport raknet` instance started with UDP 7551 held by another process, and a Bot joined over RakNet.
+An Xbox-authenticated Windows client then joined alongside the Bot (populated XUID, not local-bot auth), first-join
+controller binding succeeded, and `/bot ping`, Bot jump, and Bot teleport-to-caller worked from the client. No
+achievements-disabled notice was shown. After a clean stop all six history flags were false, `GameType=0`, with no
+extra experiment keys. An actual Xbox achievement unlock was **not run** for 0.2.0 by operator decision; its
+observation remains `false`. No player identifiers are recorded here.
+
 ## Runtime behavior and next decision
 
 Runtime JSON accepts `transport: "nethernet" | "raknet"`; omission keeps

@@ -217,10 +217,12 @@ claimed. Evidence and open items: `docs/RAKNET_VALIDATION.md`.
   `doctor --live` passed, the stop was clean, and the world history flags stayed clean; a published-0.1.1 instance
   updated to 0.2.0 with `endbot.toml` byte-identical, doctor passed with `transport=nethernet`, and its Bot resumed
   over NetherNet.
-- [ ] **Human gate on RakNet (operator, before publication):** an Xbox-authenticated human joins the RakNet
-  instance alongside a Bot, `/bot` works from the client, and the world flags stay clean afterwards. Decide
-  explicitly whether an actual Xbox achievement unlock on RakNet is required for 0.2.0 or recorded as not run
-  (`RAKNET_VALIDATION.md` currently records it as not run).
+- [x] **Human gate on RakNet (operator, before publication):** 2026-10-09 on the draft's Windows bundle (the RakNet
+  instance above): a Windows client joined with a normal Xbox-authenticated login alongside the Bot, first-join
+  controller binding succeeded, `/bot ping`, `/bot Alice jump once`, and `/bot Alice tp me` worked from the client,
+  the settings screen showed no achievements-disabled notice, and after a clean stop every `level.dat` history flag
+  was false with `GameType=0`. **Actual Xbox achievement unlock: not run for 0.2.0** (operator decision, 2026-10-09);
+  the release notes say so.
 - [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
 
 ### After 0.1.0 (direction)

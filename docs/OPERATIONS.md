@@ -96,6 +96,34 @@ Operators name controllers by GamerTag. GamerTags are a bootstrap identifier, ne
 Risk accepted: between setup and the owner's first join, a pending GamerTag can be claimed by whoever currently holds
 that GamerTag. Pending entries are therefore shown by `endbot doctor`, and setup tells the operator to join once.
 
+
+### Future improvement: live controller management (backlog; not implemented)
+
+Currently, controller configuration is loaded when the plugin starts, and `endbot.command.control` is attached on
+player join. Editing `endbot.toml` while BDS is running does not update the active permission set. Adding or removing
+controllers therefore requires `endbot stop` / `endbot start`; there is no supported hot reload.
+
+The desired operator experience is to **add, remove, and reload controllers without restarting BDS or disconnecting
+Bots**. Possible CLI forms (proposals, **not currently available**) are `endbot controllers add <GamerTag>`,
+`endbot controllers remove <GamerTag>`, and `endbot controllers reload`. The final CLI/API remains to be designed.
+
+Implementation requirements to evaluate:
+
+- Preserve `endbot.toml` as the operator-owned source of truth; validate updates and propagate the resulting
+  controller set to the running plugin without manually editing generated plugin configuration. Handle partial
+  failures/invalid settings safely rather than publishing inconsistent authorization state.
+- Preserve Microsoft/Xbox XUID-bound enrollment. New pending GamerTags bind only on a valid authenticated join;
+  existing bound XUIDs retain access across GamerTag changes, and removing/re-adding a GamerTag must not let an
+  unrelated account claim an old binding.
+- Update permissions for **already-online players**, not just future join events. In particular, removal must
+  immediately revoke the relevant permission attachment and survive reconnect; the implementation must explicitly
+  track attachment lifetimes rather than assuming a config change removes grants already issued.
+- Keep `endbot.command.control` distinct from BDS `allowlist.json` and vanilla operator/cheat privileges. Adding
+  a controller does not by itself grant permission to join an allow-listed server.
+- Cover add/remove/reload with live tests for bound vs. pending controllers, online vs. offline players, immediate
+  revocation, reconnect/restart persistence, malformed configuration, and unaffected Bot sessions.
+
+
 ## 4. Local Bots and the BDS allow-list
 
 Humans keep vanilla allow-list behaviour. A Bot accepted by the local-bot trust path needs no `allowlist.json` entry.

@@ -217,7 +217,11 @@ class CICacheContractTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
         self.assertIn("actions/cache/restore@v6", workflow)
         self.assertIn("actions/cache/save@v6", workflow)
-        self.assertNotIn("restore-keys", workflow)
+        # The wheel cache must never fall back to another key; build
+        # accelerators (Conan, ccache) may, because they never replace a build.
+        for marker in ("Restore validated Endstone wheel", "Save validated Endstone wheel"):
+            with self.subTest(step=marker):
+                self.assertNotIn("restore-keys", _step_block(workflow, marker))
         self.assertNotIn("github.sha", workflow)
         for identifier in (
             "endstone-wheel-v1",
@@ -256,6 +260,21 @@ class CICacheContractTests(unittest.TestCase):
                 self.assertIn("cache-hit", block)
                 self.assertIn(CACHE_MISS_GUARD, block)
 
+    def test_build_accelerators_run_on_miss_and_save_only_outside_pull_requests(self) -> None:
+        workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
+        for marker in ("Restore Conan package cache", "Restore compiler cache"):
+            with self.subTest(step=marker):
+                block = _step_block(workflow, marker)
+                self.assertIn(CACHE_MISS_GUARD, block)
+                self.assertNotIn("dist/endstone", block)
+        for marker in ("Trim Conan package cache", "Upload Conan package cache", "Save compiler cache"):
+            with self.subTest(step=marker):
+                block = _step_block(workflow, marker)
+                self.assertIn(CACHE_MISS_GUARD, block)
+                self.assertIn("github.event_name != 'pull_request'", block)
+                self.assertNotIn("dist/endstone", block)
+        self.assertIn("CMAKE_CXX_COMPILER_LAUNCHER=ccache", workflow)
+
     def test_downstream_gates_run_on_hit_and_miss(self) -> None:
         workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
         for marker in (
@@ -275,7 +294,7 @@ class CICacheContractTests(unittest.TestCase):
         inspect = workflow.index("Inspect repaired Endstone wheel")
         paired = workflow.index("Build plugin and test paired installation")
         consumer = workflow.index("Test in a clean Linux consumer without LLVM")
-        save = workflow.index("actions/cache/save")
+        save = workflow.index("Save validated Endstone wheel")
         self.assertLess(inspect, paired)
         self.assertLess(paired, consumer)
         self.assertLess(consumer, save)

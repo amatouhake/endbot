@@ -81,6 +81,51 @@ are identical. Block interaction then follows a player-like start-action, packed
 next-tick stop-action sequence. BDS remains authoritative for target legality and inventory changes. Serialization tests
 pin those byte layouts against the installed schema so a future dependency bump cannot silently change them.
 
+## Multi-bot performance considerations
+
+Endbot uses real Bedrock client sessions. Each connected bot therefore participates in normal BDS player processing,
+including chunk streaming, entity updates, and server-authoritative input handling. A large number of sessions can
+increase both server and runtime work. The dominant cost has not yet been established by a controlled benchmark;
+optimization should follow measurement rather than assume that networking or simulation is the bottleneck.
+
+### Current behavior and possible improvements
+
+- **Chunk streaming:** `BedrockSession` does not currently specify a per-bot chunk radius. The pinned
+  `bedrock-protocol@3.60.1` sends `request_chunk_radius` using `client.viewDistance || 10`. Because bots do not
+  render terrain, a smaller requested radius is worth testing (for example, 4 and 2 against the existing default).
+  The field used by the library is `client.viewDistance`; passing a `viewDistance` constructor option alone must
+  not be assumed to set it. Confirm the actual outbound request, the server-accepted radius, and the resulting
+  chunk traffic before introducing a configurable default. A lower streaming radius is not equivalent to lowering
+  the server's simulation/tick distance.
+- **Player inputs:** Each spawned session currently runs its input tick every 50 ms and queues
+  `player_auth_input` while initialized. An idle-session reduction might reduce packet handling, but changing
+  cadence could affect server-authoritative ticks, prediction corrections, gravity, movement, and interaction
+  semantics. Test idle-only behavior separately from moving or acting bots; do not skip required protocol inputs
+  solely on the assumption that an unmoving bot is safe to throttle.
+- **Connection bursts:** Spreading initial connections over time may reduce transient authentication and initial
+  chunk-streaming peaks. It will not reduce the steady-state cost of online bots.
+- **Entity replication:** Closely grouped bots may generate redundant player/entity updates to other bot sessions.
+  Any filtering needs to preserve information required for valid bot interactions. Server-side recipient filtering
+  or deeper BDS changes should be considered only after profiling demonstrates a material benefit.
+
+### Suggested performance validation
+
+Record separate BDS and Node.js runtime CPU usage, memory, server MSPT/TPS, per-session received traffic, and
+connection time. Compare a no-bot baseline with progressively larger populations (for example, 10, 30, and 50),
+separating the connection burst from steady state. Repeat with bots co-located versus widely separated, idle versus
+moving, and with the default versus reduced requested chunk radii. A compatible native profiler, such as Spark for
+Endstone, may help identify expensive BDS paths; verify its compatibility with the pinned BDS/Endstone pair first.
+
+For a chunk-radius experiment, record outbound `request_chunk_radius`, any radius response, and `level_chunk` /
+`sub_chunk` counts and bytes. Measure actual BDS improvement rather than treating the theoretical change in chunk
+area as a CPU or TPS improvement. Recheck login, reconnection, teleportation, movement across chunk boundaries,
+entity targeting, and block interactions. In particular, test farms and other gameplay mechanisms that depend on
+players loading or simulating nearby areas.
+
+All optimizations must retain normal human Microsoft/Xbox authentication, bot identity and world persistence,
+`online-mode=true`, `allow-cheats=false`, and the existing achievement-compatible behavior. These are research
+candidates, not implemented performance features or benchmark claims.
+
 ## Patch lifecycle
 
 `scripts/prepare_endstone.py` validates the tag-to-commit relationship, clones/fetches a bare cache, makes a separate

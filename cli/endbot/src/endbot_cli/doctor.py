@@ -1,7 +1,8 @@
 """Read-only health checks for one Endbot instance (docs/OPERATIONS.md section 7).
 
 Every check prints one ``PASS`` / ``WARN`` / ``FAIL`` / ``SKIP`` line and
-nothing is ever written. Exit code is 0 when no check FAILs and 1 otherwise;
+configuration, policy and world data are never changed. Live queries use transient IPC files.
+Exit code is 0 when no check FAILs and 1 otherwise;
 WARN marks items the operator must act on (for example a pending controller)
 but that do not violate a safety invariant.
 """
@@ -458,7 +459,11 @@ def check_operators(server: Path, properties: dict[str, str]) -> CheckResult:
 def check_controllers(config: EndbotConfig, state: ControllerState) -> list[CheckResult]:
     name = "controllers"
     if not config.controllers.gamertags:
-        return [CheckResult(WARN, name, "no controllers configured; nobody can control Bots")]
+        return [
+            CheckResult(
+                WARN, name, "no bootstrap controllers configured; inspect runtime overrides with controllers list"
+            )
+        ]
     results: list[CheckResult] = []
     for gamertag in config.controllers.gamertags:
         binding = state.find(gamertag)
@@ -467,7 +472,13 @@ def check_controllers(config: EndbotConfig, state: ControllerState) -> list[Chec
                 CheckResult(WARN, name, f"{gamertag} is pending; join once with this GamerTag to bind it (section 3)")
             )
         else:
-            results.append(CheckResult(PASS, name, f"{gamertag} is bound (since {binding.bound_at})"))
+            results.append(
+                CheckResult(
+                    PASS,
+                    name,
+                    f"{gamertag} is bound (since {binding.bound_at}); bootstrap only, runtime policy may override",
+                )
+            )
     configured = {tag.casefold() for tag in config.controllers.gamertags}
     for binding in state.bindings:
         if binding.gamertag.casefold() not in configured:
@@ -476,10 +487,48 @@ def check_controllers(config: EndbotConfig, state: ControllerState) -> list[Chec
                     WARN,
                     name,
                     f"{binding.gamertag} has a binding but is not in [controllers].gamertags; "
-                    "it is revoked on the next start (section 3)",
+                    "bootstrap grant is revoked on next start; runtime grants are separate (section 3)",
                 )
             )
     return results
+
+
+def check_effective_controllers(context, config, state, server) -> list[CheckResult]:
+    from endbot_cli.controller_requests import controller_request
+    from endbot_cli.controller_status import load_policy, saved_report
+    from endbot_cli.runstate import RUNNING, inspect_supervisor
+
+    name = "controllers-effective"
+    try:
+        live = context.live and inspect_supervisor(context.paths.state_run).status == RUNNING
+        if live:
+            result = controller_request(context.paths.state_run, "list", timeout=context.timeout)
+            if not result["ok"]:
+                return [CheckResult(FAIL, name, "; ".join(result["messages"]))]
+            rows = result["entries"]
+        else:
+            policy = load_policy(context.paths.state_controllers.parent / "controller-policy.json")
+            legacy = {}
+            if server is not None:
+                error, document = _load_plugin_config(server)
+                if error is not None:
+                    raise ControllersError("cannot read legacy authorization from plugin config")
+                if document is not None:
+                    legacy = document.get("authorization", {})
+            rows = saved_report(config.controllers.gamertags, state, policy, legacy)
+        source = "live" if live else "saved configuration for next start"
+        if not rows:
+            return [CheckResult(WARN, name, f"{source}: no player controllers; server console is authorized")]
+        return [
+            CheckResult(
+                PASS if row["state"] == "allowed" else WARN,
+                name,
+                f"{row['name']}: {row['state']} - {row['reason']} ({source})",
+            )
+            for row in rows
+        ]
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        return [CheckResult(FAIL, name, str(error))]
 
 
 def check_controllers_legacy(server: Path) -> CheckResult:
@@ -577,6 +626,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
             results.append(CheckResult(FAIL, "controllers", str(error)))
         else:
             results.extend(check_controllers(config, state))
+            results.extend(check_effective_controllers(context, config, state, server))
 
     if server is None:
         results.append(CheckResult(SKIP, "allowlist", "server directory is unavailable"))

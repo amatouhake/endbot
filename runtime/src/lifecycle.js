@@ -4,16 +4,18 @@
 import { EventEmitter } from 'node:events'
 
 import { InputState } from './actions.js'
+import { botChunkRadius } from './config.js'
 import { ProfileError, validateBotName } from './profile-store.js'
 
 const ACTIVE_STATES = new Set(['connecting', 'online', 'reconnecting'])
 
 export class BotLifecycle extends EventEmitter {
-  constructor ({ store, sessionFactory, reconnect = {}, timers = globalThis }) {
+  constructor ({ store, sessionFactory, chunkRadius, reconnect = {}, timers = globalThis }) {
     super()
     this.store = store
     this.sessionFactory = sessionFactory
     this.timers = timers
+    this.defaultChunkRadius = botChunkRadius(chunkRadius)
     this.reconnect = {
       initialDelayMs: reconnect.initialDelayMs ?? 1000,
       maximumDelayMs: reconnect.maximumDelayMs ?? 30_000,
@@ -201,6 +203,7 @@ export class BotLifecycle extends EventEmitter {
   move (name, direction) {
     const { profile, state } = this.#requireOnline(name)
     state.inputs.setMovement(direction)
+    state.session.stopMining?.('movement changed')
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -208,6 +211,7 @@ export class BotLifecycle extends EventEmitter {
   look (name, yaw, pitch) {
     const { profile, state } = this.#requireOnline(name)
     state.inputs.setLook(yaw, pitch)
+    state.session.stopMining?.('look changed')
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -215,6 +219,7 @@ export class BotLifecycle extends EventEmitter {
   action (name, action, mode, intervalTicks) {
     const { profile, state } = this.#requireOnline(name)
     state.inputs.setAction(action, mode, intervalTicks)
+    if (['attack', 'use'].includes(action) && mode !== 'stop') state.session.stopMining?.(`${action} started`)
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -232,9 +237,47 @@ export class BotLifecycle extends EventEmitter {
     return { ...this.#status(profile), selectedHotbarSlot: state.session.selectedHotbarSlot() + 1 }
   }
 
+  async radius (name, value) {
+    const profile = this.#require(name)
+    if (value === undefined) return this.#status(profile)
+    const override = value === 'default' ? undefined : botChunkRadius(value)
+    return this.#serialize(profile.identityId, () => {
+      // Persist first: failed storage must not silently change the live Bot.
+      const updated = this.store.update(profile.identityId, { chunkRadius: override })
+      const state = this.sessions.get(profile.identityId)
+      state?.session?.setChunkRadius(override ?? this.defaultChunkRadius)
+      return this.#status(updated)
+    })
+  }
+
   interact (name, interaction) {
     const { profile, state } = this.#requireOnline(name)
     state.session.interactBlock(interaction)
+    return this.#status(profile)
+  }
+
+  mine (name, parameters) {
+    const { profile, state } = this.#requireOnline(name)
+    if (parameters.mode === 'stop') {
+      if (parameters.loopId === undefined || state.session.miningStatus()?.loopId === parameters.loopId) state.session.stopMining()
+    } else if (parameters.mode === 'continue') {
+      // A canceled/replaced session cannot be restarted by a delayed target.
+      // Preserve the current sight direction throughout a continuous run.
+      state.session.continueMining(parameters)
+    } else {
+      if (parameters.mode !== undefined && parameters.mode !== 'start') throw new Error('Invalid mining mode')
+      if ((parameters.yaw !== undefined || parameters.pitch !== undefined) &&
+          (!Number.isFinite(parameters.yaw) || !Number.isFinite(parameters.pitch) || Math.abs(parameters.pitch) > 90)) {
+        throw new Error('Invalid mining look direction')
+      }
+      if (parameters.mode === 'start') state.session.startMiningLoop()
+      else state.session.startMining(parameters)
+      state.inputs.setAction('attack', 'stop')
+      state.inputs.setAction('use', 'stop')
+      state.inputs.setMovement('stop')
+      if (parameters.yaw !== undefined && parameters.pitch !== undefined) state.inputs.setLook(parameters.yaw, parameters.pitch)
+      state.session.applyInputs(state.inputs)
+    }
     return this.#status(profile)
   }
 
@@ -249,6 +292,7 @@ export class BotLifecycle extends EventEmitter {
     const state = this.sessions.get(profile.identityId)
     if (!state) throw new ProfileError('not_online', `Bot ${profile.name} has no active session`)
     state.inputs.stopAll()
+    state.session?.stopMining?.()
     state.session?.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -331,7 +375,11 @@ export class BotLifecycle extends EventEmitter {
       reconnectAttempt: state.reconnectAttempt,
       nextReconnectAt: state.nextReconnectAt,
       lastError: state.lastError,
-      inputs: state.inputs.snapshot()
+      chunkRadius: profile.chunkRadius ?? this.defaultChunkRadius,
+      chunkRadiusSource: profile.chunkRadius === undefined ? 'default' : 'bot',
+      serverChunkRadius: state.state === 'online' ? state.session?.serverChunkRadius ?? null : null,
+      inputs: state.inputs.snapshot(),
+      mining: state.session?.miningStatus?.() ?? null
     }
   }
 

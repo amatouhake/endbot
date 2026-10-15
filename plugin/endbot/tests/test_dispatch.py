@@ -18,6 +18,44 @@ class ScheduledCallbacks:
 
 
 class DispatchTests(unittest.TestCase):
+    def test_periodic_poll_is_coalesced_and_not_blocked_by_a_slow_command(self):
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        executing, release_command, polled, release_poll, closed = (threading.Event() for _ in range(5))
+        calls = []
+
+        class Service:
+            def poll_mining(self, authorize):
+                calls.append("poll")
+                polled.set()
+                release_poll.wait(1)
+
+            def execute(self, arguments, source):
+                executing.set()
+                release_command.wait(1)
+                return CommandResult(True, ())
+
+            def close(self):
+                calls.append("close")
+                closed.set()
+
+        runner = AsyncCommandRunner(Service(), bridge, lambda source: None)
+        self.addCleanup(runner.close)
+        # A spawn can block the command worker for longer than the mining lease.
+        runner.submit(["Bob", "spawn"], object())
+        self.assertTrue(executing.wait(1))
+        runner.poll()
+        self.assertTrue(polled.wait(1))
+        for _ in range(10):
+            runner.poll()
+        release_poll.set()
+        release_command.set()
+        runner.close()
+        self.assertTrue(closed.wait(1))
+        runner.poll()
+        self.assertEqual(calls, ["poll", "close"])
+
     def test_slow_command_returns_immediately_and_delivers_on_server_thread(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
@@ -159,3 +197,42 @@ class DispatchTests(unittest.TestCase):
 
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, ["Endbot plugin is disabled"])
+
+    def test_revoked_then_regranted_queued_command_never_reaches_service(self):
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        epoch = [1]
+        calls, messages, authorization_threads = [], [], []
+        main_thread = threading.get_ident()
+        player = type(
+            "Player",
+            (),
+            {
+                "unique_id": "player-id",
+                "location": object(),
+                "send_message": lambda _, message: messages.append(message),
+            },
+        )()
+
+        def authorize(source):
+            authorization_threads.append(threading.get_ident())
+            self.assertIsNone(source.sender)
+            return source.authorization_revision == epoch[0]
+
+        service = type(
+            "Service", (), {"execute": lambda _, args, source: calls.append(args) or CommandResult(True, ("done",))}
+        )()
+        runner = AsyncCommandRunner(service, bridge, lambda source: player, authorize, lambda sender: epoch[0])
+        self.addCleanup(runner.close)
+        self.assertTrue(runner.submit(["Bot", "despawn"], player))
+        epoch[0] += 2  # Revoke and regrant while the main-thread authorization check is queued.
+        scheduled.run_next()
+        scheduled.run_next()
+        self.assertEqual(calls, [])
+        self.assertIn("permission was revoked", messages[0])
+        self.assertEqual(authorization_threads, [main_thread])
+        self.assertTrue(runner.submit(["Bot", "status"], player))
+        scheduled.run_next()
+        scheduled.run_next()
+        self.assertEqual(calls, [["Bot", "status"]])

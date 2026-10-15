@@ -5,6 +5,10 @@
 controller-gamertags = []
 # Binding state; relative paths resolve from the Endbot plugin data directory.
 controllers-file = "controllers.json"
+# Runtime add/remove overrides; only the plugin writes this file.
+controller-policy-file = "controller-policy.json"
+# Managed instances generate an absolute directory for correlated CLI results.
+# controller-requests-directory = "controller-requests"
 # Pre-bound identities (rc.1 style). Values are strings. Empty lists and no
 # GamerTags grant no player the control permission.
 allowed-uuids = []

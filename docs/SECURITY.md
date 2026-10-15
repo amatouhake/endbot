@@ -31,18 +31,34 @@ signatures and mismatched `cpk`; release qualification must repeat live negative
 
 ## Command authorization
 
-`endbot.command.control` defaults to false. The plugin attaches only that Endstone permission, on join, to players that
-are either bound controllers or listed in the pre-bound UUID/XUID allowlists, and to the server console, which belongs to
-the operator who installed Endbot. Operator (op) players get no Endbot permission from being op. It does not make them operators or grant
-vanilla command permissions. Invalid allowlist or binding data prevents safe plugin initialization rather than granting
-broadly.
+`endbot.command.control` defaults to false. The plugin grants that permission to authenticated bound controllers or
+players in the pre-bound UUID/XUID allowlists unless explicitly revoked, and to the server console. Every player must
+have a valid Xbox XUID; local Bots cannot gain access via a UUID entry. Operator players get no Endbot access from being
+op. No operator or vanilla permissions are granted. Invalid allowlist, binding or runtime policy data prevents plugin
+initialization rather than granting broadly. The command handler also checks effective authorization independently of
+attachments supplied by other plugins.
+
+Runtime administration uses the separate `endbot.command.controllers` permission and an explicit console-sender check.
+Even a controller or operator with an externally granted permission cannot administer access from a player session.
+`endbot controllers add|remove|list` forwards to that trusted console; the plugin alone atomically writes
+`controller-policy.json`. Identity revocations override config and legacy allowlists, survive restart/name changes, and
+are cleared by an explicit regrant. Offline unknown grants bind only on a normal authenticated join. Command execution
+rechecks authorization and its grant revision on the server thread, so queued commands cannot regain validity after a
+revoke/regrant or reconnect. Already-started operations may finish; see [runtime semantics](OPERATIONS.md#runtime-grants-and-revocations).
+
+Controller CLI requests use one atomic file per random request ID, bound to the current supervisor session. The
+supervisor validates and removes a request from the queue before forwarding its ID to the console-only plugin handler;
+only that handler executes the operation and writes the correlated result atomically. Old-session requests are rejected,
+mutations are never automatically retried, and unknown outcomes require inspection before a manual retry. Transient
+request/result files belong to private instance state. This does not add a network listener or player administration API.
 
 Controllers are configured by Xbox GamerTag but authorized by XUID. A configured GamerTag stays pending until a player
 with that name joins through Microsoft/Xbox authentication with a non-empty decimal XUID; the plugin then records the
 GamerTag → XUID/UUID binding in the controllers file. A bound GamerTag can never be re-bound to another XUID, so a
 different account that later takes the GamerTag gets no permission, while the bound owner keeps control after a
 GamerTag change. Local Bots have no XUID and can never bind. Removing a GamerTag from the configuration revokes its
-binding on the next load. Until the owner's first join, whoever currently holds a pending GamerTag could claim it, so
+bootstrap binding on the next load; an explicit runtime grant remains until revoked. Until the owner's first join,
+whoever currently holds a pending GamerTag could claim it, so
 operators should join once right after setup; `endbot doctor` lists pending entries.
 
 ### Operators and achievements

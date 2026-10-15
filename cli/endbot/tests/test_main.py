@@ -104,6 +104,18 @@ class MainTests(unittest.TestCase):
         self.assertIn("runtime", stdout)
         self.assertIn(code, (0, 1))
 
+    def test_controller_management_subcommands_reach_live_console_handler(self):
+        from unittest.mock import patch
+
+        for operation, target in (("add", "Player With Spaces"), ("remove", "Player"), ("list", None)):
+            arguments = ["--instance", str(self.root), "controllers", operation]
+            if target is not None:
+                arguments.append(target)
+            with patch("endbot_cli.__main__.run_controllers_live", return_value=0) as handler:
+                code, _, _ = self.run_main(arguments)
+            self.assertEqual(code, 0)
+            handler.assert_called_once_with(self.paths, operation, target)
+
 
 if __name__ == "__main__":
     unittest.main()

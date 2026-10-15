@@ -42,6 +42,19 @@ class ConfigTests(unittest.TestCase):
         config = load_config(self.path)
         self.assertEqual(config.runtime.control_port, 1)
 
+    def test_chunk_radius_defaults_and_bounds(self) -> None:
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base)
+        self.assertEqual(load_config(self.path).runtime.chunk_radius, 5)
+        for value in (2, 10, 32):
+            self.write(base + f"[runtime]\nchunk-radius={value}\n")
+            self.assertEqual(load_config(self.path).runtime.chunk_radius, value)
+        for value in ("1", "33", "2.5", '"2"', "true"):
+            with self.subTest(value=value):
+                self.write(base + f"[runtime]\nchunk-radius={value}\n")
+                with self.assertRaisesRegex(ConfigError, "runtime.chunk-radius"):
+                    load_config(self.path)
+
     def test_absolute_server_path_is_kept(self) -> None:
         self.write(f"[server]\npath = '{self.root.as_posix()}'\n[controllers]\ngamertags = []\n")
         config = load_config(self.path)

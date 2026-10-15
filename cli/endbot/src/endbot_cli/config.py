@@ -16,6 +16,7 @@ from typing import Any
 from endbot_cli.compat import tomllib
 
 DEFAULT_CONTROL_PORT = 19142
+DEFAULT_CHUNK_RADIUS = 5
 DEFAULT_TRANSPORT = "nethernet"
 TRANSPORTS = ("nethernet", "raknet")
 SECTIONS = ("server", "controllers", "runtime")
@@ -45,6 +46,7 @@ class ControllersConfig:
 @dataclass(frozen=True, slots=True)
 class RuntimeConfig:
     control_port: int = DEFAULT_CONTROL_PORT
+    chunk_radius: int = DEFAULT_CHUNK_RADIUS
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,10 +134,14 @@ def _load_runtime(path: Path, document: dict[str, Any]) -> RuntimeConfig:
     table = document.get("runtime", {})
     if not isinstance(table, dict):
         raise _fail(path, "runtime", "must be a table", "write it as a [runtime] section")
-    _reject_unknown_keys(path, table, "runtime", ("control-port",))
-    if "control-port" not in table:
-        return RuntimeConfig()
-    value = table["control-port"]
+    _reject_unknown_keys(path, table, "runtime", ("control-port", "chunk-radius"))
+    radius = table.get("chunk-radius", DEFAULT_CHUNK_RADIUS)
+    if isinstance(radius, bool) or not isinstance(radius, int) or not 2 <= radius <= 32:
+        raise _fail(
+            path, "runtime.chunk-radius", "must be an integer from 2 to 32 chunks",
+            f"use chunk-radius = {DEFAULT_CHUNK_RADIUS} (the default)",
+        )
+    value = table.get("control-port", DEFAULT_CONTROL_PORT)
     if isinstance(value, bool) or not isinstance(value, int):
         raise _fail(
             path,
@@ -150,7 +156,7 @@ def _load_runtime(path: Path, document: dict[str, Any]) -> RuntimeConfig:
             f"must be between 1 and 65535, found {value}",
             f"use a valid TCP port, e.g. control-port = {DEFAULT_CONTROL_PORT}",
         )
-    return RuntimeConfig(control_port=value)
+    return RuntimeConfig(control_port=value, chunk_radius=radius)
 
 
 def load_config(path: Path) -> EndbotConfig:

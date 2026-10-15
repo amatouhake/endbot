@@ -6,11 +6,13 @@ Endbot has three intentionally separate layers:
 
 1. **Patched Endstone** owns only the login-validation seam that a normal plugin cannot reach. The source of truth is
    the exact upstream revision in `endstone.lock` plus the ordered patch files in `patches/endstone/`.
-2. **Endbot plugin** owns `/bot`, explicit human UUID/XUID authorization, authoritative BDS player observation,
+2. **Endbot plugin** owns `/bot`, authenticated human authorization and console-managed persistent controller policy,
+   authoritative BDS player observation,
    deferred spawn placement, name collision checks against online players, block observations, and teleport through
    `Actor.teleport`.
 3. **Endbot runtime** owns persistent Bot profiles, local identity, NetherNet sessions, desired lifecycle state,
-   reconnect, and player inputs. It does not own or duplicate inventory, position, dimension, or other world state.
+   reconnect, player inputs, and per-Bot chunk-radius preferences. It does not own or duplicate inventory, position,
+   dimension, or other world state.
 
 Prepared Endstone trees and build products are disposable. No maintained fork is necessary to reproduce a build.
 
@@ -29,6 +31,16 @@ original validator rejects                         -> reject
 The local checks require ES384/P-384, owner signature, audience, bounded issue/not-before/expiry times, a single-use
 UUID `jti`, UUID subject, bounded name, no Microsoft XUID claim, and a client-data signature/name/UUID bound to `cpk`.
 The feature is disabled by default. Invalid local-looking traffic never becomes an authenticated identity.
+
+Block mining follows the same separation: the plugin observes/raycasts an authoritative target without changing it;
+the runtime packs start/continue/abort block actions into input ticks and observes BDS block updates. BDS owns mining
+progress, loot, durability and protection events. Mining is session-local and is canceled across teleport/dimension/
+respawn/disconnect rather than persisted as desired lifecycle state. Continuous mining uses periodic server-thread
+raycasts on a dedicated poll worker, so a slow command (such as a spawn) cannot starve lease renewal; at most one poll
+is queued. A target the runtime rejects (reach/dimension recheck) keeps the loop waiting; an unreachable runtime ends it.
+Each loop is bound to a runtime session token and its initiating controller's authorization revision. Conditional stop/
+continue messages cannot affect a newer loop, and a runtime lease bounds orphaned mining after plugin/control loss.
+See [mining validation](MINING_VALIDATION.md).
 
 ## Control boundary
 
@@ -50,7 +62,8 @@ authoritative world operations stay in the plugin. In particular, teleport never
 ## Identity and lifecycle
 
 A persisted profile is keyed by an immutable hidden UUID. Its unique Minecraft name is the user-visible command
-handle. `spawn` creates a profile implicitly; `despawn` changes desired state to offline but retains it; `forget`
+handle. Profiles may also store a requested chunk-radius override; its absence inherits the runtime's current default.
+`spawn` creates a profile implicitly; `despawn` changes desired state to offline but retains it; `forget`
 removes only Endbot registration and makes no claim about BDS player records. Rename atomically replaces the name in
 the same UUID profile and reconnects a live session so the Bedrock login name changes. There is no selection state.
 

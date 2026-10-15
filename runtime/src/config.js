@@ -6,6 +6,13 @@ import path from 'node:path'
 
 export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
 
+export function botChunkRadius (value = 5) {
+  if (!Number.isSafeInteger(value) || value < 2 || value > 32) {
+    throw new Error('Endbot chunkRadius must be an integer from 2 to 32 chunks')
+  }
+  return value
+}
+
 export function serverTransport (value = 'nethernet') {
   if (!['nethernet', 'raknet'].includes(value)) throw new Error('Endbot transport must be nethernet or raknet')
   return value
@@ -48,6 +55,7 @@ export function loadConfig (filename) {
     discoveryTimeoutMs: value.discoveryTimeoutMs ?? 8_000,
     protocol: value.protocol ?? 2193,
     connectTimeoutMs: value.connectTimeoutMs ?? 15_000,
+    chunkRadius: botChunkRadius(value.chunkRadius),
     localAuthIssuer: value.localAuthIssuer ?? 'endbot://local-bot',
     localAuthAudience: value.localAuthAudience ?? 'endstone://local-bot',
     reconnect: value.reconnect ?? {}

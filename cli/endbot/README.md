@@ -2,7 +2,7 @@
 
 `endbot` is the single operator-facing command for one Endbot instance
 (docs/OPERATIONS.md). `setup`, `update`,
-`doctor`, `start`, `stop`, `console`, and `controllers reset` are implemented.
+`doctor`, `start`, `stop`, `console`, and `controllers add|remove|list|reset` are implemented.
 
 From 0.2.0, `setup --fresh --transport raknet|nethernet` selects the transport (fresh default NetherNet; RakNet is experimental).
 Existing-BDS setup keeps its transport unless an explicit selection disagrees, in which case it refuses without
@@ -21,6 +21,9 @@ endbot [--instance PATH] doctor [--live]
 endbot [--instance PATH] start
 endbot [--instance PATH] stop [--timeout SECONDS]
 endbot [--instance PATH] console <line...>
+endbot [--instance PATH] controllers add <gamertag>
+endbot [--instance PATH] controllers remove <gamertag|xuid:id|uuid:id>
+endbot [--instance PATH] controllers list
 endbot [--instance PATH] controllers reset <gamertag>
 ```
 
@@ -98,6 +101,18 @@ root; `update` extracts exactly those into the instance and never touches
 
 `update` refuses to run while a supervisor is running.
 
+## endbot controllers add / remove / list
+
+With the supervisor running, `endbot controllers add "GamerTag"` grants Bot operation and
+`endbot controllers remove "GamerTag"` revokes it. `endbot controllers list` requests the current list.
+The CLI waits for execution and prints success, failure or the list in its own terminal (exit 0 for success, 1 for failure).
+A timeout/interruption reports an unknown outcome; inspect the list before retrying. Mutations are not auto-retried.
+Restart the supervisor/BDS after deploying this version to enable result replies. Online players update immediately;
+unknown offline additions enroll on their first authenticated join. Changes persist across restart in plugin-owned
+`state/controller-policy.json`. This administration is console-only and grants no operator permissions.
+`endbot controllers reset` remains a stopped-only bootstrap binding reset and leaves runtime overrides intact.
+See [operations](../../docs/OPERATIONS.md#runtime-grants-and-revocations) for identity selectors and revocation precedence.
+
 ## endbot doctor
 
 Read-only health report (section 7): one `PASS` / `WARN` / `FAIL` / `SKIP` line per
@@ -105,12 +120,14 @@ check, covering `endbot.toml`, the `server.properties` safety invariants
 (`online-mode=true`, `allow-cheats=false`), world creative/experiment history
 from `level.dat`, the locked BDS and Endstone versions, `[local-bot-auth]` key
 pair consistency, the control token, controller enrollment, and (with
-`--live`) runtime reachability over the control port.
+`--live`) runtime reachability over the control port. `controllers-effective` reports saved runtime grants/revocations,
+bootstrap and legacy entries with reasons. With `--live` and a supervisor, it queries the plugin's current decisions.
 
 Exit codes: `0` when no check FAILs (WARN is allowed), `1` when any check
 FAILs.
 
-Doctor never writes anything. World achievement history and actual Xbox
+Doctor never changes configuration, controller policy or world data; live queries use transient IPC files.
+World achievement history and actual Xbox
 achievement unlocks remain explicit manual validation gates (docs/ACHIEVEMENTS.md).
 
 ## endbot start / stop / console (section 5a)
@@ -135,8 +152,8 @@ While it runs:
 - `endbot controllers reset <gamertag>` (another terminal, supervisor stopped)
   returns one controller binding to pending for re-enrollment (section 3).
 
-`stop`, `console`, and `controllers reset` refuse clearly when no live
-supervisor exists and clean up a stale `state/run/supervisor.pid`. Exit codes:
+`stop`, `console`, and `controllers add|remove|list` require a live supervisor;
+`controllers reset` requires it to be stopped. Stale PID files are diagnosed/cleaned as appropriate. Exit codes:
 `0` clean, `1` refused/failed/UNCLEAN stop. Per-start logs are kept for the
 last 10 starts in `state/run/logs/`; exit codes land in
 `state/run/last-exit.json`. The supervision and restart policy is documented in

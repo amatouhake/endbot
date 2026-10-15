@@ -58,6 +58,55 @@ class FakeServer:
 
 
 class WorldTests(unittest.TestCase):
+    def mining_blocks(self, cells):
+        def at(x, y, z):
+            name = cells.get((x, y, z), "air")
+            return SimpleNamespace(
+                type=f"minecraft:{name}", data=SimpleNamespace(runtime_id=42 if name != "air" else 1)
+            )
+
+        self.alice.location.dimension.get_block_at = at
+
+    def test_mining_targets_bot_sight_and_resolves_entry_face(self):
+        self.mining_blocks({(0, 65, 2): "stone"})
+        target = self.world.resolve_mining(str(self.alice.unique_id), {}, self.steve)
+        self.assertEqual(target["blockPosition"], [0, 65, 2])
+        self.assertEqual(target["face"], 2)
+        self.assertEqual(target["blockName"], "minecraft:stone")
+        self.assertEqual(self.server.dispatched, [])
+
+    def test_continuous_mining_preserves_sight_and_waits_at_air_or_bedrock(self):
+        identity = str(self.alice.unique_id)
+        self.alice.location.x = 0.3
+        self.mining_blocks({(0, 65, 2): "stone", (0, 65, 3): "dirt"})
+        first = self.world.resolve_mining(identity, {"continuous": True}, None)
+        self.assertEqual((first["yaw"], first["pitch"]), (0, 0))
+        self.mining_blocks({(0, 65, 3): "dirt"})
+        self.assertEqual(self.world.resolve_mining(identity, {"continuous": True}, None)["blockPosition"], [0, 65, 3])
+        for cells in ({}, {(0, 65, 2): "bedrock", (0, 65, 3): "stone"}, {(0, 65, 6): "stone"}):
+            self.mining_blocks(cells)
+            self.assertIsNone(self.world.resolve_mining(identity, {"continuous": True}, None))
+
+    def test_mining_relative_coordinates_use_bot_and_choose_top_face(self):
+        self.mining_blocks({(0, 63, 0): "dirt"})
+        target = self.world.resolve_mining(
+            str(self.alice.unique_id), {"coordinates": [("relative", 0), ("relative", -1), ("relative", 0)]}, self.steve
+        )
+        self.assertEqual(target["blockPosition"], [0, 63, 0])
+        self.assertEqual(target["face"], 1)
+        self.assertGreater(target["pitch"], 60)
+
+    def test_mining_rejects_occluded_distant_air_and_bedrock_targets(self):
+        for cells, coordinates, message in (
+            ({(0, 65, 1): "stone", (0, 65, 2): "dirt"}, [0, 65, 2], "blocked"),
+            ({(0, 65, 9): "dirt"}, [0, 65, 9], "out of reach"),
+            ({}, [0, 65, 2], "air/liquid"),
+            ({(0, 65, 2): "bedrock"}, [0, 65, 2], "Bedrock"),
+        ):
+            self.mining_blocks(cells)
+            with self.assertRaisesRegex(ValueError, message):
+                self.world.resolve_mining(str(self.alice.unique_id), {"coordinates": coordinates}, None)
+
     def setUp(self):
         world_module.Location = FakeLocation
         self.server = FakeServer()

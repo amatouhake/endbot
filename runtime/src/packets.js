@@ -44,7 +44,7 @@ export function addToggleInputFlags (inputData, state) {
   }
 }
 
-export function createUseTransaction ({ hotbarSlot, heldItem, position }) {
+export function createUseTransaction ({ hotbarSlot, heldItem, position, triggerType = 'player_input' }) {
   return {
     transaction: {
       legacy: { legacy_request_id: 0 },
@@ -52,7 +52,7 @@ export function createUseTransaction ({ hotbarSlot, heldItem, position }) {
       actions: [],
       transaction_data: {
         action_type: 'click_air',
-        trigger_type: 'player_input',
+        trigger_type: triggerType,
         block_position: {
           x: Math.floor(position.x),
           y: Math.floor(position.y),
@@ -70,6 +70,11 @@ export function createUseTransaction ({ hotbarSlot, heldItem, position }) {
       }
     }
   }
+}
+
+export function createUseInput (options) {
+  const transaction = createUseTransaction(options).transaction
+  return { legacy: transaction.legacy, actions: transaction.actions, data: transaction.transaction_data }
 }
 
 export function createBlockInteractionInput ({ hotbarSlot, heldItem, position, blockPosition, blockRuntimeId, face }) {
@@ -108,6 +113,10 @@ export function createBlockInteractionAction ({ runtimeEntityId, blockPosition, 
     result_position: { x: blockPosition[0], y: blockPosition[1], z: blockPosition[2] },
     face
   }
+}
+
+export function createMiningAction (action, blockPosition, face) {
+  return { action, position: { x: blockPosition[0], y: blockPosition[1], z: blockPosition[2] }, face }
 }
 
 function withCount (item, count) {

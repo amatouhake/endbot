@@ -20,6 +20,14 @@ class FakeSession extends EventEmitter {
   selectHotbar (slot) { this.slot = slot }
   interactBlock (interaction) { this.interactions.push(interaction) }
   dropSelected (stack) { this.drops.push(stack) }
+  setChunkRadius (radius) { this.radius = radius; this.serverChunkRadius = undefined }
+  startMining (target) { this.mining = { state: 'active', ...target } }
+  startMiningLoop () { this.mining = { state: 'waiting', continuous: true, loopId: 'test-loop' } }
+  continueMining ({ loopId, ...target }) {
+    if (loopId === this.mining?.loopId) this.mining = { ...this.mining, ...target, state: 'active' }
+  }
+  stopMining (reason = 'stopped') { if (this.mining) this.mining = { ...this.mining, state: 'canceled', reason } }
+  miningStatus () { return this.mining ?? null }
 }
 
 function fixture (options = {}) {
@@ -41,6 +49,111 @@ function fixture (options = {}) {
 
 const turn = () => new Promise(resolve => setImmediate(resolve))
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+test('continuous mining routes start/continue and cancels on movement without accepting stale stop', async () => {
+  const { lifecycle } = fixture()
+  await lifecycle.spawn('Alice')
+  await turn()
+  const { loopId } = lifecycle.mine('Alice', { mode: 'start' }).mining
+  const target = { blockPosition: [0, 64, 2], blockRuntimeId: 42, face: 2, yaw: 40, pitch: 20 }
+  lifecycle.mine('Alice', { mode: 'continue', loopId, ...target })
+  assert.deepEqual(lifecycle.status('Alice').inputs.look, { yaw: 0, pitch: 0 })
+  lifecycle.mine('Alice', { mode: 'stop', loopId: 'old-loop' })
+  assert.equal(lifecycle.status('Alice').mining.state, 'active')
+  lifecycle.move('Alice', 'forward')
+  assert.equal(lifecycle.status('Alice').mining.state, 'canceled')
+  await lifecycle.close()
+})
+
+test('mining stops conflicting inputs, reports state, and is canceled by stop/look/use', async () => {
+  const { lifecycle, sessions } = fixture()
+  await lifecycle.spawn('Alice')
+  await turn()
+  lifecycle.move('Alice', 'forward')
+  lifecycle.action('Alice', 'attack', 'continuous')
+  const target = { blockPosition: [0, 64, 2], blockRuntimeId: 42, face: 2, yaw: 20, pitch: 5 }
+  const started = lifecycle.mine('Alice', target)
+  assert.equal(started.mining.state, 'active')
+  assert.equal(started.inputs.movement, null)
+  assert.deepEqual(started.inputs.actions, {})
+  assert.deepEqual(started.inputs.look, { yaw: 20, pitch: 5 })
+  assert.throws(() => lifecycle.mine('Alice', { ...target, pitch: 100 }), /Invalid/)
+  for (const cancel of [() => lifecycle.stop('Alice'), () => lifecycle.look('Alice', 0, 0),
+    () => lifecycle.action('Alice', 'use', 'once'), () => lifecycle.mine('Alice', { mode: 'stop' })]) {
+    lifecycle.mine('Alice', target)
+    cancel()
+    assert.equal(lifecycle.status('Alice').mining.state, 'canceled')
+  }
+  await lifecycle.despawn('Alice')
+  assert.throws(() => lifecycle.mine('Alice', target), /not online/)
+  await lifecycle.resume('Alice')
+  await turn()
+  assert.equal(lifecycle.status('Alice').mining, null)
+  assert.equal(sessions.length, 2)
+  await lifecycle.close()
+})
+
+test('Bot radius overrides apply live in isolation and default restores shared configuration', async () => {
+  const { lifecycle, sessions } = fixture({ chunkRadius: 6 })
+  await lifecycle.spawn('Alice')
+  await lifecycle.spawn('Bob')
+  await turn()
+  assert.equal((await lifecycle.radius('Alice')).chunkRadius, 6)
+  const updated = await lifecycle.radius('Alice', 12)
+  assert.equal(updated.chunkRadiusSource, 'bot')
+  assert.equal(updated.chunkRadius, 12)
+  assert.equal(sessions[0].radius, 12)
+  assert.equal(lifecycle.status('Bob').chunkRadius, 6)
+  assert.equal(sessions[1].radius, undefined)
+  assert.equal(sessions.length, 2)
+  sessions[0].serverChunkRadius = 10
+  assert.equal((await lifecycle.radius('Alice')).serverChunkRadius, 10)
+  const reset = await lifecycle.radius('Alice', 'default')
+  assert.equal(reset.chunkRadius, 6)
+  assert.equal(reset.chunkRadiusSource, 'default')
+  assert.equal(sessions[0].radius, 6)
+  assert.equal(reset.serverChunkRadius, null)
+})
+
+test('offline radius survives reconnect, rename and runtime restart with a different default', async () => {
+  const { lifecycle, sessions } = fixture({ chunkRadius: 6 })
+  const spawned = await lifecycle.spawn('Alice')
+  await turn()
+  await lifecycle.despawn('Alice')
+  await lifecycle.radius('Alice', 16)
+  assert.equal(sessions.length, 1)
+  await lifecycle.resume('Alice')
+  await turn()
+  assert.equal(sessions[1].profile.chunkRadius, 16)
+  await lifecycle.rename('Alice', 'Builder')
+  await turn()
+  assert.equal(sessions[2].profile.chunkRadius, 16)
+  await lifecycle.close()
+  const store = new ProfileStore(lifecycle.store.directory)
+  const restarted = new BotLifecycle({ store, chunkRadius: 8, sessionFactory: profile => new FakeSession(profile) })
+  assert.equal(restarted.status('Builder').identityId, spawned.identityId)
+  assert.equal(restarted.status('Builder').chunkRadius, 16)
+  await restarted.radius('Builder', 'default')
+  assert.equal(restarted.status('Builder').chunkRadius, 8)
+  await restarted.close()
+})
+
+test('radius storage failure and invalid values leave the live Bot unchanged', async () => {
+  const { lifecycle, sessions } = fixture()
+  await lifecycle.spawn('Alice')
+  await turn()
+  for (const value of [null, true, '12', 'auto', 1, 33, 2.5]) {
+    await assert.rejects(lifecycle.radius('Alice', value), /chunkRadius/)
+  }
+  const update = lifecycle.store.update.bind(lifecycle.store)
+  lifecycle.store.update = () => { throw new Error('disk full') }
+  await assert.rejects(lifecycle.radius('Alice', 12), /disk full/)
+  lifecycle.store.update = update
+  assert.equal(lifecycle.status('Alice').chunkRadius, 5)
+  assert.equal(sessions[0].radius, undefined)
+  await assert.rejects(lifecycle.radius('Missing', 12), error => error.code === 'not_found')
+  assert.equal(lifecycle.store.list().length, 1)
+})
 
 test('implicit spawn creates once, isolates multiple bots, and despawn disables reconnect', async () => {
   const { lifecycle, sessions } = fixture()

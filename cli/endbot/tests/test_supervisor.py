@@ -119,6 +119,20 @@ class SupervisorTestCase(unittest.TestCase):
 
 
 class HappyPathTests(SupervisorTestCase):
+    def test_correlated_controller_result_round_trips_through_real_child_stdin(self):
+        from endbot_cli.controller_requests import controller_request
+
+        self.set_env(FAKE_CONTROLLER_REQUEST_DIR=str(self.run_dir / "controller-requests"))
+        self.start_supervisor()
+        self.wait_for("fake BDS ready")
+        success = controller_request(self.run_dir, "add", "Owner With Spaces", timeout=3)
+        failure = controller_request(self.run_dir, "remove", "Missing", timeout=3)
+        self.assertTrue(success["ok"])
+        self.assertEqual(success["messages"], ["result: Owner With Spaces"])
+        self.assertFalse(failure["ok"])
+        request_stop(self.run_dir)
+        self.assertEqual(self.join(), 0)
+
     def test_happy_start_then_stop_request_stops_cleanly(self) -> None:
         self.start_supervisor()
         self.wait_for("fake BDS ready")

@@ -1,7 +1,17 @@
 # Endbot runtime
 
+Block mining is available through `/bot <name> mine [x y z [face]]`, `mine start` and `mine stop` in the plugin. Authenticated `mine`
+IPC starts one server-authoritative target using packed player block actions; `status.mining` records active/completed/
+canceled/failed state, target and reason. BDS owns speed, drops, durability and protection events. Stops and session
+transitions clear mining; jobs are not persisted or retried after reconnect. For continuous mining, the plugin reselects
+targets on the server thread and sends authenticated `continue` requests with the runtime's unique loop ID. These
+renew a 200-input-tick lease; stale requests cannot resume a stopped/replaced session. `status.mining` also exposes
+`continuous`, `loopId` and `waiting` state. See [commands](../docs/COMMANDS.md#mining-blocks)
+and [validation](../docs/MINING_VALIDATION.md).
+
 The runtime owns persistent Bot profiles and accountless Bedrock client sessions. A profile contains an immutable UUID,
-a unique user-visible Minecraft name, and desired lifecycle state. It deliberately does not duplicate BDS world state.
+a unique user-visible Minecraft name, desired lifecycle state, and an optional Bot-specific chunk radius preference.
+It deliberately does not duplicate BDS world state.
 
 Install and run from a standalone clone:
 
@@ -16,6 +26,12 @@ ships the Bedrock 1.26.51/protocol-2193 schema with the proven wire layouts (BDS
 install. Configuration paths are resolved relative to the configuration file. Keep the generated control token, owner
 private key, and profile directory outside source control. The owner public key is the only key
 configured in patched Endstone.
+
+Standalone runtime JSON accepts `"chunkRadius": 5` (default 5; integer 2..32 chunks) for every Bot's requested loading
+radius. The protocol library previously defaulted to 10. Packaged instances configure `[runtime].chunk-radius` in
+`endbot.toml`; generated JSON is overwritten on start. `/bot <name> radius <2-32|default>` persists a per-Bot override or
+returns to the shared default; live requests apply without reconnecting. BDS may clamp the requested range. Server simulation distance and
+chunks loaded by other players are independent. See `docs/OPERATIONS.md` section 2.
 
 The control service refuses non-loopback binds and authenticates every request with the generated token. Unexpected
 disconnects retry with bounded exponential backoff. An intentional `despawn` disables reconnect; `resume` reenables it.

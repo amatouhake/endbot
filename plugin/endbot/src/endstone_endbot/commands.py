@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import shlex
+import threading
 from dataclasses import dataclass, field
 
 from endstone_endbot.control import RuntimeControlError
@@ -154,11 +155,30 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ("hotbar [1-9]",),
         ("Slots use human-facing 1-9 numbering through Bedrock equipment.",),
     ),
+    "radius": HelpTopic(
+        "radius",
+        "show or set the Bot chunk radius",
+        ("radius", "radius <2-32|default>"),
+        (
+            "Overrides this Bot only, persists across reconnect/restart, and applies live.",
+            "default restores the shared runtime setting; BDS may clamp the requested range.",
+        ),
+    ),
     "interact": HelpTopic(
         "interact",
         "right-click a block face",
         ("interact <x> <y> <z> <down|up|north|south|west|east>",),
         ("BDS decides reach, legality and inventory changes.",),
+    ),
+    "mine": HelpTopic(
+        "mine",
+        "mine reachable blocks with the held tool",
+        ("mine", "mine start", "mine <x> <y> <z> [down|up|north|south|west|east]", "mine stop"),
+        (
+            "Without coordinates, targets the Bot's line of sight. ~ is relative to the Bot.",
+            "mine start keeps mining along the Bot's sight; waits when empty. mine stop or stop cancels.",
+            "Without start, mines one block. No automatic walking; BDS controls speed, drops and durability.",
+        ),
     ),
     "drop": HelpTopic(
         "drop",
@@ -200,7 +220,7 @@ HELP_TOPIC_ALIASES = {"tp": "teleport"}
 HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
     ("move", "look", "jump", "attack", "use", "sprint", "sneak", "stop"),
-    ("hotbar", "interact", "drop", "rename", "forget"),
+    ("hotbar", "interact", "mine", "drop", "radius", "rename", "forget"),
 )
 
 HELP_PAGE_TITLES = (
@@ -239,6 +259,7 @@ def help_detail(key: str) -> tuple[str, ...]:
         *topic.details,
     ]
     return tuple(lines)
+
 
 BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
 
@@ -374,9 +395,11 @@ def parse_command(arguments: list[str]) -> BotCommand:
         return BotCommand(operation, name, {"newName": remaining[0]})
     if operation == "tp":
         return _teleport(name, remaining)
-    if operation == "move" and len(remaining) == 1 and remaining[0].lower() in {
-        "forward", "backward", "left", "right", "stop"
-    }:
+    if (
+        operation == "move"
+        and len(remaining) == 1
+        and remaining[0].lower() in {"forward", "backward", "left", "right", "stop"}
+    ):
         return BotCommand(operation, name, {"direction": remaining[0].lower()})
     if operation == "look" and len(remaining) == 2:
         return BotCommand(
@@ -396,6 +419,20 @@ def parse_command(arguments: list[str]) -> BotCommand:
         if not 1 <= slot <= 9:
             raise CommandSyntaxError("Hotbar slot must be from 1 to 9")
         return BotCommand(operation, name, {"slot": slot})
+    if operation == "radius":
+        if not remaining:
+            return BotCommand(operation, name)
+        if len(remaining) != 1:
+            raise CommandSyntaxError("radius accepts an integer from 2 to 32, or default")
+        if remaining[0].lower() == "default":
+            return BotCommand(operation, name, {"value": "default"})
+        try:
+            radius = int(remaining[0])
+        except ValueError as error:
+            raise CommandSyntaxError("radius accepts an integer from 2 to 32, or default") from error
+        if not 2 <= radius <= 32:
+            raise CommandSyntaxError("Chunk radius must be from 2 to 32")
+        return BotCommand(operation, name, {"value": radius})
     if operation == "interact" and len(remaining) == 4 and remaining[-1].lower() in BLOCK_FACES:
         target, unused = _position(remaining[:3])
         assert not unused
@@ -404,6 +441,20 @@ def parse_command(arguments: list[str]) -> BotCommand:
             name,
             {**target, "face": BLOCK_FACES[remaining[-1].lower()], "faceName": remaining[-1].lower()},
         )
+    if operation == "mine":
+        if not remaining:
+            return BotCommand(operation, name)
+        if remaining in (["start"], ["stop"]):
+            return BotCommand(operation, name, {"mode": remaining[0]})
+        if len(remaining) in {3, 4}:
+            target, unused = _position(remaining[:3])
+            assert not unused
+            if len(remaining) == 4:
+                if remaining[3].lower() not in BLOCK_FACES:
+                    raise CommandSyntaxError("Invalid mining block face")
+                target["face"] = BLOCK_FACES[remaining[3].lower()]
+            return BotCommand(operation, name, target)
+        raise CommandSyntaxError("mine accepts no arguments, x y z [face], start, or stop")
     if operation == "drop" and (not remaining or remaining == ["stack"]):
         return BotCommand(operation, name, {"stack": bool(remaining)})
     if operation in {"jump", "attack", "use"}:
@@ -419,12 +470,72 @@ class BotCommandService:
     def __init__(self, control=None, world=None) -> None:
         self.control = control
         self.world = world
+        # Shared by the command worker and the mining poll worker. Entries are
+        # replaced, never mutated, so identity checks detect a newer loop.
+        self._mining_loops = {}
+        self._mining_lock = threading.Lock()
+
+    def poll_mining(self, authorize) -> None:
+        with self._mining_lock:
+            loops = tuple(self._mining_loops.items())
+        for key, entry in loops:
+            name, identity, loop_id, source = entry
+            try:
+                if not authorize(source):
+                    self._end_mining_loop(key, entry)
+                    continue
+                status = self.control.request("status", name=name)
+                mining = status.get("mining") or {}
+                if status["identityId"] != identity or mining.get("loopId") != loop_id:
+                    self._take_mining_loop(key, entry)
+                    continue
+                target = None
+                if mining.get("state") != "active":
+                    target = self.world.resolve_mining(identity, {"continuous": True}, source)
+                try:
+                    self.control.request("mine", name=name, mode="continue", loopId=loop_id, **(target or {}))
+                except RuntimeControlError as error:
+                    if not target or error.code in {"unavailable", "protocol", "unauthorized"}:
+                        raise
+                    # The runtime rechecks reach/dimension from its own predicted
+                    # position. A rejected target means nothing is mineable yet:
+                    # keep the lease and retarget on the next poll.
+                    self.control.request("mine", name=name, mode="continue", loopId=loop_id)
+            except (RuntimeError, ValueError):
+                self._end_mining_loop(key, entry)
+
+    def _take_mining_loop(self, key, entry=None):
+        with self._mining_lock:
+            if entry is not None and self._mining_loops.get(key) is not entry:
+                return None
+            return self._mining_loops.pop(key, None)
+
+    def _end_mining_loop(self, key, entry=None) -> None:
+        entry = self._take_mining_loop(key, entry)
+        if entry:
+            name, _, loop_id, _ = entry
+            try:
+                self.control.request("mine", name=name, mode="stop", loopId=loop_id)
+            except (RuntimeError, ValueError):
+                pass  # Runtime lease expiry covers an unreachable control port.
+
+    def close(self) -> None:
+        with self._mining_lock:
+            keys = tuple(self._mining_loops)
+        for key in keys:
+            self._end_mining_loop(key)
 
     def execute(self, arguments: list[str], sender=None) -> CommandResult:
+        command = None
         try:
-            return self._execute(parse_command(arguments), sender)
+            command = parse_command(arguments)
+            return self._execute(command, sender)
         except (CommandSyntaxError, RuntimeError, ValueError) as error:
-            return CommandResult(True, (f"Endbot: {error}",))
+            operation = command.operation if command else ""
+            if command and operation in {"action", "flag"}:
+                operation = str(command.parameters[operation])
+            context = f"{command.name} {operation} failed: " if command and command.name else ""
+            return CommandResult(True, (f"Endbot: {context}{error}",))
 
     def _execute(self, command: BotCommand, sender) -> CommandResult:
         if command.operation == "ping":
@@ -453,6 +564,13 @@ class BotCommandService:
                 )
             if status.get("lastError"):
                 fields.append(f"error={status['lastError']}")
+            if "chunkRadius" in status:
+                fields.append(self._radius_summary(status))
+            if status.get("mining"):
+                mining = status["mining"]
+                target = " ".join(str(value) for value in mining.get("blockPosition", []))
+                mode = "continuous " if mining.get("continuous") else ""
+                fields.append(f"mining={mode}{mining['state']} {target} ({mining.get('reason', '')})")
             return CommandResult(True, ("Endbot: " + " | ".join(fields),))
         if command.operation == "spawn":
             existing = None
@@ -488,15 +606,45 @@ class BotCommandService:
             status = self.control.request("status", name=command.name)
             location = self.world.teleport(status["identityId"], command.parameters, sender)
             return CommandResult(True, (f"Endbot: teleported {status['name']} to {location}",))
+        if command.operation == "radius":
+            result = self.control.request("radius", name=command.name, **command.parameters)
+            return CommandResult(True, (f"Endbot: {result['name']} {self._radius_summary(result)}",))
+        if command.operation == "mine":
+            target = command.parameters
+            if target.get("mode") not in {"start", "stop"}:
+                status = self.control.request("status", name=command.name)
+                target = self.world.resolve_mining(status["identityId"], target, sender)
+            result = self.control.request("mine", name=command.name, **target)
+            key = command.name.casefold()
+            with self._mining_lock:
+                self._mining_loops.pop(key, None)
+                if command.parameters.get("mode") == "start":
+                    self._mining_loops[key] = (
+                        result["name"], result["identityId"], result["mining"]["loopId"], sender
+                    )
+            if command.parameters.get("mode") == "start":
+                return CommandResult(
+                    True, (f"Endbot: {result['name']}: continuous mining started; mine stop to cancel",)
+                )
+            if command.parameters.get("mode") == "stop":
+                return CommandResult(True, (f"Endbot: {result['name']}: mining stopped",))
+            position = " ".join(str(value) for value in target["blockPosition"])
+            return CommandResult(
+                True,
+                (
+                    f"Endbot: {result['name']}: mining started at {position} ({target['blockName']}); check status",
+                ),
+            )
         if command.operation == "interact":
             status = self.control.request("status", name=command.name)
             interaction = self.world.resolve_interaction(status["identityId"], command.parameters, sender)
             result = self.control.request("interact", name=command.name, **interaction)
         elif command.operation == "hotbar":
             result = self.control.request("hotbar", name=command.name, **command.parameters)
+            verb = "selected hotbar slot" if command.parameters else "hotbar slot ="
             return CommandResult(
                 True,
-                (f"Endbot: {result['name']} selected hotbar slot {result['selectedHotbarSlot']}",),
+                (f"Endbot: {result['name']} {verb} {result['selectedHotbarSlot']}",),
             )
         elif command.operation == "drop":
             result = self.control.request("drop", name=command.name, **command.parameters)
@@ -519,4 +667,45 @@ class BotCommandService:
             result = self.control.request(command.operation, name=command.name, **command.parameters)
         name = result.get("name", command.name)
         state = result.get("connectionState", command.operation)
-        return CommandResult(True, (f"Endbot: {name} {state}",))
+        parameters = command.parameters
+        if command.operation == "move":
+            detail = (
+                "movement stopped"
+                if parameters["direction"] == "stop"
+                else f"movement set to {parameters['direction']}"
+            )
+        elif command.operation == "look":
+            if "targetCoordinates" not in parameters:
+                yaw, pitch = parameters["yaw"], parameters["pitch"]
+            detail = f"look set to yaw={yaw:.1f} pitch={pitch:.1f}"
+        elif command.operation == "action":
+            action, mode = parameters["action"], parameters["mode"]
+            if mode == "stop":
+                detail = f"{action} stopped"
+            elif mode == "interval":
+                detail = f"{action} started every {parameters['intervalTicks']} ticks"
+            elif mode == "continuous":
+                detail = f"{action} continuous started"
+            else:
+                detail = f"{action} once requested"
+        elif command.operation == "flag":
+            detail = f"{parameters['flag']} {'on' if parameters['value'] else 'off'}"
+        elif command.operation == "stop":
+            detail = "movement and actions stopped (sprint/sneak off)"
+        elif command.operation == "interact":
+            position = " ".join(str(value) for value in interaction["blockPosition"])
+            face = next(key for key, value in BLOCK_FACES.items() if value == interaction["face"])
+            detail = f"block interaction requested at {position} face={face}"
+        elif command.operation == "rename":
+            return CommandResult(True, (f"Endbot: renamed {command.name} to {name} ({state})",))
+        elif command.operation == "forget":
+            detail = "profile registration removed"
+        else:
+            detail = f"{command.operation} requested ({state})"
+        return CommandResult(True, (f"Endbot: {name}: {detail}",))
+
+    @staticmethod
+    def _radius_summary(status: dict[str, object]) -> str:
+        confirmed = status.get("serverChunkRadius")
+        server = str(confirmed) if confirmed is not None else "unconfirmed"
+        return f"chunk radius requested={status['chunkRadius']} ({status['chunkRadiusSource']}) server={server} chunks"

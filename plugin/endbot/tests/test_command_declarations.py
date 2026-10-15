@@ -51,7 +51,9 @@ def _load_usages():
     plugin = types.ModuleType("endstone.plugin")
     command.Command = _StubCommand
     command.CommandSender = _StubSender
+    command.ConsoleCommandSender = type("ConsoleCommandSender", (_StubSender,), {})
     event.PlayerJoinEvent = type("PlayerJoinEvent", (), {})
+    event.PlayerQuitEvent = type("PlayerQuitEvent", (), {})
     event.event_handler = lambda function: function
     level.Location = type("Location", (), {})
     plugin.Plugin = _StubPlugin
@@ -100,6 +102,7 @@ DOCUMENTED_ROOT_FORMS = [
     ["help", "advanced"],
     ["help", "2"],
     ["help", "move"],
+    ["help", "radius"],
     ["help", "teleport"],
     ["help", "ping"],
     ["help", "dance"],
@@ -108,6 +111,11 @@ DOCUMENTED_ROOT_FORMS = [
 ]
 
 DOCUMENTED_NAMED_FORMS = [
+    ["Alice", "mine"],
+    ["Alice", "mine", "start"],
+    ["Alice", "mine", "stop"],
+    ["Alice", "mine", "1", "64", "2"],
+    ["Alice", "mine", "~", "~-1", "~", "up"],
     ["Alice", "status"],
     ["Alice", "resume"],
     ["Alice", "reconnect"],
@@ -143,6 +151,9 @@ DOCUMENTED_NAMED_FORMS = [
     ["Alice", "sneak", "off"],
     ["Alice", "hotbar"],
     ["Alice", "hotbar", "9"],
+    ["Alice", "radius"],
+    ["Alice", "radius", "12"],
+    ["Alice", "radius", "default"],
     ["Alice", "interact", "1", "64", "2", "up"],
     ["Alice", "interact", "~1", "64", "-2", "down"],
     ["Alice", "drop"],

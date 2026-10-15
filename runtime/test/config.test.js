@@ -52,3 +52,13 @@ test('transport defaults to NetherNet and RakNet remains an explicit loopback ch
   }
   assert.throws(() => loadConfig(writeConfig({ transport: 'raknet', serverHost: '192.0.2.10' })), /loopback/)
 })
+
+test('chunk radius defaults small and rejects invalid requests', () => {
+  assert.equal(loadConfig(writeConfig({})).chunkRadius, 5)
+  for (const chunkRadius of [2, 10, 32]) {
+    assert.equal(loadConfig(writeConfig({ chunkRadius })).chunkRadius, chunkRadius)
+  }
+  for (const chunkRadius of [0, 1, 33, 2.5, '2', null, true]) {
+    assert.throws(() => loadConfig(writeConfig({ chunkRadius })), /chunkRadius/)
+  }
+})

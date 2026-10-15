@@ -5,7 +5,9 @@ teleport through Endstone APIs. Parsing and domain routing are separate from the
 runtime transport. Runtime socket requests execute on an ordered worker; world access and command replies are
 marshalled back onto the BDS server thread through Endstone's scheduler.
 
-`endbot.command.control` defaults to false. The plugin grants only that node to explicitly listed human UUIDs/XUIDs; it
-does not enable cheats, grant OP, or grant vanilla command privileges. The runtime control host must be loopback and its
+`endbot.command.control` defaults to false. The plugin grants that node to authenticated human controllers; bootstrap
+enrollment and persistent console-only `botcontrollers add|remove|list` manage access. Revocations override bootstrap
+and legacy allowlists and invalidate queued commands. See [runtime authorization](../../docs/OPERATIONS.md#runtime-grants-and-revocations).
+It does not enable cheats, grant OP, or grant vanilla command privileges. The runtime control host must be loopback and its
 token file must point to the token created by the runtime. See [the command guide](../../docs/COMMANDS.md) for syntax
 and lifecycle semantics.

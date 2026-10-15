@@ -5,6 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { botChunkRadius } from './config.js'
 import { loadOrCreatePersistentArtifact } from './local-identity.js'
 
 const PROFILE_VERSION = 1
@@ -31,11 +32,13 @@ function validateProfile (value) {
   }
   validateBotName(value.name)
   if (typeof value.desiredOnline !== 'boolean') throw new Error('Endbot profile desiredOnline must be boolean')
+  if (value.chunkRadius !== undefined) botChunkRadius(value.chunkRadius)
   return Object.freeze({
     schemaVersion: PROFILE_VERSION,
     identityId: value.identityId.toLowerCase(),
     name: value.name,
-    desiredOnline: value.desiredOnline
+    desiredOnline: value.desiredOnline,
+    ...(value.chunkRadius === undefined ? {} : { chunkRadius: value.chunkRadius })
   })
 }
 

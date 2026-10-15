@@ -7,7 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
-from endstone_endbot.commands import CommandResult
+from endstone_endbot.commands import ERROR, WARNING, CommandResult, reply, strip_colors
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +159,16 @@ class ServerThreadWorld:
         return self._bridge.call(lambda: self._world.assert_name_available(name, identity_id))
 
 
+def _send(sender, source: CommandSource, message: str) -> None:
+    """Deliver a reply; only players get color codes.
+
+    Endstone renders codes on an interactive console, but the console stream
+    is also the server log that operators and the smoke tests read as text.
+    """
+    if sender is not None:
+        sender.send_message(message if source.player_id is not None else strip_colors(message))
+
+
 class AsyncCommandRunner:
     """Run ordered command service calls away from the BDS command thread."""
 
@@ -210,13 +220,11 @@ class AsyncCommandRunner:
     def _notify(self, source: CommandSource, level: str, message: str) -> None:
         def deliver() -> None:
             if self._log is not None:
-                self._log(level, message)
+                self._log(level, strip_colors(message))
                 if source.player_id is None:
                     return  # The console already shows the log entry.
             # A controller who has logged off still gets the console log entry.
-            sender = self._resolve_sender(source)
-            if sender is not None:
-                sender.send_message(message)
+            _send(self._resolve_sender(source), source, message)
 
         self._bridge.post(deliver)
 
@@ -250,22 +258,22 @@ class AsyncCommandRunner:
                 return
         try:
             if self._authorize is not None and not self._bridge.call(lambda: self._authorize(source)):
-                result = CommandResult(True, ("Endbot: Bot control permission was revoked; command canceled",))
+                result = CommandResult(
+                    True, (reply("Bot control permission was revoked; command canceled", color=WARNING),)
+                )
             else:
                 result = self._service.execute(arguments, source)
         except Exception:  # noqa: BLE001 - never strand command delivery on an unexpected service failure
-            result = CommandResult(True, ("Endbot: internal command failure",))
+            result = CommandResult(True, (reply("internal command failure", color=ERROR),))
 
         def deliver() -> None:
             if result.log_level is not None and self._log is not None:
                 for message in result.messages:
-                    self._log(result.log_level, message)
+                    self._log(result.log_level, strip_colors(message))
                 if source.player_id is None:
                     return  # The console already shows the log entry.
             sender = self._resolve_sender(source)
-            if sender is None:
-                return
             for message in result.messages:
-                sender.send_message(message)
+                _send(sender, source, message)
 
         self._bridge.post(deliver)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import shlex
 import threading
 from dataclasses import dataclass, field
@@ -12,6 +13,57 @@ from endstone_endbot.control import RuntimeControlError
 
 class CommandSyntaxError(ValueError):
     pass
+
+
+# Bedrock formatting codes, equal to endstone.ColorFormat values; spelled out
+# so this module stays importable without Endstone. Only players see them:
+# console and log delivery strip them (see strip_colors).
+GOLD = "§6"
+DARK_AQUA = "§3"
+GRAY = "§7"
+AQUA = "§b"
+RED = "§c"
+YELLOW = "§e"
+RESET = "§r"
+
+HEADING = GOLD  # help page titles and topic headings
+SYNTAX = AQUA  # command syntax
+DIM = GRAY  # <placeholders>, [optional] parts and separators
+PREFIX = DARK_AQUA  # "Endbot: <Bot>:" reply prefix
+ERROR = RED
+WARNING = YELLOW
+
+_COLOR_CODE = re.compile("§.?", re.DOTALL)
+
+
+def strip_colors(text: str) -> str:
+    """Return ``text`` without Bedrock formatting codes."""
+    return _COLOR_CODE.sub("", text)
+
+
+def reply(detail: str, name: str | None = None, color: str = "") -> str:
+    """Format one reply as ``Endbot: <Bot>: <detail>`` with a colored prefix."""
+    prefix = f"Endbot: {name}:" if name else "Endbot:"
+    return f"{PREFIX}{prefix}{RESET} {color}{detail}{RESET if color else ''}"
+
+
+def color_syntax(text: str) -> str:
+    """Color command syntax, dimming ``<placeholder>`` and ``[optional]`` parts."""
+    parts, depth = [SYNTAX], 0
+    for character in text:
+        if character in "<[":
+            if depth == 0:
+                parts.append(DIM)
+            depth += 1
+        parts.append(character)
+        if character in ">]" and depth:
+            depth -= 1
+            if depth == 0:
+                parts.append(SYNTAX)
+    if parts[-1] == SYNTAX:
+        parts.pop()
+    parts.append(RESET)
+    return "".join(parts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,16 +295,24 @@ def _help_prefix(topic: HelpTopic) -> str:
 def help_page(page: int) -> tuple[str, ...]:
     """Render one paginated help index, modeled on vanilla Bedrock /help."""
     total = len(HELP_PAGES)
-    lines = [f"--- Endbot help page {page} of {total}: {HELP_PAGE_TITLES[page - 1]} ---"]
+    lines = [f"{HEADING}--- Endbot help page {page} of {total}: {HELP_PAGE_TITLES[page - 1]} ---{RESET}"]
+    separator = f"{DIM} - {RESET}"
     if page == 1:
-        lines.append("/bot ping | /bot list | /bot help - connectivity, profiles, this help")
+        commands = f"{DIM} | {RESET}".join(color_syntax(f"/bot {key}") for key in ("ping", "list", "help"))
+        lines.append(f"{commands}{separator}connectivity, profiles, this help")
     for key in HELP_PAGES[page - 1]:
         topic = HELP_TOPICS[key]
-        lines.append(f"{_help_prefix(topic)} {topic.syntaxes[0]} - {topic.summary}")
+        lines.append(f"{color_syntax(f'{_help_prefix(topic)} {topic.syntaxes[0]}')}{separator}{topic.summary}")
     if page < total:
-        lines.append(f"Next page: /bot help {page + 1} - detail: /bot help <command>")
+        lines.append(
+            f"{DIM}Next page:{RESET} {color_syntax(f'/bot help {page + 1}')}"
+            f"{DIM} - detail:{RESET} {color_syntax('/bot help <command>')}"
+        )
     else:
-        lines.append("Detail: /bot help <command> (for example /bot help move)")
+        lines.append(
+            f"{DIM}Detail:{RESET} {color_syntax('/bot help <command>')}"
+            f" {DIM}(for example{RESET} {color_syntax('/bot help move')}{DIM}){RESET}"
+        )
     return tuple(lines)
 
 
@@ -260,8 +320,8 @@ def help_detail(key: str) -> tuple[str, ...]:
     """Render detailed help for one operation, listing every supported syntax."""
     topic = HELP_TOPICS[key]
     lines = [
-        f"Endbot help: {topic.operation}",
-        *(f"{_help_prefix(topic)} {syntax}" for syntax in topic.syntaxes),
+        f"{HEADING}Endbot help: {topic.operation}{RESET}",
+        *(color_syntax(f"{_help_prefix(topic)} {syntax}") for syntax in topic.syntaxes),
         *topic.details,
     ]
     return tuple(lines)
@@ -533,18 +593,22 @@ class BotCommandService:
             loops = tuple(self._mining_loops.items())
         for key, entry in loops:
             name, identity, loop_id, source, position = entry
-            stopped = f"Endbot: {name}: {'destroy continuous' if loop_id else 'destroy'} stopped: "
+            stopped = f"{'destroy continuous' if loop_id else 'destroy'} stopped: "
             try:
                 if not authorize(source):
                     if self._end_mining_loop(key, entry):
-                        notices.append((source, "warning", stopped + "control permission revoked"))
+                        notices.append(
+                            (source, "warning", reply(stopped + "control permission revoked", name, WARNING))
+                        )
                     continue
                 status = self.control.request("status", name=name)
                 self._mining_unreachable.pop(key, None)  # reached the runtime again
                 mining = status.get("mining") or {}
                 if status["identityId"] != identity:
                     if self._take_mining_loop(key, entry):
-                        notices.append((source, "warning", stopped + "Bot was renamed or removed"))
+                        notices.append(
+                            (source, "warning", reply(stopped + "Bot was renamed or removed", name, WARNING))
+                        )
                     continue
                 if loop_id is None:
                     reason = self._single_mining_end(status, mining, position)
@@ -556,7 +620,7 @@ class BotCommandService:
                 if reason is False:
                     continue  # still breaking
                 if self._take_mining_loop(key, entry) and reason:
-                    notices.append((source, "warning", stopped + reason))
+                    notices.append((source, "warning", reply(stopped + reason, name, WARNING)))
             except RuntimeControlError as error:
                 # Windows loopback can refuse a fresh connection (WinError 10048)
                 # under rapid reconnects. Retry for about one runtime lease
@@ -564,10 +628,10 @@ class BotCommandService:
                 if error.code == "unavailable" and self._unreachable(key, entry) < UNREACHABLE_POLL_LIMIT:
                     continue
                 if self._end_mining_loop(key, entry):
-                    notices.append((source, "warning", stopped + str(error)))
+                    notices.append((source, "warning", reply(stopped + str(error), name, WARNING)))
             except (RuntimeError, ValueError) as error:
                 if self._end_mining_loop(key, entry):
-                    notices.append((source, "warning", stopped + str(error)))
+                    notices.append((source, "warning", reply(stopped + str(error), name, WARNING)))
         return notices
 
     def _unreachable(self, key, entry) -> int:
@@ -644,22 +708,22 @@ class BotCommandService:
                 operation = command.operation
                 if operation in {"action", "flag"}:
                     operation = str(command.parameters[operation])
-                context = f"{command.name}: {operation} failed: "
+                name, context = command.name, f"{operation} failed: "
             else:
-                context = ""
+                name, context = None, ""
                 try:
                     tokens = _tokens(arguments)
                 except ValueError:
                     tokens = []
                 if len(tokens) >= 2 and tokens[0].lower() != "help":
                     # Syntax errors still name the Bot the operator addressed.
-                    context = f"{tokens[0]}: "
-            return CommandResult(True, (f"Endbot: {context}{error}",))
+                    name = tokens[0]
+            return CommandResult(True, (reply(f"{context}{error}", name, ERROR),))
 
     def _execute(self, command: BotCommand, sender) -> CommandResult:
         if command.operation == "ping":
             # Keep the server-side safety probe independent of runtime health.
-            return CommandResult(True, ("Endbot: pong",))
+            return CommandResult(True, (reply("pong"),))
         if command.operation == "help":
             if "topic" in command.parameters:
                 return CommandResult(True, help_detail(command.parameters["topic"]))
@@ -669,25 +733,25 @@ class BotCommandService:
         if command.operation == "list":
             bots = self.control.request("list")
             if not bots:
-                return CommandResult(True, ("Endbot: no Bot profiles",))
-            summary = ", ".join(f"{bot['name']} [{bot['connectionState']}]" for bot in bots)
-            return CommandResult(True, ("Endbot: " + summary,))
+                return CommandResult(True, (reply("no Bot profiles"),))
+            summary = ", ".join(f"{bot['name']} {DIM}[{bot['connectionState']}]{RESET}" for bot in bots)
+            return CommandResult(True, (reply(summary),))
         if command.operation == "status":
             status = self.control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
-            fields = [f"{status['name']}: {status['connectionState']}", f"desired={status['desiredState']}"]
+            fields = [status["connectionState"], f"desired={status['desiredState']}"]
             if observed:
                 fields.append(
                     f"{observed['dimension']} {observed['x']:.2f} {observed['y']:.2f} {observed['z']:.2f} "
                     f"yaw={observed['yaw']:.1f} pitch={observed['pitch']:.1f}"
                 )
             if status.get("lastError"):
-                fields.append(f"error={status['lastError']}")
+                fields.append(f"{ERROR}error={status['lastError']}{RESET}")
             if "chunkRadius" in status:
                 fields.append(self._radius_summary(status))
             if status.get("mining"):
                 fields.append(self._mining_summary(status["mining"]))
-            return CommandResult(True, ("Endbot: " + " | ".join(fields),))
+            return CommandResult(True, (reply(f"{DIM} | {RESET}".join(fields), status["name"]),))
         if command.operation == "spawn":
             existing = None
             try:
@@ -703,28 +767,28 @@ class BotCommandService:
             if result.get("alreadyOnline"):
                 state = result.get("connectionState")
                 if state == "connecting":
-                    return CommandResult(True, (f"Endbot: {result['name']}: already connecting",))
+                    return CommandResult(True, (reply("already connecting", result["name"]),))
                 if state == "reconnecting":
-                    return CommandResult(True, (f"Endbot: {result['name']}: already reconnecting",))
+                    return CommandResult(True, (reply("already reconnecting", result["name"]),))
                 if state == "online":
-                    return CommandResult(True, (f"Endbot: {result['name']}: already online",))
+                    return CommandResult(True, (reply("already online", result["name"]),))
                 # Missing or unknown states stay neutral rather than claiming online.
-                return CommandResult(True, (f"Endbot: {result['name']}: already active",))
+                return CommandResult(True, (reply("already active", result["name"]),))
             verb = "created and connecting" if result.get("created") else "connecting"
             if placement is None:
                 # Console spawn without coordinates: BDS places the Bot.
                 self.world.clear_pending_placement(result["identityId"])
                 where = "at the world spawn" if result.get("created") else "where it last was"
-                return CommandResult(True, (f"Endbot: {result['name']}: {verb} ({where})",))
+                return CommandResult(True, (reply(f"{verb} ({where})", result["name"]),))
             self.world.queue_spawn_placement(result["identityId"], placement)
-            return CommandResult(True, (f"Endbot: {result['name']}: {verb}",))
+            return CommandResult(True, (reply(verb, result["name"]),))
         if command.operation == "teleport":
             status = self.control.request("status", name=command.name)
             location = self.world.teleport(status["identityId"], command.parameters, sender)
-            return CommandResult(True, (f"Endbot: {status['name']}: teleported to {location}",))
+            return CommandResult(True, (reply(f"teleported to {location}", status["name"]),))
         if command.operation == "radius":
             result = self.control.request("radius", name=command.name, **command.parameters)
-            return CommandResult(True, (f"Endbot: {result['name']}: {self._radius_summary(result)}",))
+            return CommandResult(True, (reply(self._radius_summary(result), result["name"]),))
         if command.operation == "destroy":
             mode = command.parameters.get("mode")
             if mode == "continuous":
@@ -749,14 +813,14 @@ class BotCommandService:
             if mode == "continuous":
                 return CommandResult(
                     True,
-                    (f"Endbot: {result['name']}: destroy continuous started; destroy stop to cancel",),
+                    (reply("destroy continuous started; destroy stop to cancel", result["name"]),),
                     log_level="info",
                 )
             if mode == "stop":
-                return CommandResult(True, (f"Endbot: {result['name']}: destroy stopped",), log_level="info")
+                return CommandResult(True, (reply("destroy stopped", result["name"]),), log_level="info")
             position = " ".join(str(value) for value in target["blockPosition"])
             started = f"destroying {target['blockName']} at {position}"
-            return CommandResult(True, (f"Endbot: {result['name']}: {started}; see status for the result",))
+            return CommandResult(True, (reply(f"{started}; see status for the result", result["name"]),))
         if command.operation == "interact":
             status = self.control.request("status", name=command.name)
             interaction = self.world.resolve_interaction(status["identityId"], command.parameters, sender)
@@ -766,12 +830,12 @@ class BotCommandService:
             selected = " selected" if command.parameters else ""
             return CommandResult(
                 True,
-                (f"Endbot: {result['name']}: hotbar slot {result['selectedHotbarSlot']}{selected}",),
+                (reply(f"hotbar slot {result['selectedHotbarSlot']}{selected}", result["name"]),),
             )
         elif command.operation == "drop":
             result = self.control.request("drop", name=command.name, **command.parameters)
             amount = "stack" if command.parameters["stack"] else "one item"
-            return CommandResult(True, (f"Endbot: {result['name']}: drop {amount} requested",))
+            return CommandResult(True, (reply(f"drop {amount} requested", result["name"]),))
         elif command.operation == "look" and "targetCoordinates" in command.parameters:
             status = self.control.request("status", name=command.name)
             yaw, pitch = self.world.look_at(status["identityId"], command.parameters["targetCoordinates"])
@@ -819,12 +883,12 @@ class BotCommandService:
             face = next(key for key, value in BLOCK_FACES.items() if value == interaction["face"])
             detail = f"block interaction requested at {position} face={face}"
         elif command.operation == "rename":
-            return CommandResult(True, (f"Endbot: {command.name}: renamed to {name} ({state})",))
+            return CommandResult(True, (reply(f"renamed to {name} ({state})", command.name),))
         elif command.operation == "forget":
             detail = "profile registration removed"
         else:
             detail = f"{command.operation} requested ({state})"
-        return CommandResult(True, (f"Endbot: {name}: {detail}",))
+        return CommandResult(True, (reply(detail, name),))
 
     @staticmethod
     def _radius_summary(status: dict[str, object]) -> str:

@@ -226,7 +226,7 @@ HELP_PAGES: tuple[tuple[str, ...], ...] = (
 HELP_PAGE_TITLES = (
     "lifecycle, status and teleport",
     "movement and actions",
-    "inventory and advanced lifecycle",
+    "inventory, blocks and Bot settings",
 )
 
 
@@ -262,6 +262,30 @@ def help_detail(key: str) -> tuple[str, ...]:
 
 
 BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
+
+# Runtime mining reasons are protocol-level; status shows player-facing wording.
+MINING_REASONS = {
+    "BDS changed target block": "block broken or changed",
+    "stopped": "stopped",
+    "target changed": "replaced by a new target",
+    "continuous mining restarted": "replaced by mine start",
+    "movement changed": "canceled by move",
+    "look changed": "canceled by look",
+    "attack started": "canceled by attack",
+    "use started": "canceled by use",
+    "hotbar changed": "canceled by hotbar change",
+    "held item changed": "held item changed",
+    "block interaction started": "canceled by interact",
+    "item dropped": "canceled by drop",
+    "teleported": "canceled by teleport",
+    "dimension changed": "canceled by dimension change",
+    "respawning": "canceled by death",
+    "disconnected": "Bot disconnected",
+    "connection closed": "Bot disconnected",
+    "target moved out of reach": "target out of reach",
+    "mining controller timed out": "lost contact with the Endbot plugin",
+    "timed out waiting for BDS to change target": "block did not break within 10 minutes; protected or unbreakable?",
+}
 
 
 def _tokens(arguments: list[str]) -> list[str]:
@@ -531,10 +555,20 @@ class BotCommandService:
             command = parse_command(arguments)
             return self._execute(command, sender)
         except (CommandSyntaxError, RuntimeError, ValueError) as error:
-            operation = command.operation if command else ""
-            if command and operation in {"action", "flag"}:
-                operation = str(command.parameters[operation])
-            context = f"{command.name} {operation} failed: " if command and command.name else ""
+            if command is not None and command.name:
+                operation = command.operation
+                if operation in {"action", "flag"}:
+                    operation = str(command.parameters[operation])
+                context = f"{command.name}: {operation} failed: "
+            else:
+                context = ""
+                try:
+                    tokens = _tokens(arguments)
+                except ValueError:
+                    tokens = []
+                if len(tokens) >= 2 and tokens[0].lower() != "help":
+                    # Syntax errors still name the Bot the operator addressed.
+                    context = f"{tokens[0]}: "
             return CommandResult(True, (f"Endbot: {context}{error}",))
 
     def _execute(self, command: BotCommand, sender) -> CommandResult:
@@ -556,7 +590,7 @@ class BotCommandService:
         if command.operation == "status":
             status = self.control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
-            fields = [status["name"], status["connectionState"], f"desired={status['desiredState']}"]
+            fields = [f"{status['name']}: {status['connectionState']}", f"desired={status['desiredState']}"]
             if observed:
                 fields.append(
                     f"{observed['dimension']} {observed['x']:.2f} {observed['y']:.2f} {observed['z']:.2f} "
@@ -567,10 +601,7 @@ class BotCommandService:
             if "chunkRadius" in status:
                 fields.append(self._radius_summary(status))
             if status.get("mining"):
-                mining = status["mining"]
-                target = " ".join(str(value) for value in mining.get("blockPosition", []))
-                mode = "continuous " if mining.get("continuous") else ""
-                fields.append(f"mining={mode}{mining['state']} {target} ({mining.get('reason', '')})")
+                fields.append(self._mining_summary(status["mining"]))
             return CommandResult(True, ("Endbot: " + " | ".join(fields),))
         if command.operation == "spawn":
             existing = None
@@ -587,28 +618,28 @@ class BotCommandService:
             if result.get("alreadyOnline"):
                 state = result.get("connectionState")
                 if state == "connecting":
-                    return CommandResult(True, (f"Endbot: {result['name']} is already connecting",))
+                    return CommandResult(True, (f"Endbot: {result['name']}: already connecting",))
                 if state == "reconnecting":
-                    return CommandResult(True, (f"Endbot: {result['name']} is already reconnecting",))
+                    return CommandResult(True, (f"Endbot: {result['name']}: already reconnecting",))
                 if state == "online":
-                    return CommandResult(True, (f"Endbot: {result['name']} is already online",))
+                    return CommandResult(True, (f"Endbot: {result['name']}: already online",))
                 # Missing or unknown states stay neutral rather than claiming online.
-                return CommandResult(True, (f"Endbot: {result['name']} is already active",))
+                return CommandResult(True, (f"Endbot: {result['name']}: already active",))
             verb = "created and connecting" if result.get("created") else "connecting"
             if placement is None:
                 # Console spawn without coordinates: BDS places the Bot.
                 self.world.clear_pending_placement(result["identityId"])
                 where = "at the world spawn" if result.get("created") else "where it last was"
-                return CommandResult(True, (f"Endbot: {result['name']} {verb} ({where})",))
+                return CommandResult(True, (f"Endbot: {result['name']}: {verb} ({where})",))
             self.world.queue_spawn_placement(result["identityId"], placement)
-            return CommandResult(True, (f"Endbot: {result['name']} {verb}",))
+            return CommandResult(True, (f"Endbot: {result['name']}: {verb}",))
         if command.operation == "teleport":
             status = self.control.request("status", name=command.name)
             location = self.world.teleport(status["identityId"], command.parameters, sender)
-            return CommandResult(True, (f"Endbot: teleported {status['name']} to {location}",))
+            return CommandResult(True, (f"Endbot: {status['name']}: teleported to {location}",))
         if command.operation == "radius":
             result = self.control.request("radius", name=command.name, **command.parameters)
-            return CommandResult(True, (f"Endbot: {result['name']} {self._radius_summary(result)}",))
+            return CommandResult(True, (f"Endbot: {result['name']}: {self._radius_summary(result)}",))
         if command.operation == "mine":
             target = command.parameters
             if target.get("mode") not in {"start", "stop"}:
@@ -632,7 +663,7 @@ class BotCommandService:
             return CommandResult(
                 True,
                 (
-                    f"Endbot: {result['name']}: mining started at {position} ({target['blockName']}); check status",
+                    f"Endbot: {result['name']}: mining {target['blockName']} at {position}; see status for the result",
                 ),
             )
         if command.operation == "interact":
@@ -641,15 +672,15 @@ class BotCommandService:
             result = self.control.request("interact", name=command.name, **interaction)
         elif command.operation == "hotbar":
             result = self.control.request("hotbar", name=command.name, **command.parameters)
-            verb = "selected hotbar slot" if command.parameters else "hotbar slot ="
+            selected = " selected" if command.parameters else ""
             return CommandResult(
                 True,
-                (f"Endbot: {result['name']} {verb} {result['selectedHotbarSlot']}",),
+                (f"Endbot: {result['name']}: hotbar slot {result['selectedHotbarSlot']}{selected}",),
             )
         elif command.operation == "drop":
             result = self.control.request("drop", name=command.name, **command.parameters)
             amount = "stack" if command.parameters["stack"] else "one item"
-            return CommandResult(True, (f"Endbot: {result['name']} requested drop {amount}",))
+            return CommandResult(True, (f"Endbot: {result['name']}: drop {amount} requested",))
         elif command.operation == "look" and "targetCoordinates" in command.parameters:
             status = self.control.request("status", name=command.name)
             yaw, pitch = self.world.look_at(status["identityId"], command.parameters["targetCoordinates"])
@@ -697,7 +728,7 @@ class BotCommandService:
             face = next(key for key, value in BLOCK_FACES.items() if value == interaction["face"])
             detail = f"block interaction requested at {position} face={face}"
         elif command.operation == "rename":
-            return CommandResult(True, (f"Endbot: renamed {command.name} to {name} ({state})",))
+            return CommandResult(True, (f"Endbot: {command.name}: renamed to {name} ({state})",))
         elif command.operation == "forget":
             detail = "profile registration removed"
         else:
@@ -706,6 +737,35 @@ class BotCommandService:
 
     @staticmethod
     def _radius_summary(status: dict[str, object]) -> str:
+        source = "Bot override" if status.get("chunkRadiusSource") == "bot" else "shared default"
         confirmed = status.get("serverChunkRadius")
-        server = str(confirmed) if confirmed is not None else "unconfirmed"
-        return f"chunk radius requested={status['chunkRadius']} ({status['chunkRadiusSource']}) server={server} chunks"
+        if confirmed is not None:
+            server = f"server confirmed {confirmed}"
+        elif status.get("connectionState") == "online":
+            server = "server confirmation pending"
+        else:
+            server = "applies when online"
+        return f"chunk radius {status['chunkRadius']} ({source}); {server}"
+
+    @staticmethod
+    def _mining_summary(mining: dict[str, object]) -> str | None:
+        position = " ".join(str(value) for value in mining.get("blockPosition") or [])
+        block = mining.get("blockName")
+        target = f"{block} at {position}" if block and block != "unknown" and position else position
+        state = mining.get("state")
+        if state == "active":
+            return f"{'continuous ' if mining.get('continuous') else ''}mining {target}".rstrip()
+        if mining.get("continuous"):
+            last = f" (last: {target})" if target else ""
+            return f"continuous mining waiting for a block in sight{last}"
+        # A finished job stays visible until the next one, labelled as past.
+        reason = str(MINING_REASONS.get(str(mining.get("reason", "")), mining.get("reason") or ""))
+        if state == "completed":
+            outcome = reason or "completed"
+        elif state == "failed":
+            outcome = f"failed: {reason}" if reason else "failed"
+        elif reason.startswith(("canceled", "replaced", "stopped")):
+            outcome = reason
+        else:
+            outcome = f"canceled: {reason}" if reason else "canceled"
+        return f"last mining: {outcome}" + (f" ({target})" if target else "")

@@ -134,7 +134,8 @@ class CommandServiceTests(unittest.TestCase):
         self.world.resolve_mining = lambda *args: None
         self.service.poll_mining(lambda _: True)
         self.assertEqual(self.control.calls[-1][1]["mode"], "continue")
-        self.assertIn("continuous waiting", self.service.execute(["Alice", "status"]).message)
+        status = self.service.execute(["Alice", "status"]).message
+        self.assertIn("continuous mining waiting for a block in sight", status)
         self.service.execute(["Alice", "mine", "stop"])
         before = len(self.control.calls)
         self.service.poll_mining(lambda _: True)
@@ -204,18 +205,21 @@ class CommandServiceTests(unittest.TestCase):
         self.service.execute(["Alice", "spawn"], object())
         updated = self.service.execute(["Alice", "radius", "12"])
         self.assertEqual(self.control.calls[-1], ("radius", {"name": "Alice", "value": 12}))
-        self.assertIn("requested=12 (bot)", updated.message)
-        self.assertIn("server=unconfirmed", updated.message)
+        # Not yet online: the request is stored and sent on connection.
+        self.assertIn("Alice: chunk radius 12 (Bot override); applies when online", updated.message)
+        self.control.bots["Alice"]["connectionState"] = "online"
+        pending = self.service.execute(["Alice", "radius"])
+        self.assertIn("server confirmation pending", pending.message)
         self.control.bots["Alice"]["serverChunkRadius"] = 10
         query = self.service.execute(["Alice", "radius"])
-        self.assertIn("server=10", query.message)
+        self.assertIn("chunk radius 12 (Bot override); server confirmed 10", query.message)
         reset = self.service.execute(["Alice", "radius", "default"])
-        self.assertIn("requested=5 (default)", reset.message)
+        self.assertIn("chunk radius 5 (shared default)", reset.message)
 
     def test_mining_starts_authoritative_target_and_stop_skips_world_resolution(self):
         self.service.execute(["Alice", "spawn"], object())
         reply = self.service.execute(["Alice", "mine", "1", "64", "2"], object())
-        self.assertIn("mining started at 1 64 2 (minecraft:stone)", reply.message)
+        self.assertIn("Alice: mining minecraft:stone at 1 64 2; see status for the result", reply.message)
         self.assertEqual(self.control.calls[-1][0], "mine")
         self.assertEqual(self.control.calls[-1][1]["blockRuntimeId"], 42)
         self.world.resolve_mining = lambda *args: self.fail("stop must not resolve a new target")
@@ -409,14 +413,62 @@ class CommandServiceTests(unittest.TestCase):
 
         self.control.request = unavailable
         result = self.service.execute(["Alice", "move", "forward"], object())
-        self.assertEqual(result.message, "Endbot: Alice move failed: Bot is offline")
+        self.assertEqual(result.message, "Endbot: Alice: move failed: Bot is offline")
 
     def test_lifecycle_replies_identify_change_instead_of_only_state(self):
         self.service.execute(["Alice", "spawn"], object())
-        self.assertIn("renamed Alice to Bob", self.service.execute(["Alice", "rename", "Bob"], object()).message)
+        self.assertIn("Alice: renamed to Bob", self.service.execute(["Alice", "rename", "Bob"], object()).message)
         for operation in ("resume", "reconnect", "despawn"):
             self.assertIn(f"{operation} requested", self.service.execute(["Bob", operation], object()).message)
         self.assertIn("profile registration removed", self.service.execute(["Bob", "forget"], object()).message)
+
+    def test_mining_status_uses_player_facing_wording(self):
+        stone = {"blockPosition": [0, 64, 2], "blockName": "minecraft:stone"}
+        cases = [
+            ({**stone, "state": "active", "reason": "waiting for BDS"}, "mining minecraft:stone at 0 64 2"),
+            (
+                {**stone, "state": "waiting", "continuous": True, "loopId": "x"},
+                "continuous mining waiting for a block in sight (last: minecraft:stone at 0 64 2)",
+            ),
+            (
+                {**stone, "state": "completed", "reason": "BDS changed target block"},
+                "last mining: block broken or changed (minecraft:stone at 0 64 2)",
+            ),
+            (
+                {**stone, "state": "failed", "reason": "timed out waiting for BDS to change target"},
+                "last mining: failed: block did not break within 10 minutes",
+            ),
+            ({**stone, "state": "canceled", "reason": "look changed"}, "last mining: canceled by look"),
+            ({**stone, "state": "canceled", "reason": "connection closed"}, "last mining: canceled: Bot disconnected"),
+        ]
+        self.service.execute(["Alice", "spawn"], object())
+        for mining, expected in cases:
+            with self.subTest(mining=mining):
+                self.control.bots["Alice"]["mining"] = mining
+                message = self.service.execute(["Alice", "status"], object()).message
+                self.assertIn(expected, message)
+                self.assertNotIn("BDS", message)
+
+    def test_bot_replies_share_one_prefix_including_syntax_errors(self):
+        self.service.execute(["Alice", "spawn"], object())
+        for args in (
+            ["spawn"],
+            ["hotbar"],
+            ["hotbar", "2"],
+            ["drop"],
+            ["radius"],
+            ["mine"],
+            ["mine", "1", "64"],
+            ["move", "sideways"],
+            ["status"],
+        ):
+            with self.subTest(args=args):
+                self.assertTrue(
+                    self.service.execute(["Alice", *args], object()).message.startswith("Endbot: Alice: ")
+                )
+        renamed = self.service.execute(["Alice", "rename", "Bob"], object()).message
+        self.assertTrue(renamed.startswith("Endbot: Alice: "))
+        self.assertEqual(self.service.execute(["help", "nope"]).message.split(":")[0], "Endbot")
 
 
 if __name__ == "__main__":

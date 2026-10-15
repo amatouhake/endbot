@@ -47,10 +47,13 @@ Each operation reports its Bot and the applied input/change, rather than only it
 /bot Alice jump               -> Endbot: Alice: jump once requested
 /bot Alice use continuous     -> Endbot: Alice: use continuous started
 /bot Alice stop               -> Endbot: Alice: movement and actions stopped (sprint/sneak off)
+/bot Alice hotbar 2           -> Endbot: Alice: hotbar slot 2 selected
+/bot Alice move sideways      -> Endbot: Alice: Unknown or invalid Bot action: move
 ```
 
-Look replies include yaw/pitch, interaction replies include block/face, and rename/lifecycle replies identify the
-requested change. An operation error includes the Bot and action. These replies confirm input application or request
+Every reply about a Bot starts with `Endbot: <Bot>: `, including errors and syntax errors. Look replies include
+yaw/pitch, interaction replies include block/face, and rename/lifecycle replies identify the requested change. An
+operation error names the action, for example `Endbot: Alice: move failed: Bot is offline`. These replies confirm input application or request
 acceptance; BDS still decides collision, item consumption, reach and other world outcomes. Use `status` and actual world
 observations to check the outcome. Connection lifecycle remains asynchronous (`connecting` is not a completed spawn).
 
@@ -80,8 +83,18 @@ BDS performs ordinary Survival breaking, including hardness/tool speed, harvest 
 `BlockBreakEvent` handling. The plugin never sets the mined block to air, dispatches `/setblock`, or grants operator
 permissions. The pinned baseline uses server-authoritative block breaking; other modes are rejected explicitly.
 
-The initial reply confirms mining started. `status` shows mining state/target/reason, including `continuous waiting` when
-waiting for a new target (coordinates, if present, are the previous target). Single-block mining ends when BDS sends a changed
+The initial reply names the target, for example `Endbot: Alice: mining minecraft:stone at 1 64 2; see status for the
+result`. No completion message is sent; `status` shows the mining state in player-facing words:
+
+```text
+mining minecraft:stone at 1 64 2                                   (breaking now)
+continuous mining waiting for a block in sight (last: ...)         (mine start, nothing in reach)
+last mining: block broken or changed (minecraft:stone at 1 64 2)   (finished)
+last mining: failed: target out of reach (...)                     (failed)
+last mining: canceled by look (...)                                (canceled)
+```
+
+A finished job stays visible as `last mining` until the next one starts. Single-block mining ends when BDS sends a changed
 target block, so a replacement or another player's change also ends that task. Continuous mining selects again. The runtime
 waits for server updates instead of predicting instant destruction or loot. A rejected/protected target may remain active
 until stopped or until the 12000-input-tick timeout (about ten minutes at 20 TPS).
@@ -178,7 +191,10 @@ The reported cross-dimension symptoms remain subject to the real-server and mult
 Setting a radius affects only the named Bot and sends a new request immediately while online, without reconnecting.
 Registered offline Bots can also be configured. The override survives reconnect, rename, and runtime restart;
 `default` removes it and resumes inheritance from the shared setting. Query with `radius` or `status` to see the
-requested value/source and the last server-confirmed range; `server=unconfirmed` means no confirmation is available.
+requested value, its source and the server's answer, for example
+`Endbot: Alice: chunk radius 12 (Bot override); server confirmed 10`. Right after a change the server has not answered
+yet, so the reply says `server confirmation pending`; query again to see the confirmed range. An offline Bot shows
+`applies when online`.
 
 Use a smaller range for stationary Bots and a larger request for exploring Bots when appropriate. BDS can clamp either
 request: the current baseline raised a request for 3 to 5. This setting does not change server simulation distance and

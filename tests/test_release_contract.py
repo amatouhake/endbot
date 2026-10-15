@@ -7,12 +7,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
-
-import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -458,6 +458,7 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
                     output, lambda line: console(bds, line),
                     lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
                     lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report,
+                    log=logtext,
                 )
             identity = control_request(control_port, token, "status", name=BOT)[
                 "identityId"
@@ -481,14 +482,14 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
                 bds,
             )
             for suffix, requested, source in (
-                ("12", 12, "bot"),
-                ("default", default_radius, "default"),
+                ("12", 12, "Bot override"),
+                ("default", default_radius, "shared default"),
             ):
                 offset = len(logtext())
                 console(bds, f"bot {BOT} radius {suffix}")
                 wait_for(
                     f"native radius {suffix} command",
-                    lambda expected=f"requested={requested} ({source})", offset=offset: (
+                    lambda expected=f"chunk radius {requested} ({source})", offset=offset: (
                         expected in logtext()[offset:]
                     ),
                     15,

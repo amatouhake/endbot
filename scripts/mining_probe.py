@@ -66,12 +66,16 @@ def install_probe(plugin_class):
                     player.inventory.held_item_slot = 0
                     player.teleport(Location(dimension, x + 0.5, 200, z + 0.5, 0, 0))
                     self._mining_probe = {"id": data["id"], "target": target, "cancel": data.get("cancel", False),
-                                          "targets": targets, "events": [], "refill": data.get("refill", 0)}
+                                          "targets": targets, "events": [], "refill": data.get("refill", 0),
+                                          "kill": data.get("kill", 0)}
                 elif self._mining_probe["refill"] != data.get("refill", 0):
                     # Replace blocks without teleporting/restarting the Bot.
                     for cell in self._mining_probe["targets"]:
                         player.location.dimension.get_block_at(*cell).set_type(data["block"])
                     self._mining_probe["refill"] = data.get("refill", 0)
+                if self._mining_probe is not None and self._mining_probe.get("kill", 0) != data.get("kill", 0):
+                    self._mining_probe["kill"] = data.get("kill", 0)
+                    player.health = 0
             if self._mining_probe is None:
                 return
             probe = self._mining_probe
@@ -107,7 +111,7 @@ def configure_fixture(root: Path, output: Path, environment: dict):
     environment["ENDBOT_MINING_PROBE"] = str(output)
 
 
-def exercise_mining(output: Path, console, control, wait, report):
+def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""):
     import time
 
     def observed():
@@ -170,9 +174,61 @@ def exercise_mining(output: Path, console, control, wait, report):
     if observed()["blocks"] != ["minecraft:stone"] * 3 or len(observed()["events"]) != 6:
         raise RuntimeError(f"continuous mining restarted after stop: {observed()}")
     report["mining"]["continuous-retarget-wait-resume-stop"] = True
+    def mining():
+        return control("status").get("mining") or {}
+
+    # Other operations must not stop a single-block break, even though they
+    # change the Bot's look direction mid-break.
+    setup("operations-continue", "minecraft:stone")
+    console("bot RakNetSpike destroy")
+    wait("single break active", lambda: mining().get("state") == "active", 5)
+    for command in ("look 30 10", "use", "attack", "jump"):
+        time.sleep(0.4)
+        console(f"bot RakNetSpike {command}")
+    if mining().get("state") != "active":
+        raise RuntimeError(f"another operation stopped a single break: {mining()}")
+    wait("single break completes after other operations", lambda: observed().get("block") == "minecraft:air", 30)
+    if not observed()["events"] or observed()["events"][-1]["canceled"]:
+        raise RuntimeError(f"break after other operations was not a normal Bot break: {observed()}")
+    report["mining"]["operations-continue"] = True
+
+    # Turning away pauses a continuous loop; turning back resumes it.
+    setup("continuous-look", "minecraft:stone", "minecraft:iron_pickaxe", count=3)
+    console("bot RakNetSpike destroy start")
+    wait("first continuous block", lambda: observed().get("blocks", [None])[0] == "minecraft:air", 10)
+    loop_id = mining().get("loopId")
+    console("bot RakNetSpike look 90 0")
+    wait("loop waits while facing away", lambda: mining().get("state") == "waiting", 10)
+    time.sleep(1.0)
+    # The block already being broken when the Bot turns still finishes (other
+    # operations never interrupt it); the loop then has nothing in sight.
+    if observed()["blocks"][2] != "minecraft:stone" or mining().get("loopId") != loop_id:
+        raise RuntimeError(f"look change did not pause the same loop: {observed()} {mining()}")
+    console("bot RakNetSpike look 0 0")
+    wait("loop resumes after facing back", lambda: observed().get("blocks") == ["minecraft:air"] * 3, 15)
+    if mining().get("loopId") != loop_id:
+        raise RuntimeError(f"look change replaced the continuous loop: {mining()}")
+    console("bot RakNetSpike destroy stop")
+    report["mining"]["continuous-follows-look"] = True
+
+    # A hotbar switch restarts the current block with the new item.
+    setup("hotbar-restart", "minecraft:obsidian", "minecraft:diamond_pickaxe")
+    console("bot RakNetSpike destroy start")
+    wait("mining active", lambda: mining().get("state") == "active", 5)
+    loop_id = mining().get("loopId")
+    time.sleep(0.3)
+    console("bot RakNetSpike hotbar 2")
+    time.sleep(1.0)
+    if mining().get("state") != "active" or mining().get("loopId") != loop_id:
+        raise RuntimeError(f"hotbar switch ended mining: {mining()}")
+    console("bot RakNetSpike destroy stop")
+    wait("mining canceled", lambda: mining().get("state") == "canceled", 5)
+    if observed()["block"] != "minecraft:obsidian":
+        raise RuntimeError("bare-hand restart unexpectedly broke obsidian")
+    report["mining"]["hotbar-restart"] = True
+
     for name, command in (("explicit-stop", "bot RakNetSpike destroy stop"),
-                          ("all-stop", "bot RakNetSpike stop"),
-                          ("hotbar-stop", "bot RakNetSpike hotbar 2")):
+                          ("all-stop", "bot RakNetSpike stop")):
         setup(name, "minecraft:obsidian", "minecraft:diamond_pickaxe")
         console("bot RakNetSpike destroy start")
         wait("mining active", lambda: (control("status").get("mining") or {}).get("state") == "active", 5)
@@ -192,4 +248,20 @@ def exercise_mining(output: Path, console, control, wait, report):
     if observed()["block"] != "minecraft:stone" or observed()["drops"] or observed()["damage"]:
         raise RuntimeError(f"canceled break modified world/item: {observed()}")
     report["mining"]["protected-block"] = True
+
+    # Death is an abnormal end: the loop stops and the controller is told.
+    setup("death-notice", "minecraft:obsidian", "minecraft:diamond_pickaxe")
+    console("bot RakNetSpike destroy start")
+    wait("mining active", lambda: mining().get("state") == "active", 5)
+    offset = len(log())
+    request({"id": "death-notice", "block": "minecraft:obsidian", "kill": 1})
+    wait("death ends continuous mining", lambda: not mining().get("continuous"), 10)
+    wait(
+        "death notice in the console log",
+        lambda: "continuous destroy stopped: canceled by death" in log()[offset:],
+        10,
+    )
+    wait("Bot respawned", lambda: control("status").get("connectionState") == "online", 20)
+    time.sleep(2)
+    report["mining"]["death-notice"] = True
     setup("cleanup", "minecraft:air")

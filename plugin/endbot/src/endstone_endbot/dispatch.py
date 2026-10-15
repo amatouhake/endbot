@@ -205,6 +205,8 @@ class AsyncCommandRunner:
         def deliver() -> None:
             if self._log is not None:
                 self._log(level, message)
+                if source.player_id is None:
+                    return  # The console already shows the log entry.
             # A controller who has logged off still gets the console log entry.
             sender = self._resolve_sender(source)
             if sender is not None:
@@ -252,6 +254,8 @@ class AsyncCommandRunner:
             if result.log_level is not None and self._log is not None:
                 for message in result.messages:
                     self._log(result.log_level, message)
+                if source.player_id is None:
+                    return  # The console already shows the log entry.
             sender = self._resolve_sender(source)
             if sender is None:
                 return

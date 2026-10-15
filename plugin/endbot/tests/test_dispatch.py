@@ -109,11 +109,14 @@ class DispatchTests(unittest.TestCase):
                 self.messages.append(message)
 
         sender, offline = Sender(), CommandSource(player_id="00000000-0000-4000-8000-000000000001")
+        player = CommandSource(player_id="00000000-0000-4000-8000-000000000002", sender=sender)
+        console = Sender()
 
         class Service:
             def poll_mining(self, authorize):
-                return [(CommandSource(sender=sender), "warning", "Endbot: Alice: stopped"),
-                        (offline, "warning", "Endbot: Bob: stopped")]
+                return [(player, "warning", "Endbot: Alice: stopped"),
+                        (offline, "warning", "Endbot: Bob: stopped"),
+                        (CommandSource(sender=console), "warning", "Endbot: Carol: stopped")]
 
             def execute(self, arguments, source):
                 return CommandResult(True, ("Endbot: Alice: started",), log_level="info")
@@ -123,17 +126,20 @@ class DispatchTests(unittest.TestCase):
         )
         self.addCleanup(runner.close)
         runner.poll()
+        for _ in range(3):
+            scheduled.run_next()
+        runner.submit(["Alice", "destroy", "start"], console)
         scheduled.run_next()
-        scheduled.run_next()
-        runner.submit(["Alice", "destroy", "start"], sender)
-        scheduled.run_next()
-        # A controller who logged off still has the console log entry.
-        self.assertEqual(sender.messages, ["Endbot: Alice: stopped", "Endbot: Alice: started"])
+        # A controller who logged off still has the console log entry; the
+        # console is not shown the same line twice.
+        self.assertEqual(sender.messages, ["Endbot: Alice: stopped"])
+        self.assertEqual(console.messages, [])
         self.assertEqual(
             logged,
             [
                 ("warning", "Endbot: Alice: stopped"),
                 ("warning", "Endbot: Bob: stopped"),
+                ("warning", "Endbot: Carol: stopped"),
                 ("info", "Endbot: Alice: started"),
             ],
         )

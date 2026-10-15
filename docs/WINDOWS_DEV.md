@@ -48,7 +48,7 @@ PowerShell prints a benign `vswhere.exe` not-found message on some installations
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip build hatchling packaging ruff cmake ninja conan
+python -m pip install --upgrade pip build hatchling packaging ruff==0.17.1 cmake ninja conan
 python scripts\check_windows_toolchain.py
 ```
 

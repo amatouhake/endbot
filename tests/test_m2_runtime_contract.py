@@ -4,9 +4,8 @@
 import json
 import pathlib
 import subprocess
-import unittest
-
 import tomllib
+import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 

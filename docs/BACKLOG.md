@@ -141,7 +141,7 @@ and validate real-client completion after it becomes available.
 
 ## BOT-005: Block breaking and mining
 
-Status: **Implemented — Windows RakNet Survival matrix passed; broader gates open** (2026-10-16 JST).
+Status: **Implemented — Windows RakNet and NetherNet Survival matrix passed; broader gates open** (2026-10-16 JST).
 
 `/bot <name> destroy` selects a block in the Bot's line of sight; explicit coordinates/optional face select a reachable,
 unobstructed target. `destroy continuous` continuously selects targets along the same sight ray, waits when empty, and resumes
@@ -150,8 +150,9 @@ instant-break transaction, OP, or authentication/core change is used. Status tra
 
 Real-server checks covered bare-hand dirt/stone, iron-pickaxe stone with cobblestone drop and durability loss, three
 cancellation paths, native event cancellation preserving the block/tool, consecutive targets and waiting/resume/stop.
-Pathfinding, automatic tool selection and area excavation are not included. Human/NetherNet and broader effects/enchantment/tool-break combinations remain
-validation work. See [mining validation](MINING_VALIDATION.md).
+The same automated matrix (with radius, controller management and abnormal-end notices) also passed over NetherNet, the
+default transport. Pathfinding, automatic tool selection and area excavation are not included. A human client over
+NetherNet and broader effects/enchantment/tool-break combinations remain validation work. See [mining validation](MINING_VALIDATION.md).
 
 ## Implementation boundary
 

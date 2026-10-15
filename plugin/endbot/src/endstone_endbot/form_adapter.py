@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from endstone_endbot import forms
+from endstone_endbot.commands import ERROR, reply
 
 
 class FormPresenter:
@@ -96,8 +97,8 @@ class FormPresenter:
         try:
             commands = forms.modal_commands(screen, response)
         except forms.FormResponseError as error:
-            player.send_message(f"Endbot: {screen.title}: {error}")
+            player.send_message(reply(str(error), screen.title, ERROR))
             return
         if not commands:
-            player.send_message(f"Endbot: {screen.title}: nothing to change")
+            player.send_message(reply("nothing to change", screen.title))
         self._act(player, forms.Run(commands))

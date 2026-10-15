@@ -8,6 +8,7 @@ import path from 'node:path'
 import protocol from 'bedrock-protocol'
 
 import { loadConfig } from '../src/config.js'
+import { discoverServer } from '../src/discovery.js'
 import { createLocalBotAuth } from '../src/local-identity.js'
 
 const [filename, variant] = process.argv.slice(2)
@@ -15,7 +16,18 @@ if (!filename || !['wrong-key', 'wrong-issuer', 'wrong-audience', 'auth-disabled
   throw new Error('Usage: raknet-auth-probe.js <runtime-config> <wrong-key|wrong-issuer|wrong-audience|auth-disabled>')
 }
 const config = loadConfig(filename)
-if (config.transport !== 'raknet') throw new Error('This probe requires explicit RakNet transport')
+if (config.transport === 'nethernet' && config.serverName === undefined) {
+  throw new Error('The NetherNet probe requires serverName and levelName')
+}
+// NetherNet dials only the expected BDS, as the runtime does (src/protocol-session.js).
+const target = config.transport === 'nethernet'
+  ? await discoverServer({
+    host: config.serverHost,
+    serverName: config.serverName,
+    levelName: config.levelName,
+    timeoutMs: config.discoveryTimeoutMs
+  })
+  : undefined
 const name = 'RakNetNegative'
 const identityId = randomUUID()
 const auth = createLocalBotAuth({
@@ -31,9 +43,10 @@ const client = protocol.createClient({
   host: config.serverHost,
   port: config.serverPort,
   version: config.gameVersion,
-  transport: 'raknet',
-  raknetBackend: 'raknet-native',
-  followPort: false,
+  transport: config.transport,
+  ...(config.transport === 'nethernet'
+    ? { nethernet: { signalling: 'lan', networkId: target.networkId } }
+    : { raknetBackend: 'raknet-native', followPort: false }),
   skipPing: true,
   offline: false,
   username: name,

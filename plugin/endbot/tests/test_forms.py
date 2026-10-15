@@ -3,10 +3,11 @@ import queue
 import types
 import unittest
 
+from plain_service import PlainCommandService
 from test_command_service import FakeControl, FakeWorld
 
 from endstone_endbot import forms
-from endstone_endbot.commands import BotCommandService, CommandResult, parse_command
+from endstone_endbot.commands import BotCommandService, CommandResult, parse_command, strip_colors
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge
 from endstone_endbot.form_adapter import FormPresenter
 
@@ -143,11 +144,11 @@ class ServiceMenuTests(unittest.TestCase):
         self.control.bots["Alice"] = dict(ONLINE)
         self.world = FakeWorld()
         self.world.observe = lambda identity: OBSERVED
-        self.service = BotCommandService(self.control, self.world)
+        self.service = PlainCommandService(self.control, self.world)
         self.player = CommandSource(player_id="11111111-2222-4333-8444-555555555555")
 
     def test_menu_is_player_only_and_needs_no_runtime_for_the_refusal(self):
-        for service in (self.service, BotCommandService()):
+        for service in (self.service, PlainCommandService()):
             for arguments in (["menu"], ["Alice", "menu"]):
                 result = service.execute(arguments, CommandSource(sender=object()))
                 self.assertEqual(result.messages, ("Endbot: menu is available only to players; use /bot help",))
@@ -157,9 +158,12 @@ class ServiceMenuTests(unittest.TestCase):
         listing = self.service.execute(["menu"], self.player)
         self.assertEqual(listing.messages, ())
         self.assertEqual(listing.view, forms.BotListView((ONLINE,)))
-        bot = self.service.execute(["Alice", "MENU"], self.player)
-        status = self.service.execute(["Alice", "status"], self.player)
-        self.assertEqual("Endbot: " + bot.view.summary, status.message)
+        # Players see the colored status reply in the form, exactly as in chat.
+        colored = BotCommandService(self.control, self.world)
+        bot = colored.execute(["Alice", "MENU"], self.player)
+        status = colored.execute(["Alice", "status"], self.player)
+        self.assertEqual(bot.view.summary, status.message)
+        self.assertNotEqual(strip_colors(bot.view.summary), bot.view.summary)
         self.assertEqual((bot.view.name, bot.view.observed), ("Alice", OBSERVED))
 
     def test_unknown_bot_menu_fails_like_any_command(self):
@@ -293,7 +297,7 @@ class PresenterTests(unittest.TestCase):
         self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([0, 0]))
         self.assertEqual(self.submitted, [])
         self.assertEqual(
-            self.player.messages,
+            [strip_colors(message) for message in self.player.messages],
             [
                 "Endbot: Alice: destroy: enter exactly three coordinates: x y z",
                 "Endbot: Alice: sprint / sneak: nothing to change",

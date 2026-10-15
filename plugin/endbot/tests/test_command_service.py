@@ -1,6 +1,8 @@
 import unittest
 
-from endstone_endbot.commands import UNREACHABLE_POLL_LIMIT, BotCommandService
+from plain_service import PlainCommandService
+
+from endstone_endbot.commands import UNREACHABLE_POLL_LIMIT
 from endstone_endbot.control import RuntimeControlError
 
 
@@ -115,7 +117,7 @@ class CommandServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.control = FakeControl()
         self.world = FakeWorld()
-        self.service = BotCommandService(self.control, self.world)
+        self.service = PlainCommandService(self.control, self.world)
 
     def test_continuous_mining_retargets_then_waits_without_restarting_active_block(self):
         self.service.execute(["Alice", "spawn"])

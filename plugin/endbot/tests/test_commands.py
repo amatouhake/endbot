@@ -1,11 +1,13 @@
 import unittest
 
-from endstone_endbot.commands import BotCommandService, parse_command
+from plain_service import PlainCommandService
+
+from endstone_endbot.commands import parse_command
 
 
 class BotCommandServiceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.service = BotCommandService()
+        self.service = PlainCommandService()
 
     def test_ping_returns_pong(self) -> None:
         result = self.service.execute(["ping"])
@@ -66,6 +68,40 @@ class BotCommandServiceTests(unittest.TestCase):
         )
         upper = self.service.execute(["help", "Move"])
         self.assertEqual(upper.messages, result.messages)
+
+    def test_help_and_replies_are_colored_for_players(self) -> None:
+        from endstone_endbot.commands import (
+            DIM,
+            ERROR,
+            HEADING,
+            HELP_TOPICS,
+            PREFIX,
+            RESET,
+            SYNTAX,
+            BotCommandService,
+            color_syntax,
+            reply,
+            strip_colors,
+        )
+
+        service = BotCommandService()
+        page = service.execute(["help"]).messages
+        self.assertTrue(page[0].startswith(HEADING))
+        self.assertIn(color_syntax("/bot <name> spawn"), "\n".join(page))
+        detail = service.execute(["help", "jump"]).messages
+        self.assertEqual(detail[0], f"{HEADING}Endbot help: jump{RESET}")
+        self.assertEqual(
+            detail[1],
+            f"{SYNTAX}/bot {DIM}<name>{SYNTAX} jump {DIM}[once|continuous|interval <ticks>|stop]{RESET}",
+        )
+        # Descriptions stay in the default color.
+        self.assertEqual(detail[2:], HELP_TOPICS["jump"].details)
+        self.assertEqual(service.execute(["ping"]).message, f"{PREFIX}Endbot:{RESET} pong")
+        error = service.execute(["Alice", "move", "sideways"]).message
+        self.assertTrue(error.startswith(f"{PREFIX}Endbot: Alice:{RESET} {ERROR}"))
+        self.assertEqual(reply("done", "Alice"), f"{PREFIX}Endbot: Alice:{RESET} done")
+        self.assertEqual(strip_colors(reply("done", "Alice", ERROR)), "Endbot: Alice: done")
+        self.assertEqual(strip_colors("§6a§lb§rc§"), "abc")
 
     def test_help_rejects_unknown_topics_and_pages(self) -> None:
         for arguments in (["help", "dance"], ["help", "0"], ["help", "9"], ["help", "1", "extra"]):

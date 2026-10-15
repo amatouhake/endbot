@@ -133,7 +133,8 @@ finish; a revoked queued operation must not start. This is a separate gate from 
 ## Remaining manual/E2E gates
 
 - Two normally authenticated human clients must agree on the Bot's visible position after repeated dimension changes.
-- Repeat the live behavior matrix over NetherNet when UDP 7551 is available.
+- Repeat the held-use/dimension-transition matrix over NetherNet. The radius, movement/jump, reconnect, controller
+  and mining smoke passed over NetherNet on 2026-10-16 ([mining validation](MINING_VALIDATION.md)).
 - Validate portal travel, live knockback after transitions, landing/jumping in each destination, and repeated returns.
 - Check ordinary food when hunger permits eating, bow charge/release, and held use after dimension changes.
 - Measure sustained multi-Bot load and effective chunk-loading/resource cost beyond the two-Bot and custom-radius smoke.

@@ -2,7 +2,7 @@ import queue
 import threading
 import unittest
 
-from endstone_endbot.commands import CommandResult
+from endstone_endbot.commands import CommandResult, reply, strip_colors
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
 
 
@@ -143,6 +143,45 @@ class DispatchTests(unittest.TestCase):
                 ("info", "Endbot: Alice: started"),
             ],
         )
+
+    def test_only_players_receive_color_codes(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        logged = []
+        colored = reply("destroy stopped", "Alice")
+
+        class Sender:
+            def __init__(self):
+                self.messages = []
+
+            def send_message(self, message):
+                self.messages.append(message)
+
+        class Player(Sender):
+            unique_id = "00000000-0000-4000-8000-000000000002"
+            location = None
+
+        player, console = Player(), Sender()
+
+        class Service:
+            def execute(self, arguments, source):
+                log_level = "info" if arguments == ["logged"] else None
+                return CommandResult(True, (colored,), log_level=log_level)
+
+        def resolve(source):
+            return player if source.player_id == player.unique_id else source.sender
+
+        runner = AsyncCommandRunner(Service(), bridge, resolve, log=lambda level, message: logged.append(message))
+        self.addCleanup(runner.close)
+        for arguments, sender in ((["plain"], player), (["plain"], console), (["logged"], player)):
+            runner.submit(arguments, sender)
+            scheduled.run_next()
+
+        self.assertNotEqual(colored, strip_colors(colored))
+        self.assertEqual(player.messages, [colored, colored])
+        self.assertEqual(console.messages, ["Endbot: Alice: destroy stopped"])
+        self.assertEqual(logged, ["Endbot: Alice: destroy stopped"])
 
     def test_world_calls_are_marshaled_to_server_thread(self) -> None:
         scheduled = ScheduledCallbacks()

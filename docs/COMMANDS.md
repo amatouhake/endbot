@@ -22,6 +22,7 @@ BDS player entity is present.
 ```text
 --- Endbot help page 1 of 3: lifecycle, status and teleport ---
 /bot ping | /bot list | /bot help - connectivity, profiles, this help
+/bot menu - open the Bot control forms (players only)
 /bot <name> spawn - create or connect a Bot
 /bot <name> resume - reconnect a profile without moving it
 ...
@@ -56,6 +57,33 @@ yaw/pitch, interaction replies include block/face, and rename/lifecycle replies 
 operation error names the action, for example `Endbot: Alice: move failed: Bot is offline`. These replies confirm input application or request
 acceptance; BDS still decides collision, item consumption, reach and other world outcomes. Use `status` and actual world
 observations to check the outcome. Connection lifecycle remains asynchronous (`connecting` is not a completed spawn).
+
+## Control forms
+
+Players can run the common operations from native Bedrock forms instead of typing them:
+
+```text
+/bot menu          -> Bot list (name and connection state), plus "Spawn a new Bot here"
+/bot Alice menu    -> Alice's actions; the form text is the same line /bot Alice status prints
+```
+
+The Bot screen groups buttons into movement (move, look, sprint/sneak, stop), actions (jump, attack, use, destroy),
+teleport (to you, to an online player, or to coordinates), settings (hotbar slot, chunk radius) and connection
+(reconnect, despawn with a confirmation; resume or spawn here when offline). Buttons with `...` open an input form with
+dropdowns, sliders and text fields; coordinate fields accept the same `~` forms as the command, and their labels say what
+`~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot menu` again to continue.
+
+Forms are only another way to type commands: every button or form submission becomes the equivalent `/bot` arguments
+(for example `/bot Alice attack interval 40`) and goes through the same permission check, command queue, parser and
+replies, so a typed command and a form submission always behave identically. A controller whose permission is revoked
+while a form is open gets the usual permission reply on submit. The server console cannot open forms (`/bot menu` replies
+with a pointer to `/bot help`). `spawn at ...`, `interact`, `rename`, `forget`, `drop`, `tp ... facing ...` and help
+detail pages stay command-only.
+
+Unit tests cover screen contents, every form response mapping to parser-accepted arguments, malformed responses, and
+view delivery/revocation. Rendering and input on a real client are a manual check: on a normal Microsoft/Xbox client,
+open `/bot menu` and `/bot <name> menu`, submit each input form once, cancel the despawn confirmation, close forms with
+Escape, and confirm a revoked controller cannot act from an already open form.
 
 ## Mining blocks
 
@@ -298,6 +326,7 @@ Bedrock syntax error):
 ```text
 /bot
 /bot ping
+/bot menu
 /bot help
 /bot help 2
 /bot help 3
@@ -306,6 +335,7 @@ Bedrock syntax error):
 /bot help dance
 /bot Alice spawn
 /bot Alice status
+/bot Alice menu
 /bot Alice move forward
 /bot Alice tp me
 /bot Alice tp 100 64 -20 facing Steve

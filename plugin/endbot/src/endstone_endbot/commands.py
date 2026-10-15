@@ -9,6 +9,7 @@ import threading
 from dataclasses import dataclass, field
 
 from endstone_endbot.control import RuntimeControlError
+from endstone_endbot.forms import BotListView, BotView
 
 
 class CommandSyntaxError(ValueError):
@@ -79,6 +80,8 @@ class CommandResult:
     messages: tuple[str, ...] = ()
     # Set for results worth a server console log entry (e.g. destroy continuous/stop).
     log_level: str | None = None
+    # Set when the result is a form screen (BotListView/BotView) for a player.
+    view: object | None = None
 
     @property
     def message(self) -> str | None:
@@ -264,6 +267,17 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ("Shows each profile name with its lifecycle state.",),
         named=False,
     ),
+    "menu": HelpTopic(
+        "menu",
+        "open the Bot control forms (players only)",
+        ("menu", "<name> menu"),
+        (
+            "menu lists every Bot; <name> menu opens that Bot's actions directly.",
+            "Forms run the same /bot commands, so replies and permissions match typed commands.",
+            "interact, rename, forget, drop and spawn at coordinates stay command-only.",
+        ),
+        named=False,
+    ),
     "help": HelpTopic(
         "help",
         "show this help",
@@ -300,6 +314,7 @@ def help_page(page: int) -> tuple[str, ...]:
     if page == 1:
         commands = f"{DIM} | {RESET}".join(color_syntax(f"/bot {key}") for key in ("ping", "list", "help"))
         lines.append(f"{commands}{separator}connectivity, profiles, this help")
+        lines.append(f"{color_syntax('/bot menu')}{separator}open the Bot control forms (players only)")
     for key in HELP_PAGES[page - 1]:
         topic = HELP_TOPICS[key]
         lines.append(f"{color_syntax(f'{_help_prefix(topic)} {topic.syntaxes[0]}')}{separator}{topic.summary}")
@@ -477,10 +492,12 @@ def parse_command(arguments: list[str]) -> BotCommand:
         raise CommandSyntaxError("Use /bot help <page> or /bot help <command>")
     if first == "list" and len(tokens) == 1:
         return BotCommand("list")
+    if first == "menu" and len(tokens) == 1:
+        return BotCommand("menu")
     if len(tokens) < 2:
         raise CommandSyntaxError("Expected /bot <name> <action>")
     name, operation, remaining = tokens[0], tokens[1].lower(), tokens[2:]
-    if operation in {"status", "resume", "reconnect", "despawn", "forget", "stop"} and not remaining:
+    if operation in {"status", "resume", "reconnect", "despawn", "forget", "stop", "menu"} and not remaining:
         return BotCommand(operation, name)
     if operation == "spawn":
         if not remaining:
@@ -728,8 +745,18 @@ class BotCommandService:
             if "topic" in command.parameters:
                 return CommandResult(True, help_detail(command.parameters["topic"]))
             return CommandResult(True, help_page(int(command.parameters.get("page", 1))))
+        if command.operation == "menu" and getattr(sender, "player_id", None) is None:
+            return CommandResult(True, (reply("menu is available only to players; use /bot help"),))
         if self.control is None:
             raise RuntimeError("runtime control is not configured")
+        if command.operation == "menu":
+            if command.name is None:
+                return CommandResult(True, view=BotListView(tuple(self.control.request("list"))))
+            status = self.control.request("status", name=command.name)
+            observed = self.world.observe(status["identityId"]) if self.world else None
+            return CommandResult(
+                True, view=BotView(status["name"], self._status_reply(status, observed), status, observed)
+            )
         if command.operation == "list":
             bots = self.control.request("list")
             if not bots:
@@ -739,19 +766,7 @@ class BotCommandService:
         if command.operation == "status":
             status = self.control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
-            fields = [status["connectionState"], f"desired={status['desiredState']}"]
-            if observed:
-                fields.append(
-                    f"{observed['dimension']} {observed['x']:.2f} {observed['y']:.2f} {observed['z']:.2f} "
-                    f"yaw={observed['yaw']:.1f} pitch={observed['pitch']:.1f}"
-                )
-            if status.get("lastError"):
-                fields.append(f"{ERROR}error={status['lastError']}{RESET}")
-            if "chunkRadius" in status:
-                fields.append(self._radius_summary(status))
-            if status.get("mining"):
-                fields.append(self._mining_summary(status["mining"]))
-            return CommandResult(True, (reply(f"{DIM} | {RESET}".join(fields), status["name"]),))
+            return CommandResult(True, (self._status_reply(status, observed),))
         if command.operation == "spawn":
             existing = None
             try:
@@ -889,6 +904,23 @@ class BotCommandService:
         else:
             detail = f"{command.operation} requested ({state})"
         return CommandResult(True, (reply(detail, name),))
+
+    @classmethod
+    def _status_reply(cls, status: dict[str, object], observed: dict[str, object] | None) -> str:
+        """The status reply line; the Bot menu form shows the same text."""
+        fields = [status["connectionState"], f"desired={status['desiredState']}"]
+        if observed:
+            fields.append(
+                f"{observed['dimension']} {observed['x']:.2f} {observed['y']:.2f} {observed['z']:.2f} "
+                f"yaw={observed['yaw']:.1f} pitch={observed['pitch']:.1f}"
+            )
+        if status.get("lastError"):
+            fields.append(f"{ERROR}error={status['lastError']}{RESET}")
+        if "chunkRadius" in status:
+            fields.append(cls._radius_summary(status))
+        if status.get("mining"):
+            fields.append(cls._mining_summary(status["mining"]))
+        return reply(f"{DIM} | {RESET}".join(fields), status["name"])
 
     @staticmethod
     def _radius_summary(status: dict[str, object]) -> str:

@@ -1,0 +1,325 @@
+import json
+import queue
+import types
+import unittest
+
+from plain_service import PlainCommandService
+from test_command_service import FakeControl, FakeWorld
+
+from endstone_endbot import forms
+from endstone_endbot.commands import BotCommandService, CommandResult, parse_command, strip_colors
+from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge
+from endstone_endbot.form_adapter import FormPresenter
+
+ONLINE = {
+    "identityId": "00000000-0000-4000-8000-000000000001",
+    "name": "Alice",
+    "desiredState": "online",
+    "connectionState": "online",
+    "chunkRadius": 12,
+    "chunkRadiusSource": "bot",
+}
+OBSERVED = {"dimension": "Overworld", "x": 1.0, "y": 64.0, "z": 2.0, "yaw": 91.0, "pitch": -12.0}
+
+
+def buttons(screen):
+    return {item.text: item.action for item in screen.items if isinstance(item, forms.Button)}
+
+
+def submit(screen, *values):
+    return forms.modal_commands(screen, json.dumps(list(values)))
+
+
+class ScreenTests(unittest.TestCase):
+    def online_screen(self, caller="Steve", players=("Steve", "Alice", "Some Name")):
+        view = forms.BotView("Alice", "Alice: online", ONLINE, OBSERVED)
+        return forms.bot_screen(view, caller, players)
+
+    def test_bot_list_opens_each_bot_through_the_menu_command(self):
+        screen = forms.bot_list_screen(
+            forms.BotListView(
+                ({"name": "Alice", "connectionState": "online"}, {"name": "Bob", "connectionState": "offline"})
+            )
+        )
+        actions = buttons(screen)
+        self.assertEqual(actions["Alice\n[online]"], forms.Run((("Alice", "menu"),)))
+        self.assertEqual(actions["Bob\n[offline]"], forms.Run((("Bob", "menu"),)))
+        self.assertEqual(submit(actions["+ Spawn a new Bot here"].screen, " Carol "), (("Carol", "spawn"),))
+        empty = forms.bot_list_screen(forms.BotListView(()))
+        self.assertIn("No Bot profiles", empty.content)
+
+    def test_offline_bot_offers_only_connection_and_settings(self):
+        view = forms.BotView("Bob", "Bob: offline", {**ONLINE, "name": "Bob", "connectionState": "offline"})
+        actions = buttons(forms.bot_screen(view, "Steve"))
+        self.assertEqual(actions["Resume (where it was)"], forms.Run((("Bob", "resume"),)))
+        self.assertEqual(actions["Spawn here"], forms.Run((("Bob", "spawn"),)))
+        self.assertNotIn("Move...", actions)
+        self.assertNotIn("Despawn...", actions)
+        self.assertEqual(actions["Back to Bot list"], forms.Run((("menu",),)))
+
+    def test_online_bot_screen_shows_status_and_command_backed_buttons(self):
+        screen = self.online_screen()
+        self.assertEqual(screen.content, "Alice: online")
+        actions = buttons(screen)
+        self.assertEqual(actions["Stop everything"], forms.Run((("Alice", "stop"),)))
+        self.assertEqual(actions["Reconnect"], forms.Run((("Alice", "reconnect"),)))
+        self.assertEqual(actions["Refresh"], forms.Run((("Alice", "menu"),)))
+        confirm = actions["Despawn..."].screen
+        self.assertEqual(confirm.action, forms.Run((("Alice", "despawn"),)))
+        # Interact, rename, forget and drop stay command-only.
+        self.assertFalse(any(word in text.lower() for text in actions for word in ("interact", "rename", "forget")))
+
+    def test_teleport_targets_quote_player_names_for_the_command_tokenizer(self):
+        actions = buttons(self.online_screen(caller="Some Name"))
+        (to_me,) = actions["Teleport to me"].commands
+        self.assertEqual(parse_command(list(to_me)).parameters, {"target": "Some Name"})
+        modal = actions["Teleport..."].screen
+        destinations = modal.controls[0].options
+        self.assertEqual(destinations, ("Steve", "Some Name", forms.TELEPORT_COORDINATES))
+        (command,) = submit(modal, 1, "")
+        self.assertEqual(parse_command(list(command)).parameters, {"target": "Some Name"})
+        (command,) = submit(modal, 2, " 10 ~ -3 ")
+        self.assertEqual(command, ("Alice", "tp", "10", "~", "-3"))
+
+    def test_every_modal_produces_commands_the_parser_accepts(self):
+        actions = buttons(self.online_screen())
+        cases = [
+            ("Move...", (0,), [("Alice", "move", "forward")]),
+            ("Move...", (4,), [("Alice", "move", "stop")]),
+            ("Look...", (90.0, -15.0, ""), [("Alice", "look", "90", "-15")]),
+            ("Look...", (0, 0, "1 64 ~2"), [("Alice", "look", "at", "1", "64", "~2")]),
+            ("Sprint / sneak...", (1, 2), [("Alice", "sprint", "on"), ("Alice", "sneak", "off")]),
+            ("Sprint / sneak...", (0, 0), []),
+            ("Jump...", (0, "20"), [("Alice", "jump", "once")]),
+            ("Attack...", (2, " 40 "), [("Alice", "attack", "interval", "40")]),
+            ("Use item...", (1, ""), [("Alice", "use", "continuous")]),
+            ("Use item...", (3, "20"), [("Alice", "use", "stop")]),
+            ("Destroy blocks...", (1, "", 0), [("Alice", "destroy", "continuous")]),
+            ("Destroy blocks...", (2, "", 0), [("Alice", "destroy", "stop")]),
+            ("Destroy blocks...", (3, "~ ~-1 ~", 0), [("Alice", "destroy", "~", "~-1", "~")]),
+            ("Destroy blocks...", (3, "1 64 2", 2), [("Alice", "destroy", "1", "64", "2", "up")]),
+            ("Hotbar slot...", (8,), [("Alice", "hotbar", "9")]),
+            ("Chunk radius...", (False, 16.0), [("Alice", "radius", "16")]),
+            ("Chunk radius...", (True, 16.0), [("Alice", "radius", "default")]),
+        ]
+        for button, values, expected in cases:
+            with self.subTest(button=button, values=values):
+                commands = submit(actions[button].screen, *values)
+                self.assertEqual([tuple(command) for command in commands], expected)
+                for command in commands:
+                    parse_command(list(command))
+
+    def test_modal_defaults_reflect_current_bot_state(self):
+        actions = buttons(self.online_screen())
+        yaw, pitch, _ = actions["Look..."].screen.controls
+        self.assertEqual((yaw.default_value, pitch.default_value), (91, -12))
+        use_default, radius = actions["Chunk radius..."].screen.controls
+        self.assertEqual((use_default.default_value, radius.default_value), (False, 12))
+
+    def test_malformed_responses_are_rejected_without_commands(self):
+        actions = buttons(self.online_screen())
+        move = actions["Move..."].screen
+        destroy = actions["Destroy blocks..."].screen
+        for screen, response in (
+            (move, None),
+            (move, "not json"),
+            (move, json.dumps({"0": 1})),
+            (move, json.dumps([0, 1])),
+            (move, json.dumps([9])),
+            (move, json.dumps([-1])),
+            (move, json.dumps([True])),
+            (move, json.dumps([0.5])),
+            (move, json.dumps(["0"])),
+            (destroy, json.dumps([3, "1 2", 0])),
+            (actions["Chunk radius..."].screen, json.dumps(["yes", 4])),
+            (forms.spawn_modal(), json.dumps(["  "])),
+        ):
+            with self.subTest(response=response), self.assertRaises(forms.FormResponseError):
+                forms.modal_commands(screen, response)
+
+
+class ServiceMenuTests(unittest.TestCase):
+    def setUp(self):
+        self.control = FakeControl()
+        self.control.bots["Alice"] = dict(ONLINE)
+        self.world = FakeWorld()
+        self.world.observe = lambda identity: OBSERVED
+        self.service = PlainCommandService(self.control, self.world)
+        self.player = CommandSource(player_id="11111111-2222-4333-8444-555555555555")
+
+    def test_menu_is_player_only_and_needs_no_runtime_for_the_refusal(self):
+        for service in (self.service, PlainCommandService()):
+            for arguments in (["menu"], ["Alice", "menu"]):
+                result = service.execute(arguments, CommandSource(sender=object()))
+                self.assertEqual(result.messages, ("Endbot: menu is available only to players; use /bot help",))
+                self.assertIsNone(result.view)
+
+    def test_menu_views_carry_runtime_data_and_the_status_reply(self):
+        listing = self.service.execute(["menu"], self.player)
+        self.assertEqual(listing.messages, ())
+        self.assertEqual(listing.view, forms.BotListView((ONLINE,)))
+        # Players see the colored status reply in the form, exactly as in chat.
+        colored = BotCommandService(self.control, self.world)
+        bot = colored.execute(["Alice", "MENU"], self.player)
+        status = colored.execute(["Alice", "status"], self.player)
+        self.assertEqual(bot.view.summary, status.message)
+        self.assertNotEqual(strip_colors(bot.view.summary), bot.view.summary)
+        self.assertEqual((bot.view.name, bot.view.observed), ("Alice", OBSERVED))
+
+    def test_unknown_bot_menu_fails_like_any_command(self):
+        result = self.service.execute(["Ghost", "menu"], self.player)
+        self.assertIsNone(result.view)
+        self.assertEqual(result.message, "Endbot: Ghost: menu failed: Bot Ghost does not exist")
+
+    def test_menu_help_is_listed(self):
+        self.assertIn("/bot menu - open the Bot control forms (players only)", self.service.execute(["help"]).messages)
+        detail = self.service.execute(["help", "menu"]).messages
+        self.assertIn("/bot <name> menu", detail)
+
+
+class ScheduledCallbacks:
+    def __init__(self):
+        self.callbacks = queue.Queue()
+
+    def schedule(self, callback):
+        self.callbacks.put(callback)
+
+    def run_next(self, timeout=1.0):
+        self.callbacks.get(timeout=timeout)()
+
+
+class DispatchViewTests(unittest.TestCase):
+    def run_view(self, allowed):
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        view = forms.BotListView(())
+        shown, checks = [], iter(allowed)
+        player = types.SimpleNamespace(unique_id="11111111-2222-4333-8444-555555555555", location=object())
+
+        class Service:
+            def execute(self, arguments, source):
+                return CommandResult(True, view=view)
+
+        runner = AsyncCommandRunner(
+            Service(),
+            bridge,
+            lambda source: player,
+            authorize=lambda source: next(checks),
+            show_view=lambda target, value: shown.append((target, value)),
+        )
+        self.addCleanup(runner.close)
+        runner.submit(["menu"], player)
+        scheduled.run_next()  # worker authorization
+        scheduled.run_next()  # delivery
+        return shown, player, view
+
+    def test_view_is_shown_on_the_server_thread_after_authorization(self):
+        shown, player, view = self.run_view([True, True])
+        self.assertEqual(shown, [(player, view)])
+
+    def test_view_is_dropped_when_permission_is_revoked_before_delivery(self):
+        shown, _, _ = self.run_view([True, False])
+        self.assertEqual(shown, [])
+
+
+class FakeFormModule:
+    """Records the endstone.form calls the presenter makes."""
+
+    def __init__(self):
+        module = self
+
+        class Control:
+            def __init__(self, *args, **kwargs):
+                self.args, self.kwargs = args, kwargs
+
+        class ActionForm(Control):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.items = []
+
+            def add_header(self, text):
+                self.items.append(("header", text, None))
+
+            def add_button(self, text, on_click=None):
+                self.items.append(("button", text, on_click))
+
+        self.ActionForm = ActionForm
+        for name in ("MessageForm", "ModalForm", "Dropdown", "Slider", "StepSlider", "Toggle", "TextInput"):
+            setattr(module, name, type(name, (Control,), {}))
+
+
+class FakePlayer:
+    name = "Steve"
+
+    def __init__(self):
+        self.forms, self.messages = [], []
+
+    def send_form(self, form):
+        self.forms.append(form)
+
+    def send_message(self, message):
+        self.messages.append(message)
+
+
+class PresenterTests(unittest.TestCase):
+    def setUp(self):
+        self.submitted = []
+        self.presenter = FormPresenter(
+            lambda player, argv: self.submitted.append(argv), lambda: ("Steve", "Alice"), FakeFormModule()
+        )
+        self.player = FakePlayer()
+
+    def bot_form(self):
+        self.presenter.show_view(self.player, forms.BotView("Alice", "Alice: online", ONLINE, OBSERVED))
+        form = self.player.forms[-1]
+        return form, {text: on_click for kind, text, on_click in form.items if kind == "button"}
+
+    def test_buttons_submit_commands_or_open_screens(self):
+        form, clicks = self.bot_form()
+        self.assertEqual(form.kwargs["content"], "Alice: online")
+        self.assertIn(("header", "Movement", None), form.items)
+        clicks["Teleport to me"](self.player)
+        clicks["Stop everything"](self.player)
+        self.assertEqual(self.submitted, [["Alice", "tp", "Steve"], ["Alice", "stop"]])
+        clicks["Move..."](self.player)
+        modal = self.player.forms[-1]
+        self.assertEqual(type(modal).__name__, "ModalForm")
+        self.assertEqual(modal.kwargs["submit_button"], "Move")
+        modal.kwargs["on_submit"](self.player, json.dumps([1]))
+        self.assertEqual(self.submitted[-1], ["Alice", "move", "backward"])
+
+    def test_modal_errors_reply_instead_of_submitting(self):
+        _, clicks = self.bot_form()
+        clicks["Destroy blocks..."](self.player)
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([3, "1 2", 0]))
+        clicks["Sprint / sneak..."](self.player)
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([0, 0]))
+        self.assertEqual(self.submitted, [])
+        self.assertEqual(
+            [strip_colors(message) for message in self.player.messages],
+            [
+                "Endbot: Alice: destroy: enter exactly three coordinates: x y z",
+                "Endbot: Alice: sprint / sneak: nothing to change",
+            ],
+        )
+
+    def test_despawn_needs_the_confirm_button(self):
+        _, clicks = self.bot_form()
+        clicks["Despawn..."](self.player)
+        confirm = self.player.forms[-1]
+        self.assertEqual(type(confirm).__name__, "MessageForm")
+        confirm.kwargs["on_submit"](self.player, 1)
+        self.assertEqual(self.submitted, [])
+        confirm.kwargs["on_submit"](self.player, 0)
+        self.assertEqual(self.submitted, [["Alice", "despawn"]])
+
+    def test_list_view_renders_bot_buttons(self):
+        self.presenter.show_view(self.player, forms.BotListView(({"name": "Alice", "connectionState": "online"},)))
+        form = self.player.forms[-1]
+        {text: click for _, text, click in form.items}["Alice\n[online]"](self.player)
+        self.assertEqual(self.submitted, [["Alice", "menu"]])
+
+
+if __name__ == "__main__":
+    unittest.main()

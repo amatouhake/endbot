@@ -16,6 +16,7 @@ from endstone_endbot.controller_policy import ControllerPolicy
 from endstone_endbot.controller_requests import execute_request
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
 from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
+from endstone_endbot.form_adapter import FormPresenter
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
@@ -42,11 +43,11 @@ COMMAND_USAGES = [
     #   API; deeper redesign waits on upstream command API work. No private
     #   registry or soft-enum hooks.
     "/bot [command: string] [topic: string]",
-    "/bot (ping|list|help)<command: EndbotRoot>",
+    "/bot (ping|list|help|menu)<command: EndbotRoot>",
     "/bot <command: string> <page: int>",
     (
         "/bot (help)<command: EndbotHelpTopic> (status|spawn|resume|reconnect|despawn|forget|rename|tp|move|look|"
-        "jump|attack|use|sprint|sneak|hotbar|interact|destroy|drop|radius|stop)<topic: EndbotHelpTopicName>"
+        "jump|attack|use|sprint|sneak|hotbar|interact|destroy|drop|radius|stop|menu)<topic: EndbotHelpTopicName>"
     ),
     "/bot <name: string> <operation: string>",
     "/bot <name: string> <operation: string> <arguments: message>",
@@ -59,6 +60,7 @@ COMMAND_USAGES = [
     "/bot <name: string> (despawn)<operation: EndbotDespawn>",
     "/bot <name: string> (forget)<operation: EndbotForget>",
     "/bot <name: string> (stop)<operation: EndbotStop>",
+    "/bot <name: string> (menu)<operation: EndbotMenu>",
     "/bot <name: string> (spawn)<operation: EndbotSpawn>",
     ("/bot <name: string> (spawn)<operation: EndbotSpawnAt> (at)<mode: EndbotSpawnAtMode> <placement: message>"),
     (
@@ -194,6 +196,10 @@ class EndbotPlugin(Plugin):
             return resolve_sender(source) if self._authorize_source(source) else None
 
         command_world = ServerThreadWorld(self._world, self._server_thread, authorized_sender)
+        # Forms resolve to ordinary /bot arguments and re-enter through _submit_bot.
+        presenter = FormPresenter(
+            self._submit_bot, lambda: tuple(str(player.name) for player in self.server.online_players)
+        )
         self._bot_commands = BotCommandService(control, command_world)
         self._command_runner = AsyncCommandRunner(
             self._bot_commands,
@@ -202,6 +208,7 @@ class EndbotPlugin(Plugin):
             authorize=self._authorize_source,
             authorize_loop=self._authorize_loop,
             log=self._log_endbot,
+            show_view=presenter.show_view,
             revision=lambda sender: (
                 self._authorization_versions.get(str(sender.unique_id), 0) if hasattr(sender, "unique_id") else None
             ),
@@ -479,11 +486,15 @@ class EndbotPlugin(Plugin):
             return True
         if command.name != "bot":
             return False
+        self._submit_bot(sender, args)
+        return True
+
+    def _submit_bot(self, sender, args: list[str]) -> None:
+        """Shared entry for typed /bot commands and form submissions."""
         if not isinstance(sender, ConsoleCommandSender) and (
             not hasattr(sender, "unique_id") or not self._allows_control(sender)
         ):
             sender.send_message("Endbot: you do not have Bot control permission")
-            return True
+            return
         if self._command_runner is None or not self._command_runner.submit(args, sender):
             sender.send_message("Endbot: command service is unavailable")
-        return True

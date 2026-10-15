@@ -171,6 +171,7 @@ class AsyncCommandRunner:
         revision: Callable[[object], int | None] | None = None,
         authorize_loop: Callable[[CommandSource], bool] | None = None,
         log: Callable[[str, str], None] | None = None,
+        show_view: Callable[[object, object], None] | None = None,
     ) -> None:
         self._service = service
         self._bridge = bridge
@@ -180,6 +181,8 @@ class AsyncCommandRunner:
         # Loops outlive their controller's session; commands do not.
         self._authorize_loop = authorize_loop or authorize
         self._log = log
+        # Presents a result's form view to its player on the server thread.
+        self._show_view = show_view
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
@@ -267,5 +270,12 @@ class AsyncCommandRunner:
                 return
             for message in result.messages:
                 sender.send_message(message)
+            # Permission may have changed while the worker queried the runtime.
+            if (
+                result.view is not None
+                and self._show_view is not None
+                and (self._authorize is None or self._authorize(source))
+            ):
+                self._show_view(sender, result.view)
 
         self._bridge.post(deliver)

@@ -61,7 +61,7 @@ class PluginAdapterTests(unittest.TestCase):
         usages = plugin_class.commands["bot"]["usages"]
         self.assertIn("/bot [command: string] [topic: string]", usages)
         self.assertIn(
-            "/bot (ping|list|help)<command: EndbotRoot>",
+            "/bot (ping|list|help|menu)<command: EndbotRoot>",
             usages,
         )
         # The retired dense "advanced" mode stays parseable through the root
@@ -112,6 +112,7 @@ class PluginAdapterTests(unittest.TestCase):
                 "destroy",
                 "drop",
                 "stop",
+                "menu",
             },
         )
         self.assertIn("/bot <name: string> (spawn)<operation: EndbotSpawn>", usages)
@@ -276,6 +277,21 @@ class PluginAdapterTests(unittest.TestCase):
             plugin._join_controller(player)
             self.assertTrue(plugin._allows_control(player))
             self.assertFalse(plugin._authorize_source(current_source))
+
+    def test_form_submissions_share_the_typed_command_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            submissions = []
+            plugin._command_runner = types.SimpleNamespace(
+                submit=lambda args, target: submissions.append((args, target)) or True
+            )
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            plugin._submit_bot(player, ["Alice", "stop"])
+            self.assertEqual(player.messages, ["Endbot: you do not have Bot control permission"])
+            plugin.on_command(FakeConsole(), FakeCommand("botcontrollers"), ["add", player.name])
+            plugin._submit_bot(player, ["Alice", "stop"])
+            self.assertEqual(submissions, [(["Alice", "stop"], player)])
 
     def test_mining_loop_survives_controller_logoff_but_not_revocation(self):
         from endstone_endbot.dispatch import CommandSource

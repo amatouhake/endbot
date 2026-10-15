@@ -95,7 +95,8 @@ See [validation](BOT_BEHAVIOR_VALIDATION.md).
 
 ## BOT-004: Change Bot control authorization while the server is running
 
-Status: **Implemented — real human-client visibility and grant/revoke gate remains** (2026-10-16 JST).
+Status: **Implemented — human Windows client (RakNet) confirmed live revoke/regrant and command visibility**
+(2026-10-16 JST; see [mining validation](MINING_VALIDATION.md#human-windows-client-check-2026-10-16-jst)).
 
 `endbot controllers add|remove|list` submits the console-only `botcontrollers` command. The plugin persists grants,
 pending authenticated enrollment, retained identity bindings and revocations in a separate atomic policy file. Online
@@ -153,6 +154,29 @@ cancellation paths, native event cancellation preserving the block/tool, consecu
 The same automated matrix (with radius, controller management and abnormal-end notices) also passed over NetherNet, the
 default transport. Pathfinding, automatic tool selection and area excavation are not included. A human client over
 NetherNet and broader effects/enchantment/tool-break combinations remain validation work. See [mining validation](MINING_VALIDATION.md).
+
+## BOT-006: Make the control forms compact and readable
+
+Status: **Open — reported in the first human Windows client check of `/bot menu`** (2026-10-16 JST).
+
+The colored `/bot help` and replies and the `/bot menu` forms were checked on the Windows client (1.26.52) over
+RakNet on main `061bcc8`. Colors render as intended and the forms work, but three usability problems were reported:
+
+- **Bot list hides the connection state.** The list button is `"<name>\n[<state>]"`, but the client shows only the
+  first line, truncated as `RakNetTest...`, so online/offline is not visible. Put the state on the same line (for
+  example `RakNetTest · online`, state colored) and keep it short enough not to be truncated.
+- **Buttons are large, so the Bot screen needs a lot of scrolling.** Button size is fixed by the client. Reduce the
+  number of buttons per screen instead. Options: (A) about six buttons on the Bot screen — Stop, Move/Look...,
+  Action... (jump/attack/use/destroy and mode chosen in the input form), Teleport..., Settings... (hotbar, radius,
+  sprint/sneak), Connection... (reconnect, despawn, resume); or (B) category buttons that each open a sub-screen of
+  actions (one more tap per action). Not yet decided.
+- **The form window itself is small.** Standard server forms cannot set their window size; the client UI decides it.
+  Player-side GUI scale enlarges everything. A server-sent resource pack with custom form layouts could restyle them,
+  but it adds a distribution path and must be checked manually against achievement eligibility; evaluate separately.
+
+Acceptance criteria: the list shows each Bot's state without truncation; common actions on the Bot screen need little
+or no scrolling on a 1080p Windows client at default GUI scale; behavior stays identical to the typed commands (forms
+still submit the same `/bot` arguments); confirmed on a normally authenticated human client.
 
 ## Implementation boundary
 

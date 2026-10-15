@@ -97,8 +97,9 @@ The human check exposed three defects that automated console-driven runs had mis
 - **Retargeting after logoff.** The continuous retarget resolved the (offline) controller and failed with
   `Command player is no longer online`. Sight retargeting no longer needs the controller.
 
-Still open: the `status|resume|reconnect|despawn|forget|stop` overload is declared as one enum, and the client shows
-only `<operation: EndbotNoArgs>`, so those operations are hard to discover from command suggestions.
+The check also showed that the `status|resume|reconnect|despawn|forget|stop` overload, declared as one enum, appeared
+in client suggestions only as `<operation: EndbotNoArgs>`. Each operation is now a separate single-value overload, like
+`spawn` and `destroy`; the automated smoke confirmed the declarations load and the operations still run.
 
 Early attempts exposed a dimension-name mismatch and an observation-fixture ItemType serialization error; those runs
 are not full passes. Neither an automated build nor the prepared fixture world establishes actual Xbox achievement

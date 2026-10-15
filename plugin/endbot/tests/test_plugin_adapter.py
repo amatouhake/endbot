@@ -122,7 +122,12 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertIn("/bot <name: string> (hotbar)<operation: EndbotHotbarQuery>", usages)
         self.assertTrue(any("EndbotHotbarSet" in usage and "<slot: int>" in usage for usage in usages))
         self.assertIn("/bot <name: string> (drop)<operation: EndbotDropOne>", usages)
-        self.assertTrue(any("reconnect" in usage and "EndbotNoArgs" in usage for usage in usages))
+        # Each no-argument operation is its own literal so the client lists it by name.
+        for operation in ("status", "resume", "reconnect", "despawn", "forget", "stop"):
+            self.assertIn(
+                f"/bot <name: string> ({operation})<operation: Endbot{operation.capitalize()}>", usages
+            )
+        self.assertFalse(any("EndbotNoArgs" in usage for usage in usages))
         self.assertTrue(any("EndbotDirection" in usage for usage in usages))
         self.assertTrue(any("EndbotActionMode" in usage and "once|continuous|stop" in usage for usage in usages))
         self.assertTrue(any("DimensionName" in usage and "overworld|nether|end" in usage for usage in usages))

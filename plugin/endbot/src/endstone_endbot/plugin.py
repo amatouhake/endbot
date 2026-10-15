@@ -50,7 +50,15 @@ COMMAND_USAGES = [
     ),
     "/bot <name: string> <operation: string>",
     "/bot <name: string> <operation: string> <arguments: message>",
-    "/bot <name: string> (status|resume|reconnect|despawn|forget|stop)<operation: EndbotNoArgs>",
+    # One single-value enum per no-argument operation: the Windows client shows
+    # a multi-value enum here only as its type name (<operation: EndbotNoArgs>),
+    # which hid status/resume/reconnect/despawn/forget/stop from suggestions.
+    "/bot <name: string> (status)<operation: EndbotStatus>",
+    "/bot <name: string> (resume)<operation: EndbotResume>",
+    "/bot <name: string> (reconnect)<operation: EndbotReconnect>",
+    "/bot <name: string> (despawn)<operation: EndbotDespawn>",
+    "/bot <name: string> (forget)<operation: EndbotForget>",
+    "/bot <name: string> (stop)<operation: EndbotStop>",
     "/bot <name: string> (spawn)<operation: EndbotSpawn>",
     ("/bot <name: string> (spawn)<operation: EndbotSpawnAt> (at)<mode: EndbotSpawnAtMode> <placement: message>"),
     (

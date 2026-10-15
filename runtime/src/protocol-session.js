@@ -187,7 +187,7 @@ export class BedrockSession extends EventEmitter {
     if (!this.client || this.transportClosed || this.client.status !== 4 || !this.position || !this.inputs) {
       throw new Error('Bot is not online')
     }
-    if (!this.serverAuthoritativeMining) throw new Error('Mining requires server-authoritative block breaking')
+    if (!this.serverAuthoritativeMining) throw new Error('Destroy requires server-authoritative block breaking')
   }
 
   startMining ({ blockPosition, blockRuntimeId, blockName, face = 1, dimension, loopId }) {
@@ -195,16 +195,16 @@ export class BedrockSession extends EventEmitter {
     this.#assertMiningAvailable()
     if (!Array.isArray(blockPosition) || blockPosition.length !== 3 ||
         !blockPosition.every(value => Number.isSafeInteger(value) && Math.abs(value) <= 30_000_000)) {
-      throw new Error('Mining requires integer block coordinates within world bounds')
+      throw new Error('Destroy requires integer block coordinates within world bounds')
     }
-    if (!Number.isSafeInteger(face) || face < 0 || face > 5) throw new Error('Invalid mining block face')
+    if (!Number.isSafeInteger(face) || face < 0 || face > 5) throw new Error('Invalid block face')
     if (!Number.isSafeInteger(blockRuntimeId) || blockRuntimeId < 0) throw new Error('Invalid block runtime ID')
     const dimensions = { Overworld: 0, overworld: 0, 'minecraft:overworld': 0,
       Nether: 1, nether: 1, 'minecraft:nether': 1, TheEnd: 2, end: 2, 'minecraft:the_end': 2, 'minecraft:end': 2 }
     if (dimension !== undefined && (dimensions[dimension] ?? dimension) !== (dimensions[this.dimension] ?? this.dimension)) {
-      throw new Error('Mining dimension changed; retry the command')
+      throw new Error('The Bot changed dimension; retry the command')
     }
-    if (!this.#miningInReach(blockPosition)) throw new Error('Mining target is out of reach')
+    if (!this.#miningInReach(blockPosition)) throw new Error('Target block is out of reach')
     if (loopId === undefined) this.miningLoop = undefined
     if (this.mining?.state === 'active' && this.mining.blockRuntimeId === blockRuntimeId &&
         this.mining.blockPosition.every((value, index) => value === blockPosition[index])) return
@@ -233,6 +233,15 @@ export class BedrockSession extends EventEmitter {
     if (discard) this.pendingBlockActions = []
   }
 
+  #restartMining () {
+    const job = this.mining
+    if (job?.state !== 'active') return
+    if (job.ticks > 0) this.pendingBlockActions.push(createMiningAction('abort_break', job.blockPosition, job.face))
+    else this.pendingBlockActions = this.pendingBlockActions.filter(action => action.action !== 'start_break')
+    this.pendingBlockActions.push(createMiningAction('start_break', job.blockPosition, job.face))
+    job.ticks = 0
+  }
+
   #miningInReach (blockPosition) {
     return Math.hypot(...blockPosition.map((value, axis) => {
       const coordinate = this.position[['x', 'y', 'z'][axis]]
@@ -246,8 +255,9 @@ export class BedrockSession extends EventEmitter {
     if (this.miningLoop && ++this.miningLoop.leaseTicks >= 200) this.stopMining('mining controller timed out', 'failed')
     if (this.mining?.state === 'active') {
       const job = this.mining
-      if (!this.#miningInReach(job.blockPosition)) this.stopMining('target moved out of reach', 'failed')
-      else if (job.ticks >= 12_000) this.stopMining('timed out waiting for BDS to change target', 'failed')
+      // A failed block ends single-block mining; a continuous loop retargets.
+      if (!this.#miningInReach(job.blockPosition)) this.stopMining('target moved out of reach', 'failed', false, true)
+      else if (job.ticks >= 12_000) this.stopMining('timed out waiting for BDS to change target', 'failed', false, true)
       else {
         if (job.ticks > 0) this.pendingBlockActions.push(createMiningAction('continue_break', job.blockPosition, job.face))
         job.ticks += 1
@@ -272,7 +282,7 @@ export class BedrockSession extends EventEmitter {
   selectHotbar (slot) {
     if (!Number.isSafeInteger(slot) || slot < 0 || slot > 8) throw new Error('Hotbar slot must be from 1 to 9')
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
-    this.stopMining('hotbar changed')
+    this.#restartMining()
     this.#releaseItemUse()
     this.hotbarSlot = slot
     this.#selectHeldItem()
@@ -294,7 +304,6 @@ export class BedrockSession extends EventEmitter {
     if (!Number.isSafeInteger(face) || face < 0 || face > 5) throw new Error('Invalid block face')
     if (!Number.isSafeInteger(blockRuntimeId) || blockRuntimeId < 0) throw new Error('Invalid block runtime ID')
     if (this.pendingInteraction) throw new Error('A block interaction is already pending')
-    this.stopMining('block interaction started')
     const action = operation => createBlockInteractionAction({
       runtimeEntityId: this.client.entityId,
       blockPosition,
@@ -317,7 +326,6 @@ export class BedrockSession extends EventEmitter {
 
   dropSelected (stack) {
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
-    this.stopMining('item dropped')
     this.#releaseItemUse()
     this.client.queue('inventory_transaction', createDropTransaction({
       hotbarSlot: this.hotbarSlot,
@@ -395,7 +403,7 @@ export class BedrockSession extends EventEmitter {
       this.client.queue('serverbound_loading_screen', { type: 1 })
     })
     this.client.on('change_dimension', packet => {
-      this.stopMining('dimension changed', 'canceled', true)
+      this.stopMining('dimension changed', 'canceled', true, true)
       // Discard all old-dimension prediction/targets before acknowledging the
       // transition. Otherwise BDS keeps waiting while we send the old position.
       this.activeItemUse = undefined
@@ -443,7 +451,7 @@ export class BedrockSession extends EventEmitter {
         this.position = vector(packet.position)
         this.onGround = Boolean(packet.on_ground)
         if (packet.mode === 'teleport') {
-          this.stopMining('teleported')
+          this.stopMining('teleported', 'canceled', false, true)
           this.horizontalVelocity = { x: 0, z: 0 }
           this.pendingHandledTeleport = true
           this.verticalVelocity = this.onGround ? 0 : -0.08
@@ -758,11 +766,9 @@ export class BedrockSession extends EventEmitter {
   }
 
   #setHeldItem (item) {
-    // Pickups into an empty selected slot and broken tools change the held item.
-    // Cancel the current break only; a continuous loop retargets with the new item.
-    if (Number(this.heldItem.network_id) !== Number(item.network_id)) {
-      this.stopMining('held item changed', 'canceled', false, true)
-    }
+    // Pickups into an empty selected slot and broken tools change the held item;
+    // BDS restarts break progress for a new tool, so the runtime does too.
+    if (Number(this.heldItem.network_id) !== Number(item.network_id)) this.#restartMining()
     this.heldItem = item
     if (!this.activeItemUse) return
     const use = this.activeItemUse

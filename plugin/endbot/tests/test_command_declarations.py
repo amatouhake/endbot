@@ -111,11 +111,11 @@ DOCUMENTED_ROOT_FORMS = [
 ]
 
 DOCUMENTED_NAMED_FORMS = [
-    ["Alice", "mine"],
-    ["Alice", "mine", "start"],
-    ["Alice", "mine", "stop"],
-    ["Alice", "mine", "1", "64", "2"],
-    ["Alice", "mine", "~", "~-1", "~", "up"],
+    ["Alice", "destroy"],
+    ["Alice", "destroy", "start"],
+    ["Alice", "destroy", "stop"],
+    ["Alice", "destroy", "1", "64", "2"],
+    ["Alice", "destroy", "~", "~-1", "~", "up"],
     ["Alice", "status"],
     ["Alice", "resume"],
     ["Alice", "reconnect"],

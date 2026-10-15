@@ -100,14 +100,26 @@ test('continuous mining expires without controller heartbeats, including while w
   }
 })
 
-test('continuous mining cancels while waiting on hotbar, dimension, death and disconnect', async t => {
+test('continuous mining survives hotbar, teleport and dimension changes', async t => {
   const { client, session } = await fixture(t)
-  for (const cancel of [() => session.selectHotbar(0),
-    () => client.emit('change_dimension', { dimension: 0, position: { x: 0, y: 64, z: 0 } }),
-    () => client.emit('set_health', { health: 0 }), () => session.disconnect('test')]) {
+  session.startMiningLoop()
+  const loopId = session.miningStatus().loopId
+  for (const change of [() => session.selectHotbar(0),
+    () => client.emit('move_player', { runtime_id: 7n, position: { x: 0, y: 64, z: 0 }, mode: 'teleport', on_ground: true, tick: 0n }),
+    () => client.emit('change_dimension', { dimension: 0, position: { x: 0, y: 64, z: 0 } })]) {
+    session.continueMining({ loopId, ...miningTarget })
+    change()
+    assert.equal(session.miningStatus().loopId, loopId)
+    assert.equal(session.continueMining({ loopId }), true)
+  }
+})
+
+test('continuous mining ends on death and disconnect', async t => {
+  const { client, session } = await fixture(t)
+  for (const end of [() => client.emit('set_health', { health: 0 }), () => session.disconnect('test')]) {
     session.startMiningLoop()
     const loopId = session.miningStatus().loopId
-    cancel()
+    end()
     assert.equal(session.miningStatus().state, 'canceled')
     assert.equal(session.continueMining({ loopId, ...miningTarget }), false)
   }
@@ -132,7 +144,7 @@ test('mining sends packed start/continue actions and waits for server block upda
   assert.equal(tick().block_action, undefined)
 })
 
-test('a held-item change cancels the current break but keeps the continuous loop', async t => {
+test('a held-item change restarts the current break and keeps the continuous loop', async t => {
   const { client, session, tick } = await fixture(t)
   session.startMiningLoop()
   const loopId = session.miningStatus().loopId
@@ -140,11 +152,10 @@ test('a held-item change cancels the current break but keeps the continuous loop
   tick()
   // A pickup or broken tool replaces the selected slot's item.
   client.emit('inventory_slot', { window_id: 'inventory', slot: 0, item: { ...structuredClone(item), network_id: 1 } })
-  assert.equal(session.miningStatus().state, 'waiting')
+  assert.equal(session.miningStatus().state, 'active')
   assert.equal(session.miningStatus().loopId, loopId)
-  assert.deepEqual(tick().block_action.map(action => action.action), ['abort_break'])
-  assert.equal(session.continueMining({ loopId, ...miningTarget }), true)
-  assert.deepEqual(tick().block_action.map(action => action.action), ['start_break'])
+  assert.deepEqual(tick().block_action.map(action => action.action), ['abort_break', 'start_break'])
+  assert.deepEqual(tick().block_action.map(action => action.action), ['continue_break'])
 })
 
 test('mining accepts the pinned wire dimension names and Endstone namespace names', async t => {
@@ -166,12 +177,13 @@ test('stop before the first tick cancels without starting a break', async t => {
   assert.equal(session.miningStatus().state, 'canceled')
 })
 
-test('hotbar changes abort mining, and a dimension change discards old actions', async t => {
+test('hotbar changes restart the break, and a dimension change discards old actions', async t => {
   const { client, session, tick } = await fixture(t)
   session.startMining(miningTarget)
   tick()
   session.selectHotbar(0)
-  assert.deepEqual(tick().block_action.map(action => action.action), ['abort_break'])
+  assert.equal(session.miningStatus().state, 'active')
+  assert.deepEqual(tick().block_action.map(action => action.action), ['abort_break', 'start_break'])
   session.startMining(miningTarget)
   tick()
   client.emit('change_dimension', { dimension: 1, position: { x: 40, y: 90, z: 40 } })

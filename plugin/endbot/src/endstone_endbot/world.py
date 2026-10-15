@@ -213,13 +213,13 @@ class EndstoneWorld:
             direction = [hit[i] - eye[i] for i in range(3)]
             distance = math.sqrt(sum(value * value for value in direction))
             if distance > 5.0:
-                raise ValueError("Mining target is out of reach (maximum 5 blocks)")
+                raise ValueError("Target block is out of reach (maximum 5 blocks)")
             if distance < 0.001:
-                raise ValueError("Mining target overlaps the Bot's eye position")
+                raise ValueError("Target block overlaps the Bot's eye position")
             direction = [value / distance for value in direction]
             found = self._ray_block(dimension, eye, direction, distance + 0.01)
             if found is None or found[0] != target:
-                raise ValueError("Mining target is air/liquid or blocked by another block")
+                raise ValueError("Target is air/liquid or blocked by another block")
             block = found[1]
         else:
             yaw, pitch = math.radians(location.yaw), math.radians(location.pitch)
@@ -234,7 +234,7 @@ class EndstoneWorld:
         if block.type == "minecraft:bedrock":
             if parameters.get("continuous"):
                 return None
-            raise ValueError("Bedrock cannot be mined in Survival")
+            raise ValueError("Bedrock cannot be destroyed in Survival")
         yaw, pitch = self._facing(eye, hit)
         if parameters.get("continuous"):
             yaw, pitch = float(location.yaw), float(location.pitch)

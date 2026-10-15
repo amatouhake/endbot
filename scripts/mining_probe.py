@@ -136,7 +136,7 @@ def exercise_mining(output: Path, console, control, wait, report):
     ):
         setup(name, block, tool)
         started = time.monotonic()
-        console("bot RakNetSpike mine")
+        console("bot RakNetSpike destroy")
         wait("BDS mined target", lambda: observed().get("block") == "minecraft:air", 20)
         elapsed = time.monotonic() - started
         state = observed()
@@ -151,7 +151,7 @@ def exercise_mining(output: Path, console, control, wait, report):
         wait("mining runtime confirmation", lambda: (control("status").get("mining") or {}).get("state") == "completed", 5)
         report.setdefault("mining", {})[name] = {"seconds": round(elapsed, 2), "damage": state["damage"], "drops": state["drops"]}
     setup("continuous", "minecraft:stone", "minecraft:iron_pickaxe", count=3)
-    console("bot RakNetSpike mine start")
+    console("bot RakNetSpike destroy start")
     wait("three consecutive mined blocks", lambda: observed().get("blocks") == ["minecraft:air"] * 3, 15)
     first = observed()
     if len(first["events"]) != 3 or first["damage"] < 3:
@@ -162,7 +162,7 @@ def exercise_mining(output: Path, console, control, wait, report):
     wait("waiting continuous mining resumes", lambda: len(observed().get("events", [])) == 6, 15)
     if control("status")["mining"].get("loopId") != loop_id:
         raise RuntimeError("continuous mining resumed through an unexpected new session")
-    console("bot RakNetSpike mine stop")
+    console("bot RakNetSpike destroy stop")
     wait("continuous mining stopped while waiting", lambda: not (control("status").get("mining") or {}).get("continuous"), 5)
     request({"id": "continuous", "block": "minecraft:stone", "refill": 2})
     wait("post-stop refill", lambda: observed().get("refill") == 2, 5)
@@ -170,11 +170,11 @@ def exercise_mining(output: Path, console, control, wait, report):
     if observed()["blocks"] != ["minecraft:stone"] * 3 or len(observed()["events"]) != 6:
         raise RuntimeError(f"continuous mining restarted after stop: {observed()}")
     report["mining"]["continuous-retarget-wait-resume-stop"] = True
-    for name, command in (("explicit-stop", "bot RakNetSpike mine stop"),
+    for name, command in (("explicit-stop", "bot RakNetSpike destroy stop"),
                           ("all-stop", "bot RakNetSpike stop"),
                           ("hotbar-stop", "bot RakNetSpike hotbar 2")):
         setup(name, "minecraft:obsidian", "minecraft:diamond_pickaxe")
-        console("bot RakNetSpike mine start")
+        console("bot RakNetSpike destroy start")
         wait("mining active", lambda: (control("status").get("mining") or {}).get("state") == "active", 5)
         time.sleep(0.15)
         console(command)
@@ -185,7 +185,7 @@ def exercise_mining(output: Path, console, control, wait, report):
         report["mining"][name] = True
     setup("protection", "minecraft:stone", "minecraft:iron_pickaxe", cancel=True)
     target = observed()["target"]
-    console(f"bot RakNetSpike mine {' '.join(map(str, target))} north")
+    console(f"bot RakNetSpike destroy {' '.join(map(str, target))} north")
     wait("cancelable native BlockBreakEvent", lambda: bool(observed().get("events")), 10)
     console("bot RakNetSpike stop")
     time.sleep(0.4)

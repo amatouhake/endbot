@@ -1,5 +1,9 @@
 # Survival mining validation
 
+> **Note (2026-10-16):** the runs below used the command's earlier name, `mine`; it is now `destroy`. Its stop rules
+> have also changed since: hotbar switching now restarts the current block instead of canceling, and other
+> operations or a controller logoff no longer end mining. Repeat the live matrix before relying on those paths.
+
 Implementation uses packed `start_break`, `continue_break` and `abort_break` actions in `PlayerAuthInput`, following
 [Mojang's server-authoritative breaking flow](https://mojang.github.io/bedrock-protocol-docs/guides/block-breaking-overview/).
 The server computes progress and destruction; the client waits for the corrective/broadcast block update. It does not

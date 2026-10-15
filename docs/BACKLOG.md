@@ -143,9 +143,9 @@ and validate real-client completion after it becomes available.
 
 Status: **Implemented — Windows RakNet Survival matrix passed; broader gates open** (2026-10-16 JST).
 
-`/bot <name> mine` selects a block in the Bot's line of sight; explicit coordinates/optional face select a reachable,
-unobstructed target. `mine start` continuously selects targets along the same sight ray, waits when empty, and resumes
-when a reachable block appears; `mine stop` cancels both mining and waiting. Packed player block actions let BDS perform normal mining; no world edit,
+`/bot <name> destroy` selects a block in the Bot's line of sight; explicit coordinates/optional face select a reachable,
+unobstructed target. `destroy start` continuously selects targets along the same sight ray, waits when empty, and resumes
+when a reachable block appears; `destroy stop` cancels both mining and waiting. Packed player block actions let BDS perform normal mining; no world edit,
 instant-break transaction, OP, or authentication/core change is used. Status tracks the server's target updates.
 
 Real-server checks covered bare-hand dirt/stone, iron-pickaxe stone with cobblestone drop and durability loss, three

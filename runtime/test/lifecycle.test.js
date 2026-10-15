@@ -50,7 +50,7 @@ function fixture (options = {}) {
 const turn = () => new Promise(resolve => setImmediate(resolve))
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
-test('continuous mining routes start/continue and cancels on movement without accepting stale stop', async () => {
+test('continuous mining routes start/continue, survives movement and ignores a stale stop', async () => {
   const { lifecycle } = fixture()
   await lifecycle.spawn('Alice')
   await turn()
@@ -61,11 +61,11 @@ test('continuous mining routes start/continue and cancels on movement without ac
   lifecycle.mine('Alice', { mode: 'stop', loopId: 'old-loop' })
   assert.equal(lifecycle.status('Alice').mining.state, 'active')
   lifecycle.move('Alice', 'forward')
-  assert.equal(lifecycle.status('Alice').mining.state, 'canceled')
+  assert.equal(lifecycle.status('Alice').mining.state, 'active')
   await lifecycle.close()
 })
 
-test('mining stops conflicting inputs, reports state, and is canceled by stop/look/use', async () => {
+test('mining clears conflicting inputs, continues through other operations, and is canceled only by stops', async () => {
   const { lifecycle, sessions } = fixture()
   await lifecycle.spawn('Alice')
   await turn()
@@ -78,8 +78,13 @@ test('mining stops conflicting inputs, reports state, and is canceled by stop/lo
   assert.deepEqual(started.inputs.actions, {})
   assert.deepEqual(started.inputs.look, { yaw: 20, pitch: 5 })
   assert.throws(() => lifecycle.mine('Alice', { ...target, pitch: 100 }), /Invalid/)
-  for (const cancel of [() => lifecycle.stop('Alice'), () => lifecycle.look('Alice', 0, 0),
-    () => lifecycle.action('Alice', 'use', 'once'), () => lifecycle.mine('Alice', { mode: 'stop' })]) {
+  for (const operation of [() => lifecycle.look('Alice', 0, 0), () => lifecycle.move('Alice', 'left'),
+    () => lifecycle.action('Alice', 'use', 'once'), () => lifecycle.action('Alice', 'attack', 'continuous')]) {
+    lifecycle.mine('Alice', target)
+    operation()
+    assert.equal(lifecycle.status('Alice').mining.state, 'active')
+  }
+  for (const cancel of [() => lifecycle.stop('Alice'), () => lifecycle.mine('Alice', { mode: 'stop' })]) {
     lifecycle.mine('Alice', target)
     cancel()
     assert.equal(lifecycle.status('Alice').mining.state, 'canceled')

@@ -22,11 +22,19 @@ class CommandSource:
     player_id: str | None = None
     sender: object | None = None
     authorization_revision: int | None = None
+    # Identity snapshot: lets a continuous mining loop recheck permission
+    # after its controller logs off, without retaining the player wrapper.
+    xuid: str | None = None
+    name: str | None = None
 
     @classmethod
     def capture(cls, sender) -> CommandSource:
         if hasattr(sender, "unique_id") and hasattr(sender, "location"):
-            return cls(player_id=str(sender.unique_id))
+            return cls(
+                player_id=str(sender.unique_id),
+                xuid=str(getattr(sender, "xuid", None) or "") or None,
+                name=str(getattr(sender, "name", None) or "") or None,
+            )
         return cls(sender=sender)
 
 
@@ -155,12 +163,17 @@ class AsyncCommandRunner:
         resolve_sender: Callable[[CommandSource], object],
         authorize: Callable[[CommandSource], bool] | None = None,
         revision: Callable[[object], int | None] | None = None,
+        authorize_loop: Callable[[CommandSource], bool] | None = None,
+        log: Callable[[str, str], None] | None = None,
     ) -> None:
         self._service = service
         self._bridge = bridge
         self._resolve_sender = resolve_sender
         self._authorize = authorize
         self._revision = revision
+        # Loops outlive their controller's session; commands do not.
+        self._authorize_loop = authorize_loop or authorize
+        self._log = log
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
@@ -183,9 +196,21 @@ class AsyncCommandRunner:
                 return
 
         def authorize(source):
-            return self._authorize is None or self._bridge.call(lambda: self._authorize(source))
+            return self._authorize_loop is None or self._bridge.call(lambda: self._authorize_loop(source))
 
-        self._service.poll_mining(authorize)
+        for source, level, message in self._service.poll_mining(authorize) or ():
+            self._notify(source, level, message)
+
+    def _notify(self, source: CommandSource, level: str, message: str) -> None:
+        def deliver() -> None:
+            if self._log is not None:
+                self._log(level, message)
+            # A controller who has logged off still gets the console log entry.
+            sender = self._resolve_sender(source)
+            if sender is not None:
+                sender.send_message(message)
+
+        self._bridge.post(deliver)
 
     def submit(self, arguments: list[str], sender) -> bool:
         source = CommandSource.capture(sender)
@@ -224,6 +249,9 @@ class AsyncCommandRunner:
             result = CommandResult(True, ("Endbot: internal command failure",))
 
         def deliver() -> None:
+            if result.log_level is not None and self._log is not None:
+                for message in result.messages:
+                    self._log(result.log_level, message)
             sender = self._resolve_sender(source)
             if sender is None:
                 return

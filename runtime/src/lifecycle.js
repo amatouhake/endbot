@@ -203,7 +203,6 @@ export class BotLifecycle extends EventEmitter {
   move (name, direction) {
     const { profile, state } = this.#requireOnline(name)
     state.inputs.setMovement(direction)
-    state.session.stopMining?.('movement changed')
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -211,7 +210,6 @@ export class BotLifecycle extends EventEmitter {
   look (name, yaw, pitch) {
     const { profile, state } = this.#requireOnline(name)
     state.inputs.setLook(yaw, pitch)
-    state.session.stopMining?.('look changed')
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -219,7 +217,6 @@ export class BotLifecycle extends EventEmitter {
   action (name, action, mode, intervalTicks) {
     const { profile, state } = this.#requireOnline(name)
     state.inputs.setAction(action, mode, intervalTicks)
-    if (['attack', 'use'].includes(action) && mode !== 'stop') state.session.stopMining?.(`${action} started`)
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -265,10 +262,10 @@ export class BotLifecycle extends EventEmitter {
       // Preserve the current sight direction throughout a continuous run.
       state.session.continueMining(parameters)
     } else {
-      if (parameters.mode !== undefined && parameters.mode !== 'start') throw new Error('Invalid mining mode')
+      if (parameters.mode !== undefined && parameters.mode !== 'start') throw new Error('Invalid destroy mode')
       if ((parameters.yaw !== undefined || parameters.pitch !== undefined) &&
           (!Number.isFinite(parameters.yaw) || !Number.isFinite(parameters.pitch) || Math.abs(parameters.pitch) > 90)) {
-        throw new Error('Invalid mining look direction')
+        throw new Error('Invalid destroy look direction')
       }
       if (parameters.mode === 'start') state.session.startMiningLoop()
       else state.session.startMining(parameters)

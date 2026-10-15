@@ -143,15 +143,15 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertEqual(command.parameters["facingCoordinates"], [0.0, 80.0, 10.0])
 
     def test_hotbar_interact_and_drop_grammar(self) -> None:
-        self.assertEqual(parse_command(["Alice", "mine"]).parameters, {})
-        self.assertEqual(parse_command(["Alice", "mine", "start"]).parameters, {"mode": "start"})
-        self.assertEqual(parse_command(["Alice", "mine", "stop"]).parameters, {"mode": "stop"})
-        mining = parse_command(["Alice", "mine", "~", "~-1", "-2", "up"])
+        self.assertEqual(parse_command(["Alice", "destroy"]).parameters, {})
+        self.assertEqual(parse_command(["Alice", "destroy", "start"]).parameters, {"mode": "start"})
+        self.assertEqual(parse_command(["Alice", "destroy", "stop"]).parameters, {"mode": "stop"})
+        mining = parse_command(["Alice", "destroy", "~", "~-1", "-2", "up"])
         self.assertEqual(mining.parameters["face"], 1)
         self.assertEqual(mining.parameters["coordinates"][1], ("relative", -1.0))
         for tail in (["one"], ["1", "64"], ["1", "64", "2", "badface"], ["nan", "64", "2"]):
             with self.assertRaises(ValueError):
-                parse_command(["Alice", "mine", *tail])
+                parse_command(["Alice", "destroy", *tail])
         self.assertEqual(parse_command(["Alice", "hotbar"]).parameters, {})
         self.assertEqual(parse_command(["Alice", "hotbar", "9"]).parameters, {"slot": 9})
         with self.assertRaisesRegex(ValueError, "1 to 9"):

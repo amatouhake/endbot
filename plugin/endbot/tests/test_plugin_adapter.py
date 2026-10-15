@@ -109,7 +109,7 @@ class PluginAdapterTests(unittest.TestCase):
                 "hotbar",
                 "radius",
                 "interact",
-                "mine",
+                "destroy",
                 "drop",
                 "stop",
             },
@@ -271,6 +271,26 @@ class PluginAdapterTests(unittest.TestCase):
             plugin._join_controller(player)
             self.assertTrue(plugin._allows_control(player))
             self.assertFalse(plugin._authorize_source(current_source))
+
+    def test_mining_loop_survives_controller_logoff_but_not_revocation(self):
+        from endstone_endbot.dispatch import CommandSource
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            console, command = FakeConsole(), FakeCommand("botcontrollers")
+            plugin.on_command(console, command, ["add", player.name])
+            source = CommandSource.capture(player)
+            self.assertEqual((source.xuid, source.name), (player.xuid, player.name))
+            plugin.on_player_quit(types.SimpleNamespace(player=player))
+            plugin.server.online_players = []
+            # Queued commands are invalidated by logoff; a running loop is not.
+            self.assertFalse(plugin._authorize_source(source))
+            self.assertTrue(plugin._authorize_loop(source))
+            plugin.on_command(console, command, ["remove", f"xuid:{player.xuid}"])
+            self.assertFalse(plugin._authorize_loop(source))
+            self.assertTrue(plugin._authorize_loop(CommandSource(sender=console)))
 
     def test_controller_cannot_manage_access_even_with_external_permission(self):
         with tempfile.TemporaryDirectory() as directory:

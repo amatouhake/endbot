@@ -95,6 +95,49 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(sender.messages, ["Endbot: done"])
         self.assertEqual(sender.thread, main_thread)
 
+    def test_mining_notices_and_logged_results_reach_console_log_and_sender(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        logged = []
+
+        class Sender:
+            def __init__(self):
+                self.messages = []
+
+            def send_message(self, message):
+                self.messages.append(message)
+
+        sender, offline = Sender(), CommandSource(player_id="00000000-0000-4000-8000-000000000001")
+
+        class Service:
+            def poll_mining(self, authorize):
+                return [(CommandSource(sender=sender), "warning", "Endbot: Alice: stopped"),
+                        (offline, "warning", "Endbot: Bob: stopped")]
+
+            def execute(self, arguments, source):
+                return CommandResult(True, ("Endbot: Alice: started",), log_level="info")
+
+        runner = AsyncCommandRunner(
+            Service(), bridge, lambda source: source.sender, log=lambda level, message: logged.append((level, message))
+        )
+        self.addCleanup(runner.close)
+        runner.poll()
+        scheduled.run_next()
+        scheduled.run_next()
+        runner.submit(["Alice", "destroy", "start"], sender)
+        scheduled.run_next()
+        # A controller who logged off still has the console log entry.
+        self.assertEqual(sender.messages, ["Endbot: Alice: stopped", "Endbot: Alice: started"])
+        self.assertEqual(
+            logged,
+            [
+                ("warning", "Endbot: Alice: stopped"),
+                ("warning", "Endbot: Bob: stopped"),
+                ("info", "Endbot: Alice: started"),
+            ],
+        )
+
     def test_world_calls_are_marshaled_to_server_thread(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

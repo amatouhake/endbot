@@ -1,9 +1,11 @@
 # Endbot runtime
 
-Block mining is available through `/bot <name> mine [x y z [face]]`, `mine start` and `mine stop` in the plugin. Authenticated `mine`
-IPC starts one server-authoritative target using packed player block actions; `status.mining` records active/completed/
-canceled/failed state, target and reason. BDS owns speed, drops, durability and protection events. Stops and session
-transitions clear mining; jobs are not persisted or retried after reconnect. For continuous mining, the plugin reselects
+Block mining is available through `/bot <name> destroy [x y z [face]]`, `destroy start` and `destroy stop` in the
+plugin. Authenticated `mine` IPC (the internal method name)
+starts one server-authoritative target using packed player block actions; `status.mining` records active/completed/
+canceled/failed state, target and reason. BDS owns speed, drops, durability and protection events. Explicit stops, death
+and disconnect clear mining; other inputs keep it (a held-item change restarts the current block, teleport and
+dimension changes end only the current block). Jobs are not persisted or retried after reconnect. For continuous mining, the plugin reselects
 targets on the server thread and sends authenticated `continue` requests with the runtime's unique loop ID. These
 renew a 200-input-tick lease; stale requests cannot resume a stopped/replaced session. `status.mining` also exposes
 `continuous`, `loopId` and `waiting` state. See [commands](../docs/COMMANDS.md#mining-blocks)

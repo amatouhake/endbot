@@ -46,7 +46,7 @@ COMMAND_USAGES = [
     "/bot <command: string> <page: int>",
     (
         "/bot (help)<command: EndbotHelpTopic> (status|spawn|resume|reconnect|despawn|forget|rename|tp|move|look|"
-        "jump|attack|use|sprint|sneak|hotbar|interact|mine|drop|radius|stop)<topic: EndbotHelpTopicName>"
+        "jump|attack|use|sprint|sneak|hotbar|interact|destroy|drop|radius|stop)<topic: EndbotHelpTopicName>"
     ),
     "/bot <name: string> <operation: string>",
     "/bot <name: string> <operation: string> <arguments: message>",
@@ -81,12 +81,12 @@ COMMAND_USAGES = [
     "/bot <name: string> (sprint|sneak)<flag: EndbotFlag> (on|off)<state: EndbotOnOff>",
     "/bot <name: string> (hotbar)<operation: EndbotHotbarQuery>",
     "/bot <name: string> (hotbar)<operation: EndbotHotbarSet> <slot: int>",
-    "/bot <name: string> (mine)<operation: EndbotMine>",
-    "/bot <name: string> (mine)<operation: EndbotMineStop> (start|stop)<mode: EndbotMineMode>",
-    "/bot <name: string> (mine)<operation: EndbotMinePosition> <block: block_pos>",
+    "/bot <name: string> (destroy)<operation: EndbotDestroy>",
+    "/bot <name: string> (destroy)<operation: EndbotDestroyMode> (start|stop)<mode: EndbotDestroyModeName>",
+    "/bot <name: string> (destroy)<operation: EndbotDestroyPosition> <block: block_pos>",
     (
-        "/bot <name: string> (mine)<operation: EndbotMineFace> <block: block_pos> "
-        "(down|up|north|south|west|east)<face: EndbotMineBlockFace>"
+        "/bot <name: string> (destroy)<operation: EndbotDestroyFace> <block: block_pos> "
+        "(down|up|north|south|west|east)<face: EndbotDestroyBlockFace>"
     ),
     "/bot <name: string> (radius)<operation: EndbotRadiusQuery>",
     "/bot <name: string> (radius)<operation: EndbotRadiusSet> <chunks: int>",
@@ -192,6 +192,8 @@ class EndbotPlugin(Plugin):
             self._server_thread,
             resolve_sender,
             authorize=self._authorize_source,
+            authorize_loop=self._authorize_loop,
+            log=self._log_endbot,
             revision=lambda sender: (
                 self._authorization_versions.get(str(sender.unique_id), 0) if hasattr(sender, "unique_id") else None
             ),
@@ -345,6 +347,23 @@ class EndbotPlugin(Plugin):
             and self._allows_control(player)
             and source.authorization_revision == self._authorization_versions.get(source.player_id, 0)
         )
+
+    def _authorize_loop(self, source: CommandSource) -> bool:
+        """Keep a continuous loop while its controller remains permitted.
+
+        Unlike queued commands, a loop survives logoff and other operations;
+        only a revocation (or a stop) ends it. Offline controllers are checked
+        by the identity captured when they started the loop.
+        """
+        if source.player_id is None:
+            return isinstance(source.sender, ConsoleCommandSender)
+        player = self.server.get_player(UUID(source.player_id))
+        if player is not None:
+            return self._allows_control(player)
+        return self._control_decision(source.name or "", source.xuid or "", source.player_id)[0]
+
+    def _log_endbot(self, level: str, message: str) -> None:
+        getattr(self.logger, level, self.logger.info)(message)
 
     def _apply_control_permission(self, player) -> None:
         identity = str(player.unique_id)

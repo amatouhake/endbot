@@ -34,11 +34,13 @@ The feature is disabled by default. Invalid local-looking traffic never becomes 
 
 Block mining follows the same separation: the plugin observes/raycasts an authoritative target without changing it;
 the runtime packs start/continue/abort block actions into input ticks and observes BDS block updates. BDS owns mining
-progress, loot, durability and protection events. Mining is session-local and is canceled across teleport/dimension/
-respawn/disconnect rather than persisted as desired lifecycle state. Continuous mining uses periodic server-thread
+progress, loot, durability and protection events. Mining is session-local: respawn and disconnect end it rather than
+persisting it as desired lifecycle state, while teleport, dimension change and other operations end at most the current
+block. Continuous mining uses periodic server-thread
 raycasts on a dedicated poll worker, so a slow command (such as a spawn) cannot starve lease renewal; at most one poll
 is queued. A target the runtime rejects (reach/dimension recheck) keeps the loop waiting; an unreachable runtime ends it.
-Each loop is bound to a runtime session token and its initiating controller's authorization revision. Conditional stop/
+Each loop is bound to a runtime session token and to its initiating controller's identity. Unlike queued commands, a
+loop survives that controller's logoff and is ended only when the controller loses permission. Conditional stop/
 continue messages cannot affect a newer loop, and a runtime lease bounds orphaned mining after plugin/control loss.
 See [mining validation](MINING_VALIDATION.md).
 

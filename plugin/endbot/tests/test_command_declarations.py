@@ -112,7 +112,7 @@ DOCUMENTED_ROOT_FORMS = [
 
 DOCUMENTED_NAMED_FORMS = [
     ["Alice", "destroy"],
-    ["Alice", "destroy", "start"],
+    ["Alice", "destroy", "continuous"],
     ["Alice", "destroy", "stop"],
     ["Alice", "destroy", "1", "64", "2"],
     ["Alice", "destroy", "~", "~-1", "~", "up"],

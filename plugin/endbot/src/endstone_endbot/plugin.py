@@ -82,7 +82,7 @@ COMMAND_USAGES = [
     "/bot <name: string> (hotbar)<operation: EndbotHotbarQuery>",
     "/bot <name: string> (hotbar)<operation: EndbotHotbarSet> <slot: int>",
     "/bot <name: string> (destroy)<operation: EndbotDestroy>",
-    "/bot <name: string> (destroy)<operation: EndbotDestroyMode> (start|stop)<mode: EndbotDestroyModeName>",
+    "/bot <name: string> (destroy)<operation: EndbotDestroyMode> (once|continuous|stop)<mode: EndbotDestroyModeName>",
     "/bot <name: string> (destroy)<operation: EndbotDestroyPosition> <block: block_pos>",
     (
         "/bot <name: string> (destroy)<operation: EndbotDestroyFace> <block: block_pos> "

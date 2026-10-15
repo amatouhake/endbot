@@ -1,6 +1,6 @@
 # Endbot runtime
 
-Block mining is available through `/bot <name> destroy [x y z [face]]`, `destroy start` and `destroy stop` in the
+Block mining is available through `/bot <name> destroy [x y z [face]]`, `destroy continuous` and `destroy stop` in the
 plugin. Authenticated `mine` IPC (the internal method name)
 starts one server-authoritative target using packed player block actions; `status.mining` records active/completed/
 canceled/failed state, target and reason. BDS owns speed, drops, durability and protection events. Explicit stops, death

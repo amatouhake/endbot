@@ -150,12 +150,13 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
             raise RuntimeError(f"tool durability did not change: {state}")
         if name == "stone-pickaxe" and "minecraft:cobblestone" not in state["drops"]:
             raise RuntimeError(f"stone did not drop cobblestone with pickaxe: {state}")
-        if name == "stone-hand" and state["drops"]:
+        # Only drops of the mined block count; world generation can leave unrelated item actors nearby.
+        if name == "stone-hand" and {"minecraft:stone", "minecraft:cobblestone"} & set(state["drops"]):
             raise RuntimeError(f"stone dropped loot with the wrong tool: {state}")
         wait("mining runtime confirmation", lambda: (control("status").get("mining") or {}).get("state") == "completed", 5)
         report.setdefault("mining", {})[name] = {"seconds": round(elapsed, 2), "damage": state["damage"], "drops": state["drops"]}
     setup("continuous", "minecraft:stone", "minecraft:iron_pickaxe", count=3)
-    console("bot RakNetSpike destroy start")
+    console("bot RakNetSpike destroy continuous")
     wait("three consecutive mined blocks", lambda: observed().get("blocks") == ["minecraft:air"] * 3, 15)
     first = observed()
     if len(first["events"]) != 3 or first["damage"] < 3:
@@ -194,7 +195,7 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
 
     # Turning away pauses a continuous loop; turning back resumes it.
     setup("continuous-look", "minecraft:stone", "minecraft:iron_pickaxe", count=3)
-    console("bot RakNetSpike destroy start")
+    console("bot RakNetSpike destroy continuous")
     wait("first continuous block", lambda: observed().get("blocks", [None])[0] == "minecraft:air", 10)
     loop_id = mining().get("loopId")
     console("bot RakNetSpike look 90 0")
@@ -213,7 +214,7 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
 
     # A hotbar switch restarts the current block with the new item.
     setup("hotbar-restart", "minecraft:obsidian", "minecraft:diamond_pickaxe")
-    console("bot RakNetSpike destroy start")
+    console("bot RakNetSpike destroy continuous")
     wait("mining active", lambda: mining().get("state") == "active", 5)
     loop_id = mining().get("loopId")
     time.sleep(0.3)
@@ -230,7 +231,7 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     for name, command in (("explicit-stop", "bot RakNetSpike destroy stop"),
                           ("all-stop", "bot RakNetSpike stop")):
         setup(name, "minecraft:obsidian", "minecraft:diamond_pickaxe")
-        console("bot RakNetSpike destroy start")
+        console("bot RakNetSpike destroy continuous")
         wait("mining active", lambda: (control("status").get("mining") or {}).get("state") == "active", 5)
         time.sleep(0.15)
         console(command)
@@ -251,14 +252,14 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
 
     # Death is an abnormal end: the loop stops and the controller is told.
     setup("death-notice", "minecraft:obsidian", "minecraft:diamond_pickaxe")
-    console("bot RakNetSpike destroy start")
+    console("bot RakNetSpike destroy continuous")
     wait("mining active", lambda: mining().get("state") == "active", 5)
     offset = len(log())
     request({"id": "death-notice", "block": "minecraft:obsidian", "kill": 1})
     wait("death ends continuous mining", lambda: not mining().get("continuous"), 10)
     wait(
         "death notice in the console log",
-        lambda: "continuous destroy stopped: canceled by death" in log()[offset:],
+        lambda: "destroy continuous stopped: canceled by death" in log()[offset:],
         10,
     )
     wait("Bot respawned", lambda: control("status").get("connectionState") == "online", 20)

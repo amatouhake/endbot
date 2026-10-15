@@ -259,7 +259,9 @@ export class BedrockSession extends EventEmitter {
       if (!this.#miningInReach(job.blockPosition)) this.stopMining('target moved out of reach', 'failed', false, true)
       else if (job.ticks >= 12_000) this.stopMining('timed out waiting for BDS to change target', 'failed', false, true)
       else {
-        if (job.ticks > 0) this.pendingBlockActions.push(createMiningAction('continue_break', job.blockPosition, job.face))
+        // With server-authoritative breaking BDS tracks progress itself after
+        // start_break. A per-tick continue_break on the same block makes BDS
+        // stop and restart the crack, so other players see it flicker.
         job.ticks += 1
         if (job.ticks % 5 === 1) this.client.queue('animate', {
           action_id: 'swing_arm', runtime_entity_id: this.client.entityId, data: 0, has_swing_source: false

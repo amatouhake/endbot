@@ -1,6 +1,6 @@
 import unittest
 
-from endstone_endbot.commands import BotCommandService
+from endstone_endbot.commands import UNREACHABLE_POLL_LIMIT, BotCommandService
 from endstone_endbot.control import RuntimeControlError
 
 
@@ -120,8 +120,8 @@ class CommandServiceTests(unittest.TestCase):
     def test_continuous_mining_retargets_then_waits_without_restarting_active_block(self):
         self.service.execute(["Alice", "spawn"])
         source = object()
-        reply = self.service.execute(["Alice", "destroy", "start"], source)
-        self.assertIn("continuous destroy started", reply.message)
+        reply = self.service.execute(["Alice", "destroy", "continuous"], source)
+        self.assertIn("destroy continuous started", reply.message)
         loop_id = self.control.bots["Alice"]["mining"]["loopId"]
         self.service.poll_mining(lambda sender: sender is source)
         self.assertEqual(self.control.calls[-1][1]["blockPosition"], [1, 64, 2])
@@ -135,7 +135,7 @@ class CommandServiceTests(unittest.TestCase):
         self.service.poll_mining(lambda _: True)
         self.assertEqual(self.control.calls[-1][1]["mode"], "continue")
         status = self.service.execute(["Alice", "status"]).message
-        self.assertIn("continuous destroy waiting for a block in sight", status)
+        self.assertIn("destroy continuous waiting for a block in sight", status)
         self.service.execute(["Alice", "destroy", "stop"])
         before = len(self.control.calls)
         self.service.poll_mining(lambda _: True)
@@ -143,7 +143,7 @@ class CommandServiceTests(unittest.TestCase):
 
     def test_continuous_mining_keeps_waiting_when_runtime_rejects_a_target(self):
         self.service.execute(["Alice", "spawn"])
-        self.service.execute(["Alice", "destroy", "start"])
+        self.service.execute(["Alice", "destroy", "continuous"])
         loop_id = self.control.bots["Alice"]["mining"]["loopId"]
         request = self.control.request
 
@@ -158,7 +158,21 @@ class CommandServiceTests(unittest.TestCase):
         self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "continue", "loopId": loop_id}))
         self.service.poll_mining(lambda _: True)
         self.assertNotIn("stop", [call[1].get("mode") for call in self.control.calls if call[0] == "mine"])
-        # An unreachable runtime still ends the loop.
+        # A briefly unreachable runtime (e.g. Windows WinError 10048) is retried;
+        # one that stays unreachable for about a lease ends the loop.
+        failures = {"left": 3}
+
+        def flaky(operation, **parameters):
+            if failures["left"]:
+                failures["left"] -= 1
+                raise RuntimeControlError("unavailable", "runtime unavailable: [WinError 10048]")
+            return reject_targets(operation, **parameters)
+
+        self.control.request = flaky
+        for _ in range(4):
+            self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.assertNotIn("stop", [call[1].get("mode") for call in self.control.calls if call[0] == "mine"])
+
         def unavailable(operation, **parameters):
             self.control.calls.append((operation, parameters))
             if operation == "mine" and parameters.get("mode") == "stop":
@@ -166,8 +180,25 @@ class CommandServiceTests(unittest.TestCase):
             raise RuntimeControlError("unavailable", "runtime unavailable")
 
         self.control.request = unavailable
-        self.service.poll_mining(lambda _: True)
+        for _ in range(UNREACHABLE_POLL_LIMIT - 1):
+            self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertIn("runtime unavailable", notices[0][2])
         self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "stop", "loopId": loop_id}))
+
+    def test_continuous_retarget_does_not_need_the_controller(self):
+        self.service.execute(["Alice", "spawn"])
+        self.service.execute(["Alice", "destroy", "continuous"], object())
+        senders = []
+        resolve = self.world.resolve_mining
+
+        def record(identity, parameters, sender):
+            senders.append(sender)
+            return resolve(identity, parameters, sender)
+
+        self.world.resolve_mining = record
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.assertEqual(senders, [None])
 
     def test_mining_notifies_only_abnormal_ends(self):
         self.service.execute(["Alice", "spawn"])
@@ -185,26 +216,26 @@ class CommandServiceTests(unittest.TestCase):
         self.assertEqual(notices, [(source, "warning", "Endbot: Alice: destroy stopped: target out of reach")])
         self.assertEqual(self.service.poll_mining(lambda _: True), [])
         # Continuous: a commanded stop is silent, death is reported.
-        reply = self.service.execute(["Alice", "destroy", "start"], source)
+        reply = self.service.execute(["Alice", "destroy", "continuous"], source)
         self.assertEqual(reply.log_level, "info")
         self.control.bots["Alice"]["mining"] = {"state": "canceled", "reason": "stopped"}
         self.assertEqual(self.service.poll_mining(lambda _: True), [])
-        self.service.execute(["Alice", "destroy", "start"], source)
+        self.service.execute(["Alice", "destroy", "continuous"], source)
         self.control.bots["Alice"]["mining"] = {"state": "canceled", "reason": "respawning"}
         notices = self.service.poll_mining(lambda _: True)
-        self.assertEqual(notices, [(source, "warning", "Endbot: Alice: continuous destroy stopped: canceled by death")])
+        self.assertEqual(notices, [(source, "warning", "Endbot: Alice: destroy continuous stopped: canceled by death")])
         # Revocation ends the loop and says why.
-        self.service.execute(["Alice", "destroy", "start"], source)
+        self.service.execute(["Alice", "destroy", "continuous"], source)
         notices = self.service.poll_mining(lambda _: False)
         self.assertIn("control permission revoked", notices[0][2])
 
     def test_continuous_mining_stops_on_revocation_and_does_not_adopt_new_session(self):
         self.service.execute(["Alice", "spawn"])
-        self.service.execute(["Alice", "destroy", "start"])
+        self.service.execute(["Alice", "destroy", "continuous"])
         loop_id = self.control.bots["Alice"]["mining"]["loopId"]
         self.service.poll_mining(lambda _: False)
         self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "stop", "loopId": loop_id}))
-        self.service.execute(["Alice", "destroy", "start"])
+        self.service.execute(["Alice", "destroy", "continuous"])
         self.control.bots["Alice"]["mining"]["loopId"] = "replacement-session"
         self.service.poll_mining(lambda _: True)
         self.assertEqual(self.control.calls[-1][0], "status")
@@ -214,7 +245,7 @@ class CommandServiceTests(unittest.TestCase):
     def test_continuous_mining_close_and_world_failure_stop_only_owned_loop(self):
         self.service.execute(["Alice", "spawn"])
         for shutdown in (False, True):
-            self.service.execute(["Alice", "destroy", "start"])
+            self.service.execute(["Alice", "destroy", "continuous"])
             if shutdown:
                 self.service.close()
             else:
@@ -457,7 +488,7 @@ class CommandServiceTests(unittest.TestCase):
             ({**stone, "state": "active", "reason": "waiting for BDS"}, "destroying minecraft:stone at 0 64 2"),
             (
                 {**stone, "state": "waiting", "continuous": True, "loopId": "x"},
-                "continuous destroy waiting for a block in sight (last: minecraft:stone at 0 64 2)",
+                "destroy continuous waiting for a block in sight (last: minecraft:stone at 0 64 2)",
             ),
             (
                 {**stone, "state": "completed", "reason": "BDS changed target block"},

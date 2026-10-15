@@ -128,7 +128,7 @@ class DispatchTests(unittest.TestCase):
         runner.poll()
         for _ in range(3):
             scheduled.run_next()
-        runner.submit(["Alice", "destroy", "start"], console)
+        runner.submit(["Alice", "destroy", "continuous"], console)
         scheduled.run_next()
         # A controller who logged off still has the console log entry; the
         # console is not shown the same line twice.
@@ -167,6 +167,36 @@ class DispatchTests(unittest.TestCase):
 
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, {"identityId": "bot-uuid", "thread": main_thread})
+
+    def test_continuous_retarget_works_after_the_controller_logs_off(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+
+        class World:
+            def resolve_mining(self, identity_id, parameters, sender):
+                return {"sender": sender}
+
+        # The controller is offline: its source no longer resolves to a player.
+        world = ServerThreadWorld(World(), bridge, lambda source: None)
+        offline = CommandSource(player_id="00000000-0000-4000-8000-000000000001")
+        results = {}
+
+        def worker():
+            results["retarget"] = world.resolve_mining("bot-uuid", {"continuous": True}, None)
+            try:
+                world.resolve_mining("bot-uuid", {"coordinates": [0, 0, 0]}, offline)
+            except ValueError as error:
+                results["explicit"] = str(error)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        scheduled.run_next()
+        scheduled.run_next()
+        thread.join(1)
+        self.assertEqual(results["retarget"], {"sender": None})
+        # Commands with Bot-relative coordinates still require their sender.
+        self.assertIn("no longer online", results["explicit"])
 
     def test_look_at_forwards_identity_id_across_the_bridge(self) -> None:
         scheduled = ScheduledCallbacks()

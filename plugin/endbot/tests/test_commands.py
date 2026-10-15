@@ -144,8 +144,14 @@ class BotCommandServiceTests(unittest.TestCase):
 
     def test_hotbar_interact_and_drop_grammar(self) -> None:
         self.assertEqual(parse_command(["Alice", "destroy"]).parameters, {})
-        self.assertEqual(parse_command(["Alice", "destroy", "start"]).parameters, {"mode": "start"})
+        self.assertEqual(parse_command(["Alice", "destroy", "continuous"]).parameters, {"mode": "continuous"})
         self.assertEqual(parse_command(["Alice", "destroy", "stop"]).parameters, {"mode": "stop"})
+        # Same mode words as jump/attack/use; once is the default and interval is rejected clearly.
+        self.assertEqual(parse_command(["Alice", "destroy", "ONCE"]).parameters, {})
+        with self.assertRaisesRegex(ValueError, "no interval mode"):
+            parse_command(["Alice", "destroy", "interval", "20"])
+        with self.assertRaisesRegex(ValueError, "once, continuous, stop"):
+            parse_command(["Alice", "destroy", "start"])
         mining = parse_command(["Alice", "destroy", "~", "~-1", "-2", "up"])
         self.assertEqual(mining.parameters["face"], 1)
         self.assertEqual(mining.parameters["coordinates"][1], ("relative", -1.0))

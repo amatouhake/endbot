@@ -147,7 +147,13 @@ class ServerThreadWorld:
         return self._bridge.call(lambda: self._world.resolve_interaction(identity_id, parameters, self._sender(sender)))
 
     def resolve_mining(self, identity_id, parameters, sender):
-        return self._bridge.call(lambda: self._world.resolve_mining(identity_id, parameters, self._sender(sender)))
+        # A continuous retarget passes no sender: it only reads the Bot's own
+        # sight and must keep working after its controller logs off.
+        return self._bridge.call(
+            lambda: self._world.resolve_mining(
+                identity_id, parameters, None if sender is None else self._sender(sender)
+            )
+        )
 
     def assert_name_available(self, name, identity_id=None):
         return self._bridge.call(lambda: self._world.assert_name_available(name, identity_id))

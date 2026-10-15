@@ -33,7 +33,7 @@ UUID `jti`, UUID subject, bounded name, no Microsoft XUID claim, and a client-da
 The feature is disabled by default. Invalid local-looking traffic never becomes an authenticated identity.
 
 Block mining follows the same separation: the plugin observes/raycasts an authoritative target without changing it;
-the runtime packs start/continue/abort block actions into input ticks and observes BDS block updates. BDS owns mining
+the runtime packs one start (and, when needed, an abort) block action into input ticks and observes BDS block updates. BDS owns mining
 progress, loot, durability and protection events. Mining is session-local: respawn and disconnect end it rather than
 persisting it as desired lifecycle state, while teleport, dimension change and other operations end at most the current
 block. Continuous mining uses periodic server-thread

@@ -125,14 +125,15 @@ test('continuous mining ends on death and disconnect', async t => {
   }
 })
 
-test('mining sends packed start/continue actions and waits for server block update', async t => {
+test('mining sends one packed start action and waits for server block update', async t => {
   const { client, session, tick } = await fixture(t)
   session.startMining(miningTarget)
   const start = tick()
   assert.ok(start.input_data.includes('block_action'))
   assert.deepEqual(start.block_action.map(action => action.action), ['start_break'])
+  // BDS tracks progress after start_break; repeating an action restarts its crack.
   const held = tick()
-  assert.deepEqual(held.block_action.map(action => action.action), ['continue_break'])
+  assert.equal(held.block_action, undefined)
   assert.equal(session.miningStatus().state, 'active')
   client.emit('update_block', { position: { x: 0, y: 64, z: 2 }, block_runtime_id: 42, layer: 0 })
   client.emit('update_block', { position: { x: 1, y: 64, z: 2 }, block_runtime_id: 0, layer: 0 })
@@ -155,7 +156,7 @@ test('a held-item change restarts the current break and keeps the continuous loo
   assert.equal(session.miningStatus().state, 'active')
   assert.equal(session.miningStatus().loopId, loopId)
   assert.deepEqual(tick().block_action.map(action => action.action), ['abort_break', 'start_break'])
-  assert.deepEqual(tick().block_action.map(action => action.action), ['continue_break'])
+  assert.equal(tick().block_action, undefined)
 })
 
 test('mining accepts the pinned wire dimension names and Endstone namespace names', async t => {

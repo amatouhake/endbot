@@ -62,19 +62,23 @@ observations to check the outcome. Connection lifecycle remains asynchronous (`c
 ```text
 /bot Alice hotbar 1
 /bot Alice destroy
-/bot Alice destroy start
+/bot Alice destroy once
+/bot Alice destroy continuous
 /bot Alice destroy 100 64 -20
 /bot Alice destroy ~ ~-1 ~ up
 /bot Alice destroy stop
 /bot Alice status
 ```
 
-`destroy` starts holding left-click on one block in the Bot's current line of sight, within 5 blocks. Explicit coordinates
+`destroy` takes the same mode words as `jump`, `attack` and `use`: `once` (the default), `continuous` and `stop`.
+There is no `interval` mode, because `continuous` already waits for the next block.
+
+`destroy` (or `destroy once`) starts holding left-click on one block in the Bot's current line of sight, within 5 blocks. Explicit coordinates
 target one reachable, unobstructed block and turn the Bot toward it; an optional face uses the same names as `interact`.
 Relative coordinates are measured from the Bot, including commands from the server console. Movement, attack and item
 use inputs are cleared on start. Select the desired tool with `hotbar` first; mining does not walk or select tools.
 
-`destroy start` continuously breaks blocks along the Bot's current sight direction. After each BDS target update it selects the
+`destroy continuous` holds left-click along the Bot's current sight direction. After each BDS target update it selects the
 next reachable block along that same ray. When there is no target within 5 blocks (or bedrock is in front), it waits;
 placing a reachable block in sight resumes mining automatically. It stays in place and does not excavate a chosen area.
 Use `destroy stop` to disable this waiting/resume behavior as well as an active break attempt.
@@ -88,7 +92,7 @@ result`. No completion message is sent; `status` shows the mining state in playe
 
 ```text
 destroying minecraft:stone at 1 64 2                                (breaking now)
-continuous destroy waiting for a block in sight (last: ...)        (destroy start, nothing in reach)
+destroy continuous waiting for a block in sight (last: ...)        (destroy continuous, nothing in reach)
 last destroy: block broken or changed (minecraft:stone at 1 64 2)  (finished)
 last destroy: failed: target out of reach (...)                    (failed)
 last destroy: canceled by teleport (...)                           (canceled)
@@ -112,7 +116,7 @@ off. Active mining is not saved or resumed on reconnect.
 
 Start and stop are confirmed by the command reply and logged on the server console at info level. When mining ends for
 any other reason (a failed single block, death, disconnect, revocation, a lost runtime), the starting controller gets
-one chat message, for example `Endbot: Alice: continuous destroy stopped: canceled by death`. The console log records
+one chat message, for example `Endbot: Alice: destroy continuous stopped: canceled by death`. The console log records
 the same message at warning level, also for controllers who are offline. Successfully broken blocks are not announced.
 Sight selection currently uses occupied block cells (ignoring air/liquid); complex partial-block shapes are conservative.
 

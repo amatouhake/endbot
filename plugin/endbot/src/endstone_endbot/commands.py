@@ -25,7 +25,7 @@ class BotCommand:
 class CommandResult:
     handled: bool
     messages: tuple[str, ...] = ()
-    # Set for results worth a server console log entry (e.g. destroy start/stop).
+    # Set for results worth a server console log entry (e.g. destroy continuous/stop).
     log_level: str | None = None
 
     @property
@@ -175,12 +175,15 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "destroy": HelpTopic(
         "destroy",
         "break reachable blocks with the held tool (hold left-click)",
-        ("destroy", "destroy start", "destroy <x> <y> <z> [down|up|north|south|west|east]", "destroy stop"),
         (
-            "Without coordinates, targets the Bot's line of sight. ~ is relative to the Bot.",
-            "destroy start keeps breaking along the Bot's sight, also after you log off; waits when empty.",
+            "destroy [once|continuous|stop]",
+            "destroy <x> <y> <z> [down|up|north|south|west|east]",
+        ),
+        (
+            "once (default) breaks one block in sight; x y z breaks that block. ~ is relative to the Bot.",
+            "continuous holds left-click along the Bot's sight, also after you log off; waits when empty.",
             "Other commands do not cancel it; only destroy stop, stop, death or disconnect end it.",
-            "Without start, breaks one block. No automatic walking; BDS controls speed, drops and durability.",
+            "No interval mode. No automatic walking; BDS controls speed, drops and durability.",
         ),
     ),
     "drop": HelpTopic(
@@ -266,6 +269,10 @@ def help_detail(key: str) -> tuple[str, ...]:
 
 BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
 
+# Polls (every 4 ticks) a loop may fail to reach the runtime before it ends:
+# about one 200-tick runtime lease.
+UNREACHABLE_POLL_LIMIT = 50
+
 # Mining ends caused by a command; their reply already told the operator.
 COMMANDED_MINING_STOPS = {"stopped", "continuous mining restarted", "target changed"}
 
@@ -274,7 +281,7 @@ MINING_REASONS = {
     "BDS changed target block": "block broken or changed",
     "stopped": "stopped",
     "target changed": "replaced by a new target",
-    "continuous mining restarted": "replaced by destroy start",
+    "continuous mining restarted": "replaced by destroy continuous",
     "movement changed": "canceled by move",
     "look changed": "canceled by look",
     "attack started": "canceled by attack",
@@ -472,10 +479,15 @@ def parse_command(arguments: list[str]) -> BotCommand:
             {**target, "face": BLOCK_FACES[remaining[-1].lower()], "faceName": remaining[-1].lower()},
         )
     if operation == "destroy":
-        if not remaining:
+        modes = [value.lower() for value in remaining]
+        if not remaining or modes == ["once"]:
             return BotCommand(operation, name)
-        if remaining in (["start"], ["stop"]):
-            return BotCommand(operation, name, {"mode": remaining[0]})
+        if modes in (["continuous"], ["stop"]):
+            return BotCommand(operation, name, {"mode": modes[0]})
+        if modes and modes[0] == "interval":
+            raise CommandSyntaxError(
+                "destroy has no interval mode; destroy continuous waits for the next block automatically"
+            )
         if len(remaining) in {3, 4}:
             target, unused = _position(remaining[:3])
             assert not unused
@@ -484,7 +496,7 @@ def parse_command(arguments: list[str]) -> BotCommand:
                     raise CommandSyntaxError("Invalid block face")
                 target["face"] = BLOCK_FACES[remaining[3].lower()]
             return BotCommand(operation, name, target)
-        raise CommandSyntaxError("destroy accepts no arguments, x y z [face], start, or stop")
+        raise CommandSyntaxError("destroy accepts once, continuous, stop, or x y z [face]")
     if operation == "drop" and (not remaining or remaining == ["stack"]):
         return BotCommand(operation, name, {"stack": bool(remaining)})
     if operation in {"jump", "attack", "use"}:
@@ -507,6 +519,8 @@ class BotCommandService:
         # identity checks detect a newer loop or job.
         self._mining_loops = {}
         self._mining_lock = threading.Lock()
+        # Consecutive polls that could not reach the runtime, per loop entry.
+        self._mining_unreachable = {}
 
     def poll_mining(self, authorize) -> list[tuple[object, str, str]]:
         """Renew/retarget loops; return (source, level, message) notices.
@@ -519,13 +533,14 @@ class BotCommandService:
             loops = tuple(self._mining_loops.items())
         for key, entry in loops:
             name, identity, loop_id, source, position = entry
-            stopped = f"Endbot: {name}: {'continuous destroy' if loop_id else 'destroy'} stopped: "
+            stopped = f"Endbot: {name}: {'destroy continuous' if loop_id else 'destroy'} stopped: "
             try:
                 if not authorize(source):
                     if self._end_mining_loop(key, entry):
                         notices.append((source, "warning", stopped + "control permission revoked"))
                     continue
                 status = self.control.request("status", name=name)
+                self._mining_unreachable.pop(key, None)  # reached the runtime again
                 mining = status.get("mining") or {}
                 if status["identityId"] != identity:
                     if self._take_mining_loop(key, entry):
@@ -542,15 +557,30 @@ class BotCommandService:
                     continue  # still breaking
                 if self._take_mining_loop(key, entry) and reason:
                     notices.append((source, "warning", stopped + reason))
+            except RuntimeControlError as error:
+                # Windows loopback can refuse a fresh connection (WinError 10048)
+                # under rapid reconnects. Retry for about one runtime lease
+                # (200 ticks = 50 polls) before giving up on the runtime.
+                if error.code == "unavailable" and self._unreachable(key, entry) < UNREACHABLE_POLL_LIMIT:
+                    continue
+                if self._end_mining_loop(key, entry):
+                    notices.append((source, "warning", stopped + str(error)))
             except (RuntimeError, ValueError) as error:
                 if self._end_mining_loop(key, entry):
                     notices.append((source, "warning", stopped + str(error)))
         return notices
 
+    def _unreachable(self, key, entry) -> int:
+        previous, count = self._mining_unreachable.get(key, (None, 0))
+        count = count + 1 if previous is entry else 1
+        self._mining_unreachable[key] = (entry, count)
+        return count
+
     def _continue_mining_loop(self, name, identity, loop_id, source, mining) -> None:
         target = None
         if mining.get("state") != "active":
-            target = self.world.resolve_mining(identity, {"continuous": True}, source)
+            # Sight retargeting needs no controller; it may have logged off.
+            target = self.world.resolve_mining(identity, {"continuous": True}, None)
         try:
             self.control.request("mine", name=name, mode="continue", loopId=loop_id, **(target or {}))
         except RuntimeControlError as error:
@@ -696,16 +726,19 @@ class BotCommandService:
             result = self.control.request("radius", name=command.name, **command.parameters)
             return CommandResult(True, (f"Endbot: {result['name']}: {self._radius_summary(result)}",))
         if command.operation == "destroy":
-            target = command.parameters
-            if target.get("mode") not in {"start", "stop"}:
+            mode = command.parameters.get("mode")
+            if mode == "continuous":
+                target = {"mode": "start"}  # Runtime IPC name for a continuous loop.
+            elif mode == "stop":
+                target = {"mode": "stop"}
+            else:
                 status = self.control.request("status", name=command.name)
-                target = self.world.resolve_mining(status["identityId"], target, sender)
+                target = self.world.resolve_mining(status["identityId"], command.parameters, sender)
             result = self.control.request("mine", name=command.name, **target)
             key = command.name.casefold()
-            mode = command.parameters.get("mode")
             with self._mining_lock:
                 self._mining_loops.pop(key, None)
-                if mode == "start":
+                if mode == "continuous":
                     self._mining_loops[key] = (
                         result["name"], result["identityId"], result["mining"]["loopId"], sender, None
                     )
@@ -713,10 +746,10 @@ class BotCommandService:
                     self._mining_loops[key] = (
                         result["name"], result["identityId"], None, sender, list(target["blockPosition"])
                     )
-            if mode == "start":
+            if mode == "continuous":
                 return CommandResult(
                     True,
-                    (f"Endbot: {result['name']}: continuous destroy started; destroy stop to cancel",),
+                    (f"Endbot: {result['name']}: destroy continuous started; destroy stop to cancel",),
                     log_level="info",
                 )
             if mode == "stop":
@@ -812,10 +845,11 @@ class BotCommandService:
         target = f"{block} at {position}" if block and block != "unknown" and position else position
         state = mining.get("state")
         if state == "active":
-            return f"{'continuous ' if mining.get('continuous') else ''}destroying {target}".rstrip()
+            mode = " (continuous)" if mining.get("continuous") else ""
+            return f"destroying {target}{mode}".rstrip()
         if mining.get("continuous"):
             last = f" (last: {target})" if target else ""
-            return f"continuous destroy waiting for a block in sight{last}"
+            return f"destroy continuous waiting for a block in sight{last}"
         # A finished job stays visible until the next one, labelled as past.
         reason = str(MINING_REASONS.get(str(mining.get("reason", "")), mining.get("reason") or ""))
         if state == "completed":

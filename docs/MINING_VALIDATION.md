@@ -99,7 +99,11 @@ The human check exposed three defects that automated console-driven runs had mis
 
 The check also showed that the `status|resume|reconnect|despawn|forget|stop` overload, declared as one enum, appeared
 in client suggestions only as `<operation: EndbotNoArgs>`. Each operation is now a separate single-value overload, like
-`spawn` and `destroy`; the automated smoke confirmed the declarations load and the operations still run.
+`spawn` and `destroy`; the automated smoke confirmed the declarations load and the operations still run. On the
+human client the full `/bot ` suggestion list then showed `despawn`, `forget`, `reconnect` and `resume` as their own
+lines with no `EndbotNoArgs` entry. Typing a partial operation (`/bot <name> re`) still narrows only to the generic
+`<operation: string> <arguments: message>` overload; that catch-all is required for reliable execution on this
+Endstone baseline, so prefix filtering remains a known limitation.
 
 Early attempts exposed a dimension-name mismatch and an observation-fixture ItemType serialization error; those runs
 are not full passes. Neither an automated build nor the prepared fixture world establishes actual Xbox achievement

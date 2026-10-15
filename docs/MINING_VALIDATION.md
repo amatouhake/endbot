@@ -71,6 +71,46 @@ final `destroy [once|continuous|stop]` grammar):
   reconnect, controller CLI/console pending add/remove, local-Bot rejection, policy restart, clean shutdown and world
   history: Survival, cheats/commands disabled, no experiments) passed in the same run.
 
+## NetherNet re-validation (2026-10-16 JST)
+
+All runs above used the opt-in RakNet transport. The same smoke now takes `--transport nethernet` (default remains
+`raknet` for this script):
+
+```text
+python scripts/raknet_spike.py --mining --transport nethernet --output build/nethernet-mining-1
+```
+
+NetherNet mode writes `transport=nethernet` with `enable-lan-visibility=true`, gives the runtime the expected
+`serverName`/`levelName` so it connects only to this BDS through LAN discovery (the production selection path), and
+refuses to start while UDP 7551 is held by another program. The negative-auth probe discovers the same server and
+dials it over NetherNet.
+
+Real Windows NetherNet run on Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, build `51798905`, `bedrock-protocol`
+`3.60.1`, Node.js `24.17.0`, fresh Survival world with `online-mode=true`, `allow-cheats=false`, `allow-list=true`, no
+experiments: **full pass**, with the same checks as the RakNet re-validation above:
+
+- Bare-hand dirt (2.0 s, dirt drop), iron-pickaxe stone (1.0 s, cobblestone drop, durability 1) and bare-hand stone
+  (10.0 s, no drop) broke through native `BlockBreakEvent` by the local Bot.
+- `destroy` survived mid-break operations; `destroy continuous` retargeted, waited, followed `look` and resumed with the
+  same loop; `hotbar` restarted it; `destroy stop` and global `stop` canceled it; native event cancellation preserved
+  the block with no loot or tool damage.
+- Killing the Bot ended continuous mining with `destroy continuous stopped: canceled by death` in the console log.
+- Radius 12/default were confirmed by the server (12, then 5), the override survived reconnect, and a second Bot
+  online at the same time kept the shared default.
+- Controller CLI/console pending add/remove, local-Bot rejection and policy across restart passed.
+- Movement (3.63 blocks), a sampled jump (1.25 blocks), same-identity reconnect, despawn, wrong key/issuer/audience and
+  auth-disabled rejections (each kicked without spawn), clean shutdown and world history (Survival, cheats/commands
+  disabled, no Creative or experiment history) passed. BDS restarted once with a fresh NetherNet DTLS identity and
+  discovery found it again with no pin.
+
+Two earlier attempts are not counted: with the Minecraft Windows client running, BDS never appeared in discovery
+(`advertisements seen: none`) because the client owned UDP 7551, and Endbot's pre-start check wrongly reported the port
+free. On Windows, the client's socket does not make a second bind fail, even with `SO_EXCLUSIVEADDRUSE`. The check
+now also reads the Windows UDP table and names the owning process (with unit tests). After the client was closed, the
+next run passed. The same modified script then passed again over RakNet.
+
+No human client joined over NetherNet in this run, and no Xbox achievement was attempted or observed.
+
 ## Human Windows client check (2026-10-16 JST)
 
 A normally Microsoft/Xbox-authenticated human on the Windows Bedrock client (1.26.52) joined disposable RakNet worlds
@@ -107,6 +147,6 @@ Endstone baseline, so prefix filtering remains a known limitation.
 
 Early attempts exposed a dimension-name mismatch and an observation-fixture ItemType serialization error; those runs
 are not full passes. Neither an automated build nor the prepared fixture world establishes actual Xbox achievement
-eligibility/unlocks. Human clients, NetherNet, underwater/effects/enchantments, partial block shapes, tool breakage and
+eligibility/unlocks. A human client over NetherNet, underwater/effects/enchantments, partial block shapes, tool breakage and
 broader multi-player protection-plugin combinations remain separate validation gates. World history is inspected only
 as scoped evidence, with no new Endstone/BDS compatibility claim.

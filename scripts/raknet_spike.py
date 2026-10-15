@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Run an opt-in RakNet feasibility smoke on a fresh, isolated Endstone/BDS world.
+"""Run an opt-in live smoke on a fresh, isolated Endstone/BDS world.
+
+RakNet is the default here; ``--transport nethernet`` runs the same checks over
+NetherNet LAN discovery (the product default), which needs UDP 7551 free.
 
 Uses the active Python's exactly pinned patched Endstone and installed plugin,
 the repository runtime, and Endstone's normal BDS acquisition. Never adopts an
@@ -49,12 +52,15 @@ from endbot_cli.configgen import (
 from endbot_cli.controller_requests import SESSION_FILE, dispatch_requests
 from endbot_cli.instance import InstancePaths
 from endbot_cli.leveldat import parse_level_dat
+from endbot_cli.netcheck import lan_discovery_port_problem
 from endbot_cli.properties import (
     edit_properties,
     verify_server_properties,
 )
 
 BOT = "RakNetSpike"
+SERVER_NAME = "Endbot RakNet spike"
+LEVEL_NAME = "raknet-spike"
 
 
 def terminate_owned_tree(process: subprocess.Popen) -> None:
@@ -105,7 +111,9 @@ def observed_position(
     raise ConsumerError("timed out waiting for BDS position observation")
 
 
-def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
+def exercise(
+    output: Path, node: str, report: dict, *, mining=False, transport="raknet"
+) -> None:
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     installed = importlib.metadata.version("endstone")
     if installed != lock["endstone"]["package_version"]:
@@ -139,8 +147,8 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
         plugin=plugin,
         bedrock_protocol=protocol,
         locked_bds=lock["bds"],
-        transport="raknet",
-        backend="raknet-native",
+        transport=transport,
+        backend="raknet-native" if transport == "raknet" else "nethernet-lan",
         node=node_version,
         python=platform.python_version(),
     )
@@ -165,6 +173,11 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
             ROOT / "runtime/package-lock.json",
         ]
     }
+    if transport == "nethernet":
+        # BDS cannot answer discovery while another program owns the port.
+        problem = lan_discovery_port_problem()
+        if problem:
+            raise ConsumerError(problem)
     # Fresh output only: do not copy or mutate an operator's world or credentials.
     output.mkdir(parents=True, exist_ok=False)
     if os.name != "nt":
@@ -184,13 +197,14 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
             "online-mode": "true",
             "allow-cheats": "false",
             "gamemode": "survival",
-            "transport": "raknet",
+            "transport": transport,
             "server-port": str(server_port),
             "server-portv6": str(ipv6_port),
-            "server-name": "Endbot RakNet spike",
-            "level-name": "raknet-spike",
+            "server-name": SERVER_NAME,
+            "level-name": LEVEL_NAME,
             "allow-list": "true",
-            "enable-lan-visibility": "false",
+            # NetherNet Bots find BDS only through its LAN advertisement.
+            "enable-lan-visibility": str(transport == "nethernet").lower(),
         },
     )
     verify_server_properties(server / "server.properties")
@@ -208,7 +222,7 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
         json.dumps({"session": controller_session}), encoding="utf-8"
     )
     (output / "endbot.toml").write_text(
-        f"[server]\npath='server'\ntransport='raknet'\n[controllers]\ngamertags=[]\n"
+        f"[server]\npath='server'\ntransport='{transport}'\n[controllers]\ngamertags=[]\n"
         f"[runtime]\ncontrol-port={control_port}\n",
         encoding="utf-8",
     )
@@ -223,7 +237,14 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
                 "controlPort": control_port,
                 "serverHost": "127.0.0.1",
                 "serverPort": server_port,
-                "transport": "raknet",
+                "transport": transport,
+                # Select this BDS among every NetherNet host on the machine;
+                # a fresh world advertises its level-name as display name.
+                **(
+                    {"serverName": SERVER_NAME, "levelName": LEVEL_NAME}
+                    if transport == "nethernet"
+                    else {}
+                ),
                 # BDS 1.26.52 still uses protocol 2193 and the pinned 1.26.51
                 # wire schema; the protocol library has no 1.26.52 schema key.
                 "gameVersion": json.loads(
@@ -274,7 +295,7 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
             wait_for("runtime ready", runtime_ready, 30, runtime)
             token = paths.control_token.read_text().strip()
             config = EndbotConfig(
-                ServerConfig("server"),
+                ServerConfig("server", transport),
                 ControllersConfig(()),
                 RuntimeConfig(control_port),
             )
@@ -414,12 +435,16 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
                 except ConsumerError:
                     return False  # The console command may not have created the profile yet.
 
-            wait_for(
-                "Bot online",
-                online,
-                60,
-                bds,
-            )
+            try:
+                wait_for("Bot online", online, 60, bds)
+            except ConsumerError as error:
+                # Keep the runtime's reason (for example a discovery miss).
+                try:
+                    status = control_request(control_port, token, "status", name=BOT)
+                    detail = f"{status['connectionState']}: {status['lastError']}"
+                except ConsumerError as status_error:
+                    detail = str(status_error)
+                raise ConsumerError(f"{error} ({detail})") from error
             wait_for(
                 "BDS accepted local bot and spawned it",
                 lambda: (
@@ -607,7 +632,7 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
                     capture_output=True,
                     text=True,
                     encoding="utf-8",
-                    timeout=25,
+                    timeout=45,
                     check=False,
                 )
                 if probe.returncode:
@@ -705,7 +730,7 @@ def exercise(output: Path, node: str, report: dict, *, mining=False) -> None:
                 except (OSError, ConsumerError, subprocess.TimeoutExpired):
                     terminate_owned_tree(runtime)
     report["stage"] = "post-session world history"
-    summary = parse_level_dat((server / "worlds/raknet-spike/level.dat").read_bytes())
+    summary = parse_level_dat((server / "worlds" / LEVEL_NAME / "level.dat").read_bytes())
     history = asdict(summary)
     report["world_history"] = history
     required = (
@@ -737,6 +762,12 @@ def main() -> int:
         "--node", default=shutil.which("node"), help="Node.js 24+ executable"
     )
     parser.add_argument("--mining", action="store_true", help="prepare disposable blocks/tools and validate Survival mining")
+    parser.add_argument(
+        "--transport",
+        choices=("raknet", "nethernet"),
+        default="raknet",
+        help="Bot/BDS transport (nethernet needs UDP 7551 free)",
+    )
     args = parser.parse_args()
     output = args.output.resolve()
     # Protect raw artifacts from an accidental git add, even for outputs outside build/.
@@ -759,7 +790,7 @@ def main() -> int:
         "xbox_achievement_observed": False,
     }
     try:
-        exercise(output, args.node, report, mining=args.mining)
+        exercise(output, args.node, report, mining=args.mining, transport=args.transport)
     except (Exception, KeyboardInterrupt) as error:  # noqa: BLE001 - persist the failed layer for any upstream failure
         report["error"] = str(error)
         print(f"raknet-spike: FAIL at {report['stage']}: {error}", file=sys.stderr)

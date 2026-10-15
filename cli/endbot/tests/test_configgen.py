@@ -37,6 +37,14 @@ class ConfigGenTestCase(unittest.TestCase):
 
 
 class RuntimeConfigTests(ConfigGenTestCase):
+    def test_chunk_radius_reaches_generated_runtime_config(self) -> None:
+        for radius in (2, 6):
+            write_endbot_toml(self.root)
+            with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
+                config.write(f"chunk-radius = {radius}\n")
+            target = generate_runtime_config(self.paths, self.config(), server_port=19132)
+            self.assertEqual(json.loads(target.read_text())["chunkRadius"], radius)
+
     def test_raknet_generation_uses_the_selected_port_without_discovery_identity(self) -> None:
         from unittest.mock import patch
 
@@ -140,7 +148,15 @@ class PluginConfigTests(ConfigGenTestCase):
         document = tomllib.loads(text)
         self.assertEqual(document["authorization"]["controller-gamertags"], ["First", "Second"])
         self.assertEqual(document["authorization"]["controllers-file"], str(self.paths.state_controllers.resolve()))
+        self.assertEqual(
+            document["authorization"]["controller-policy-file"],
+            str((self.paths.state_controllers.parent / "controller-policy.json").resolve()),
+        )
         self.assertEqual(document["authorization"]["allowed-uuids"], [])
+        self.assertEqual(
+            document["authorization"]["controller-requests-directory"],
+            str((self.paths.state_run / "controller-requests").resolve()),
+        )
         self.assertEqual(document["authorization"]["allowed-xuids"], [])
         self.assertEqual(document["runtime"]["token-file"], str(self.paths.control_token.resolve()))
         self.assertEqual(document["runtime"]["host"], "127.0.0.1")

@@ -24,6 +24,10 @@ class FakeSender:
         self.messages.append(message)
 
 
+class FakeConsole(FakeSender):
+    pass
+
+
 class PluginAdapterTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -34,7 +38,9 @@ class PluginAdapterTests(unittest.TestCase):
         plugin = types.ModuleType("endstone.plugin")
         command.Command = FakeCommand
         command.CommandSender = FakeSender
+        command.ConsoleCommandSender = FakeConsole
         event.PlayerJoinEvent = type("PlayerJoinEvent", (), {})
+        event.PlayerQuitEvent = type("PlayerQuitEvent", (), {})
         event.event_handler = lambda function: function
         level.Location = type("Location", (), {})
         plugin.Plugin = FakePlugin
@@ -47,7 +53,7 @@ class PluginAdapterTests(unittest.TestCase):
                 "endstone.plugin": plugin,
             }
         )
-        cls.module = importlib.import_module("endstone_endbot.plugin")
+        cls.module = importlib.reload(importlib.import_module("endstone_endbot.plugin"))
 
     def test_metadata_registers_narrow_command_and_permission(self) -> None:
         plugin_class = self.module.EndbotPlugin
@@ -101,7 +107,9 @@ class PluginAdapterTests(unittest.TestCase):
                 "sprint",
                 "sneak",
                 "hotbar",
+                "radius",
                 "interact",
+                "destroy",
                 "drop",
                 "stop",
             },
@@ -114,7 +122,12 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertIn("/bot <name: string> (hotbar)<operation: EndbotHotbarQuery>", usages)
         self.assertTrue(any("EndbotHotbarSet" in usage and "<slot: int>" in usage for usage in usages))
         self.assertIn("/bot <name: string> (drop)<operation: EndbotDropOne>", usages)
-        self.assertTrue(any("reconnect" in usage and "EndbotNoArgs" in usage for usage in usages))
+        # Each no-argument operation is its own literal so the client lists it by name.
+        for operation in ("status", "resume", "reconnect", "despawn", "forget", "stop"):
+            self.assertIn(
+                f"/bot <name: string> ({operation})<operation: Endbot{operation.capitalize()}>", usages
+            )
+        self.assertFalse(any("EndbotNoArgs" in usage for usage in usages))
         self.assertTrue(any("EndbotDirection" in usage for usage in usages))
         self.assertTrue(any("EndbotActionMode" in usage and "once|continuous|stop" in usage for usage in usages))
         self.assertTrue(any("DimensionName" in usage and "overworld|nether|end" in usage for usage in usages))
@@ -138,19 +151,20 @@ class PluginAdapterTests(unittest.TestCase):
             )
             plugin.server = types.SimpleNamespace(
                 command_sender=console,
-                scheduler=types.SimpleNamespace(run_task=lambda owner, task: None),
+                online_players=[],
+                scheduler=types.SimpleNamespace(run_task=lambda owner, task, **options: None),
                 get_player=lambda identifier: None,
             )
             plugin.register_events = lambda listener: None
             plugin.on_enable()
             self.addCleanup(plugin.on_disable)
 
-            self.assertEqual(attachments, [("endbot.command.control", True)])
+            self.assertEqual(attachments, [("endbot.command.control", True), ("endbot.command.controllers", True)])
             self.assertIs(self.module.EndbotPlugin.permissions["endbot.command.control"]["default"], False)
 
     def test_adapter_sends_pong(self) -> None:
         plugin = self.module.EndbotPlugin()
-        sender = FakeSender()
+        sender = FakeConsole()
         submissions = []
         plugin._command_runner = types.SimpleNamespace(
             submit=lambda args, target: submissions.append((args, target)) or True,
@@ -177,6 +191,7 @@ class PluginAdapterTests(unittest.TestCase):
                     xuid=xuid,
                     unique_id=unique_id,
                     add_attachment=lambda owner, permission, value: attachments.append((permission, value)),
+                    update_commands=lambda: None,
                 )
                 plugin.on_player_join(types.SimpleNamespace(player=player))
                 return attachments
@@ -189,6 +204,271 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertEqual(owner, [("endbot.command.control", True)])
             self.assertEqual(impostor, [])
             self.assertTrue((Path(directory) / "controllers.json").is_file())
+
+    def controller_fixture(self, directory):
+        from endstone_endbot.controller_policy import ControllerPolicy
+
+        plugin = self.module.EndbotPlugin()
+        plugin._controller_policy = ControllerPolicy(Path(directory) / "policy.json")
+        plugin.server = types.SimpleNamespace(
+            online_players=[],
+            get_player=lambda identifier: next(
+                (player for player in plugin.server.online_players if str(player.unique_id) == str(identifier)), None
+            ),
+        )
+        plugin.logger = types.SimpleNamespace(info=lambda message: None)
+        return plugin
+
+    def controller_player(self, name="Owner", xuid="2535412345678901"):
+        from uuid import UUID
+
+        player = FakeSender()
+        player.name, player.xuid = name, xuid
+        player.unique_id = UUID("11111111-2222-4333-8444-555555555555")
+        player.location = object()
+        player.permission_values = []
+        player.command_updates = 0
+
+        def attach(owner, permission, value):
+            player.permission_values.append((permission, value))
+            return types.SimpleNamespace(
+                set_permission=lambda key, setting: player.permission_values.append((key, setting))
+            )
+
+        player.add_attachment = attach
+        player.update_commands = lambda: setattr(player, "command_updates", player.command_updates + 1)
+        return player
+
+    def test_live_grant_revoke_regrant_cancels_old_sources_and_survives_restart(self):
+        from endstone_endbot.dispatch import CommandSource
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            console = FakeConsole()
+            command = FakeCommand("botcontrollers")
+            plugin.on_command(console, command, ["add", player.name])
+            self.assertTrue(plugin._allows_control(player))
+            source = CommandSource(
+                player_id=str(player.unique_id),
+                authorization_revision=plugin._authorization_versions[str(player.unique_id)],
+            )
+            self.assertTrue(plugin._authorize_source(source))
+            plugin.on_command(console, command, ["remove", player.name])
+            self.assertFalse(plugin._allows_control(player))
+            self.assertFalse(plugin._authorize_source(source))
+            self.assertEqual(player.permission_values[-1], ("endbot.command.control", False))
+            plugin.on_command(console, command, ["add", player.name])
+            self.assertTrue(plugin._allows_control(player))
+            self.assertFalse(plugin._authorize_source(source))
+            self.assertEqual(player.command_updates, 3)
+            restarted = self.controller_fixture(directory)
+            self.assertTrue(restarted._allows_control(player))
+            current_source = CommandSource(
+                player_id=str(player.unique_id),
+                authorization_revision=plugin._authorization_versions[str(player.unique_id)],
+            )
+            self.assertTrue(plugin._authorize_source(current_source))
+            plugin.on_player_quit(types.SimpleNamespace(player=player))
+            self.assertNotIn(str(player.unique_id), plugin._control_attachments)
+            self.assertFalse(plugin._authorize_source(current_source))
+            plugin._join_controller(player)
+            self.assertTrue(plugin._allows_control(player))
+            self.assertFalse(plugin._authorize_source(current_source))
+
+    def test_mining_loop_survives_controller_logoff_but_not_revocation(self):
+        from endstone_endbot.dispatch import CommandSource
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            console, command = FakeConsole(), FakeCommand("botcontrollers")
+            plugin.on_command(console, command, ["add", player.name])
+            source = CommandSource.capture(player)
+            self.assertEqual((source.xuid, source.name), (player.xuid, player.name))
+            plugin.on_player_quit(types.SimpleNamespace(player=player))
+            plugin.server.online_players = []
+            # Queued commands are invalidated by logoff; a running loop is not.
+            self.assertFalse(plugin._authorize_source(source))
+            self.assertTrue(plugin._authorize_loop(source))
+            plugin.on_command(console, command, ["remove", f"xuid:{player.xuid}"])
+            self.assertFalse(plugin._authorize_loop(source))
+            self.assertTrue(plugin._authorize_loop(CommandSource(sender=console)))
+
+    def test_controller_cannot_manage_access_even_with_external_permission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            player.has_permission = lambda permission: True
+            plugin.on_command(player, FakeCommand("botcontrollers"), ["add", "Other"])
+            self.assertIn("only from the server console", player.messages[-1])
+            self.assertFalse(plugin._controller_policy.path.exists())
+            plugin.on_command(player, FakeCommand("bot"), ["ping"])
+            self.assertIn("do not have Bot control permission", player.messages[-1])
+
+    def test_local_bot_cannot_be_granted_control(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            bot = self.controller_player(xuid="")
+            plugin.server.online_players = [bot]
+            console = FakeConsole()
+            plugin.on_command(console, FakeCommand("botcontrollers"), ["add", bot.name])
+            self.assertIn("change failed", console.messages[-1])
+            self.assertFalse(plugin._allows_control(bot))
+            self.assertFalse(plugin._controller_policy.path.exists())
+
+    def test_pending_grant_binds_on_join_and_revocation_overrides_bootstrap(self):
+        from endstone_endbot.enrollment import ControllerEnrollment
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            plugin._controllers = ControllerEnrollment(("Owner",), Path(directory) / "bindings.json")
+            console = FakeConsole()
+            command = FakeCommand("botcontrollers")
+            plugin.on_command(console, command, ["remove", "Owner"])
+            player = self.controller_player()
+            plugin._join_controller(player)
+            self.assertFalse(plugin._allows_control(player))
+            self.assertEqual(plugin._controllers.bindings, ())
+            plugin.on_command(console, command, ["add", "Owner"])
+            plugin._join_controller(player)
+            self.assertTrue(plugin._allows_control(player))
+            plugin.on_command(console, command, ["remove", "Owner"])
+            player.name = "RenamedOwner"
+            plugin._join_controller(player)
+            self.assertFalse(plugin._allows_control(player))
+            restarted = self.controller_fixture(directory)
+            self.assertFalse(restarted._allows_control(player))
+
+    def test_failed_policy_write_does_not_change_permissions(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            console = FakeConsole()
+            command = FakeCommand("botcontrollers")
+            plugin.on_command(console, command, ["add", player.name])
+            with patch("endstone_endbot.controller_policy.os.replace", side_effect=OSError("disk failure")):
+                plugin.on_command(console, command, ["remove", player.name])
+            self.assertTrue(plugin._allows_control(player))
+            self.assertEqual(player.permission_values[-1], ("endbot.command.control", True))
+            self.assertIn("disk failure", console.messages[-1])
+
+    def test_revocation_overrides_legacy_uuid_and_xuid_permissions(self):
+        from endstone_endbot.authorization import AllowedPlayers
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin._allowed_players = AllowedPlayers.from_config(
+                {"allowed-uuids": [str(player.unique_id)], "allowed-xuids": [player.xuid]}
+            )
+            self.assertTrue(plugin._allows_control(player))
+            plugin.server.online_players = [player]
+            plugin.on_command(FakeConsole(), FakeCommand("botcontrollers"), ["remove", player.name])
+            self.assertFalse(plugin._allows_control(player))
+            player.name = "Renamed"
+            plugin._join_controller(player)
+            self.assertFalse(plugin._allows_control(player))
+            player.xuid = ""
+            self.assertFalse(plugin._allows_control(player))
+
+    def test_request_result_reaches_file_and_cannot_be_dispatched_by_player(self):
+        import json
+        from uuid import uuid4
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            plugin._controller_requests_directory = Path(directory)
+            request_id, session = str(uuid4()), str(uuid4())
+            path = Path(directory) / f"{request_id}.dispatch.json"
+            path.write_text(
+                json.dumps(
+                    {"version": 1, "id": request_id, "session": session, "operation": "add", "target": "Offline Player"}
+                )
+            )
+            command = FakeCommand("botcontrollers")
+            plugin.on_command(self.controller_player(), command, ["request", request_id])
+            self.assertTrue(path.exists())
+            self.assertFalse(plugin._controller_policy.path.exists())
+            plugin.on_command(FakeConsole(), command, ["request", request_id])
+            result = json.loads((Path(directory) / f"{request_id}.response.json").read_text())
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["id"], request_id)
+            self.assertEqual(result["session"], session)
+            self.assertEqual(result["entries"][0]["state"], "pending")
+            self.assertFalse(path.exists())
+
+    def test_failed_management_returns_failure_in_correlated_reply(self):
+        import json
+        from uuid import uuid4
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            plugin._controller_requests_directory = Path(directory)
+            request_id = str(uuid4())
+            (Path(directory) / f"{request_id}.dispatch.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "id": request_id,
+                        "session": str(uuid4()),
+                        "operation": "remove",
+                        "target": "Missing",
+                    }
+                )
+            )
+            plugin.on_command(FakeConsole(), FakeCommand("botcontrollers"), ["request", request_id])
+            result = json.loads((Path(directory) / f"{request_id}.response.json").read_text())
+            self.assertFalse(result["ok"])
+            self.assertIn("Unknown offline controller", result["messages"][0])
+
+    def test_report_matches_effective_control_and_explains_revocation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            plugin._controller_operation(["add", player.name])
+            row = plugin._controller_report()[0]
+            self.assertEqual((row["state"], row["reason"]), ("allowed", "runtime grant"))
+            plugin._controller_operation(["remove", player.name])
+            row = plugin._controller_report()[0]
+            self.assertEqual((row["state"], row["reason"]), ("revoked", "revoked XUID"))
+            self.assertFalse(plugin._allows_control(player))
+            plugin._controller_operation(["add", "Pending"])
+            self.assertIn("pending", [entry["state"] for entry in plugin._controller_report()])
+
+    def test_offline_doctor_report_and_plugin_report_agree(self):
+        cli_source = str(Path(__file__).resolve().parents[3] / "cli/endbot/src")
+        sys.path.insert(0, cli_source)
+        self.addCleanup(sys.path.remove, cli_source)
+        from endbot_cli.controller_status import load_policy, saved_report
+        from endbot_cli.controllers import load_controllers
+
+        from endstone_endbot.enrollment import ControllerEnrollment
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            binding_path = Path(directory) / "bindings.json"
+            plugin._controllers = ControllerEnrollment(("Owner", "Pending"), binding_path)
+            player = self.controller_player()
+            plugin._join_controller(player)
+            for operation in ("remove", "add", "remove"):
+                plugin._controller_operation([operation, "Owner"])
+                plugin_rows = [
+                    {key: entry[key] for key in ("name", "state", "reason")} for entry in plugin._controller_report()
+                ]
+                doctor_rows = saved_report(
+                    plugin._controllers.gamertags,
+                    load_controllers(binding_path),
+                    load_policy(plugin._controller_policy.path),
+                    {},
+                )
+                self.assertEqual(doctor_rows, plugin_rows)
 
 
 if __name__ == "__main__":

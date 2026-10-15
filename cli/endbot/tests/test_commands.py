@@ -30,7 +30,7 @@ from fakeinstance import (
     write_runtime_config,
 )
 
-from endbot_cli.commands import run_console, run_controllers_reset, run_start, run_stop
+from endbot_cli.commands import run_console, run_controllers_live, run_controllers_reset, run_start, run_stop
 from endbot_cli.controllers import CONTROLLERS_VERSION, load_controllers
 from endbot_cli.instance import InstancePaths
 from endbot_cli.lock import load_lock
@@ -328,6 +328,37 @@ class StopAndConsoleTests(CommandTestCase):
         self.assertIn("single line", stderr)
 
 
+class ControllersLiveTests(CommandTestCase):
+    def test_live_changes_return_plugin_result_and_failure_exit_code(self):
+        from unittest.mock import patch
+
+        with patch(
+            "endbot_cli.controller_requests.controller_request",
+            return_value={"ok": True, "messages": ["Player: allowed - runtime grant"]},
+        ) as request:
+            code, stdout, stderr = self.run_captured(run_controllers_live, self.paths, "add", "Player")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Player: allowed", stdout)
+        self.assertNotIn("queued", stdout)
+        request.assert_called_once_with(self.run_dir, "add", "Player")
+        with patch(
+            "endbot_cli.controller_requests.controller_request",
+            return_value={"ok": False, "messages": ["Unknown offline controller"]},
+        ):
+            code, stdout, stderr = self.run_captured(run_controllers_live, self.paths, "remove", "Missing")
+        self.assertEqual(code, 1)
+        self.assertIn("Unknown offline controller", stderr)
+        self.assertFalse((self.paths.state_controllers.parent / "controller-policy.json").exists())
+
+    def test_live_changes_refuse_without_supervisor_or_with_injected_line(self):
+        code, _, _ = self.run_captured(run_controllers_live, self.paths, "add", "Player")
+        self.assertEqual(code, 1)
+        for target in ("Player\nstop", "  ", ""):
+            code, _, _ = self.run_captured(run_controllers_live, self.paths, "add", target)
+            self.assertEqual(code, 1)
+        self.assertFalse((self.run_dir / "console.request").exists())
+
+
 class ControllersResetTests(CommandTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -349,7 +380,7 @@ class ControllersResetTests(CommandTestCase):
         self.assertIsNone(load_controllers(self.paths.state_controllers).find("ExampleTag"))
         code, stdout, _stderr = self.run_captured(run_controllers_reset, self.paths, "ExampleTag")
         self.assertEqual(code, 0)
-        self.assertIn("no binding", stdout)
+        self.assertIn("no bootstrap binding", stdout)
 
     def test_reset_with_a_stale_pid_file_cleans_it_and_proceeds(self) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)

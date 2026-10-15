@@ -123,8 +123,9 @@ manylinux container invokes Endstone's `auditwheel` repair command, and only the
 Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it together with the repaired patched
 Endstone wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official
 unpatched `0.11.13` wheel. The plugin registers the `/bot` tree, including the original `/bot ping`, and uses
-`endbot.command.control`. The permission defaults to false and is attached only to player UUIDs/XUIDs explicitly listed
-in the generated plugin `config.toml`; it does not grant operator or vanilla command rights. See
+`endbot.command.control`. The permission defaults to false and is granted to authenticated controllers through
+bootstrap enrollment or persistent console-managed policy. `endbot controllers add|remove|list` changes access while
+BDS runs; revocation overrides legacy UUID/XUID allowlists. It does not grant operator or vanilla command rights. See
 [commands and operation](docs/COMMANDS.md).
 
 Install runtime dependencies and create an operator-owned configuration outside source control:
@@ -155,6 +156,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)
 - [Compatibility and release gates](docs/COMPATIBILITY.md)
 - [Commands and operation](docs/COMMANDS.md)
+- [Open issues and planned improvements](docs/BACKLOG.md)
 - [M2 validation record](docs/M2_VALIDATION.md)
 - [Native Windows development and live smoke](docs/WINDOWS_DEV.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

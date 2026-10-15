@@ -37,6 +37,42 @@ test('control server refuses non-loopback binds', () => {
   assert.throws(() => new ControlServer({ host: '0.0.0.0', token: 'a'.repeat(43), lifecycle: {} }), /loopback/)
 })
 
+test('mining requests require the control token for both start and stop', async t => {
+  const calls = []
+  const token = 'a'.repeat(43)
+  const server = new ControlServer({ token, port: 0, lifecycle: {
+    mine: (name, params) => { calls.push(params); return { name, mining: { state: params.mode === 'stop' ? 'canceled' : 'active' } } }
+  } })
+  await server.listen()
+  t.after(() => server.close())
+  const params = { name: 'Alice', blockPosition: [0, 64, 2], blockRuntimeId: 42, face: 2 }
+  const denied = await request(server.port, { version: 1, id: 'no', token: 'wrong', method: 'mine', params })
+  assert.equal(denied.ok, false)
+  assert.deepEqual(calls, [])
+  for (const command of [params, { name: 'Alice', mode: 'stop' }]) {
+    const response = await request(server.port, { version: 1, id: 'mine', token, method: 'mine', params: command })
+    assert.equal(response.ok, true)
+  }
+  assert.equal(calls.length, 2)
+})
+
+test('radius query, override and reset use the authenticated control surface', async t => {
+  const calls = []
+  const token = 'a'.repeat(43)
+  const server = new ControlServer({ host: '127.0.0.1', port: 0, token,
+    lifecycle: { radius: (name, value) => { calls.push({ name, value }); return { name } } } })
+  await server.listen()
+  t.after(() => server.close())
+  const denied = await request(server.port, { version: 1, id: 'denied', token: 'wrong', method: 'radius', params: { name: 'Alice', value: 12 } })
+  assert.equal(denied.ok, false)
+  assert.deepEqual(calls, [])
+  for (const value of [undefined, 12, 'default']) {
+    const response = await request(server.port, { version: 1, id: 'radius', token, method: 'radius', params: { name: 'Alice', value } })
+    assert.equal(response.ok, true)
+  }
+  assert.deepEqual(calls, [{ name: 'Alice', value: undefined }, { name: 'Alice', value: 12 }, { name: 'Alice', value: 'default' }])
+})
+
 test('default control deadline permits a normal replacement operation', async () => {
   const token = 'a'.repeat(43)
   const lifecycle = {

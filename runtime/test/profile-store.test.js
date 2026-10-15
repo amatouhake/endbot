@@ -59,3 +59,29 @@ test('forget removes only the selected profile', () => {
   assert.equal(profiles.getByName('Alice'), undefined)
   assert.equal(profiles.getById(bob.identityId).name, 'Bob')
 })
+
+test('optional chunk radius persists through reload and rename and can return to inheritance', () => {
+  const profiles = store()
+  const alice = profiles.create('Alice')
+  assert.equal('chunkRadius' in alice, false)
+  profiles.update(alice.identityId, { chunkRadius: 12 })
+  const reloaded = new ProfileStore(profiles.directory)
+  const renamed = reloaded.update(alice.identityId, { name: 'Builder' })
+  assert.equal(renamed.chunkRadius, 12)
+  reloaded.update(alice.identityId, { chunkRadius: undefined })
+  assert.equal('chunkRadius' in new ProfileStore(profiles.directory).getByName('Builder'), false)
+  const persisted = JSON.parse(fs.readFileSync(path.join(profiles.directory, `${alice.identityId}.json`)))
+  assert.equal('chunkRadius' in persisted, false)
+})
+
+test('invalid persisted chunk radius is rejected without overwriting the profile', () => {
+  const profiles = store()
+  const alice = profiles.create('Alice')
+  for (const chunkRadius of [null, 1, 33, '12', 2.5, true]) {
+    assert.throws(() => profiles.update(alice.identityId, { chunkRadius }), /chunkRadius/)
+    assert.equal('chunkRadius' in profiles.getById(alice.identityId), false)
+  }
+  const filename = path.join(profiles.directory, `${alice.identityId}.json`)
+  fs.writeFileSync(filename, JSON.stringify({ ...alice, chunkRadius: 0 }))
+  assert.throws(() => new ProfileStore(profiles.directory), /chunkRadius/)
+})

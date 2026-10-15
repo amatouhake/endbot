@@ -13,6 +13,7 @@ knobs (tests only):
 
 from __future__ import annotations
 
+import json
 import os
 import queue
 import sys
@@ -57,6 +58,24 @@ def main(argv: list[str]) -> int:
         if line == "stop" and not ignore_stop:
             print("fake BDS: stopping", flush=True)
             return 0
+        request_dir = os.environ.get("FAKE_CONTROLLER_REQUEST_DIR")
+        if request_dir and line.startswith("botcontrollers request "):
+            request_id = line.split()[-1]
+            directory = Path(request_dir)
+            pending = directory / f"{request_id}.dispatch.json"
+            request = json.loads(pending.read_text(encoding="utf-8"))
+            result = {
+                "version": 1,
+                "id": request_id,
+                "session": request["session"],
+                "ok": request["target"] != "Missing",
+                "messages": [f"result: {request['target']}"],
+                "entries": [],
+            }
+            temporary = directory / f"{request_id}.tmp"
+            temporary.write_text(json.dumps(result), encoding="utf-8")
+            temporary.replace(directory / f"{request_id}.response.json")
+            pending.unlink()
         print(f"[console] {line}", flush=True)
 
 

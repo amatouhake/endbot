@@ -24,6 +24,7 @@ directory may live inside it (fresh setup) or anywhere else (existing server).
 │  ├─ secrets/               owner-private.pem, owner-public.pem, control.token
 │  ├─ profiles/              Bot profiles (<uuid>.json)
 │  ├─ controllers.json       controller enrollment state (generated, see §3)
+│  ├─ controller-policy.json console-managed grants/revocations (generated, see §3)
 │  ├─ generated/             files derived from endbot.toml on every start (runtime JSON, plugin config)
 │  └─ run/                   PID files and logs
 ├─ backups/                  setup/update backups of operator-owned BDS files
@@ -51,7 +52,19 @@ gamertags = ["ExampleTag"] # Xbox GamerTags allowed to control Bots; bound to XU
 
 [runtime]
 control-port = 19142       # loopback only
+chunk-radius = 5           # requested Bot chunk radius, integer 2..32
 ```
+
+`[runtime].chunk-radius` defaults to 5 chunks when omitted (previously the protocol library requested 10).
+It is the shared default for Bots without an override; restart the runtime after editing this file.
+`/bot <name> radius <2-32>` overrides one Bot, including while online. `/bot <name> radius default` removes that override.
+The preference is stored with the Bot's immutable profile and survives reconnect, rename, and runtime restart. It can
+also be set while the registered Bot is offline. `/bot <name> radius` reports the requested value, its source, and the
+last server-confirmed value (unconfirmed until BDS replies, or while offline).
+Endbot requests that Bot's chosen radius at spawn, reconnect, and dimension changes. BDS can clamp the request.
+This controls the Bot client's requested chunk range; it does not change BDS `view-distance` or `tick-distance` and does
+not guarantee that chunks loaded by other players or server systems will be unloaded.
+On the tested BDS baseline, a request for 3 chunks was raised to 5; the default follows that observed effective range.
 
 Generated on every `endbot start` (overwritten, never hand-edited):
 
@@ -85,44 +98,63 @@ Operators name controllers by GamerTag. GamerTags are a bootstrap identifier, ne
 - Authorization (`endbot.command.control`) is granted only to bound XUIDs. After binding, the GamerTag no longer
   matters: a GamerTag change keeps control; another account later taking the old GamerTag gets nothing.
 - Players with an empty XUID (including every local Bot) can never bind.
-- Removing a GamerTag from `endbot.toml` revokes its binding on the next start. `endbot controllers reset <tag>` returns
-  a binding to pending for re-enrollment.
+- Removing a GamerTag from `endbot.toml` removes its bootstrap grant on the next start. Runtime grants have their own
+  persistence described below. `endbot controllers reset <tag>` resets only the bootstrap binding while stopped;
+  it does not change runtime grants or revocations.
 - Joining at all requires passing the BDS allow-list (§4). `endbot setup --fresh` adds every `--controller` GamerTag to
   `<server>/allowlist.json`; on an adopted server with `allow-list=true` the operator must add each controller first
   (`endbot console allowlist add <GamerTag>` after `endbot start`, or by editing `allowlist.json` while the server is
   stopped). The `allowlist` doctor check (§7) reports any controller missing from it.
-- The old `[authorization] allowed-uuids / allowed-xuids` lists remain accepted as pre-bound entries for rc.1 users.
+- The old `[authorization] allowed-uuids / allowed-xuids` lists remain accepted for normally authenticated players;
+  runtime identity revocations override them. An empty/invalid XUID never grants control, including via a UUID entry.
 
 Risk accepted: between setup and the owner's first join, a pending GamerTag can be claimed by whoever currently holds
 that GamerTag. Pending entries are therefore shown by `endbot doctor`, and setup tells the operator to join once.
 
+### Runtime grants and revocations
 
-### Future improvement: live controller management (backlog; not implemented)
+While `endbot start` is running, use another terminal:
 
-Currently, controller configuration is loaded when the plugin starts, and `endbot.command.control` is attached on
-player join. Editing `endbot.toml` while BDS is running does not update the active permission set. Adding or removing
-controllers therefore requires `endbot stop` / `endbot start`; there is no supported hot reload.
+```text
+endbot controllers add "Player With Spaces"
+endbot controllers remove "Player With Spaces"
+endbot controllers list
+```
 
-The desired operator experience is to **add, remove, and reload controllers without restarting BDS or disconnecting
-Bots**. Possible CLI forms (proposals, **not currently available**) are `endbot controllers add <GamerTag>`,
-`endbot controllers remove <GamerTag>`, and `endbot controllers reload`. The final CLI/API remains to be designed.
+The CLI waits for the plugin's execution result and prints it in that terminal. Success exits with 0; a rejected change
+exits with 1. Results also appear in the active BDS console/log. A timeout or interrupted connection reports an unknown
+outcome; inspect `controllers list` before retrying a mutation. Requests are not automatically retried. The same
+`botcontrollers add|remove|list` commands work directly on the BDS console. Only a real server console sender may
+administer access; controllers and operator players cannot grant or revoke access. Bot operation applies to all Bots,
+with no per-Bot ACL. Restart the supervisor/BDS after deploying this version to enable the result channel.
 
-Implementation requirements to evaluate:
+`controllers list` shows effective states (`allowed`, `revoked`, `pending`, `denied`, or `conditional`) and their reasons,
+including runtime grants, bootstrap bindings and explicit identity revocations. Online authenticated players use the
+same decision as the command handler. Unresolved legacy identity entries are conditional: their full identity/name
+checks happen on an authenticated join. `endbot doctor` combines saved config, bindings, runtime policy and legacy
+allowlists for the next start; `endbot doctor --live` queries the running plugin when a supervisor is present. It labels
+the source so an un-reloaded TOML edit is not confused with current server access. Corrupt saved policy fails doctor.
 
-- Preserve `endbot.toml` as the operator-owned source of truth; validate updates and propagate the resulting
-  controller set to the running plugin without manually editing generated plugin configuration. Handle partial
-  failures/invalid settings safely rather than publishing inconsistent authorization state.
-- Preserve Microsoft/Xbox XUID-bound enrollment. New pending GamerTags bind only on a valid authenticated join;
-  existing bound XUIDs retain access across GamerTag changes, and removing/re-adding a GamerTag must not let an
-  unrelated account claim an old binding.
-- Update permissions for **already-online players**, not just future join events. In particular, removal must
-  immediately revoke the relevant permission attachment and survive reconnect; the implementation must explicitly
-  track attachment lifetimes rather than assuming a config change removes grants already issued.
-- Keep `endbot.command.control` distinct from BDS `allowlist.json` and vanilla operator/cheat privileges. Adding
-  a controller does not by itself grant permission to join an allow-listed server.
-- Cover add/remove/reload with live tests for bound vs. pending controllers, online vs. offline players, immediate
-  revocation, reconnect/restart persistence, malformed configuration, and unaffected Bot sessions.
+An online authenticated target is bound by XUID immediately. An unknown offline GamerTag is pending until its first
+normal Microsoft/Xbox-authenticated join. An offline already-bound GamerTag keeps its existing XUID when regranted.
+Removing an offline unknown name fails; use a known bound name or `remove xuid:<id>` / `remove uuid:<id>` for legacy
+identity entries. Name matching is case-insensitive; spaces may be quoted. Joining still requires the normal BDS
+allow-list, which controller commands do not edit. Doctor's allow-list check covers bootstrap configuration;
+inspect runtime entries with `controllers list` and allow-list those human accounts separately when required.
 
+The plugin atomically saves overrides in `state/controller-policy.json` (`controller-policy-file` for manual installs).
+It is the sole writer; the CLI does not rewrite configuration or live player state. Keep this file with the private
+instance state and include it in backups. Missing policy means no overrides; corrupt policy prevents plugin loading.
+Explicit identity revocations override bootstrap bindings and legacy UUID/XUID allowlists, survive name changes and
+restart, and prevent a rejoin from restoring access. A pending GamerTag never enrolls a revoked XUID/UUID, even if that
+account renames itself to the pending name; run `add` while that account is online to clear its revocation. Runtime grants
+survive edits to the bootstrap list; use runtime `remove` to revoke them. Do not edit policy files while BDS runs.
+
+Changes update online players' control permission and command visibility immediately and recheck pending commands on
+the server thread. A revoke/regrant cycle also invalidates commands queued under the earlier grant. An operation
+already started by the command worker may finish; revocation does not undo dispatched operations or stop existing Bot
+movement/actions. Use `/bot <name> stop` from the console if those actions must stop too. No operator or vanilla
+command permission is granted.
 
 ## 4. Local Bots and the BDS allow-list
 
@@ -176,8 +208,8 @@ advertised-port following disabled. Both paths use the same local-bot authentica
 `state/run/console.request` (appended by `endbot console`, one line per request, forwarded to the BDS console and
 truncated by the supervisor) reach the BDS console. `endbot stop` writes `state/run/stop.request` and waits (default
 120 s) for the supervisor recorded in `state/run/supervisor.pid` to exit; Ctrl+C triggers the same stop sequence
-locally. `endbot stop`, `endbot console`, and `endbot controllers reset` refuse clearly when no live supervisor
-exists and clean up a stale `supervisor.pid`.
+locally. `endbot stop`, `endbot console`, and `endbot controllers add|remove|list` require a live supervisor;
+`endbot controllers reset` requires it to be stopped. Stale supervisor PIDs are diagnosed/cleaned as appropriate.
 
 Stop sequence: `stop` on the BDS console (up to 60 s), then a graceful runtime `shutdown` over the control port
 (up to 15 s). A timeout escalates to killing that process tree and is reported as an UNCLEAN stop with exit code 1.
@@ -269,7 +301,9 @@ a world the newer one has saved.
 - `endstone.toml [local-bot-auth]` enabled with a readable P-384 public key matching `state/secrets/owner-private.pem`.
 - Control token present and readable; runtime and plugin agree on port.
 - `<server>/version.txt` matches the lock; installed Endstone package version matches the lock.
-- Controllers: bound, pending, and legacy pre-bound entries.
+- Controllers: bootstrap bindings and pending entries; `controllers-effective` combines saved config/policy/legacy
+  entries with decision reasons, or queries the running plugin with `--live` and a live supervisor. Legacy entries
+  lacking a resolved authenticated identity are conditional. Invalid policy is FAIL.
 - Allow-list: when `allow-list` is not `true`, PASS (controllers are not filtered); when it is, PASS while every
   configured controller GamerTag is in `allowlist.json` (case-insensitive name match, or a bound controller's XUID in
   an entry's `xuid`), otherwise WARN naming each missing GamerTag and the fix (`endbot console allowlist add

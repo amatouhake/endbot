@@ -7,7 +7,14 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from endbot_cli.commands import first_start_tolerable, run_console, run_controllers_reset, run_start, run_stop
+from endbot_cli.commands import (
+    first_start_tolerable,
+    run_console,
+    run_controllers_live,
+    run_controllers_reset,
+    run_start,
+    run_stop,
+)
 from endbot_cli.config import TRANSPORTS
 from endbot_cli.doctor import FAIL, WARN, CheckResult, DoctorContext, exit_code, run_doctor
 from endbot_cli.instance import InstanceError, InstancePaths, resolve_instance_root
@@ -43,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
     console.add_argument("line", nargs="+", help="the console line to send (e.g. 'say hello')")
     controllers = subcommands.add_parser("controllers", help="manage controller enrollment (section 3)")
     controllers_subcommands = controllers.add_subparsers(dest="controllers_command", required=True)
+    for operation in ("add", "remove"):
+        action = controllers_subcommands.add_parser(operation, help=f"{operation} a controller while BDS runs")
+        action.add_argument("target", help="GamerTag (remove also accepts xuid:<id> or uuid:<id>)")
+    controllers_subcommands.add_parser("list", help="list effective controller configuration on the BDS console")
     reset = controllers_subcommands.add_parser("reset", help="return one controller binding to pending (section 3)")
     reset.add_argument("gamertag", help="the GamerTag whose binding should be removed")
     setup = subcommands.add_parser("setup", help="create or adopt an instance; prints the full plan first (section 6)")
@@ -133,6 +144,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_console(paths, " ".join(args.line))
     if args.command == "controllers" and args.controllers_command == "reset":
         return run_controllers_reset(paths, args.gamertag)
+    if args.command == "controllers":
+        return run_controllers_live(paths, args.controllers_command, getattr(args, "target", None))
     if args.command == "setup":
         return run_setup(
             paths,

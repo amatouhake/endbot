@@ -95,7 +95,12 @@ class HealthyInstanceTests(DoctorTestCase):
                 {
                     "version": 1,
                     "bindings": [
-                        {"gamertag": "exampletag", "xuid": "1", "uuid": "u", "boundAt": "2026-09-19T00:00:00Z"},
+                        {
+                            "gamertag": "exampletag",
+                            "xuid": "1",
+                            "uuid": "11111111-2222-4333-8444-555555555555",
+                            "boundAt": "2026-09-19T00:00:00Z",
+                        },
                         {"gamertag": "OldTag", "xuid": "2", "uuid": "v", "boundAt": "2026-09-01T00:00:00Z"},
                     ],
                 }
@@ -448,6 +453,59 @@ class AllowlistTests(DoctorTestCase):
         (self.server / "server.properties").unlink()
         results = self.doctor()
         self.assertEqual(self.status_of(results, "allowlist"), SKIP)
+
+
+class EffectiveControllersTests(DoctorTestCase):
+    def test_saved_revocation_overrides_bootstrap_and_legacy_allowlist(self):
+        identity = "11111111-2222-4333-8444-555555555555"
+        self.paths.state_controllers.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "bindings": [
+                        {"gamertag": "ExampleTag", "xuid": "123456789001", "uuid": identity, "boundAt": "synthetic"}
+                    ],
+                }
+            )
+        )
+        policy = self.paths.state_controllers.parent / "controller-policy.json"
+        policy.write_text(json.dumps({"version": 1, "deniedXuids": ["123456789001"]}))
+        messages = self.messages_of(self.doctor(), "controllers-effective")
+        self.assertTrue(any("ExampleTag: revoked - revoked XUID" in message for message in messages))
+        policy.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "grants": [{"gamertag": "Other", "xuid": "123456789002", "uuid": identity, "boundAt": "synthetic"}],
+                }
+            )
+        )
+        messages = self.messages_of(self.doctor(), "controllers-effective")
+        self.assertTrue(any("Other: allowed - runtime grant" in message for message in messages))
+        self.assertTrue(any("ExampleTag: allowed - bootstrap binding" in message for message in messages))
+
+    def test_corrupt_policy_is_reported_as_failure(self):
+        (self.paths.state_controllers.parent / "controller-policy.json").write_text("{invalid")
+        self.assertEqual(self.status_of(self.doctor(), "controllers-effective"), FAIL)
+
+    def test_live_report_comes_from_plugin_instead_of_saved_config(self):
+        from unittest.mock import patch
+
+        from endbot_cli.runstate import RUNNING, SupervisorState
+
+        with (
+            patch("endbot_cli.runstate.inspect_supervisor", return_value=SupervisorState(RUNNING, 123)),
+            patch(
+                "endbot_cli.controller_requests.controller_request",
+                return_value={
+                    "ok": True,
+                    "entries": [{"name": "LiveOwner", "state": "revoked", "reason": "revoked UUID"}],
+                },
+            ) as request,
+        ):
+            messages = self.messages_of(self.doctor(live=True), "controllers-effective")
+        self.assertEqual(messages, ["LiveOwner: revoked - revoked UUID (live)"])
+        request.assert_called_once()
 
 
 class OperatorTests(DoctorTestCase):

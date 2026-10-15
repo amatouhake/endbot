@@ -156,6 +156,7 @@ def generate_runtime_config(
         "ownerPublicKeyPath": str(paths.owner_public_key.resolve()),
         "controlHost": CONTROL_HOST,
         "controlPort": config.runtime.control_port,
+        "chunkRadius": config.runtime.chunk_radius,
         "serverHost": CONTROL_HOST,
         "serverPort": server_port,
         "transport": config.server.transport,
@@ -207,6 +208,12 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
     authorization = tomlkit.table()
     authorization["controller-gamertags"] = list(config.controllers.gamertags)
     authorization["controllers-file"] = _path_value(tomlkit, str(paths.state_controllers.resolve()))
+    authorization["controller-policy-file"] = _path_value(
+        tomlkit, str((paths.state_controllers.parent / "controller-policy.json").resolve())
+    )
+    authorization["controller-requests-directory"] = _path_value(
+        tomlkit, str((paths.state_run / "controller-requests").resolve())
+    )
     authorization["allowed-uuids"] = legacy_uuids
     authorization["allowed-xuids"] = legacy_xuids
     document.add("authorization", authorization)

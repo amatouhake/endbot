@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from endstone_endbot.commands import CommandResult
 
@@ -21,11 +21,20 @@ class CommandSource:
 
     player_id: str | None = None
     sender: object | None = None
+    authorization_revision: int | None = None
+    # Identity snapshot: lets a continuous mining loop recheck permission
+    # after its controller logs off, without retaining the player wrapper.
+    xuid: str | None = None
+    name: str | None = None
 
     @classmethod
     def capture(cls, sender) -> CommandSource:
         if hasattr(sender, "unique_id") and hasattr(sender, "location"):
-            return cls(player_id=str(sender.unique_id))
+            return cls(
+                player_id=str(sender.unique_id),
+                xuid=str(getattr(sender, "xuid", None) or "") or None,
+                name=str(getattr(sender, "name", None) or "") or None,
+            )
         return cls(sender=sender)
 
 
@@ -135,8 +144,15 @@ class ServerThreadWorld:
         return self._bridge.call(lambda: self._world.look_at(identity_id, coordinates))
 
     def resolve_interaction(self, identity_id, parameters, sender):
+        return self._bridge.call(lambda: self._world.resolve_interaction(identity_id, parameters, self._sender(sender)))
+
+    def resolve_mining(self, identity_id, parameters, sender):
+        # A continuous retarget passes no sender: it only reads the Bot's own
+        # sight and must keep working after its controller logs off.
         return self._bridge.call(
-            lambda: self._world.resolve_interaction(identity_id, parameters, self._sender(sender))
+            lambda: self._world.resolve_mining(
+                identity_id, parameters, None if sender is None else self._sender(sender)
+            )
         )
 
     def assert_name_available(self, name, identity_id=None):
@@ -151,18 +167,63 @@ class AsyncCommandRunner:
         service,
         bridge: ServerThreadBridge,
         resolve_sender: Callable[[CommandSource], object],
+        authorize: Callable[[CommandSource], bool] | None = None,
+        revision: Callable[[object], int | None] | None = None,
+        authorize_loop: Callable[[CommandSource], bool] | None = None,
+        log: Callable[[str, str], None] | None = None,
     ) -> None:
         self._service = service
         self._bridge = bridge
         self._resolve_sender = resolve_sender
+        self._authorize = authorize
+        self._revision = revision
+        # Loops outlive their controller's session; commands do not.
+        self._authorize_loop = authorize_loop or authorize
+        self._log = log
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
+        # Mining lease renewal must not wait behind a slow command such as a
+        # spawn; loop IDs make a renewal racing a stop/replacement harmless.
+        self._poll_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-mining")
         self._lock = threading.Lock()
         self._open = True
+        self._poll_future = None
+
+    def poll(self) -> None:
+        """Queue at most one poll, independent of the command worker."""
+        with self._lock:
+            if self._open and (self._poll_future is None or self._poll_future.done()):
+                self._poll_future = self._poll_executor.submit(self._poll)
+
+    def _poll(self) -> None:
+        with self._lock:
+            if not self._open:
+                return
+
+        def authorize(source):
+            return self._authorize_loop is None or self._bridge.call(lambda: self._authorize_loop(source))
+
+        for source, level, message in self._service.poll_mining(authorize) or ():
+            self._notify(source, level, message)
+
+    def _notify(self, source: CommandSource, level: str, message: str) -> None:
+        def deliver() -> None:
+            if self._log is not None:
+                self._log(level, message)
+                if source.player_id is None:
+                    return  # The console already shows the log entry.
+            # A controller who has logged off still gets the console log entry.
+            sender = self._resolve_sender(source)
+            if sender is not None:
+                sender.send_message(message)
+
+        self._bridge.post(deliver)
 
     def submit(self, arguments: list[str], sender) -> bool:
         source = CommandSource.capture(sender)
+        if self._revision is not None:
+            source = replace(source, authorization_revision=self._revision(sender))
         with self._lock:
             if not self._open:
                 return False
@@ -177,15 +238,30 @@ class AsyncCommandRunner:
             if not self._open:
                 return
             self._open = False
-        self._executor.shutdown(wait=False, cancel_futures=True)
+            if hasattr(self._service, "close"):
+                self._executor.submit(self._service.close)
+        # Queued commands check _open; cleanup follows any in-flight request.
+        self._executor.shutdown(wait=False)
+        self._poll_executor.shutdown(wait=False)
 
     def _execute(self, arguments: list[str], source: CommandSource) -> None:
+        with self._lock:
+            if not self._open:
+                return
         try:
-            result = self._service.execute(arguments, source)
+            if self._authorize is not None and not self._bridge.call(lambda: self._authorize(source)):
+                result = CommandResult(True, ("Endbot: Bot control permission was revoked; command canceled",))
+            else:
+                result = self._service.execute(arguments, source)
         except Exception:  # noqa: BLE001 - never strand command delivery on an unexpected service failure
             result = CommandResult(True, ("Endbot: internal command failure",))
 
         def deliver() -> None:
+            if result.log_level is not None and self._log is not None:
+                for message in result.messages:
+                    self._log(result.log_level, message)
+                if source.player_id is None:
+                    return  # The console already shows the log entry.
             sender = self._resolve_sender(source)
             if sender is None:
                 return

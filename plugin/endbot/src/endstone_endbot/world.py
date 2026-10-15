@@ -17,6 +17,16 @@ DIMENSIONS = {
     "minecraft:the_end": "TheEnd",
 }
 
+NON_MINING_TARGETS = {
+    "minecraft:air",
+    "minecraft:cave_air",
+    "minecraft:void_air",
+    "minecraft:water",
+    "minecraft:flowing_water",
+    "minecraft:lava",
+    "minecraft:flowing_lava",
+}
+
 
 class EndstoneWorld:
     def __init__(self, server) -> None:
@@ -160,6 +170,83 @@ class EndstoneWorld:
         player = self.server.get_player(name)
         if player is not None and (identity_id is None or str(player.unique_id) != str(identity_id)):
             raise ValueError(f"An online player named {name} already exists")
+
+    @staticmethod
+    def _ray_block(dimension, origin, direction, distance):
+        """Voxel ray cast; returns the first non-air/liquid cell and entry face."""
+        cell = [math.floor(value) for value in origin]
+        steps = [1 if value > 0 else -1 for value in direction]
+        delta = [abs(1 / value) if value else math.inf for value in direction]
+        crossings = [
+            ((cell[i] + (1 if steps[i] > 0 else 0) - origin[i]) / direction[i]) if direction[i] else math.inf
+            for i in range(3)
+        ]
+        travelled, face = 0.0, 1
+        while travelled <= distance:
+            block = dimension.get_block_at(*cell)
+            if block.type not in NON_MINING_TARGETS:
+                return list(cell), block, face
+            axis = min(range(3), key=lambda index: crossings[index])
+            travelled = crossings[axis]
+            cell[axis] += steps[axis]
+            face = ((4, 5), (0, 1), (2, 3))[axis][0 if steps[axis] > 0 else 1]
+            crossings[axis] += delta[axis]
+        return None
+
+    def resolve_mining(self, identity_id: str, parameters: dict[str, object], sender) -> dict[str, object] | None:
+        """Observe a reachable target; all destruction stays in BDS gameplay."""
+        bot = self.server.get_player(UUID(identity_id))
+        if bot is None:
+            raise ValueError("Bot is not present in the world")
+        location = bot.location
+        eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
+        dimension = location.dimension
+        if "coordinates" in parameters:
+            target = [math.floor(value) for value in self._resolve_coordinates(parameters["coordinates"], location)]
+            center = [value + 0.5 for value in target]
+            offsets = [eye[i] - center[i] for i in range(3)]
+            axis = max(range(3), key=lambda index: abs(offsets[index]))
+            face = int(parameters.get("face", ((5, 4), (1, 0), (3, 2))[axis][0 if offsets[axis] > 0 else 1]))
+            hit = list(center)
+            hit[(1, 1, 2, 2, 0, 0)[face]] += 0.499 if face % 2 else -0.499
+            # Face numbering uses Y, Z, X order; parity is down/north/west versus up/south/east.
+            direction = [hit[i] - eye[i] for i in range(3)]
+            distance = math.sqrt(sum(value * value for value in direction))
+            if distance > 5.0:
+                raise ValueError("Target block is out of reach (maximum 5 blocks)")
+            if distance < 0.001:
+                raise ValueError("Target block overlaps the Bot's eye position")
+            direction = [value / distance for value in direction]
+            found = self._ray_block(dimension, eye, direction, distance + 0.01)
+            if found is None or found[0] != target:
+                raise ValueError("Target is air/liquid or blocked by another block")
+            block = found[1]
+        else:
+            yaw, pitch = math.radians(location.yaw), math.radians(location.pitch)
+            direction = [-math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch)]
+            found = self._ray_block(dimension, eye, direction, 5.0)
+            if found is None:
+                if parameters.get("continuous"):
+                    return None
+                raise ValueError("No block in the Bot's line of sight within 5 blocks")
+            target, block, face = found
+            hit = [value + 0.5 for value in target]
+        if block.type == "minecraft:bedrock":
+            if parameters.get("continuous"):
+                return None
+            raise ValueError("Bedrock cannot be destroyed in Survival")
+        yaw, pitch = self._facing(eye, hit)
+        if parameters.get("continuous"):
+            yaw, pitch = float(location.yaw), float(location.pitch)
+        return {
+            "blockPosition": target,
+            "blockRuntimeId": int(block.data.runtime_id),
+            "blockName": block.type,
+            "face": face,
+            "yaw": yaw,
+            "pitch": pitch,
+            "dimension": dimension.name,
+        }
 
     def _resolve_destination(self, parameters, reference=None, default_dimension=None):
         coordinates = self._resolve_coordinates(parameters["coordinates"], reference)

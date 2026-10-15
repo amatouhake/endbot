@@ -11,6 +11,7 @@
   "gameVersion": "1.26.51",
   "protocol": 2193,
   "connectTimeoutMs": 15000,
+  "chunkRadius": 5,
   "localAuthIssuer": "endbot://local-bot",
   "localAuthAudience": "endstone://local-bot",
   "reconnect": {

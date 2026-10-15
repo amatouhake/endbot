@@ -10,6 +10,8 @@ other-terminal commands::
     state/run/console.request   appended to by `endbot console`, one line per
                                 request; the supervisor forwards and truncates it
     state/run/last-exit.json    exit record of the most recent supervisor run
+    state/run/controller-session.json   nonce of this supervisor start
+    state/run/controller-requests/      correlated management requests/results
     state/run/logs/<start>/     per-start runtime.log / server.log (last 10 kept)
 
 A ``supervisor.pid`` naming a process that no longer exists is stale: every

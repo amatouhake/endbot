@@ -270,8 +270,26 @@ def run_controllers_reset(paths: InstancePaths, gamertag: str) -> int:
     except ControllersError as error:
         return _fail(f"FAIL controllers reset: {error}")
     if controllers.find(gamertag) is None:
-        _print(f"controllers reset: {gamertag} has no binding; it is pending (or not configured)")
+        _print(f"controllers reset: {gamertag} has no bootstrap binding; runtime policy overrides are unchanged")
         return 0
     save_controllers(paths.state_controllers, remove_binding(controllers, gamertag))
-    _print(f"controllers reset: removed the binding for {gamertag}; it is pending again and re-binds on the next join")
+    _print(f"controllers reset: removed the binding for {gamertag}; bootstrap enrollment is pending again")
+    _print(
+        "Runtime controller policy overrides are unchanged; use controllers add/remove while running to change access."
+    )
     return 0
+
+
+def run_controllers_live(paths: InstancePaths, operation: str, target: str | None = None) -> int:
+    """Wait for the plugin's correlated result; only the plugin writes policy."""
+    from endbot_cli.controller_requests import controller_request
+
+    try:
+        result = controller_request(paths.state_run, operation, target)
+    except KeyboardInterrupt:
+        return _fail("FAIL controllers: interrupted; result is unknown; inspect controllers list before retrying")
+    except (OSError, ValueError) as error:
+        return _fail(f"FAIL controllers: {error}")
+    for message in result["messages"]:
+        _print(message) if result["ok"] else _fail(message)
+    return 0 if result["ok"] else 1

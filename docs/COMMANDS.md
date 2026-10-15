@@ -38,6 +38,102 @@ Page 1 covers lifecycle, status, and teleport; page 2 covers movement and action
 inventory, world interaction, and advanced lifecycle. Each page is one chat message per line so it
 reads in Bedrock chat without dense pipe-separated one-liners.
 
+## Command results
+
+Each operation reports its Bot and the applied input/change, rather than only its connection state. For example:
+
+```text
+/bot Alice move forward       -> Endbot: Alice: movement set to forward
+/bot Alice jump               -> Endbot: Alice: jump once requested
+/bot Alice use continuous     -> Endbot: Alice: use continuous started
+/bot Alice stop               -> Endbot: Alice: movement and actions stopped (sprint/sneak off)
+/bot Alice hotbar 2           -> Endbot: Alice: hotbar slot 2 selected
+/bot Alice move sideways      -> Endbot: Alice: Unknown or invalid Bot action: move
+```
+
+Every reply about a Bot starts with `Endbot: <Bot>: `, including errors and syntax errors. Look replies include
+yaw/pitch, interaction replies include block/face, and rename/lifecycle replies identify the requested change. An
+operation error names the action, for example `Endbot: Alice: move failed: Bot is offline`. These replies confirm input application or request
+acceptance; BDS still decides collision, item consumption, reach and other world outcomes. Use `status` and actual world
+observations to check the outcome. Connection lifecycle remains asynchronous (`connecting` is not a completed spawn).
+
+## Mining blocks
+
+```text
+/bot Alice hotbar 1
+/bot Alice destroy
+/bot Alice destroy once
+/bot Alice destroy continuous
+/bot Alice destroy 100 64 -20
+/bot Alice destroy ~ ~-1 ~ up
+/bot Alice destroy stop
+/bot Alice status
+```
+
+`destroy` takes the same mode words as `jump`, `attack` and `use`: `once` (the default), `continuous` and `stop`.
+There is no `interval` mode, because `continuous` already waits for the next block.
+
+`destroy` (or `destroy once`) starts holding left-click on one block in the Bot's current line of sight, within 5 blocks. Explicit coordinates
+target one reachable, unobstructed block and turn the Bot toward it; an optional face uses the same names as `interact`.
+Relative coordinates are measured from the Bot, including commands from the server console. Movement, attack and item
+use inputs are cleared on start. Select the desired tool with `hotbar` first; mining does not walk or select tools.
+
+`destroy continuous` holds left-click along the Bot's current sight direction. After each BDS target update it selects the
+next reachable block along that same ray. When there is no target within 5 blocks (or bedrock is in front), it waits;
+placing a reachable block in sight resumes mining automatically. It stays in place and does not excavate a chosen area.
+Use `destroy stop` to disable this waiting/resume behavior as well as an active break attempt.
+
+BDS performs ordinary Survival breaking, including hardness/tool speed, harvest drops, durability and cancellable
+`BlockBreakEvent` handling. The plugin never sets the mined block to air, dispatches `/setblock`, or grants operator
+permissions. The pinned baseline uses server-authoritative block breaking; other modes are rejected explicitly.
+
+The initial reply names the target, for example `Endbot: Alice: destroying minecraft:stone at 1 64 2; see status for the
+result`. No completion message is sent; `status` shows the mining state in player-facing words:
+
+```text
+destroying minecraft:stone at 1 64 2                                (breaking now)
+destroy continuous waiting for a block in sight (last: ...)        (destroy continuous, nothing in reach)
+last destroy: block broken or changed (minecraft:stone at 1 64 2)  (finished)
+last destroy: failed: target out of reach (...)                    (failed)
+last destroy: canceled by teleport (...)                           (canceled)
+```
+
+A finished job stays visible as `last destroy` until the next one starts. Single-block mining ends when BDS sends a changed
+target block, so a replacement or another player's change also ends that task. Continuous mining selects again. The runtime
+waits for server updates instead of predicting instant destruction or loot. A rejected/protected target may remain active
+until stopped or until the 12000-input-tick timeout (about ten minutes at 20 TPS).
+
+Mining continues through other operations. `move`, `look`, `attack`, `use`, `drop` and `interact` do not cancel it;
+a continuous loop follows the new sight direction for its next block. Changing the hotbar slot or the held item (a
+pickup or a broken tool) restarts the current block with the new item. A teleport, a dimension change, a target that
+moves out of reach, or the 10-minute timeout ends the current block; single-block mining ends there, while continuous
+mining selects its next target. Attacking or using an item while mining sends both inputs; BDS decides the outcome.
+
+Mining ends only on `destroy stop` (mining only), `stop` (mining and all movement/actions), death, disconnect, revocation of
+the starting controller's permission, or plugin disable. An expiring runtime lease also ends it if the plugin/control
+worker stops responding (200 input ticks, about ten seconds). Continuous mining keeps running after its controller logs
+off. Active mining is not saved or resumed on reconnect.
+
+Start and stop are confirmed by the command reply and logged on the server console at info level. When mining ends for
+any other reason (a failed single block, death, disconnect, revocation, a lost runtime), the starting controller gets
+one chat message, for example `Endbot: Alice: destroy continuous stopped: canceled by death`. The console log records
+the same message at warning level, also for controllers who are offline. Successfully broken blocks are not announced.
+Sight selection currently uses occupied block cells (ignoring air/liquid); complex partial-block shapes are conservative.
+
+See [mining validation](MINING_VALIDATION.md) for the exact real-server coverage. `attack` remains entity attack; use
+`destroy` for blocks. The name follows the game's "Attack/Destroy" control.
+
+## Managing access
+
+`endbot controllers add|remove|list` waits for and prints the plugin result. The list includes effective permission and
+reason; `endbot doctor` inspects saved authorization and `endbot doctor --live` queries the running plugin.
+
+Bot access can be changed without restarting BDS from the host CLI with `endbot controllers add <GamerTag>`,
+`endbot controllers remove <GamerTag>`, and `endbot controllers list`. These submit the console-only
+`botcontrollers` commands and persist grants/revocations across restart. They do not grant operator permissions.
+See [runtime authorization](OPERATIONS.md#runtime-grants-and-revocations) for offline enrollment, precedence and queued
+command behavior.
+
 ## Lifecycle
 
 ```text
@@ -91,6 +187,33 @@ After a same-dimension server teleport, the runtime acknowledges the correction 
 vertical movement. A Bot teleported into unsupported air therefore falls and lands instead of continually resending
 the teleport height.
 
+Dimension changes now reset old movement prediction and entity targets, acknowledge the dimension/loading transition,
+and request the configured chunk radius. Server motion is incorporated into movement prediction for knockback.
+The reported cross-dimension symptoms remain subject to the real-server and multi-player checks in
+[BOT-002](BACKLOG.md#bot-002-restore-physics-movement-and-position-synchronization-after-dimension-changes).
+
+## Chunk loading range
+
+```text
+/bot Idle radius 5
+/bot Explorer radius 12
+/bot Explorer radius
+/bot Explorer radius default
+```
+
+`radius` accepts 2..32 chunks. Without a Bot override, `[runtime].chunk-radius` in `endbot.toml` is used (default 5).
+Setting a radius affects only the named Bot and sends a new request immediately while online, without reconnecting.
+Registered offline Bots can also be configured. The override survives reconnect, rename, and runtime restart;
+`default` removes it and resumes inheritance from the shared setting. Query with `radius` or `status` to see the
+requested value, its source and the server's answer, for example
+`Endbot: Alice: chunk radius 12 (Bot override); server confirmed 10`. Right after a change the server has not answered
+yet, so the reply says `server confirmation pending`; query again to see the confirmed range. An offline Bot shows
+`applies when online`.
+
+Use a smaller range for stationary Bots and a larger request for exploring Bots when appropriate. BDS can clamp either
+request: the current baseline raised a request for 3 to 5. This setting does not change server simulation distance and
+does not itself move a Bot or guarantee terrain generation across an area. See [operator configuration](OPERATIONS.md).
+
 ## Inputs and actions
 
 ```text
@@ -120,6 +243,13 @@ Bedrock equipment path and inventory updates continue to come from BDS; Endbot d
 BDS does not push per-pickup inventory deltas to the picker, so items picked up from the world mid-session become
 visible to inventory-sensitive operations only after a reconnect (login full-sync), not instantly; `drop` against
 an unknown selected slot fails closed with `Selected hotbar slot is empty` instead of guessing.
+
+`use continuous` holds right-click: its first input tick sends the initial air-use interaction, and later ticks send
+simulation-tick interactions in the same authoritative input stream. `use stop` or global `stop` releases it, for example
+to throw a charged trident or shoot a bow. Food use requires vanilla eating conditions. `use once` and `use interval`
+remain short press/release actions; they do not hold long enough to eat or fully charge an item. Switching hotbar slots
+also releases the previous item. Real item outcomes and dimension-transition behavior are tracked in
+[the backlog](BACKLOG.md); historical generic use/release smoke does not cover every item.
 
 `use` means using or holding the selected item in the air, such as food, a bow, or a trident. `interact` is a normal
 right-click on the named block face. It sends the protocol-2193 press, server-authoritative item-interaction tick, and
@@ -183,6 +313,9 @@ Bedrock syntax error):
 /bot Alice attack interval 20
 /bot Alice interact 1 64 2 up
 /bot Alice hotbar 9
+/bot Alice radius
+/bot Alice radius 12
+/bot Alice radius default
 /bot Alice drop stack
 /bot Alice stop
 /bot Alice despawn

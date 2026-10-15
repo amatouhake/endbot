@@ -18,6 +18,44 @@ class ScheduledCallbacks:
 
 
 class DispatchTests(unittest.TestCase):
+    def test_periodic_poll_is_coalesced_and_not_blocked_by_a_slow_command(self):
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        executing, release_command, polled, release_poll, closed = (threading.Event() for _ in range(5))
+        calls = []
+
+        class Service:
+            def poll_mining(self, authorize):
+                calls.append("poll")
+                polled.set()
+                release_poll.wait(1)
+
+            def execute(self, arguments, source):
+                executing.set()
+                release_command.wait(1)
+                return CommandResult(True, ())
+
+            def close(self):
+                calls.append("close")
+                closed.set()
+
+        runner = AsyncCommandRunner(Service(), bridge, lambda source: None)
+        self.addCleanup(runner.close)
+        # A spawn can block the command worker for longer than the mining lease.
+        runner.submit(["Bob", "spawn"], object())
+        self.assertTrue(executing.wait(1))
+        runner.poll()
+        self.assertTrue(polled.wait(1))
+        for _ in range(10):
+            runner.poll()
+        release_poll.set()
+        release_command.set()
+        runner.close()
+        self.assertTrue(closed.wait(1))
+        runner.poll()
+        self.assertEqual(calls, ["poll", "close"])
+
     def test_slow_command_returns_immediately_and_delivers_on_server_thread(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
@@ -57,6 +95,55 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(sender.messages, ["Endbot: done"])
         self.assertEqual(sender.thread, main_thread)
 
+    def test_mining_notices_and_logged_results_reach_console_log_and_sender(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        logged = []
+
+        class Sender:
+            def __init__(self):
+                self.messages = []
+
+            def send_message(self, message):
+                self.messages.append(message)
+
+        sender, offline = Sender(), CommandSource(player_id="00000000-0000-4000-8000-000000000001")
+        player = CommandSource(player_id="00000000-0000-4000-8000-000000000002", sender=sender)
+        console = Sender()
+
+        class Service:
+            def poll_mining(self, authorize):
+                return [(player, "warning", "Endbot: Alice: stopped"),
+                        (offline, "warning", "Endbot: Bob: stopped"),
+                        (CommandSource(sender=console), "warning", "Endbot: Carol: stopped")]
+
+            def execute(self, arguments, source):
+                return CommandResult(True, ("Endbot: Alice: started",), log_level="info")
+
+        runner = AsyncCommandRunner(
+            Service(), bridge, lambda source: source.sender, log=lambda level, message: logged.append((level, message))
+        )
+        self.addCleanup(runner.close)
+        runner.poll()
+        for _ in range(3):
+            scheduled.run_next()
+        runner.submit(["Alice", "destroy", "continuous"], console)
+        scheduled.run_next()
+        # A controller who logged off still has the console log entry; the
+        # console is not shown the same line twice.
+        self.assertEqual(sender.messages, ["Endbot: Alice: stopped"])
+        self.assertEqual(console.messages, [])
+        self.assertEqual(
+            logged,
+            [
+                ("warning", "Endbot: Alice: stopped"),
+                ("warning", "Endbot: Bob: stopped"),
+                ("warning", "Endbot: Carol: stopped"),
+                ("info", "Endbot: Alice: started"),
+            ],
+        )
+
     def test_world_calls_are_marshaled_to_server_thread(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
@@ -80,6 +167,36 @@ class DispatchTests(unittest.TestCase):
 
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, {"identityId": "bot-uuid", "thread": main_thread})
+
+    def test_continuous_retarget_works_after_the_controller_logs_off(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+
+        class World:
+            def resolve_mining(self, identity_id, parameters, sender):
+                return {"sender": sender}
+
+        # The controller is offline: its source no longer resolves to a player.
+        world = ServerThreadWorld(World(), bridge, lambda source: None)
+        offline = CommandSource(player_id="00000000-0000-4000-8000-000000000001")
+        results = {}
+
+        def worker():
+            results["retarget"] = world.resolve_mining("bot-uuid", {"continuous": True}, None)
+            try:
+                world.resolve_mining("bot-uuid", {"coordinates": [0, 0, 0]}, offline)
+            except ValueError as error:
+                results["explicit"] = str(error)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        scheduled.run_next()
+        scheduled.run_next()
+        thread.join(1)
+        self.assertEqual(results["retarget"], {"sender": None})
+        # Commands with Bot-relative coordinates still require their sender.
+        self.assertIn("no longer online", results["explicit"])
 
     def test_look_at_forwards_identity_id_across_the_bridge(self) -> None:
         scheduled = ScheduledCallbacks()
@@ -159,3 +276,42 @@ class DispatchTests(unittest.TestCase):
 
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, ["Endbot plugin is disabled"])
+
+    def test_revoked_then_regranted_queued_command_never_reaches_service(self):
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        epoch = [1]
+        calls, messages, authorization_threads = [], [], []
+        main_thread = threading.get_ident()
+        player = type(
+            "Player",
+            (),
+            {
+                "unique_id": "player-id",
+                "location": object(),
+                "send_message": lambda _, message: messages.append(message),
+            },
+        )()
+
+        def authorize(source):
+            authorization_threads.append(threading.get_ident())
+            self.assertIsNone(source.sender)
+            return source.authorization_revision == epoch[0]
+
+        service = type(
+            "Service", (), {"execute": lambda _, args, source: calls.append(args) or CommandResult(True, ("done",))}
+        )()
+        runner = AsyncCommandRunner(service, bridge, lambda source: player, authorize, lambda sender: epoch[0])
+        self.addCleanup(runner.close)
+        self.assertTrue(runner.submit(["Bot", "despawn"], player))
+        epoch[0] += 2  # Revoke and regrant while the main-thread authorization check is queued.
+        scheduled.run_next()
+        scheduled.run_next()
+        self.assertEqual(calls, [])
+        self.assertIn("permission was revoked", messages[0])
+        self.assertEqual(authorization_threads, [main_thread])
+        self.assertTrue(runner.submit(["Bot", "status"], player))
+        scheduled.run_next()
+        scheduled.run_next()
+        self.assertEqual(calls, [["Bot", "status"]])

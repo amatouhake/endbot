@@ -131,6 +131,27 @@ test('disconnect waits for paused initialization and prevents late client creati
   assert.equal(session.client, undefined)
 })
 
+test('radius changed during initialization controls the first upstream request', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-radius-connect-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  let release
+  const loading = new Promise(resolve => { release = resolve })
+  const client = fakeLiveClient()
+  const session = new BedrockSession(
+    { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
+    { serverHost: 'localhost', chunkRadius: 5, protocolLoader: () => loading,
+      ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'), ownerPublicKeyPath: path.join(directory, 'owner-public.pem') }
+  )
+  t.after(() => session.disconnect('cleanup'))
+  const connecting = session.connect()
+  session.setChunkRadius(12)
+  release({ createClient: () => client })
+  await turn()
+  assert.equal(client.viewDistance, 12)
+  client.emit('spawn')
+  await connecting
+})
+
 test('a rejected disconnect can be retried without reusing the rejected promise', async () => {
   const client = new EventEmitter()
   let attempts = 0
@@ -257,6 +278,7 @@ test('use once releases on the following tick', async t => {
   let resolveRelease
   const released = new Promise(resolve => { resolveRelease = resolve })
   client.queue = (name, packet) => {
+    if (name === 'player_auth_input' && packet.transaction) transactions.push('item_use')
     if (name !== 'inventory_transaction') return
     transactions.push(packet.transaction.transaction_type)
     if (packet.transaction.transaction_type === 'item_release') resolveRelease()
@@ -283,8 +305,11 @@ test('use stop and global stop release an active continuous use immediately', as
   const transactions = []
   const waiters = []
   client.queue = (name, packet) => {
-    if (name !== 'inventory_transaction') return
-    transactions.push(packet.transaction.transaction_type)
+    if (name === 'player_auth_input' && packet.transaction?.data.trigger_type === 'player_input') {
+      transactions.push('item_use')
+    } else if (name === 'inventory_transaction') {
+      transactions.push(packet.transaction.transaction_type)
+    } else return
     waiters.splice(0).forEach(resolve => resolve())
   }
   const nextTransaction = () => new Promise(resolve => waiters.push(resolve))

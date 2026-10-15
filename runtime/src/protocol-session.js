@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { EventEmitter } from 'node:events'
+import { randomUUID } from 'node:crypto'
 
-import { LOOPBACK_HOSTS, serverTransport } from './config.js'
+import { botChunkRadius, LOOPBACK_HOSTS, serverTransport } from './config.js'
 import { discoverServer } from './discovery.js'
 import { createLocalBotAuth } from './local-identity.js'
 import {
@@ -14,8 +15,9 @@ import {
   createBlockInteractionInput,
   createDropTransaction,
   createEntityMouseOver,
+  createMiningAction,
   createReleaseTransaction,
-  createUseTransaction,
+  createUseInput,
   EMPTY_ITEM,
   hasUsableHeldItem,
   serverRotation
@@ -52,6 +54,9 @@ export class BedrockSession extends EventEmitter {
     this.pendingHandledTeleport = false
     this.pendingInteraction = undefined
     this.interactionStopNextTick = undefined
+    this.horizontalVelocity = { x: 0, z: 0 }
+    this.mining = undefined
+    this.pendingBlockActions = []
   }
 
   connect () {
@@ -69,6 +74,7 @@ export class BedrockSession extends EventEmitter {
       throw new Error('Endbot connects to loopback BDS servers only')
     }
     const transport = serverTransport(this.options.transport)
+    this.chunkRadius = botChunkRadius(this.profile.chunkRadius ?? this.options.chunkRadius)
     const protocolModule = await (this.options.protocolLoader?.() ?? import('bedrock-protocol'))
     // Dynamic module loading cannot be aborted. Recheck ownership immediately
     // after it settles so a concurrent disconnect cannot create a late client.
@@ -111,6 +117,8 @@ export class BedrockSession extends EventEmitter {
       skipPing: transport === 'raknet' || Boolean(target),
       connectTimeout: this.options.connectTimeoutMs
     })
+    // Upstream's initial chunk request reads this property, not an option.
+    this.client.viewDistance = this.chunkRadius
     this.#wireClient()
     return await new Promise((resolve, reject) => {
       let settled = false
@@ -127,6 +135,7 @@ export class BedrockSession extends EventEmitter {
         settled = true
         this.client.off('close', closed)
         this.spawned = true
+        this.#requestChunks()
         this.client.queue('serverbound_loading_screen', { type: 2 })
         this.timer = setInterval(() => {
           try {
@@ -152,9 +161,131 @@ export class BedrockSession extends EventEmitter {
 
   selectedHotbarSlot () { return this.hotbarSlot }
 
+  miningStatus () {
+    const job = this.mining ? { ...this.mining, blockPosition: [...this.mining.blockPosition] } : null
+    if (!this.miningLoop) return job
+    return { ...job, state: job?.state === 'active' ? 'active' : 'waiting',
+      reason: job?.state === 'active' ? job.reason : 'waiting for a reachable block',
+      continuous: true, loopId: this.miningLoop.id }
+  }
+
+  startMiningLoop () {
+    this.#assertMiningAvailable()
+    this.stopMining('continuous mining restarted')
+    this.mining = undefined
+    this.miningLoop = { id: randomUUID(), leaseTicks: 0 }
+  }
+
+  continueMining ({ loopId, ...target }) {
+    if (!this.miningLoop || this.miningLoop.id !== loopId) return false
+    if (target.blockPosition !== undefined) this.startMining({ ...target, loopId })
+    this.miningLoop.leaseTicks = 0
+    return true
+  }
+
+  #assertMiningAvailable () {
+    if (!this.client || this.transportClosed || this.client.status !== 4 || !this.position || !this.inputs) {
+      throw new Error('Bot is not online')
+    }
+    if (!this.serverAuthoritativeMining) throw new Error('Destroy requires server-authoritative block breaking')
+  }
+
+  startMining ({ blockPosition, blockRuntimeId, blockName, face = 1, dimension, loopId }) {
+    if (loopId !== undefined && this.miningLoop?.id !== loopId) return
+    this.#assertMiningAvailable()
+    if (!Array.isArray(blockPosition) || blockPosition.length !== 3 ||
+        !blockPosition.every(value => Number.isSafeInteger(value) && Math.abs(value) <= 30_000_000)) {
+      throw new Error('Destroy requires integer block coordinates within world bounds')
+    }
+    if (!Number.isSafeInteger(face) || face < 0 || face > 5) throw new Error('Invalid block face')
+    if (!Number.isSafeInteger(blockRuntimeId) || blockRuntimeId < 0) throw new Error('Invalid block runtime ID')
+    const dimensions = { Overworld: 0, overworld: 0, 'minecraft:overworld': 0,
+      Nether: 1, nether: 1, 'minecraft:nether': 1, TheEnd: 2, end: 2, 'minecraft:the_end': 2, 'minecraft:end': 2 }
+    if (dimension !== undefined && (dimensions[dimension] ?? dimension) !== (dimensions[this.dimension] ?? this.dimension)) {
+      throw new Error('The Bot changed dimension; retry the command')
+    }
+    if (!this.#miningInReach(blockPosition)) throw new Error('Target block is out of reach')
+    if (loopId === undefined) this.miningLoop = undefined
+    if (this.mining?.state === 'active' && this.mining.blockRuntimeId === blockRuntimeId &&
+        this.mining.blockPosition.every((value, index) => value === blockPosition[index])) return
+    this.stopMining('target changed', 'canceled', false, loopId !== undefined)
+    this.#releaseItemUse()
+    this.pendingInteraction = undefined
+    this.mining = { state: 'active', reason: 'waiting for BDS', blockPosition: [...blockPosition], blockRuntimeId,
+      blockName: typeof blockName === 'string' ? blockName : 'unknown', face, ticks: 0 }
+    this.pendingBlockActions.push(createMiningAction('start_break', blockPosition, face))
+  }
+
+  stopMining (reason = 'stopped', state = 'canceled', discard = false, preserveLoop = false) {
+    const looping = this.miningLoop !== undefined
+    if (!preserveLoop) this.miningLoop = undefined
+    if (this.mining?.state === 'active') {
+      const job = this.mining
+      if (discard) this.pendingBlockActions = []
+      else if (job.ticks > 0) this.pendingBlockActions.push(createMiningAction('abort_break', job.blockPosition, job.face))
+      else this.pendingBlockActions = this.pendingBlockActions.filter(action => action.action !== 'start_break')
+      job.state = state
+      job.reason = reason
+    }
+    if (looping && !preserveLoop && this.mining?.state !== 'active') {
+      this.mining = { ...this.mining, blockPosition: this.mining?.blockPosition ?? [], state, reason }
+    }
+    if (discard) this.pendingBlockActions = []
+  }
+
+  #restartMining () {
+    const job = this.mining
+    if (job?.state !== 'active') return
+    if (job.ticks > 0) this.pendingBlockActions.push(createMiningAction('abort_break', job.blockPosition, job.face))
+    else this.pendingBlockActions = this.pendingBlockActions.filter(action => action.action !== 'start_break')
+    this.pendingBlockActions.push(createMiningAction('start_break', job.blockPosition, job.face))
+    job.ticks = 0
+  }
+
+  #miningInReach (blockPosition) {
+    return Math.hypot(...blockPosition.map((value, axis) => {
+      const coordinate = this.position[['x', 'y', 'z'][axis]]
+      return coordinate - Math.max(value, Math.min(coordinate, value + 1))
+    })) <= 5.0
+  }
+
+  #miningTick (inputData) {
+    // The plugin renews this lease while resolving targets. Losing the plugin
+    // or its command worker must stop even an already active break attempt.
+    if (this.miningLoop && ++this.miningLoop.leaseTicks >= 200) this.stopMining('mining controller timed out', 'failed')
+    if (this.mining?.state === 'active') {
+      const job = this.mining
+      // A failed block ends single-block mining; a continuous loop retargets.
+      if (!this.#miningInReach(job.blockPosition)) this.stopMining('target moved out of reach', 'failed', false, true)
+      else if (job.ticks >= 12_000) this.stopMining('timed out waiting for BDS to change target', 'failed', false, true)
+      else {
+        // With server-authoritative breaking BDS tracks progress itself after
+        // start_break. A per-tick continue_break on the same block makes BDS
+        // stop and restart the crack, so other players see it flicker.
+        job.ticks += 1
+        if (job.ticks % 5 === 1) this.client.queue('animate', {
+          action_id: 'swing_arm', runtime_entity_id: this.client.entityId, data: 0, has_swing_source: false
+        })
+      }
+    }
+    if (!this.pendingBlockActions.length) return undefined
+    inputData.push('block_action')
+    return this.pendingBlockActions.splice(0)
+  }
+
+  setChunkRadius (value) {
+    this.chunkRadius = botChunkRadius(value)
+    this.serverChunkRadius = undefined
+    if (!this.client) return
+    this.client.viewDistance = this.chunkRadius
+    if (this.spawned && !this.disconnecting && !this.transportClosed && this.client.status === 4) this.#requestChunks()
+  }
+
   selectHotbar (slot) {
     if (!Number.isSafeInteger(slot) || slot < 0 || slot > 8) throw new Error('Hotbar slot must be from 1 to 9')
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
+    this.#restartMining()
+    this.#releaseItemUse()
     this.hotbarSlot = slot
     this.#selectHeldItem()
     this.client.queue('mob_equipment', {
@@ -197,6 +328,7 @@ export class BedrockSession extends EventEmitter {
 
   dropSelected (stack) {
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
+    this.#releaseItemUse()
     this.client.queue('inventory_transaction', createDropTransaction({
       hotbarSlot: this.hotbarSlot,
       heldItem: this.heldItem,
@@ -213,6 +345,8 @@ export class BedrockSession extends EventEmitter {
 
   disconnect (reason = 'Endbot disconnect') {
     if (this.disconnectPromise) return this.disconnectPromise
+    this.stopMining('disconnected')
+    if (this.pendingBlockActions.length && this.client?.status === 4 && !this.transportClosed) this.#sendTick()
     this.disconnecting = true
     clearInterval(this.timer)
     this.disconnectPromise = this.#disconnect(reason).finally(() => { this.disconnectPromise = undefined })
@@ -253,21 +387,64 @@ export class BedrockSession extends EventEmitter {
   }
 
   #wireClient () {
+    this.client.on('chunk_radius_update', packet => {
+      if (Number.isSafeInteger(packet.chunk_radius) && packet.chunk_radius > 0) {
+        this.serverChunkRadius = packet.chunk_radius
+      }
+    })
     this.client.on('packet_violation_warning', packet => {
       this.#fail(new Error(`BDS rejected a malformed protocol packet: ${packet.reason}`))
     })
     this.client.on('start_game', packet => {
       this.position = vector(packet.player_position)
+      this.dimension = packet.dimension
+      this.serverAuthoritativeMining = packet.server_authoritative_block_breaking === true
       this.onGround = true
       this.verticalVelocity = 0
       this.#setAuthoritativeLook(packet)
       this.client.queue('serverbound_loading_screen', { type: 1 })
+    })
+    this.client.on('change_dimension', packet => {
+      this.stopMining('dimension changed', 'canceled', true, true)
+      // Discard all old-dimension prediction/targets before acknowledging the
+      // transition. Otherwise BDS keeps waiting while we send the old position.
+      this.activeItemUse = undefined
+      this.releaseItemUseNextTick = false
+      this.pendingInteraction = undefined
+      this.interactionStopNextTick = undefined
+      this.entities.clear()
+      this.dimension = packet.dimension
+      this.position = vector(packet.position)
+      this.horizontalVelocity = { x: 0, z: 0 }
+      this.verticalVelocity = -0.08
+      this.onGround = false
+      this.pendingHandledTeleport = true
+      const loading = { loading_screen_id: packet.loading_screen_id }
+      this.client.queue('serverbound_loading_screen', { type: 1, ...loading })
+      this.#requestChunks()
+      this.client.queue('player_action', {
+        runtime_entity_id: this.client.entityId,
+        action: 'dimension_change_ack',
+        position: { x: 0, y: 0, z: 0 },
+        result_position: { x: 0, y: 0, z: 0 },
+        face: -1
+      })
+      this.client.queue('serverbound_loading_screen', { type: 2, ...loading })
+    })
+    this.client.on('set_entity_motion', packet => {
+      if (String(packet.runtime_entity_id) !== String(this.client.entityId)) return
+      this.horizontalVelocity = { x: packet.velocity.x, z: packet.velocity.z }
+      this.verticalVelocity = packet.velocity.y
+      if (packet.velocity.y !== 0) this.onGround = false
     })
     this.client.on('correct_player_move_prediction', packet => {
       if (packet.prediction_type !== 'player') return
       this.position = vector(packet.position)
       this.onGround = Boolean(packet.on_ground)
       this.verticalVelocity = this.onGround ? 0 : Number(packet.delta?.y ?? this.verticalVelocity ?? 0)
+      // A correction replaces the prediction; its delta includes commanded
+      // movement and must not be added again as a fresh knockback impulse.
+      this.horizontalVelocity = { x: 0, z: 0 }
       const next = BigInt(packet.tick) + 1n
       if (next > this.tick) this.tick = next
     })
@@ -276,6 +453,8 @@ export class BedrockSession extends EventEmitter {
         this.position = vector(packet.position)
         this.onGround = Boolean(packet.on_ground)
         if (packet.mode === 'teleport') {
+          this.stopMining('teleported', 'canceled', false, true)
+          this.horizontalVelocity = { x: 0, z: 0 }
           this.pendingHandledTeleport = true
           this.verticalVelocity = this.onGround ? 0 : -0.08
         } else if (this.onGround) {
@@ -288,6 +467,12 @@ export class BedrockSession extends EventEmitter {
         const entity = this.entities.get(String(packet.runtime_id))
         if (entity) entity.position = vector(packet.position)
       }
+    })
+    this.client.on('update_block', packet => {
+      if (packet.layer !== 0 || this.mining?.state !== 'active') return
+      const job = this.mining
+      if (job.blockPosition.every((value, index) => value === packet.position[['x', 'y', 'z'][index]]) &&
+          packet.block_runtime_id !== job.blockRuntimeId) this.stopMining('BDS changed target block', 'completed', false, true)
     })
     for (const event of ['add_player', 'add_entity']) {
       this.client.on(event, packet => this.entities.set(String(packet.runtime_id), {
@@ -333,8 +518,8 @@ export class BedrockSession extends EventEmitter {
     })
     this.client.on('mob_equipment', packet => {
       if (String(packet.runtime_entity_id) !== String(this.client.entityId)) return
-      this.heldItem = packet.item
       this.hotbarSlot = packet.selected_slot
+      this.#setHeldItem(packet.item)
     })
     this.client.on('set_health', packet => {
       if (Number(packet.health) <= 0) this.#requestRespawn()
@@ -352,6 +537,7 @@ export class BedrockSession extends EventEmitter {
       this.#fail(new Error(`Kicked: ${packet.message}`))
     })
     this.client.on('close', reason => {
+      this.stopMining('connection closed', 'canceled', true)
       clearInterval(this.timer)
       this.transportClosed = true
       this.#emitClose(this.terminalError ?? new Error(`Connection closed: ${reason || 'unknown reason'}`))
@@ -378,6 +564,11 @@ export class BedrockSession extends EventEmitter {
     this.respawnPending = true
     this.respawnReadySent = false
     this.inputs?.stopAll()
+    this.stopMining('respawning', 'canceled', true)
+    this.activeItemUse = undefined
+    this.releaseItemUseNextTick = false
+    this.pendingInteraction = undefined
+    this.interactionStopNextTick = undefined
     this.#sendRespawnAction()
   }
 
@@ -404,6 +595,7 @@ export class BedrockSession extends EventEmitter {
     if (packet.state !== 1) return
     this.position = vector(packet.position)
     this.verticalVelocity = 0
+    this.horizontalVelocity = { x: 0, z: 0 }
     this.onGround = true
     if (this.respawnPending && this.spawned) this.#sendRespawnAction()
     this.respawnPending = false
@@ -428,6 +620,11 @@ export class BedrockSession extends EventEmitter {
     if (!state.movement) speed = 0
     this.position.x += (-Math.sin(radians) * move.z + Math.cos(radians) * move.x) * speed
     this.position.z += (Math.cos(radians) * move.z + Math.sin(radians) * move.x) * speed
+    this.position.x += this.horizontalVelocity.x
+    this.position.z += this.horizontalVelocity.z
+    const drag = this.onGround ? 0.6 : 0.91
+    this.horizontalVelocity.x *= drag
+    this.horizontalVelocity.z *= drag
     const inputData = []
     if (move.z > 0) inputData.push('up')
     if (move.z < 0) inputData.push('down')
@@ -459,6 +656,7 @@ export class BedrockSession extends EventEmitter {
     }
     if (this.onGround) inputData.push('vertical_collision')
     let transaction
+    const blockActions = this.#miningTick(inputData)
     if (this.pendingInteraction) {
       const interaction = this.pendingInteraction
       this.pendingInteraction = undefined
@@ -469,14 +667,20 @@ export class BedrockSession extends EventEmitter {
     if (state.triggered.includes('attack')) this.#attack(inputData, state)
     if (state.triggered.includes('use') && !this.activeItemUse && hasUsableHeldItem(this.heldItem)) {
       const mode = this.inputs.actionMode('use') ?? 'once'
-      inputData.push('start_using_item')
-      this.activeItemUse = { hotbarSlot: this.hotbarSlot, heldItem: this.heldItem, mode }
-      this.releaseItemUseNextTick = mode !== 'continuous'
-      this.client.queue('inventory_transaction', createUseTransaction({
+      // Block interaction and air use share one packed transaction per tick.
+      this.activeItemUse = { hotbarSlot: this.hotbarSlot, heldItem: this.heldItem, mode, starting: true }
+    }
+    if (this.activeItemUse && !transaction) {
+      if (this.activeItemUse.starting) inputData.push('start_using_item')
+      inputData.push('item_interact')
+      transaction = createUseInput({
         hotbarSlot: this.hotbarSlot,
         heldItem: this.heldItem,
-        position: this.position
-      }))
+        position: this.position,
+        triggerType: this.activeItemUse.starting ? 'player_input' : 'simulation_tick'
+      })
+      this.activeItemUse.starting = false
+      this.releaseItemUseNextTick = this.activeItemUse.mode !== 'continuous'
     }
     this.client.queue('player_auth_input', {
       pitch: state.pitch,
@@ -493,7 +697,7 @@ export class BedrockSession extends EventEmitter {
       delta: { x: this.position.x - previous.x, y: this.position.y - previous.y, z: this.position.z - previous.z },
       transaction,
       item_stack_request: undefined,
-      block_action: undefined,
+      block_action: blockActions,
       vehicle_rotation: undefined,
       predicted_vehicle: undefined,
       analogue_move_vector: move,
@@ -507,6 +711,10 @@ export class BedrockSession extends EventEmitter {
     const y = -Math.sin(pitch * Math.PI / 180)
     const horizontal = Math.cos(pitch * Math.PI / 180)
     return { x: -Math.sin(yaw * Math.PI / 180) * horizontal, y, z: Math.cos(yaw * Math.PI / 180) * horizontal }
+  }
+
+  #requestChunks () {
+    this.client.queue('request_chunk_radius', { chunk_radius: this.chunkRadius, max_radius: this.chunkRadius })
   }
 
   #setAuthoritativeLook (packet) {
@@ -556,7 +764,25 @@ export class BedrockSession extends EventEmitter {
   }
 
   #selectHeldItem () {
-    this.heldItem = this.inventory[this.hotbarSlot] ?? EMPTY_ITEM
+    this.#setHeldItem(this.inventory[this.hotbarSlot] ?? EMPTY_ITEM)
+  }
+
+  #setHeldItem (item) {
+    // Pickups into an empty selected slot and broken tools change the held item;
+    // BDS restarts break progress for a new tool, so the runtime does too.
+    if (Number(this.heldItem.network_id) !== Number(item.network_id)) this.#restartMining()
+    this.heldItem = item
+    if (!this.activeItemUse) return
+    const use = this.activeItemUse
+    if (use.hotbarSlot !== this.hotbarSlot || !hasUsableHeldItem(item) ||
+        ['network_id', 'metadata', 'stack_id'].some(key => use.heldItem[key] !== item[key])) {
+      // The server consumed/replaced the item. Do not release or keep using
+      // the stale stack; continuous mode may start the current item next tick.
+      this.activeItemUse = undefined
+      this.releaseItemUseNextTick = false
+    } else {
+      use.heldItem = item
+    }
   }
 
   #target (state) {

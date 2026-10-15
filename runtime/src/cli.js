@@ -19,7 +19,9 @@ const config = loadConfig(configPath)
 const token = loadOrCreateControlToken(config.controlTokenPath)
 prepareOwnerKeyPair(config.ownerPrivateKeyPath, config.ownerPublicKeyPath)
 const store = new ProfileStore(path.join(config.dataDirectory, 'profiles'))
-const lifecycle = new BotLifecycle({ store, sessionFactory: createSessionFactory(config), reconnect: config.reconnect })
+const lifecycle = new BotLifecycle({
+  store, sessionFactory: createSessionFactory(config), chunkRadius: config.chunkRadius, reconnect: config.reconnect
+})
 const control = new ControlServer({
   host: config.controlHost,
   port: config.controlPort,

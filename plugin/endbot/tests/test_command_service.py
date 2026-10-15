@@ -1,6 +1,6 @@
 import unittest
 
-from endstone_endbot.commands import BotCommandService
+from endstone_endbot.commands import UNREACHABLE_POLL_LIMIT, BotCommandService
 from endstone_endbot.control import RuntimeControlError
 
 
@@ -38,6 +38,23 @@ class FakeControl:
             return value
         if operation == "hotbar":
             return {**self.bots[name], "selectedHotbarSlot": parameters.get("slot", 1)}
+        if operation == "radius":
+            if "value" in parameters:
+                value = parameters["value"]
+                self.bots[name] = {
+                    **self.bots[name],
+                    "chunkRadius": 5 if value == "default" else value,
+                    "chunkRadiusSource": "default" if value == "default" else "bot",
+                    "serverChunkRadius": None,
+                }
+            return {"chunkRadius": 5, "chunkRadiusSource": "default", "serverChunkRadius": None, **self.bots[name]}
+        if operation == "mine":
+            if parameters.get("mode") == "start":
+                self.bots[name]["mining"] = {
+                    "state": "waiting", "continuous": True, "loopId": f"loop-{len(self.calls)}"
+                }
+            elif parameters.get("mode") == "stop":
+                self.bots[name]["mining"] = {"state": "canceled"}
         return {**self.bots[name], "connectionState": "online"}
 
 
@@ -64,6 +81,17 @@ class FakeWorld:
     def resolve_interaction(self, identity_id, parameters, sender):
         return {"blockPosition": [1, 64, 2], "blockRuntimeId": 42, "face": parameters["face"]}
 
+    def resolve_mining(self, identity_id, parameters, sender):
+        return {
+            "blockPosition": [1, 64, 2],
+            "blockRuntimeId": 42,
+            "blockName": "minecraft:stone",
+            "face": parameters.get("face", 1),
+            "yaw": 0.0,
+            "pitch": 20.0,
+            "dimension": "Overworld",
+        }
+
     def queue_spawn_placement(self, identity_id, placement):
         self.placements.append((identity_id, placement))
 
@@ -89,11 +117,175 @@ class CommandServiceTests(unittest.TestCase):
         self.world = FakeWorld()
         self.service = BotCommandService(self.control, self.world)
 
+    def test_continuous_mining_retargets_then_waits_without_restarting_active_block(self):
+        self.service.execute(["Alice", "spawn"])
+        source = object()
+        reply = self.service.execute(["Alice", "destroy", "continuous"], source)
+        self.assertIn("destroy continuous started", reply.message)
+        loop_id = self.control.bots["Alice"]["mining"]["loopId"]
+        self.service.poll_mining(lambda sender: sender is source)
+        self.assertEqual(self.control.calls[-1][1]["blockPosition"], [1, 64, 2])
+        self.assertEqual(self.control.calls[-1][1]["loopId"], loop_id)
+        self.control.bots["Alice"]["mining"]["state"] = "active"
+        self.world.resolve_mining = lambda *args: self.fail("active blocks must not be restarted")
+        self.service.poll_mining(lambda _: True)
+        self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "continue", "loopId": loop_id}))
+        self.control.bots["Alice"]["mining"]["state"] = "waiting"
+        self.world.resolve_mining = lambda *args: None
+        self.service.poll_mining(lambda _: True)
+        self.assertEqual(self.control.calls[-1][1]["mode"], "continue")
+        status = self.service.execute(["Alice", "status"]).message
+        self.assertIn("destroy continuous waiting for a block in sight", status)
+        self.service.execute(["Alice", "destroy", "stop"])
+        before = len(self.control.calls)
+        self.service.poll_mining(lambda _: True)
+        self.assertEqual(len(self.control.calls), before)
+
+    def test_continuous_mining_keeps_waiting_when_runtime_rejects_a_target(self):
+        self.service.execute(["Alice", "spawn"])
+        self.service.execute(["Alice", "destroy", "continuous"])
+        loop_id = self.control.bots["Alice"]["mining"]["loopId"]
+        request = self.control.request
+
+        def reject_targets(operation, **parameters):
+            if operation == "mine" and "blockPosition" in parameters:
+                self.control.calls.append((operation, parameters))
+                raise RuntimeControlError("invalid_request", "Target block is out of reach")
+            return request(operation, **parameters)
+
+        self.control.request = reject_targets
+        self.service.poll_mining(lambda _: True)
+        self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "continue", "loopId": loop_id}))
+        self.service.poll_mining(lambda _: True)
+        self.assertNotIn("stop", [call[1].get("mode") for call in self.control.calls if call[0] == "mine"])
+        # A briefly unreachable runtime (e.g. Windows WinError 10048) is retried;
+        # one that stays unreachable for about a lease ends the loop.
+        failures = {"left": 3}
+
+        def flaky(operation, **parameters):
+            if failures["left"]:
+                failures["left"] -= 1
+                raise RuntimeControlError("unavailable", "runtime unavailable: [WinError 10048]")
+            return reject_targets(operation, **parameters)
+
+        self.control.request = flaky
+        for _ in range(4):
+            self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.assertNotIn("stop", [call[1].get("mode") for call in self.control.calls if call[0] == "mine"])
+
+        def unavailable(operation, **parameters):
+            self.control.calls.append((operation, parameters))
+            if operation == "mine" and parameters.get("mode") == "stop":
+                return {}
+            raise RuntimeControlError("unavailable", "runtime unavailable")
+
+        self.control.request = unavailable
+        for _ in range(UNREACHABLE_POLL_LIMIT - 1):
+            self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertIn("runtime unavailable", notices[0][2])
+        self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "stop", "loopId": loop_id}))
+
+    def test_continuous_retarget_does_not_need_the_controller(self):
+        self.service.execute(["Alice", "spawn"])
+        self.service.execute(["Alice", "destroy", "continuous"], object())
+        senders = []
+        resolve = self.world.resolve_mining
+
+        def record(identity, parameters, sender):
+            senders.append(sender)
+            return resolve(identity, parameters, sender)
+
+        self.world.resolve_mining = record
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.assertEqual(senders, [None])
+
+    def test_mining_notifies_only_abnormal_ends(self):
+        self.service.execute(["Alice", "spawn"])
+        source = object()
+        # Single block: success is silent, a failure is reported once.
+        self.service.execute(["Alice", "destroy"], source)
+        stone = {"blockPosition": [1, 64, 2], "blockName": "minecraft:stone"}
+        self.control.bots["Alice"]["mining"] = {**stone, "state": "active"}
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.control.bots["Alice"]["mining"] = {**stone, "state": "completed", "reason": "BDS changed target block"}
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.service.execute(["Alice", "destroy"], source)
+        self.control.bots["Alice"]["mining"] = {**stone, "state": "failed", "reason": "target moved out of reach"}
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertEqual(notices, [(source, "warning", "Endbot: Alice: destroy stopped: target out of reach")])
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        # Continuous: a commanded stop is silent, death is reported.
+        reply = self.service.execute(["Alice", "destroy", "continuous"], source)
+        self.assertEqual(reply.log_level, "info")
+        self.control.bots["Alice"]["mining"] = {"state": "canceled", "reason": "stopped"}
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.service.execute(["Alice", "destroy", "continuous"], source)
+        self.control.bots["Alice"]["mining"] = {"state": "canceled", "reason": "respawning"}
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertEqual(notices, [(source, "warning", "Endbot: Alice: destroy continuous stopped: canceled by death")])
+        # Revocation ends the loop and says why.
+        self.service.execute(["Alice", "destroy", "continuous"], source)
+        notices = self.service.poll_mining(lambda _: False)
+        self.assertIn("control permission revoked", notices[0][2])
+
+    def test_continuous_mining_stops_on_revocation_and_does_not_adopt_new_session(self):
+        self.service.execute(["Alice", "spawn"])
+        self.service.execute(["Alice", "destroy", "continuous"])
+        loop_id = self.control.bots["Alice"]["mining"]["loopId"]
+        self.service.poll_mining(lambda _: False)
+        self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "stop", "loopId": loop_id}))
+        self.service.execute(["Alice", "destroy", "continuous"])
+        self.control.bots["Alice"]["mining"]["loopId"] = "replacement-session"
+        self.service.poll_mining(lambda _: True)
+        self.assertEqual(self.control.calls[-1][0], "status")
+        self.service.close()
+        self.assertEqual(self.control.calls[-1][0], "status")
+
+    def test_continuous_mining_close_and_world_failure_stop_only_owned_loop(self):
+        self.service.execute(["Alice", "spawn"])
+        for shutdown in (False, True):
+            self.service.execute(["Alice", "destroy", "continuous"])
+            if shutdown:
+                self.service.close()
+            else:
+                def fail(*args):
+                    raise ValueError("source is offline")
+                self.world.resolve_mining = fail
+                self.service.poll_mining(lambda _: True)
+            self.assertEqual(self.control.calls[-1][1]["mode"], "stop")
+
     def test_spawn_queues_world_placement_after_profile_creation(self) -> None:
         result = self.service.execute(["Alice", "spawn"], object())
         self.assertIn("created and connecting", result.message)
         self.assertEqual([call[0] for call in self.control.calls], ["status", "spawn"])
         self.assertEqual(self.world.placements[0][1]["coordinates"], [1, 2, 3])
+
+    def test_radius_reports_requested_source_and_server_confirmation(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        updated = self.service.execute(["Alice", "radius", "12"])
+        self.assertEqual(self.control.calls[-1], ("radius", {"name": "Alice", "value": 12}))
+        # Not yet online: the request is stored and sent on connection.
+        self.assertIn("Alice: chunk radius 12 (Bot override); applies when online", updated.message)
+        self.control.bots["Alice"]["connectionState"] = "online"
+        pending = self.service.execute(["Alice", "radius"])
+        self.assertIn("server confirmation pending", pending.message)
+        self.control.bots["Alice"]["serverChunkRadius"] = 10
+        query = self.service.execute(["Alice", "radius"])
+        self.assertIn("chunk radius 12 (Bot override); server confirmed 10", query.message)
+        reset = self.service.execute(["Alice", "radius", "default"])
+        self.assertIn("chunk radius 5 (shared default)", reset.message)
+
+    def test_mining_starts_authoritative_target_and_stop_skips_world_resolution(self):
+        self.service.execute(["Alice", "spawn"], object())
+        reply = self.service.execute(["Alice", "destroy", "1", "64", "2"], object())
+        self.assertIn("Alice: destroying minecraft:stone at 1 64 2; see status for the result", reply.message)
+        self.assertEqual(self.control.calls[-1][0], "mine")
+        self.assertEqual(self.control.calls[-1][1]["blockRuntimeId"], 42)
+        self.world.resolve_mining = lambda *args: self.fail("stop must not resolve a new target")
+        stopped = self.service.execute(["Alice", "destroy", "stop"], object())
+        self.assertIn("destroy stopped", stopped.message)
+        self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "stop"}))
 
     def test_console_spawn_without_coordinates_leaves_placement_to_bds(self) -> None:
         console = type("Console", (), {"is_console": True})()
@@ -233,7 +425,7 @@ class CommandServiceTests(unittest.TestCase):
             ["status", "look"],
         )
         self.assertEqual(self.control.calls[-1], ("look", {"name": "Alice", "yaw": 90.0, "pitch": -10.0}))
-        self.assertIn("online", result.message)
+        self.assertIn("look set to yaw=90.0 pitch=-10.0", result.message)
 
     def test_player_primitives_route_authoritative_parameters(self) -> None:
         self.service.execute(["Alice", "spawn"], object())
@@ -253,6 +445,90 @@ class CommandServiceTests(unittest.TestCase):
 
         self.service.execute(["Alice", "drop", "stack"], object())
         self.assertEqual(self.control.calls[-1], ("drop", {"name": "Alice", "stack": True}))
+
+    def test_action_replies_identify_the_operation_and_parameters(self):
+        self.service.execute(["Alice", "spawn"], object())
+        cases = [
+            (["move", "forward"], "movement set to forward"),
+            (["move", "stop"], "movement stopped"),
+            (["jump"], "jump once requested"),
+            (["attack", "continuous"], "attack continuous started"),
+            (["use", "interval", "20"], "use started every 20 ticks"),
+            (["use", "stop"], "use stopped"),
+            (["sprint", "on"], "sprint on"),
+            (["sneak", "off"], "sneak off"),
+            (["stop"], "movement and actions stopped"),
+            (["interact", "1", "64", "2", "up"], "block interaction requested at 1 64 2 face=up"),
+        ]
+        for args, expected in cases:
+            with self.subTest(args=args):
+                reply = self.service.execute(["Alice", *args], object())
+                self.assertIn("Alice", reply.message)
+                self.assertIn(expected, reply.message)
+                self.assertNotEqual(reply.message, "Endbot: Alice online")
+
+    def test_failed_action_identifies_bot_and_operation(self):
+        def unavailable(operation, **parameters):
+            raise RuntimeControlError("not_online", "Bot is offline")
+
+        self.control.request = unavailable
+        result = self.service.execute(["Alice", "move", "forward"], object())
+        self.assertEqual(result.message, "Endbot: Alice: move failed: Bot is offline")
+
+    def test_lifecycle_replies_identify_change_instead_of_only_state(self):
+        self.service.execute(["Alice", "spawn"], object())
+        self.assertIn("Alice: renamed to Bob", self.service.execute(["Alice", "rename", "Bob"], object()).message)
+        for operation in ("resume", "reconnect", "despawn"):
+            self.assertIn(f"{operation} requested", self.service.execute(["Bob", operation], object()).message)
+        self.assertIn("profile registration removed", self.service.execute(["Bob", "forget"], object()).message)
+
+    def test_mining_status_uses_player_facing_wording(self):
+        stone = {"blockPosition": [0, 64, 2], "blockName": "minecraft:stone"}
+        cases = [
+            ({**stone, "state": "active", "reason": "waiting for BDS"}, "destroying minecraft:stone at 0 64 2"),
+            (
+                {**stone, "state": "waiting", "continuous": True, "loopId": "x"},
+                "destroy continuous waiting for a block in sight (last: minecraft:stone at 0 64 2)",
+            ),
+            (
+                {**stone, "state": "completed", "reason": "BDS changed target block"},
+                "last destroy: block broken or changed (minecraft:stone at 0 64 2)",
+            ),
+            (
+                {**stone, "state": "failed", "reason": "timed out waiting for BDS to change target"},
+                "last destroy: failed: block did not break within 10 minutes",
+            ),
+            ({**stone, "state": "canceled", "reason": "look changed"}, "last destroy: canceled by look"),
+            ({**stone, "state": "canceled", "reason": "connection closed"}, "last destroy: canceled: Bot disconnected"),
+        ]
+        self.service.execute(["Alice", "spawn"], object())
+        for mining, expected in cases:
+            with self.subTest(mining=mining):
+                self.control.bots["Alice"]["mining"] = mining
+                message = self.service.execute(["Alice", "status"], object()).message
+                self.assertIn(expected, message)
+                self.assertNotIn("BDS", message)
+
+    def test_bot_replies_share_one_prefix_including_syntax_errors(self):
+        self.service.execute(["Alice", "spawn"], object())
+        for args in (
+            ["spawn"],
+            ["hotbar"],
+            ["hotbar", "2"],
+            ["drop"],
+            ["radius"],
+            ["destroy"],
+            ["destroy", "1", "64"],
+            ["move", "sideways"],
+            ["status"],
+        ):
+            with self.subTest(args=args):
+                self.assertTrue(
+                    self.service.execute(["Alice", *args], object()).message.startswith("Endbot: Alice: ")
+                )
+        renamed = self.service.execute(["Alice", "rename", "Bob"], object()).message
+        self.assertTrue(renamed.startswith("Endbot: Alice: "))
+        self.assertEqual(self.service.execute(["help", "nope"]).message.split(":")[0], "Endbot")
 
 
 if __name__ == "__main__":

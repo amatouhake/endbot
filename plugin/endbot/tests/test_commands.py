@@ -12,6 +12,18 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertTrue(result.handled)
         self.assertEqual(result.message, "Endbot: pong")
 
+    def test_radius_query_override_reset_and_bounds(self) -> None:
+        self.assertEqual(parse_command(["Alice", "radius"]).parameters, {})
+        self.assertEqual(parse_command(["Alice", "radius", "12"]).parameters, {"value": 12})
+        self.assertEqual(parse_command(["Alice", "radius", "DEFAULT"]).parameters, {"value": "default"})
+        for value in ("1", "33", "2.5", "auto", "true"):
+            with self.subTest(value=value):
+                result = self.service.execute(["Alice", "radius", value])
+                self.assertIn("Endbot:", result.message)
+                self.assertNotIn("runtime control is not configured", result.message)
+        detail = self.service.execute(["help", "radius"])
+        self.assertIn("/bot <name> radius <2-32|default>", detail.messages)
+
     def test_unknown_or_missing_action_is_not_handled(self) -> None:
         for arguments in (["status"], ["ping", "extra"]):
             with self.subTest(arguments=arguments):
@@ -131,6 +143,21 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertEqual(command.parameters["facingCoordinates"], [0.0, 80.0, 10.0])
 
     def test_hotbar_interact_and_drop_grammar(self) -> None:
+        self.assertEqual(parse_command(["Alice", "destroy"]).parameters, {})
+        self.assertEqual(parse_command(["Alice", "destroy", "continuous"]).parameters, {"mode": "continuous"})
+        self.assertEqual(parse_command(["Alice", "destroy", "stop"]).parameters, {"mode": "stop"})
+        # Same mode words as jump/attack/use; once is the default and interval is rejected clearly.
+        self.assertEqual(parse_command(["Alice", "destroy", "ONCE"]).parameters, {})
+        with self.assertRaisesRegex(ValueError, "no interval mode"):
+            parse_command(["Alice", "destroy", "interval", "20"])
+        with self.assertRaisesRegex(ValueError, "once, continuous, stop"):
+            parse_command(["Alice", "destroy", "start"])
+        mining = parse_command(["Alice", "destroy", "~", "~-1", "-2", "up"])
+        self.assertEqual(mining.parameters["face"], 1)
+        self.assertEqual(mining.parameters["coordinates"][1], ("relative", -1.0))
+        for tail in (["one"], ["1", "64"], ["1", "64", "2", "badface"], ["nan", "64", "2"]):
+            with self.assertRaises(ValueError):
+                parse_command(["Alice", "destroy", *tail])
         self.assertEqual(parse_command(["Alice", "hotbar"]).parameters, {})
         self.assertEqual(parse_command(["Alice", "hotbar", "9"]).parameters, {"slot": 9})
         with self.assertRaisesRegex(ValueError, "1 to 9"):

@@ -87,7 +87,7 @@ clause is omitted, so a blank `for` means until stopped. Use item `once` opens a
 For example, three charged bow shots are `interval...` with interval 30, hold 20, for 80. Move opens one form for
 `move <direction> [for <ticks>]`; quick single-tap movement is left to the typed command.
 Every command a form or button runs is echoed once in chat as its typed form, for example
-`→ /bot Alice use interval 30 hold 20 for 80`, before the normal reply. Menu navigation is not echoed.
+`/bot Alice use interval 30 hold 20 for 80` in gray, before the normal reply. Menu navigation is not echoed.
 
 Forms are only another way to type commands: every button or form submission becomes the equivalent `/bot` arguments
 (for example `/bot Alice attack interval 40`) and goes through the same permission check, command queue, parser and

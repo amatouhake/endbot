@@ -102,8 +102,9 @@ class FormPresenter:
             return
         for command in action.commands:
             if command[-1:] != ("menu",):
-                # Show the typed equivalent, so forms also teach the command.
-                player.send_message(f"{DIM}→ /bot {' '.join(command)}{RESET}")
+                # Show the typed equivalent, so forms also teach the command. ASCII only:
+                # the Bedrock chat font lacks symbols such as arrows.
+                player.send_message(f"{DIM}/bot {' '.join(command)}{RESET}")
             self._submit(player, list(command))
 
     def _on_modal(self, player, screen, response) -> None:

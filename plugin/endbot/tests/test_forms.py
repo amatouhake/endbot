@@ -451,7 +451,7 @@ class PresenterTests(unittest.TestCase):
         # Commands from forms echo their typed form; navigation does not.
         self.assertEqual(
             [strip_colors(message) for message in self.player.messages],
-            ["\u2192 /bot Alice tp Steve", "\u2192 /bot Alice stop", "\u2192 /bot Alice hotbar 2"],
+            ["/bot Alice tp Steve", "/bot Alice stop", "/bot Alice hotbar 2"],
         )
 
     def test_modal_errors_reply_instead_of_submitting(self):
@@ -481,7 +481,7 @@ class PresenterTests(unittest.TestCase):
         self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps(["30", "20", "80"]))
         self.assertEqual(self.submitted, [["Alice", "use", "interval", "30", "hold", "20", "for", "80"]])
         self.assertEqual(
-            strip_colors(self.player.messages[-1]), "\u2192 /bot Alice use interval 30 hold 20 for 80"
+            strip_colors(self.player.messages[-1]), "/bot Alice use interval 30 hold 20 for 80"
         )
 
     def test_closing_an_input_or_confirm_form_returns_to_its_category(self):

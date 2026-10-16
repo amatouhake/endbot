@@ -71,10 +71,10 @@ Players can run the common operations from native Bedrock forms instead of typin
 
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
-Movement (forward, backward, left, right, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy),
+Movement (forward, backward, left, right, stop moving, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy),
 Inventory (hotbar, drop) and Bot (reconnect, despawn with a confirmation, radius and the full status text). Group names
 follow Minecraft's control settings. An offline Bot offers resume/spawn and radius.
-Input forms use dropdowns, sliders and text fields; coordinate fields accept the same `~` forms as the command, and their
+Input forms use dropdowns, sliders and text fields; closing one (or cancelling the despawn confirmation) returns to the screen it was opened from; coordinate fields accept the same `~` forms as the command, and their
 labels say what `~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot` again to
 continue.
 

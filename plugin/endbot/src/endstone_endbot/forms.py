@@ -211,6 +211,7 @@ def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...
                     Button("Backward", run((name, "move", "backward"))),
                     Button("Left", run((name, "move", "left"))),
                     Button("Right", run((name, "move", "right"))),
+                    Button("Stop moving", run((name, "move", "stop"))),
                     Button("Jump...", Show(action_modal(name, "jump"))),
                     Button("Sprint / sneak...", Show(flags_modal(name))),
                 ),

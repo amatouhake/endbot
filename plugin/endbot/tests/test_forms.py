@@ -86,7 +86,7 @@ class ScreenTests(unittest.TestCase):
         )
         for item in screen.items:
             if isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
-                self.assertLessEqual(len(item.action.screen.items), 7)
+                self.assertLessEqual(len(item.action.screen.items), 8)
                 self.assertEqual(item.action.screen.items[-1].text, "Back to Bot")
 
     def test_long_bot_names_keep_state_first_on_one_line(self):
@@ -114,6 +114,7 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(actions["Stop everything"], forms.Run((("Alice", "stop"),)))
         self.assertEqual(actions["Forward"], forms.Run((("Alice", "move", "forward"),)))
         self.assertEqual(actions["Backward"], forms.Run((("Alice", "move", "backward"),)))
+        self.assertEqual(actions["Stop moving"], forms.Run((("Alice", "move", "stop"),)))
         self.assertEqual(actions["Reconnect"], forms.Run((("Alice", "reconnect"),)))
         confirm = actions["Despawn..."].screen
         self.assertEqual(confirm.action, forms.Run((("Alice", "despawn"),)))
@@ -380,6 +381,27 @@ class PresenterTests(unittest.TestCase):
                 "Endbot: Alice: sprint / sneak: nothing to change",
             ],
         )
+
+    def test_closing_an_input_or_confirm_form_returns_to_its_category(self):
+        self.presenter.show_view(self.player, forms.BotView("Alice", "Alice: online", ONLINE, OBSERVED))
+        main = self.player.forms[-1]
+        click = {text: c for kind, text, c in main.items if kind == "button"}
+        click["Movement..."](self.player)
+        movement = self.player.forms[-1]
+        {text: c for _, text, c in movement.items}["Jump..."](self.player)
+        modal = self.player.forms[-1]
+        self.assertEqual(type(modal).__name__, "ModalForm")
+        modal.kwargs["on_close"](self.player)
+        self.assertEqual(self.player.forms[-1].kwargs["title"], "Alice: movement")
+        click["Inventory..."](self.player)
+        click_inventory = self.player.forms[-1]
+        self.assertEqual(click_inventory.kwargs["title"], "Alice: inventory")
+        click["Bot..."](self.player)
+        {text: c for _, text, c in self.player.forms[-1].items}["Despawn..."](self.player)
+        confirm = self.player.forms[-1]
+        confirm.kwargs["on_submit"](self.player, 1)
+        self.assertEqual(self.player.forms[-1].kwargs["title"], "Alice: bot")
+        self.assertEqual(self.submitted, [])
 
     def test_despawn_needs_the_confirm_button(self):
         _, clicks = self.bot_form()

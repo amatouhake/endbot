@@ -5,8 +5,9 @@ Source changes on Endstone `0.11.13+endbot.1`, official Windows BDS `1.26.52.3` 
 
 ## Implementation
 
-The plugin reads all nine BDS hotbar slots on the server thread every four ticks and sends a bounded, UUID-scoped
-observation over the local Bot's existing connection using public `Player.send_packet`. The `script_custom_event`
+The plugin reads all nine BDS hotbar slots at a configurable interval (four ticks by default) and sends changed
+observations plus periodic unchanged corrections (20 ticks by default). Each bounded, UUID-scoped
+observation is sent over the local Bot's existing connection using public `Player.send_packet`. The `script_custom_event`
 envelope is a protocol-2193 pair of strings, not execution of scripts or an experimental/Beta API. The runtime resolves
 item identifiers through that connection's server item registry, preserves typed NBT and updates its transient cache.
 Block runtime IDs are observed through public `create_block_data`. No inventory assignment, item creation or removal
@@ -69,8 +70,34 @@ separate; no product change was needed to resolve that observation failure.
 Automated verification: plugin 146 tests, serial runtime 112 tests and repository 47 tests passed. Python lint used the
 repository's CI-pinned Ruff `0.17.1`; JavaScript syntax and portability checks passed.
 
+## Human Windows-client trident follow-up (2026-10-16 JST)
+
+During the ongoing normally authenticated Windows-client check on the same pinned RakNet server, the user reported:
+
+1. `use continuous`, followed by `use stop`, throws the selected trident.
+2. The observer sees both the projectile and a trident remaining in the Bot's hand.
+3. Reselecting the hotbar with `hotbar 2` or another slot clears the stale hand image.
+
+This is evidence of incomplete held-equipment rendering synchronization, not evidence that BDS created a second item.
+Actual inventory counts and projectile state were not captured for this reproduction, so duplication is not ruled out
+solely by the visual recovery. The earlier pickup/drop matrices do not cover this throw sequence.
+
+A separate in-memory session replay equipped an item, delivered a native `inventory_slot` update emptying the selected
+slot, and then delivered an all-empty plugin hotbar observation. The runtime's selected inventory slot and held item
+became empty, but it sent no empty-hand `mob_equipment` announcement after those updates. Source inspection agrees:
+native inventory handlers update the held-item cache, while the plugin-observation handler announces equipment only
+when the observation differs from that cache. A native update arriving first can therefore suppress the subsequent
+announcement. This explains a possible path to the live symptom; the replay did not use a real server or establish
+the actual packet order of the reported throw. Hotbar reselection explicitly sends equipment, consistent with the
+reported visual recovery.
+
+This original report preceded the equipment update fix and the `use for <ticks>` addition. The later implementation
+and server-side validation are in [the follow-up record](ITEM_USE_SYNC_VALIDATION.md). A later human Windows RakNet
+check on `29e782a` confirmed successful throwing, clearing of the held trident image, and `for` from both commands/forms.
+
 ## Remaining gates
 
-- A normally authenticated human must confirm held-item/empty-hand rendering and the revised form layout.
+- The reported trident hand-image persistence is confirmed resolved in the human Windows RakNet check; the latest
+  form order/ASCII label was also confirmed on `d095b18`. Other item/transport rendering remains a separate check.
 - Broader item variants, shield behavior, other plugins, sustained multi-Bot traffic and pickup under low TPS remain
   separate checks; this is not a new Endstone/BDS compatibility or Xbox achievement claim.

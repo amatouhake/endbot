@@ -61,6 +61,182 @@ async function fixture (t, options = {}, profile = {}) {
 
 const miningTarget = { blockPosition: [0, 64, 2], blockRuntimeId: 42, blockName: 'minecraft:stone', face: 2, dimension: 'Overworld' }
 
+test('offhand equipment cannot overwrite or reannounce the main hand during use', async t => {
+  const { client, session, inputs, queued, tick } = await fixture(t)
+  inputs.setAction('use', 'continuous', undefined, 10)
+  tick()
+  const held = session.heldItem
+  const active = session.activeItemUse
+  queued.length = 0
+  const incoming = deserializer.parsePacketBuffer(serializer.createPacketBuffer({ name: 'mob_equipment', params: {
+    runtime_entity_id: 7n, window_id: 'offhand', slot: 0, selected_slot: 0, item: { ...item, network_id: 883 }
+  } })).data
+  client.emit(incoming.name, incoming.params)
+  assert.equal(session.heldItem, held)
+  assert.equal(session.selectedHotbarSlot(), 0)
+  assert.equal(session.activeItemUse, active)
+  assert.equal(inputs.hasTimedUse(), true)
+  assert.equal(queued.length, 0)
+  client.emit('mob_equipment', { runtime_entity_id: 7n, window_id: 'inventory', selected_slot: 0, item: { ...item, count: 2 } })
+  assert.equal(session.heldItem.count, 2)
+  assert.equal(queued.length, 1)
+  assert.equal(queued[0].params.window_id, 'inventory')
+})
+
+test('timed use retains its full duration when block interactions defer the first air use', async t => {
+  const { session, inputs, queued, tick } = await fixture(t)
+  for (const duration of [1, 3]) {
+    inputs.setAction('use', 'continuous', undefined, duration)
+    session.applyInputs(inputs)
+    for (let blocked = 0; blocked < 2; blocked++) {
+      session.interactBlock({ blockPosition: [0, 64, 1], blockRuntimeId: 42, face: 2 })
+      const packet = tick()
+      assert.equal(packet.input_data.includes('start_using_item'), false)
+      assert.equal(inputs.snapshot().actions.use.remainingTicks, duration)
+      assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+    }
+    for (let held = 0; held < duration; held++) {
+      const packet = tick()
+      assert.equal(packet.input_data.includes('start_using_item'), held === 0)
+      assert.equal(packet.transaction.data.action_type, 'click_air')
+      assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+    }
+    tick()
+    assert.equal(queued.filter(packet => packet.name === 'inventory_transaction').length, 1)
+    assert.equal(queued.find(packet => packet.name === 'inventory_transaction').params.transaction.transaction_type, 'item_release')
+    tick()
+    assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+  }
+})
+
+test('stopping deferred use does not release an item that never started charging', async t => {
+  const { session, inputs, queued, tick } = await fixture(t)
+  inputs.setAction('use', 'continuous', undefined, 1)
+  session.interactBlock({ blockPosition: [0, 64, 1], blockRuntimeId: 42, face: 2 })
+  tick()
+  inputs.setAction('use', 'stop')
+  session.applyInputs(inputs)
+  assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+  assert.equal(tick().input_data.includes('start_using_item'), false)
+})
+
+test('timed empty-hand use remains a no-op instead of waiting for a later pickup', async t => {
+  const { client, session, inputs, queued, tick } = await fixture(t)
+  client.emit('inventory_content', { window_id: 'inventory', input: [] })
+  inputs.setAction('use', 'continuous', undefined, 3)
+  session.applyInputs(inputs)
+  assert.equal(tick().input_data.includes('start_using_item'), false)
+  assert.equal(inputs.hasTimedUse(), false)
+  client.emit('inventory_slot', { window_id: 'inventory', slot: 0, item: structuredClone(item) })
+  assert.equal(tick().input_data.includes('start_using_item'), false)
+  assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+})
+
+test('timed use holds for N ticks and releases once while movement continues', async t => {
+  const { session, inputs, queued, tick } = await fixture(t)
+  inputs.setMovement('forward')
+  inputs.setAction('use', 'continuous', undefined, 3)
+  session.applyInputs(inputs)
+  for (let i = 0; i < 3; i++) {
+    const packet = tick()
+    assert.ok(packet.input_data.includes('item_interact'))
+    assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+  }
+  const expired = tick()
+  assert.ok(expired.input_data.includes('up'))
+  assert.equal(expired.input_data.includes('item_interact'), false)
+  assert.equal(queued.filter(packet => packet.name === 'inventory_transaction').length, 1)
+  assert.equal(queued.find(packet => packet.name === 'inventory_transaction').params.transaction.transaction_type, 'item_release')
+  tick()
+  assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+})
+
+test('timed use stops on reselection and replacement commands own their new deadline', async t => {
+  const { session, inputs, queued, tick } = await fixture(t)
+  inputs.setAction('use', 'continuous', undefined, 10)
+  tick()
+  inputs.setAction('use', 'continuous', undefined, 2)
+  session.applyInputs(inputs)
+  assert.equal(queued.at(-1).params.transaction.transaction_type, 'item_release')
+  tick()
+  tick()
+  tick()
+  assert.equal(inputs.actionMode('use'), undefined)
+  assert.equal(queued.filter(packet => packet.name === 'inventory_transaction').length, 1)
+  inputs.setAction('use', 'continuous', undefined, 10)
+  tick()
+  session.selectHotbar(0)
+  assert.equal(inputs.actionMode('use'), undefined)
+  assert.equal(tick().input_data.includes('item_interact'), false)
+})
+
+test('repeating an unlimited continuous use command does not release a charged item', async t => {
+  const { session, inputs, queued, tick } = await fixture(t)
+  inputs.setAction('use', 'continuous')
+  tick()
+  queued.length = 0
+  inputs.setAction('use', 'continuous')
+  session.applyInputs(inputs)
+  assert.equal(queued.length, 0)
+  tick()
+  assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+})
+
+test('timed use stop releases and dimension/death discard the old deadline', async t => {
+  const { client, session, inputs, queued, tick } = await fixture(t)
+  for (const stop of [() => inputs.setAction('use', 'stop'), () => inputs.stopAll()]) {
+    inputs.setAction('use', 'continuous', undefined, 10)
+    tick()
+    stop()
+    session.applyInputs(inputs)
+    assert.equal(queued.at(-1).params.transaction.transaction_type, 'item_release')
+    assert.equal(tick().input_data.includes('item_interact'), false)
+  }
+  for (const end of [
+    () => client.emit('change_dimension', { dimension: 0, position: { x: 0, y: 64, z: 0 } }),
+    () => client.emit('set_health', { health: 0 })
+  ]) {
+    inputs.setAction('use', 'continuous', undefined, 10)
+    tick()
+    end()
+    assert.equal(inputs.actionMode('use'), undefined)
+    assert.equal(tick().input_data.includes('item_interact'), false)
+  }
+})
+
+test('native selected-slot changes announce equipment before identical plugin observations', async t => {
+  const { client, session, queued } = await fixture(t)
+  const publishEmpty = () => client.emit('script_custom_event', {
+    event_name: 'endbot:hotbar-v1', event_data: JSON.stringify({ identityId: session.profile.identityId, slots: Array(9).fill(null) })
+  })
+  queued.length = 0
+  client.emit('inventory_slot', { window_id: 'inventory', slot: 1, item: EMPTY_ITEM })
+  assert.equal(queued.length, 0)
+  // Throw/consumption/tool break: the native update already emptied the cache.
+  client.emit('inventory_slot', { window_id: 'inventory', slot: 0, item: EMPTY_ITEM })
+  assert.equal(session.heldItem.network_id, 0)
+  assert.equal(queued.length, 1)
+  assert.equal(queued[0].name, 'mob_equipment')
+  assert.equal(queued[0].params.item.network_id, 0)
+  publishEmpty()
+  publishEmpty()
+  assert.equal(queued.length, 1)
+  // A delayed self-equipment packet must not keep the hand stale when the
+  // next authoritative snapshot matches an already-empty inventory cache.
+  client.emit('mob_equipment', { runtime_entity_id: 7n, window_id: 'inventory', selected_slot: 0, item: structuredClone(item) })
+  publishEmpty()
+  assert.equal(session.heldItem.network_id, 0)
+  assert.equal(queued.at(-1).params.item.network_id, 0)
+  queued.length = 0
+  client.emit('inventory_content', { window_id: 'inventory', input: [structuredClone(item)] })
+  assert.equal(queued.length, 1)
+  client.emit('inventory_slot', { window_id: 'inventory', slot: 0, item: { ...item, count: 2 } })
+  assert.equal(queued.length, 2)
+  assert.equal(queued.at(-1).params.item.count, 2)
+  session.selectHotbar(0)
+  assert.equal(queued.length, 3) // Explicit reselection still forces an announcement.
+})
+
 test('BDS hotbar observations make same-session pickups usable and correct rejected drops', async t => {
   const { client, session, queued } = await fixture(t)
   client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })

@@ -68,7 +68,7 @@ still require validation. See [validation](BOT_BEHAVIOR_VALIDATION.md).
 
 ## BOT-003: Fix held item use (right-click hold), including tridents and food
 
-Status: **Fix implemented — food/trident live smoke passed; broader item matrix open** (updated 2026-10-16 JST).
+Status: **Held use and timed release implemented — broader item/manual gates open** (updated 2026-10-16 JST).
 
 Bots reportedly cannot perform item actions that require holding right-click, including trident use and eating food.
 The intended `use continuous` / `use stop` interface exists, but its presence and the historical held-item use/release
@@ -89,9 +89,18 @@ handling. A relationship to the separate known pickup inventory-sync limitation 
 
 Implemented: air-use transactions packed into `PlayerAuthInput`, initial press versus held simulation ticks, explicit
 release, release before hotbar changes, and cleanup when BDS consumes/replaces the selected item. A Windows RakNet live
-run observed golden-apple consumption and a thrown-trident actor after release. Food with a hunger prerequisite, bow
-use, and item use after dimension changes remain open. The separate world-pickup cache limitation is addressed by BOT-007.
+run observed golden-apple consumption and a thrown-trident actor after release. Food with a hunger prerequisite and
+item use after dimension changes remain open; timed bow use is covered by the follow-up below. The separate
+world-pickup cache limitation is addressed by BOT-007.
 See [validation](BOT_BEHAVIOR_VALIDATION.md).
+
+Human Windows-client follow-up (2026-10-16 JST): charging with `use continuous` and releasing with `use stop` throws
+the trident, but its held-item image can remain until hotbar reselection; track that unresolved rendering issue under
+BOT-007. The two-command charge/release sequence now has a one-command alternative: `use for <ticks>` holds for 1–72000
+input ticks and releases. The form exposes `for` and a ticks field. Stop releases early (and can fire a charged item),
+hotbar selection releases/cancels timed use, and death/dimension change/disconnect discard it. Existing modes remain.
+The human Windows RakNet check on `29e782a` confirmed `for` through both commands and forms, a successful trident throw,
+and clearing of the held trident image. See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) for scope and gates.
 
 ## BOT-004: Change Bot control authorization while the server is running
 
@@ -187,13 +196,14 @@ still submit the same `/bot` arguments); confirmed on a normally authenticated h
 
 ## BOT-007: Synchronize picked-up hotbar items and held-item rendering
 
-Status: **Implemented — natural-pickup RakNet and NetherNet live matrices passed; human rendering check open**
+Status: **Equipment update fix and configurable sync implemented — Windows RakNet trident rendering confirmed**
 (2026-10-16 JST).
 
 Previously, a Bot could visibly hold a newly picked-up item while its runtime cache still considered the slot empty;
 `drop` then failed, and reconnect was needed. The older own-drop count/rendering fix did not address this pickup gap.
 
-The plugin now reads the nine BDS hotbar slots every four ticks on the server thread and publishes a bounded observation
+The plugin now reads the nine BDS hotbar slots at a configurable interval (four ticks by default) and publishes changed
+bounded observations plus periodic unchanged corrections (20 ticks by default)
 over each local Bot's existing connection. The runtime uses the server's item palette and preserves typed item NBT,
 updates its transient cache and re-announces changed held equipment. Native BDS transactions still perform drops/use;
 no item is inserted, reassigned or removed by synchronization. Endstone core patches and the lock are unchanged.
@@ -203,8 +213,56 @@ dropped one/stack without reconnect; the hand clears after emptying; rejected dr
 or wrong-identity observations do not overwrite good state. BDS inventory/loot and human-client rendering are distinct
 checks. See [inventory validation](INVENTORY_VALIDATION.md) for tested scope and remaining gates.
 
+Human Windows-client follow-up (2026-10-16 JST): after a trident is thrown, the observer can see both the projectile
+and a trident still in the Bot's hand. Reselecting with `hotbar 2` or another slot clears the stale hand image. This
+supports a missing equipment announcement; actual inventory duplication has not been established. An in-memory event
+replay also emptied the runtime's selected slot and held item without sending an empty-hand equipment announcement.
+The suspected path is a native inventory update changing the cache before the periodic snapshot: the snapshot then
+sees no difference and skips its equipment announcement. At report time this was a hypothesis for the live symptom;
+the implementation follow-up is below.
+
+Implemented follow-up: native selected-slot updates and periodic observations share an equipment announcer that
+compares against the last announcement, separately from the inventory cache. Regressions cover native-empty updates
+followed by identical snapshots, counts, nonselected slots and explicit reselection. Configurable read/resend intervals,
+change-only sending between corrections and cached block palette lookups reduce avoidable work. The human Windows
+RakNet check on `29e782a` confirmed the thrown trident disappeared from the hand. Other item/transport rendering,
+tool breakage and multi-Bot load remain gates. See [the new validation record](ITEM_USE_SYNC_VALIDATION.md)
+and [the original report](INVENTORY_VALIDATION.md#human-windows-client-trident-follow-up-2026-10-16-jst).
+
+## BOT-008: Experiment with a selected-Bot command context
+
+Status: **Idea recorded — separate experimental branch; not implemented** (2026-10-16 JST).
+
+After the current menu/inventory work, try a player-scoped selection so repeated commands can omit the Bot name:
+
+```text
+/bot select Alice
+/bot move forward
+/bot jump
+/bot stop
+```
+
+These are proposed commands, not currently supported syntax. Reusing a selection could reduce typing across multiple
+actions, especially with long Bot names. Fixed operation positions may also help completion, but this is unproven:
+the earlier selection-model `/botprobe` still suffered generic-overload filtering on the pinned Endstone baseline.
+See [the command-parser findings](COMMANDS.md). Do not promise completion improvements from selection alone.
+
+Keep the first experiment small (select/query/clear plus move, jump and stop) and compare repeated-command effort,
+target clarity and actual Windows-client completion with explicit `/bot <name> ...` and the menu. Retain explicit
+targets for commands, console use and automation. Bind selection to the Bot's stable UUID and to the authenticated
+player, show the selected target clearly, recheck authorization on every action, clear selection on player logout,
+and report unavailable/deleted targets without silently selecting another Bot. Resolve syntax collisions with Bot
+names and lifecycle behavior before expanding the experiment. A useful menu may reduce the need for this feature;
+decide whether to keep it from the experiment's results.
+
 ## Deferred priorities
 
+- Generalize `for <ticks>` as an execution-duration suffix for other actions (attack, jump, movement and `destroy`),
+  distinct from `interval <ticks>` as repetition spacing. Only `use for <ticks>` is implemented now. Future examples
+  include `move forward for 40`, `jump interval 20 for 100` and `destroy continuous for 200`; these are not supported
+  commands. Specify single-block versus continuous mining termination, replacement/stop behavior and affected inputs
+  before implementation. Repeated charge/release shots need separate hold duration and repetition spacing; existing
+  `use interval` remains repeated short presses. Item-count/completion conditions are separate from duration.
 - Command completion redesign remains dependent on a suitable upstream Endstone API and is lower priority while the
   menu provides a practical control surface; revisit its need after menu feedback.
 - Vanilla sneak edge protection remains deferred as client collision/edge simulation work; it is not part of the

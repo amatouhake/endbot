@@ -10,6 +10,23 @@ from endbot_cli.config import DEFAULT_CONTROL_PORT, ConfigError, load_config
 
 
 class ConfigTests(unittest.TestCase):
+    def test_hotbar_sync_settings_defaults_and_bounds(self):
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base)
+        self.assertEqual(load_config(self.path).runtime.hotbar_sync_interval_ticks, 4)
+        self.assertEqual(load_config(self.path).runtime.hotbar_sync_resend_ticks, 20)
+        for key, attribute, maximum in (
+            ("hotbar-sync-interval-ticks", "hotbar_sync_interval_ticks", 1200),
+            ("hotbar-sync-resend-ticks", "hotbar_sync_resend_ticks", 72000),
+        ):
+            for value in (1, 10, maximum):
+                self.write(base + f"[runtime]\n{key}={value}\n")
+                self.assertEqual(getattr(load_config(self.path).runtime, attribute), value)
+            for value in ("0", str(maximum + 1), "true", '"4"', "4.5"):
+                self.write(base + f"[runtime]\n{key}={value}\n")
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(ConfigError, key):
+                    load_config(self.path)
+
     def setUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

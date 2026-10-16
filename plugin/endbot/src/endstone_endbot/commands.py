@@ -191,7 +191,7 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "use": HelpTopic(
         "use",
         "use the held item in air",
-        ("use [once|continuous|interval <ticks>|stop]",),
+        ("use [once|continuous|interval <ticks>|stop]", "use for <ticks>"),
         ("With an empty hand it is a safe no-op; blocks need interact.",),
     ),
     "sprint": HelpTopic(
@@ -420,6 +420,14 @@ def _placement(tokens: list[str]) -> dict[str, object]:
 
 def _action(name: str, action: str, remaining: list[str]) -> BotCommand:
     mode = remaining[0].lower() if remaining else "once"
+    if mode == "for" and action == "use" and len(remaining) == 2:
+        try:
+            ticks = int(remaining[1])
+        except ValueError as error:
+            raise CommandSyntaxError("Use duration must be an integer number of ticks") from error
+        if not 1 <= ticks <= 72_000:
+            raise CommandSyntaxError("Use duration must be between 1 and 72000 ticks")
+        return BotCommand("action", name, {"action": action, "mode": "continuous", "durationTicks": ticks})
     if (mode in {"once", "continuous", "stop"} and len(remaining) == 1) or not remaining:
         return BotCommand("action", name, {"action": action, "mode": mode})
     if mode == "interval" and len(remaining) == 2:
@@ -430,7 +438,8 @@ def _action(name: str, action: str, remaining: list[str]) -> BotCommand:
         if not 1 <= ticks <= 72_000:
             raise CommandSyntaxError("Action interval must be between 1 and 72000 ticks")
         return BotCommand("action", name, {"action": action, "mode": mode, "intervalTicks": ticks})
-    raise CommandSyntaxError(f"{action} accepts once, continuous, interval <ticks>, or stop")
+    duration = ", or for <ticks>" if action == "use" else ""
+    raise CommandSyntaxError(f"{action} accepts once, continuous, interval <ticks>, or stop{duration}")
 
 
 def _teleport(name: str, tokens: list[str]) -> BotCommand:
@@ -821,11 +830,19 @@ class BotCommandService:
                 self._mining_loops.pop(key, None)
                 if mode == "continuous":
                     self._mining_loops[key] = (
-                        result["name"], result["identityId"], result["mining"]["loopId"], sender, None
+                        result["name"],
+                        result["identityId"],
+                        result["mining"]["loopId"],
+                        sender,
+                        None,
                     )
                 elif mode != "stop":
                     self._mining_loops[key] = (
-                        result["name"], result["identityId"], None, sender, list(target["blockPosition"])
+                        result["name"],
+                        result["identityId"],
+                        None,
+                        sender,
+                        list(target["blockPosition"]),
                     )
             if mode == "continuous":
                 return CommandResult(
@@ -888,7 +905,11 @@ class BotCommandService:
             elif mode == "interval":
                 detail = f"{action} started every {parameters['intervalTicks']} ticks"
             elif mode == "continuous":
-                detail = f"{action} continuous started"
+                detail = (
+                    f"{action} started for {parameters['durationTicks']} ticks, then releases"
+                    if "durationTicks" in parameters
+                    else f"{action} continuous started"
+                )
             else:
                 detail = f"{action} once requested"
         elif command.operation == "flag":

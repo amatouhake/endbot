@@ -6,6 +6,24 @@ from endstone_endbot.commands import parse_command
 
 
 class BotCommandServiceTests(unittest.TestCase):
+    def test_timed_use_preserves_other_modes_and_does_not_enable_for_on_other_actions(self):
+        self.assertEqual(
+            parse_command(["Alice", "use", "for", "20"]).parameters,
+            {"action": "use", "mode": "continuous", "durationTicks": 20},
+        )
+        for value in ("0", "72001", "1.5", "true"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                parse_command(["Alice", "use", "for", value])
+        for arguments in (
+            ["use", "for"],
+            ["attack", "for", "20"],
+            ["jump", "for", "20"],
+            ["use", "interval", "20", "for", "100"],
+        ):
+            with self.subTest(arguments=arguments), self.assertRaises(ValueError):
+                parse_command(["Alice", *arguments])
+        self.assertEqual(parse_command(["Alice", "use"]).parameters, {"action": "use", "mode": "once"})
+
     def setUp(self) -> None:
         self.service = PlainCommandService()
 

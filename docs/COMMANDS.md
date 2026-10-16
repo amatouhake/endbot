@@ -254,6 +254,7 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice look <yaw> <pitch>
 /bot Alice look at <x> <y> <z>
 /bot Alice jump|attack|use [once|continuous|interval <ticks>|stop]
+/bot Alice use for <ticks>
 /bot Alice sprint on|off
 /bot Alice sneak on|off
 /bot Alice hotbar
@@ -274,12 +275,15 @@ does not replay transitions from the previous transport.
 `hotbar` reports or changes the selected slot using human-facing 1–9 numbering. Selection is sent through the normal
 Bedrock equipment path and inventory updates continue to come from BDS; Endbot does not keep a second inventory.
 BDS does not push every pickup's inventory delta to the picker. The Endbot plugin therefore reads the nine actual BDS
-hotbar slots every four server ticks and sends a read-only observation over that Bot's existing connection. The runtime
+hotbar slots at a configurable interval (four server ticks by default) and sends changed read-only observations over
+that Bot's existing connection, plus periodic unchanged corrections (20 server ticks by default). The runtime
 updates its transient cache, including counts and typed NBT, and re-announces a changed held item through normal Bedrock
 equipment packets. This makes same-session pickups usable by `hotbar`, `drop` and held-item actions without reconnecting,
 normally within four server ticks (about 0.2 seconds at 20 TPS). No item is added, removed or reassigned by the observer.
 `drop` still uses a normal BDS-validated transaction; the reply says requested, not completed. Fresh observations also
-correct an optimistic drop if BDS rejected it. Unknown/invalid observations are ignored as a whole; an unknown or empty
+correct an optimistic drop if BDS rejected it; an unchanged correction can take about one second with default settings.
+Native inventory updates also announce changed held equipment, independent of periodic observations.
+Unknown/invalid observations are ignored as a whole; an unknown or empty
 selected slot still fails with `Selected hotbar slot is empty`. Without the matching plugin, reconnect remains the
 recovery for missing native deltas. See [pickup validation](INVENTORY_VALIDATION.md).
 
@@ -289,6 +293,23 @@ to throw a charged trident or shoot a bow. Food use requires vanilla eating cond
 remain short press/release actions; they do not hold long enough to eat or fully charge an item. Switching hotbar slots
 also releases the previous item. Real item outcomes and dimension-transition behavior are tracked in
 [the backlog](BACKLOG.md); historical generic use/release smoke does not cover every item.
+
+`use for <ticks>` holds use for 1–72000 runtime input ticks and then releases automatically. For example,
+`/bot Alice use for 40` requests one two-second hold/release sequence, suitable for charging a bow or trident.
+These are the runtime's 20 Hz input ticks; server lag and vanilla item conditions still affect the outcome.
+The hold duration starts with the first air-use transaction. If a pending block interaction occupies the input tick,
+use waits without consuming its hold duration. Stopping before that first use cancels it without sending a release;
+an initially empty hand remains a no-op rather than waiting to use a future pickup.
+The reply confirms the request, not a successful shot or consumption. This is a duration, not an item-count or
+completion condition: food may finish early, repeat during a long hold, or fail vanilla prerequisites.
+`use stop` and global `stop` release early, which can fire a charged item. Explicit hotbar selection also releases and
+cancels timed use; death, dimension change and disconnect discard it. A new timed-use command replaces the previous
+one with a fresh hold/deadline. Movement and other inputs continue when its duration expires. Nothing resumes after
+reconnect. Existing `use`/`once`, `continuous` and `interval` behavior remains available.
+
+The Use item form adds `for` with a ticks field; `interval` uses that field for spacing and `for` for hold duration.
+Duration suffixes for other actions and repeated charged shots are future work, not accepted syntax. See
+[item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and [the backlog](BACKLOG.md).
 
 `use` means using or holding the selected item in the air, such as food, a bow, or a trident. `interact` is a normal
 right-click on the named block face. It sends the protocol-2193 press, server-authoritative item-interaction tick, and
@@ -352,6 +373,7 @@ Bedrock syntax error):
 /bot Alice tp 100 64 -20 facing Steve
 /bot Alice look at 1 64 2
 /bot Alice attack interval 20
+/bot Alice use for 40
 /bot Alice interact 1 64 2 up
 /bot Alice hotbar 9
 /bot Alice radius

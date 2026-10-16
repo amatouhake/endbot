@@ -223,6 +223,8 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
     runtime["host"] = CONTROL_HOST
     runtime["port"] = config.runtime.control_port
     runtime["timeout-seconds"] = PLUGIN_TIMEOUT_SECONDS
+    runtime["hotbar-sync-interval-ticks"] = config.runtime.hotbar_sync_interval_ticks
+    runtime["hotbar-sync-resend-ticks"] = config.runtime.hotbar_sync_resend_ticks
     document.add("runtime", runtime)
 
     atomic_write_text(plugin_config, tomlkit.dumps(document))

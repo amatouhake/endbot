@@ -17,7 +17,7 @@ from endstone_endbot.controller_requests import execute_request
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
 from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
 from endstone_endbot.form_adapter import FormPresenter
-from endstone_endbot.inventory_sync import publish_hotbar
+from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
@@ -84,6 +84,7 @@ COMMAND_USAGES = [
     "/bot <name: string> (look)<operation: EndbotLook> <yaw: float> <pitch: float>",
     "/bot <name: string> (look)<operation: EndbotLookAt> (at)<mode: EndbotLookMode> <target: pos>",
     "/bot <name: string> (jump|attack|use)<action: EndbotDefaultAction>",
+    "/bot <name: string> (use)<action: EndbotTimedUse> (for)<mode: EndbotUseDuration> <ticks: int>",
     ("/bot <name: string> (jump|attack|use)<action: EndbotAction> (once|continuous|stop)<mode: EndbotActionMode>"),
     (
         "/bot <name: string> (jump|attack|use)<action: EndbotIntervalAction> "
@@ -155,6 +156,9 @@ class EndbotPlugin(Plugin):
         self._control_granted = {}
         self._authorization_versions = {}
         self._inventory_warning = False
+        self._hotbar_interval = 4
+        self._hotbar_tick = 0
+        self._hotbar_publisher = HotbarPublisher()
 
     def on_load(self) -> None:
         self.save_default_config()
@@ -177,6 +181,9 @@ class EndbotPlugin(Plugin):
 
     def on_enable(self) -> None:
         runtime = self.config.get("runtime", {})
+        self._hotbar_interval, resend_ticks = sync_settings(runtime)
+        self._hotbar_publisher = HotbarPublisher(resend_ticks)
+        self._hotbar_tick = 0
         token_file = Path(str(runtime.get("token-file", "control.token")))
         if not token_file.is_absolute():
             token_file = self.data_folder / token_file
@@ -216,7 +223,9 @@ class EndbotPlugin(Plugin):
             ),
         )
         self.server.scheduler.run_task(self, self._command_runner.poll, delay=4, period=4)
-        self.server.scheduler.run_task(self, self._publish_hotbars, delay=4, period=4)
+        self.server.scheduler.run_task(
+            self, self._publish_hotbars, delay=self._hotbar_interval, period=self._hotbar_interval
+        )
         # The server console belongs to the operator who installed Endbot; it
         # gets the control permission directly. Operator players do not.
         self.server.command_sender.add_attachment(self, "endbot.command.control", True)
@@ -238,19 +247,24 @@ class EndbotPlugin(Plugin):
     def _publish_hotbars(self) -> None:
         # online-mode guarantees normal humans have Xbox identities. Only
         # local-auth Bot connections receive Endbot's private observation.
+        self._hotbar_tick += self._hotbar_interval
+        identities = set()
         for player in self.server.online_players:
             if str(player.xuid):
                 continue
+            identities.add(str(player.unique_id))
             try:
-                publish_hotbar(player, self.server)
+                self._hotbar_publisher.publish(player, self.server, self._hotbar_tick)
             except (RuntimeError, ValueError, TypeError) as error:
                 if not self._inventory_warning:
                     self.logger.warning(f"Bot hotbar synchronization unavailable: {type(error).__name__}")
                     self._inventory_warning = True
+        self._hotbar_publisher.retain(identities)
 
     @event_handler
     def on_player_join(self, event: PlayerJoinEvent) -> None:
         player = event.player
+        self._hotbar_publisher.previous.pop(str(player.unique_id), None)
         self._join_controller(player)
         if self._world is not None:
             self._world.apply_pending_placement(player)

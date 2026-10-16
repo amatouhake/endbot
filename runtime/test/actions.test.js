@@ -6,6 +6,29 @@ import test from 'node:test'
 
 import { InputState } from '../src/actions.js'
 
+test('timed use expires after exactly N input ticks without stopping other inputs', () => {
+  const inputs = new InputState()
+  inputs.setMovement('forward')
+  inputs.setAction('attack', 'continuous')
+  inputs.setAction('use', 'continuous', undefined, 3)
+  assert.equal(inputs.snapshot().actions.use.remainingTicks, 3)
+  for (let blocked = 0; blocked < 2; blocked++) {
+    inputs.step()
+    assert.equal(inputs.snapshot().actions.use.remainingTicks, 3)
+  }
+  for (let tick = 0; tick < 3; tick++) {
+    assert.deepEqual(inputs.step().triggered, ['attack', 'use'])
+    inputs.startTimedUse(inputs.actionRevision('use'))
+  }
+  assert.deepEqual(inputs.step().triggered, ['attack'])
+  assert.equal(inputs.snapshot().movement, 'forward')
+  assert.equal(inputs.actionMode('use'), undefined)
+  for (const duration of [0, 72001, 1.5, '20', true]) {
+    assert.throws(() => inputs.setAction('use', 'continuous', undefined, duration), /Duration/)
+  }
+  assert.throws(() => inputs.setAction('jump', 'continuous', undefined, 20), /Duration/)
+})
+
 test('once, continuous, interval, and stop share one scheduler', () => {
   const inputs = new InputState()
   inputs.setAction('jump', 'once')

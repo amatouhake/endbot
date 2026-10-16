@@ -47,6 +47,8 @@ class ControllersConfig:
 class RuntimeConfig:
     control_port: int = DEFAULT_CONTROL_PORT
     chunk_radius: int = DEFAULT_CHUNK_RADIUS
+    hotbar_sync_interval_ticks: int = 4
+    hotbar_sync_resend_ticks: int = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,11 +136,27 @@ def _load_runtime(path: Path, document: dict[str, Any]) -> RuntimeConfig:
     table = document.get("runtime", {})
     if not isinstance(table, dict):
         raise _fail(path, "runtime", "must be a table", "write it as a [runtime] section")
-    _reject_unknown_keys(path, table, "runtime", ("control-port", "chunk-radius"))
+    _reject_unknown_keys(
+        path,
+        table,
+        "runtime",
+        ("control-port", "chunk-radius", "hotbar-sync-interval-ticks", "hotbar-sync-resend-ticks"),
+    )
+    sync_values = []
+    for key, default, maximum in (
+        ("hotbar-sync-interval-ticks", 4, 1200),
+        ("hotbar-sync-resend-ticks", 20, 72000),
+    ):
+        setting = table.get(key, default)
+        if isinstance(setting, bool) or not isinstance(setting, int) or not 1 <= setting <= maximum:
+            raise _fail(path, f"runtime.{key}", f"must be an integer from 1 to {maximum}", f"use {key} = {default}")
+        sync_values.append(setting)
     radius = table.get("chunk-radius", DEFAULT_CHUNK_RADIUS)
     if isinstance(radius, bool) or not isinstance(radius, int) or not 2 <= radius <= 32:
         raise _fail(
-            path, "runtime.chunk-radius", "must be an integer from 2 to 32 chunks",
+            path,
+            "runtime.chunk-radius",
+            "must be an integer from 2 to 32 chunks",
             f"use chunk-radius = {DEFAULT_CHUNK_RADIUS} (the default)",
         )
     value = table.get("control-port", DEFAULT_CONTROL_PORT)
@@ -156,7 +174,12 @@ def _load_runtime(path: Path, document: dict[str, Any]) -> RuntimeConfig:
             f"must be between 1 and 65535, found {value}",
             f"use a valid TCP port, e.g. control-port = {DEFAULT_CONTROL_PORT}",
         )
-    return RuntimeConfig(control_port=value, chunk_radius=radius)
+    return RuntimeConfig(
+        control_port=value,
+        chunk_radius=radius,
+        hotbar_sync_interval_ticks=sync_values[0],
+        hotbar_sync_resend_ticks=sync_values[1],
+    )
 
 
 def load_config(path: Path) -> EndbotConfig:

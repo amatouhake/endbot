@@ -112,7 +112,7 @@ def observed_position(
 
 
 def exercise(
-    output: Path, node: str, report: dict, *, mining=False, inventory=False, transport="raknet"
+    output: Path, node: str, report: dict, *, mining=False, inventory=False, item_use=False, transport="raknet"
 ) -> None:
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     installed = importlib.metadata.version("endstone")
@@ -167,6 +167,7 @@ def exercise(
             ROOT / "plugin/endbot/src/endstone_endbot/world.py",
             ROOT / "plugin/endbot/src/endstone_endbot/inventory_sync.py",
             ROOT / "scripts/mining_probe.py",
+            ROOT / "scripts/item_use_probe.py",
             ROOT / "plugin/endbot/src/endstone_endbot/plugin.py",
             ROOT / "plugin/endbot/src/endstone_endbot/controller_policy.py",
             ROOT / "plugin/endbot/src/endstone_endbot/dispatch.py",
@@ -264,9 +265,12 @@ def exercise(
         [str(ROOT / "plugin/endbot/src"), str(ROOT / "cli/endbot/src")]
     )
     environment["PYTHONIOENCODING"] = "utf-8"
-    if mining or inventory:
+    if mining or inventory or item_use:
         from mining_probe import configure_fixture
         configure_fixture(ROOT, output, environment)
+    if item_use:
+        from item_use_probe import configure_fixture as configure_item_use
+        configure_item_use(ROOT, output, environment)
     runtime = bds = None
     token = None
     with (
@@ -486,6 +490,15 @@ def exercise(
                     lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
                     lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report,
                     log=logtext,
+                )
+            if item_use:
+                from item_use_probe import exercise_item_use
+
+                report["stage"] = "timed item use and equipment synchronization"
+                exercise_item_use(
+                    output, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
                 )
             if inventory:
                 from mining_probe import exercise_inventory
@@ -780,6 +793,7 @@ def main() -> int:
     )
     parser.add_argument("--mining", action="store_true", help="prepare disposable blocks/tools and validate Survival mining")
     parser.add_argument("--inventory", action="store_true", help="validate natural pickups and hotbar/drop without reconnect")
+    parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
     parser.add_argument(
         "--transport",
         choices=("raknet", "nethernet"),
@@ -808,7 +822,8 @@ def main() -> int:
         "xbox_achievement_observed": False,
     }
     try:
-        exercise(output, args.node, report, mining=args.mining, inventory=args.inventory, transport=args.transport)
+        exercise(output, args.node, report, mining=args.mining, inventory=args.inventory,
+                 item_use=args.item_use, transport=args.transport)
     except (Exception, KeyboardInterrupt) as error:  # noqa: BLE001 - persist the failed layer for any upstream failure
         report["error"] = str(error)
         print(f"raknet-spike: FAIL at {report['stage']}: {error}", file=sys.stderr)

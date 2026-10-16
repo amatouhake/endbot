@@ -398,6 +398,7 @@ test('hotbar selection interaction and drop use player protocol paths', async t 
   }
   const nextPacket = () => new Promise(resolve => waiters.push(resolve))
   const { session, connecting } = connectedSession(directory, client)
+  t.after(() => session.disconnect('test cleanup'))
   await turn()
   client.emit('start_game', { player_position: { x: 1, y: 64, z: 2 }, rotation: { x: 0, z: 0 } })
   const items = Array(9).fill(undefined).map(() => ({ ...EMPTY_ITEM }))
@@ -409,7 +410,7 @@ test('hotbar selection interaction and drop use player protocol paths', async t 
 
   session.selectHotbar(2)
   assert.equal(session.selectedHotbarSlot(), 2)
-  const equipment = queued.find(entry => entry.name === 'mob_equipment')?.packet
+  const equipment = queued.findLast(entry => entry.name === 'mob_equipment')?.packet
   assert.equal(equipment.selected_slot, 2)
   assert.equal(equipment.item.stack_id, 34)
 

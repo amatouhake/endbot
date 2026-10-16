@@ -37,6 +37,15 @@ class ConfigGenTestCase(unittest.TestCase):
 
 
 class RuntimeConfigTests(ConfigGenTestCase):
+    def test_hotbar_settings_reach_generated_plugin_config(self):
+        with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
+            config.write("hotbar-sync-interval-ticks=10\nhotbar-sync-resend-ticks=40\n")
+        target, warnings = generate_plugin_config(self.server, self.paths, self.config())
+        runtime = tomllib.loads(target.read_text(encoding="utf-8"))["runtime"]
+        self.assertEqual(runtime["hotbar-sync-interval-ticks"], 10)
+        self.assertEqual(runtime["hotbar-sync-resend-ticks"], 40)
+        self.assertEqual(warnings, [])
+
     def test_chunk_radius_reaches_generated_runtime_config(self) -> None:
         for radius in (2, 6):
             write_endbot_toml(self.root)

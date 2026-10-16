@@ -59,22 +59,22 @@ class PluginAdapterTests(unittest.TestCase):
         from unittest.mock import patch
 
         plugin = self.module.EndbotPlugin()
-        local_bot = types.SimpleNamespace(xuid="")
+        local_bot = types.SimpleNamespace(xuid="", unique_id="bot")
         human = types.SimpleNamespace(xuid="123456789")
         plugin.server = types.SimpleNamespace(online_players=[human, local_bot])
-        with patch.object(self.module, "publish_hotbar") as publish:
+        with patch.object(plugin._hotbar_publisher, "publish") as publish:
             plugin._publish_hotbars()
-        publish.assert_called_once_with(local_bot, plugin.server)
+        publish.assert_called_once_with(local_bot, plugin.server, 4)
 
     def test_inventory_observation_failure_does_not_skip_the_next_bot_or_spam_logs(self):
         from unittest.mock import Mock, patch
 
         plugin = self.module.EndbotPlugin()
-        bots = [types.SimpleNamespace(xuid=""), types.SimpleNamespace(xuid="")]
+        bots = [types.SimpleNamespace(xuid="", unique_id="a"), types.SimpleNamespace(xuid="", unique_id="b")]
         plugin.server = types.SimpleNamespace(online_players=bots)
         plugin.logger = Mock()
         with patch.object(
-            self.module, "publish_hotbar", side_effect=[ValueError("bad data"), None, ValueError("bad"), None]
+            plugin._hotbar_publisher, "publish", side_effect=[ValueError("bad data"), None, ValueError("bad"), None]
         ) as publish:
             plugin._publish_hotbars()
             plugin._publish_hotbars()

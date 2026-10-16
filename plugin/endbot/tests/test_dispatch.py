@@ -114,9 +114,9 @@ class DispatchTests(unittest.TestCase):
 
         class Service:
             def poll_mining(self, authorize):
-                return [(player, "warning", "Endbot: Alice: stopped"),
-                        (offline, "warning", "Endbot: Bob: stopped"),
-                        (CommandSource(sender=console), "warning", "Endbot: Carol: stopped")]
+                return [(player, "warning", "Endbot: Alice: stopped", "Endbot: Alice: stopped"),
+                        (offline, "warning", "Endbot: Bob: stopped", "Endbot: Bob: stopped"),
+                        (CommandSource(sender=console), "warning", "Endbot: Carol: stopped", "Endbot: Carol: stopped")]
 
             def execute(self, arguments, source):
                 return CommandResult(True, ("Endbot: Alice: started",), log_level="info")
@@ -143,6 +143,47 @@ class DispatchTests(unittest.TestCase):
                 ("info", "Endbot: Alice: started"),
             ],
         )
+
+    def test_player_language_is_captured_and_logs_stay_english(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        logged, sources = [], []
+
+        class Player:
+            unique_id = "00000000-0000-4000-8000-000000000003"
+            location = object()
+
+            def __init__(self):
+                self.messages = []
+
+            def send_message(self, message):
+                self.messages.append(message)
+
+        class Service:
+            def poll_mining(self, authorize):
+                return []
+
+            def execute(self, arguments, source):
+                sources.append(source)
+                return CommandResult(True, ("ja",), log_level="info", log_messages=("en",))
+
+        player = Player()
+        runner = AsyncCommandRunner(
+            Service(),
+            bridge,
+            lambda source: player if source.player_id else None,
+            log=lambda level, message: logged.append(message),
+            language=lambda sender: "ja",
+        )
+        self.addCleanup(runner.close)
+        runner.submit(["Alice", "destroy", "stop"], player)
+        scheduled.run_next()
+        runner.submit(["Alice", "destroy", "stop"], object())
+        scheduled.run_next()
+        self.assertEqual([source.language for source in sources], ["ja", "en"])
+        self.assertEqual(player.messages, ["ja"])
+        self.assertEqual(logged, ["en", "en"])
 
     def test_only_players_receive_color_codes(self) -> None:
         scheduled = ScheduledCallbacks()

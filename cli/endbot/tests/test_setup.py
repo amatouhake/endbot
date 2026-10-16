@@ -221,6 +221,7 @@ class ApplyTests(SetupTestCase):
         self.assertIn("path = 'server'", config)
         self.assertIn('gamertags = ["Alice", "Bob"]', config)
         self.assertIn("control-port = 19142", config)
+        self.assertIn('language = "auto"', config)
         for name in ("secrets", "profiles", "generated", "run"):
             self.assertTrue((self.root / "state" / name).is_dir())
 

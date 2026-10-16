@@ -23,7 +23,7 @@ from endbot_cli.allowlist import AllowlistError, add_gamertags, missing_gamertag
 from endbot_cli.backup import EXECUTABLE_NAMES, BackupEntry, collect_backup_entries, create_backup, describe_entries
 from endbot_cli.bds import BdsError, run_install
 from endbot_cli.commands import first_start_tolerable
-from endbot_cli.config import DEFAULT_CONTROL_PORT, DEFAULT_TRANSPORT, TRANSPORTS
+from endbot_cli.config import DEFAULT_CONTROL_PORT, DEFAULT_LANGUAGE, DEFAULT_TRANSPORT, TRANSPORTS
 from endbot_cli.doctor import FAIL, WARN, DoctorContext, check_world, run_doctor
 from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import InstancePaths
@@ -331,6 +331,10 @@ def write_endbot_toml(paths: InstancePaths, plan: SetupPlan) -> Path:
     runtime = tomlkit.table()
     runtime["control-port"] = plan.control_port
     document.add("runtime", runtime)
+    ui = tomlkit.table()
+    ui["language"] = DEFAULT_LANGUAGE
+    ui["language"].comment("auto follows each player's game language; en or ja fixes it")
+    document.add("ui", ui)
     atomic_write_text(paths.endbot_toml, tomlkit.dumps(document))
     return paths.endbot_toml
 

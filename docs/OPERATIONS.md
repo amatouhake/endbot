@@ -55,7 +55,16 @@ control-port = 19142       # loopback only
 chunk-radius = 5           # requested Bot chunk radius, integer 2..32
 hotbar-sync-interval-ticks = 4  # server-side hotbar reads, integer 1..1200
 hotbar-sync-resend-ticks = 20   # unchanged corrections, integer 1..72000
+
+[ui]
+language = "auto"          # auto (each player's game language), en, or ja
 ```
+
+`[ui].language` sets the language of player-facing replies, help and forms. `auto` (the default, also when omitted)
+gives Japanese clients Japanese and every other client English; `en` or `ja` fixes one language for everyone. Command
+words, the server console and logs stay English (see [COMMANDS.md](COMMANDS.md#reply-language)). Managed instances
+generate it into the plugin config; manual plugin installs use the same key under `[ui]` there. It applies after a
+server restart.
 
 `[runtime].chunk-radius` defaults to 5 chunks when omitted (previously the protocol library requested 10).
 It is the shared default for Bots without an override; restart the runtime after editing this file.

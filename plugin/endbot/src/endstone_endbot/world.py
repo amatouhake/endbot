@@ -7,6 +7,8 @@ from uuid import UUID
 
 from endstone.level import Location
 
+from endstone_endbot.i18n import LocalizedError
+
 DIMENSIONS = {
     "overworld": "Overworld",
     "minecraft:overworld": "Overworld",
@@ -120,7 +122,7 @@ class EndstoneWorld:
             else:
                 target = self.server.get_player(str(target_name))
                 if target is None:
-                    raise ValueError(f"Player {target_name} is not online")
+                    raise LocalizedError("Player {name} is not online", name=target_name)
             if not bot.teleport(target):
                 raise RuntimeError("Endstone rejected the teleport")
             location = target.location
@@ -134,7 +136,7 @@ class EndstoneWorld:
             if "facingTarget" in parameters:
                 target = self.server.get_player(str(parameters["facingTarget"]))
                 if target is None:
-                    raise ValueError(f"Player {parameters['facingTarget']} is not online")
+                    raise LocalizedError("Player {name} is not online", name=parameters["facingTarget"])
                 destination["rotation"] = self._facing(destination["coordinates"], self._coordinates(target.location))
             elif "facingCoordinates" in parameters:
                 facing = self._resolve_coordinates(parameters["facingCoordinates"], reference)
@@ -169,7 +171,7 @@ class EndstoneWorld:
     def assert_name_available(self, name: str, identity_id: str | None = None) -> None:
         player = self.server.get_player(name)
         if player is not None and (identity_id is None or str(player.unique_id) != str(identity_id)):
-            raise ValueError(f"An online player named {name} already exists")
+            raise LocalizedError("An online player named {name} already exists", name=name)
 
     @staticmethod
     def _ray_block(dimension, origin, direction, distance):
@@ -292,9 +294,9 @@ class EndstoneWorld:
         try:
             dimension = self.server.level.get_dimension(placement["dimension"])
         except (KeyError, ValueError) as error:
-            raise ValueError(f"Unknown dimension: {placement['dimension']}") from error
+            raise LocalizedError("Unknown dimension: {dimension}", dimension=placement["dimension"]) from error
         if dimension is None:
-            raise ValueError(f"Unknown dimension: {placement['dimension']}")
+            raise LocalizedError("Unknown dimension: {dimension}", dimension=placement["dimension"])
         x, y, z = placement["coordinates"]
         yaw, pitch = placement["rotation"]
         return Location(dimension, x, y, z, pitch, yaw)

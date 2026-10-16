@@ -13,4 +13,5 @@ class PlainCommandService(BotCommandService):
         return replace(result, messages=tuple(strip_colors(message) for message in result.messages))
 
     def poll_mining(self, authorize):
-        return [(source, level, strip_colors(message)) for source, level, message in super().poll_mining(authorize)]
+        notices = super().poll_mining(authorize)
+        return [(source, level, strip_colors(message)) for source, level, message, _ in notices]

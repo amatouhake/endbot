@@ -10,6 +10,7 @@ from collections.abc import Callable
 
 from endstone_endbot import forms
 from endstone_endbot.commands import DIM, ERROR, RESET, reply
+from endstone_endbot.i18n import localize_error, tr
 
 
 class FormPresenter:
@@ -18,10 +19,13 @@ class FormPresenter:
         submit: Callable[[object, list[str]], None],
         online_names: Callable[[], tuple[str, ...]] = tuple,
         form_module=None,
+        language: Callable[[object], str] = lambda player: "en",
     ) -> None:
         self._submit = submit
         self._online_names = online_names
         self._form_module = form_module
+        # The viewing player's language for screen text; commands stay English.
+        self._language = language
 
     def _module(self):
         if self._form_module is None:
@@ -32,10 +36,11 @@ class FormPresenter:
         return self._form_module
 
     def show_view(self, player, view) -> None:
+        lang = self._language(player)
         if isinstance(view, forms.BotListView):
-            screen = forms.bot_list_screen(view)
+            screen = forms.bot_list_screen(view, lang)
         else:
-            screen = forms.bot_screen(view, str(player.name), self._online_names())
+            screen = forms.bot_screen(view, str(player.name), self._online_names(), lang)
         self.show(player, screen)
 
     def show(self, player, screen, parent=None) -> None:
@@ -111,8 +116,8 @@ class FormPresenter:
         try:
             commands = forms.modal_commands(screen, response)
         except forms.FormResponseError as error:
-            player.send_message(reply(str(error), screen.title, ERROR))
+            player.send_message(reply(localize_error(error, self._language(player)), screen.title, ERROR))
             return
         if not commands:
-            player.send_message(reply("nothing to change", screen.title))
+            player.send_message(reply(tr(self._language(player), "nothing to change"), screen.title))
         self._act(player, forms.Run(commands))

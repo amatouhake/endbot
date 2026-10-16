@@ -19,7 +19,9 @@ DEFAULT_CONTROL_PORT = 19142
 DEFAULT_CHUNK_RADIUS = 5
 DEFAULT_TRANSPORT = "nethernet"
 TRANSPORTS = ("nethernet", "raknet")
-SECTIONS = ("server", "controllers", "runtime")
+SECTIONS = ("server", "controllers", "runtime", "ui")
+LANGUAGES = ("auto", "en", "ja")
+DEFAULT_LANGUAGE = "auto"
 
 
 class ConfigError(ValueError):
@@ -52,10 +54,16 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class UiConfig:
+    language: str = DEFAULT_LANGUAGE
+
+
+@dataclass(frozen=True, slots=True)
 class EndbotConfig:
     server: ServerConfig
     controllers: ControllersConfig
     runtime: RuntimeConfig
+    ui: UiConfig = UiConfig()
 
 
 def _fail(path: Path, key: str, problem: str, fix: str) -> ConfigError:
@@ -182,6 +190,22 @@ def _load_runtime(path: Path, document: dict[str, Any]) -> RuntimeConfig:
     )
 
 
+def _load_ui(path: Path, document: dict[str, Any]) -> UiConfig:
+    table = document.get("ui", {})
+    if not isinstance(table, dict):
+        raise _fail(path, "ui", "must be a table", "write it as a [ui] section")
+    _reject_unknown_keys(path, table, "ui", ("language",))
+    language = table.get("language", DEFAULT_LANGUAGE)
+    if not isinstance(language, str) or language not in LANGUAGES:
+        raise _fail(
+            path,
+            "ui.language",
+            f"must be one of {LANGUAGES}, found {language!r}",
+            f'use language = "{DEFAULT_LANGUAGE}" (per-player game language), "en" or "ja"',
+        )
+    return UiConfig(language=language)
+
+
 def load_config(path: Path) -> EndbotConfig:
     """Load and validate ``endbot.toml``; raise :class:`ConfigError` on any violation."""
 
@@ -208,4 +232,5 @@ def load_config(path: Path) -> EndbotConfig:
         server=_load_server(path, document),
         controllers=_load_controllers(path, document),
         runtime=_load_runtime(path, document),
+        ui=_load_ui(path, document),
     )

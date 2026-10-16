@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from endstone_endbot import forms
-from endstone_endbot.commands import ERROR, reply
+from endstone_endbot.commands import DIM, ERROR, RESET, reply
 
 
 class FormPresenter:
@@ -101,6 +101,10 @@ class FormPresenter:
             self.show(player, action.screen, origin)
             return
         for command in action.commands:
+            if command[-1:] != ("menu",):
+                # Show the typed equivalent, so forms also teach the command. ASCII only:
+                # the Bedrock chat font lacks symbols such as arrows.
+                player.send_message(f"{DIM}/bot {' '.join(command)}{RESET}")
             self._submit(player, list(command))
 
     def _on_modal(self, player, screen, response) -> None:

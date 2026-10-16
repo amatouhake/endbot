@@ -15,8 +15,7 @@ from dataclasses import dataclass, field
 
 Argv = tuple[str, ...]
 
-ACTION_MODES = ("once", "continuous", "interval", "stop")
-DESTROY_MODES = ("once", "continuous", "stop", "block at coordinates")
+DIRECTIONS = ("forward", "backward", "left", "right", "stop")
 FACES = ("down", "up", "north", "south", "west", "east")
 FLAG_CHOICES = ("no change", "on", "off")
 TELEPORT_COORDINATES = "coordinates below"
@@ -207,12 +206,8 @@ def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...
                 "Movement...",
                 category(
                     "movement",
-                    Button("Forward", run((name, "move", "forward"))),
-                    Button("Backward", run((name, "move", "backward"))),
-                    Button("Left", run((name, "move", "left"))),
-                    Button("Right", run((name, "move", "right"))),
-                    Button("Stop moving", run((name, "move", "stop"))),
-                    Button("Jump...", Show(action_modal(name, "jump"))),
+                    Button("Move...", Show(move_modal(name))),
+                    Button("Jump...", Show(action_screen(name, "jump"))),
                     Button("Sprint / sneak...", Show(flags_modal(name))),
                 ),
             ),
@@ -222,9 +217,9 @@ def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...
                 "Gameplay...",
                 category(
                     "gameplay",
-                    Button("Attack...", Show(action_modal(name, "attack"))),
-                    Button("Use item...", Show(action_modal(name, "use"))),
-                    Button("Destroy blocks...", Show(destroy_modal(name))),
+                    Button("Attack...", Show(action_screen(name, "attack"))),
+                    Button("Use item...", Show(action_screen(name, "use"))),
+                    Button("Destroy blocks...", Show(destroy_screen(name))),
                 ),
             ),
             Button(
@@ -324,54 +319,112 @@ def flags_modal(name: str) -> ModalScreen:
     )
 
 
-def action_modal(name: str, action: str) -> ModalScreen:
-    modes = ("once", "for", "continuous", "interval", "stop") if action == "use" else ACTION_MODES
+# Action forms mirror the command grammar: the first screen offers the
+# command's modes, a mode without parameters runs at once, and a mode with
+# parameters opens a form holding exactly its clauses, named and measured
+# (ticks) as typed. A blank optional clause is omitted; the parser validates.
+TICKS = "20 = 1 second"
+FOR_FIELD = f"for <ticks> (optional; {TICKS}; blank = until stopped)"
+HOLD_FIELD = "hold <ticks> (optional; charge each press, then release)"
+INTERVAL_FIELD = f"interval <ticks> ({TICKS})"
+MODE_CONTENT = f"Pick a mode, as in the typed command. Ticks: {TICKS}."
+
+
+def _required(value, clause: str) -> Argv:
+    ticks = _text(value)
+    if not ticks:
+        raise FormResponseError(f"enter {clause} <ticks>")
+    return (clause, ticks)
+
+
+def _optional(value, clause: str) -> Argv:
+    ticks = _text(value)
+    return (clause, ticks) if ticks else ()
+
+
+def _clause_form(name: str, words: Argv, fields: tuple[tuple[str, str, bool], ...]) -> ModalScreen:
+    """A form for ``/bot <name> <words...>`` plus ``(clause, label, required)`` fields."""
 
     def build(values):
-        mode_value, ticks = values
-        mode = _option(modes, mode_value)
-        if mode in {"interval", "for"}:
-            return ((name, action, mode, _text(ticks) or "20"),)
-        return ((name, action, mode),)
+        clauses = []
+        for (clause, _, required), value in zip(fields, values, strict=True):
+            clauses.extend(_required(value, clause) if required else _optional(value, clause))
+        return ((name, *words, *clauses),)
+
+    # Required clauses start with a typical value; optional ones start blank.
+    controls = tuple(
+        TextInput(label, "20" if required else "", "20" if required else "") for _, label, required in fields
+    )
+    return ModalScreen(f"{name}: {' '.join(words)}", controls, build, "Run")
+
+
+def action_screen(name: str, action: str) -> ActionScreen:
+    """``/bot <name> jump|attack|use [once|continuous|interval|stop] ...``"""
+    use = action == "use"
+    hold = (("hold", HOLD_FIELD, False),) if use else ()
+    duration = (("for", FOR_FIELD, False),)
+    once = Show(_clause_form(name, (action, "once"), hold)) if use else run((name, action, "once"))
+    items = [
+        Button("once..." if use else "once", once),
+        Button("continuous...", Show(_clause_form(name, (action, "continuous"), (*hold, *duration)))),
+        Button(
+            "interval...",
+            Show(_clause_form(name, (action,), (("interval", INTERVAL_FIELD, True), *hold, *duration))),
+        ),
+    ]
+    if use:
+        items.append(Button("for...", Show(_clause_form(name, (action,), (("for", f"for <ticks> ({TICKS})", True),)))))
+    items += [Button("stop", run((name, action, "stop"))), Button("Back to Bot", run(menu_argv(name)))]
+    return ActionScreen(f"{name}: {action}", MODE_CONTENT, tuple(items))
+
+
+def move_modal(name: str) -> ModalScreen:
+    """``/bot <name> move forward|backward|left|right|stop [for <ticks>]``"""
+
+    def build(values):
+        direction, duration = values
+        return ((name, "move", _option(DIRECTIONS, direction), *_optional(duration, "for")),)
 
     return ModalScreen(
-        f"{name}: {action}",
-        (
-            Dropdown("Mode (for = hold, then release)" if action == "use" else "Mode", modes),
-            TextInput(
-                "Ticks (20 = 1 second; interval spacing / for duration)"
-                if action == "use"
-                else "Interval ticks (interval mode only; 20 = 1 second)",
-                "20",
-                "20",
-            ),
-        ),
+        f"{name}: move",
+        (Dropdown("direction", DIRECTIONS), TextInput(FOR_FIELD, "", "")),
         build,
-        "Start" if action != "jump" else "Jump",
+        "Run",
     )
 
 
-def destroy_modal(name: str) -> ModalScreen:
+def destroy_screen(name: str) -> ActionScreen:
+    """``/bot <name> destroy [once|continuous [for]|stop]`` or ``destroy <x> <y> <z> [face]``"""
+    return ActionScreen(
+        f"{name}: destroy",
+        MODE_CONTENT,
+        (
+            Button("once", run((name, "destroy", "once"))),
+            Button("continuous...", Show(_clause_form(name, ("destroy", "continuous"), (("for", FOR_FIELD, False),)))),
+            Button("x y z...", Show(destroy_coordinates_modal(name))),
+            Button("stop", run((name, "destroy", "stop"))),
+            Button("Back to Bot", run(menu_argv(name))),
+        ),
+    )
+
+
+def destroy_coordinates_modal(name: str) -> ModalScreen:
     face_options = ("automatic", *FACES)
 
     def build(values):
-        mode_value, target, face_value = values
-        mode = _option(DESTROY_MODES, mode_value)
-        if mode != "block at coordinates":
-            return ((name, "destroy", mode),)
+        target, face_value = values
         face = _option(face_options, face_value)
         suffix = () if face == "automatic" else (face,)
         return ((name, "destroy", *_coordinates(_text(target)), *suffix),)
 
     return ModalScreen(
-        f"{name}: destroy",
+        f"{name}: destroy x y z",
         (
-            Dropdown("Mode (continuous keeps breaking blocks in sight until destroy stop)", DESTROY_MODES),
-            TextInput("Block x y z (coordinates mode; ~ is relative to the Bot)", "~ ~-1 ~"),
-            Dropdown("Face (coordinates mode)", face_options),
+            TextInput("x y z (~ is relative to the Bot)", "~ ~-1 ~"),
+            Dropdown("face", face_options),
         ),
         build,
-        "Destroy",
+        "Run",
     )
 
 

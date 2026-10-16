@@ -269,9 +269,16 @@ decide whether to keep it from the experiment's results.
   (a jump lasts about 12 ticks) does not start a new jump, so interval 10 cannot jump more often than landing allows.
   The remaining command checks (bow/trident `hold`, `destroy for`, status) were not reached. The form check stopped
   when in-game night made the world hard to inspect, but the operator judged the added For/Hold fields and Move for
-  form as visibly bolted on and hard to understand, so they were removed from this change. The forms will be
-  redesigned separately: seconds and sliders instead of ticks, a mode choice followed by only the fields it needs,
-  charged shots by count, and one Walk form for direction, duration and sprint/sneak.
+  form as visibly bolted on and hard to understand, so they were removed from that change.
+- The redesigned action forms follow one rule agreed with the operator: menus make the command form approachable and
+  carry no meaning of their own. The first screen offers the command's modes; a mode with parameters opens a form with
+  only its clauses in ticks, blank optional clauses are omitted, and each run command is echoed in its typed form.
+  Move is one `move <direction> [for]` form (quick taps stay typed). Sprint/sneak stays separate. See
+  [control forms](COMMANDS.md#control-forms). Human Windows Client check (2026-10-16 JST, RakNet, locked pair):
+  Move with for, Sprint/sneak, Jump interval/for, Use interval/hold/for (an invalid hold longer than interval was
+  rejected with its reason), Use once hold and Destroy continuous for (with the duration notice) worked from the
+  forms. The echo's leading arrow rendered as a missing glyph in the Bedrock chat font, so the echo is now plain
+  ASCII `/bot ...` in gray; that change itself has not been rechecked on a client.
 - Command completion redesign remains dependent on a suitable upstream Endstone API and is lower priority while the
   menu provides a practical control surface; revisit its need after menu feedback.
 - Vanilla sneak edge protection remains deferred as client collision/edge simulation work; it is not part of the

@@ -22,16 +22,24 @@ ONLINE = {
 OBSERVED = {"dimension": "Overworld", "x": 1.0, "y": 64.0, "z": 2.0, "yaw": 91.0, "pitch": -12.0}
 
 
-def buttons(screen):
+def buttons(screen, depth=1):
+    """Buttons of a screen and (by default) of its category screens, by text."""
     result = {}
     for item in screen.items:
         if not isinstance(item, forms.Button):
             continue
-        if isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
-            result.update(buttons(item.action.screen))
+        if depth and isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
+            result.update(buttons(item.action.screen, depth - 1))
         else:
             result[item.text] = item.action
     return result
+
+
+def at(screen, *path):
+    """Follow button texts through Show actions to a nested screen."""
+    for text in path:
+        screen = next(item.action.screen for item in screen.items if getattr(item, "text", None) == text)
+    return screen
 
 
 def submit(screen, *values):
@@ -112,9 +120,10 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(strip_colors(screen.content), "online · Overworld 1.0 64.0 2.0")
         actions = buttons(screen)
         self.assertEqual(actions["Stop everything"], forms.Run((("Alice", "stop"),)))
-        self.assertEqual(actions["Forward"], forms.Run((("Alice", "move", "forward"),)))
-        self.assertEqual(actions["Backward"], forms.Run((("Alice", "move", "backward"),)))
-        self.assertEqual(actions["Stop moving"], forms.Run((("Alice", "move", "stop"),)))
+        self.assertEqual(
+            [item.text for item in at(screen, "Movement...").items],
+            ["Move...", "Jump...", "Sprint / sneak...", "Back to Bot"],
+        )
         self.assertEqual(actions["Reconnect"], forms.Run((("Alice", "reconnect"),)))
         confirm = actions["Despawn..."].screen
         self.assertEqual(confirm.action, forms.Run((("Alice", "despawn"),)))
@@ -147,16 +156,6 @@ class ScreenTests(unittest.TestCase):
             ("Look...", (0, 0, "1 64 ~2"), [("Alice", "look", "at", "1", "64", "~2")]),
             ("Sprint / sneak...", (1, 2), [("Alice", "sprint", "on"), ("Alice", "sneak", "off")]),
             ("Sprint / sneak...", (0, 0), []),
-            ("Jump...", (0, "20"), [("Alice", "jump", "once")]),
-            ("Attack...", (2, " 40 "), [("Alice", "attack", "interval", "40")]),
-            ("Use item...", (1, " 30 "), [("Alice", "use", "for", "30")]),
-            ("Use item...", (2, ""), [("Alice", "use", "continuous")]),
-            ("Use item...", (3, "40"), [("Alice", "use", "interval", "40")]),
-            ("Use item...", (4, "20"), [("Alice", "use", "stop")]),
-            ("Destroy blocks...", (1, "", 0), [("Alice", "destroy", "continuous")]),
-            ("Destroy blocks...", (2, "", 0), [("Alice", "destroy", "stop")]),
-            ("Destroy blocks...", (3, "~ ~-1 ~", 0), [("Alice", "destroy", "~", "~-1", "~")]),
-            ("Destroy blocks...", (3, "1 64 2", 2), [("Alice", "destroy", "1", "64", "2", "up")]),
             ("Hotbar slot...", (8,), [("Alice", "hotbar", "9")]),
             ("Drop item...", (0,), [("Alice", "drop")]),
             ("Drop item...", (1,), [("Alice", "drop", "stack")]),
@@ -170,6 +169,87 @@ class ScreenTests(unittest.TestCase):
                 for command in commands:
                     parse_command(list(command))
 
+    def test_action_forms_mirror_command_modes_and_clauses(self):
+        screen = self.online_screen()
+        jump = at(screen, "Movement...", "Jump...")
+        self.assertEqual(
+            [item.text for item in jump.items], ["once", "continuous...", "interval...", "stop", "Back to Bot"]
+        )
+        use = at(screen, "Gameplay...", "Use item...")
+        self.assertEqual(
+            [item.text for item in use.items],
+            ["once...", "continuous...", "interval...", "for...", "stop", "Back to Bot"],
+        )
+        destroy = at(screen, "Gameplay...", "Destroy blocks...")
+        self.assertEqual(
+            [item.text for item in destroy.items], ["once", "continuous...", "x y z...", "stop", "Back to Bot"]
+        )
+        immediate = [
+            (jump, "once", ("Alice", "jump", "once")),
+            (jump, "stop", ("Alice", "jump", "stop")),
+            (at(screen, "Gameplay...", "Attack..."), "once", ("Alice", "attack", "once")),
+            (use, "stop", ("Alice", "use", "stop")),
+            (destroy, "once", ("Alice", "destroy", "once")),
+            (destroy, "stop", ("Alice", "destroy", "stop")),
+        ]
+        for parent, text, command in immediate:
+            with self.subTest(text=text, command=command):
+                self.assertEqual(buttons(parent, 0)[text], forms.Run((command,)))
+        forms_cases = [
+            (("Movement...", "Move..."), (0, ""), ("Alice", "move", "forward")),
+            (("Movement...", "Move..."), (1, " 40 "), ("Alice", "move", "backward", "for", "40")),
+            (("Movement...", "Move..."), (4, ""), ("Alice", "move", "stop")),
+            (("Movement...", "Jump...", "continuous..."), ("",), ("Alice", "jump", "continuous")),
+            (("Movement...", "Jump...", "continuous..."), ("100",), ("Alice", "jump", "continuous", "for", "100")),
+            (
+                ("Movement...", "Jump...", "interval..."),
+                ("20", "100"),
+                ("Alice", "jump", "interval", "20", "for", "100"),
+            ),
+            (("Gameplay...", "Attack...", "interval..."), (" 40 ", ""), ("Alice", "attack", "interval", "40")),
+            (("Gameplay...", "Use item...", "once..."), ("",), ("Alice", "use", "once")),
+            (("Gameplay...", "Use item...", "once..."), ("30",), ("Alice", "use", "once", "hold", "30")),
+            (("Gameplay...", "Use item...", "continuous..."), ("", ""), ("Alice", "use", "continuous")),
+            (
+                ("Gameplay...", "Use item...", "continuous..."),
+                ("25", "200"),
+                ("Alice", "use", "continuous", "hold", "25", "for", "200"),
+            ),
+            (
+                ("Gameplay...", "Use item...", "interval..."),
+                ("30", "20", "80"),
+                ("Alice", "use", "interval", "30", "hold", "20", "for", "80"),
+            ),
+            (("Gameplay...", "Use item...", "for..."), ("40",), ("Alice", "use", "for", "40")),
+            (("Gameplay...", "Destroy blocks...", "continuous..."), ("",), ("Alice", "destroy", "continuous")),
+            (
+                ("Gameplay...", "Destroy blocks...", "continuous..."),
+                ("200",),
+                ("Alice", "destroy", "continuous", "for", "200"),
+            ),
+            (
+                ("Gameplay...", "Destroy blocks...", "x y z..."),
+                ("~ ~-1 ~", 0),
+                ("Alice", "destroy", "~", "~-1", "~"),
+            ),
+            (
+                ("Gameplay...", "Destroy blocks...", "x y z..."),
+                ("1 64 2", 2),
+                ("Alice", "destroy", "1", "64", "2", "up"),
+            ),
+        ]
+        for path, values, expected in forms_cases:
+            with self.subTest(path=path, values=values):
+                (command,) = submit(at(screen, *path), *values)
+                self.assertEqual(tuple(command), expected)
+                parse_command(list(command))
+        for path, values in (
+            (("Movement...", "Jump...", "interval..."), (" ", "")),
+            (("Gameplay...", "Use item...", "for..."), ("",)),
+        ):
+            with self.subTest(path=path), self.assertRaisesRegex(forms.FormResponseError, "enter"):
+                submit(at(screen, *path), *values)
+
     def test_modal_defaults_reflect_current_bot_state(self):
         actions = buttons(self.online_screen())
         yaw, pitch, _ = actions["Look..."].screen.controls
@@ -180,7 +260,7 @@ class ScreenTests(unittest.TestCase):
     def test_malformed_responses_are_rejected_without_commands(self):
         actions = buttons(self.online_screen())
         move = actions["Hotbar slot..."].screen
-        destroy = actions["Destroy blocks..."].screen
+        destroy = at(self.online_screen(), "Gameplay...", "Destroy blocks...", "x y z...")
         for screen, response in (
             (move, None),
             (move, "not json"),
@@ -191,7 +271,7 @@ class ScreenTests(unittest.TestCase):
             (move, json.dumps([True])),
             (move, json.dumps([0.5])),
             (move, json.dumps(["0"])),
-            (destroy, json.dumps([3, "1 2", 0])),
+            (destroy, json.dumps(["1 2", 0])),
             (actions["Chunk radius..."].screen, json.dumps(["yes", 4])),
             (forms.spawn_modal(), json.dumps(["  "])),
         ):
@@ -368,20 +448,40 @@ class PresenterTests(unittest.TestCase):
         self.submitted.clear()
         modal.kwargs["on_submit"](self.player, json.dumps([1]))
         self.assertEqual(self.submitted, [["Alice", "hotbar", "2"]])
+        # Commands from forms echo their typed form; navigation does not.
+        self.assertEqual(
+            [strip_colors(message) for message in self.player.messages],
+            ["/bot Alice tp Steve", "/bot Alice stop", "/bot Alice hotbar 2"],
+        )
 
     def test_modal_errors_reply_instead_of_submitting(self):
         _, clicks = self.bot_form()
         clicks["Destroy blocks..."](self.player)
-        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([3, "1 2", 0]))
+        {text: c for _, text, c in self.player.forms[-1].items}["x y z..."](self.player)
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps(["1 2", 0]))
         clicks["Sprint / sneak..."](self.player)
         self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([0, 0]))
         self.assertEqual(self.submitted, [])
         self.assertEqual(
             [strip_colors(message) for message in self.player.messages],
             [
-                "Endbot: Alice: destroy: enter exactly three coordinates: x y z",
+                "Endbot: Alice: destroy x y z: enter exactly three coordinates: x y z",
                 "Endbot: Alice: sprint / sneak: nothing to change",
             ],
+        )
+
+    def test_mode_screen_form_closes_back_to_the_mode_screen(self):
+        _, clicks = self.bot_form()
+        clicks["Use item..."](self.player)
+        modes = {text: c for _, text, c in self.player.forms[-1].items}
+        modes["interval..."](self.player)
+        self.player.forms[-1].kwargs["on_close"](self.player)
+        self.assertEqual(self.player.forms[-1].kwargs["title"], "Alice: use")
+        modes["interval..."](self.player)
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps(["30", "20", "80"]))
+        self.assertEqual(self.submitted, [["Alice", "use", "interval", "30", "hold", "20", "for", "80"]])
+        self.assertEqual(
+            strip_colors(self.player.messages[-1]), "/bot Alice use interval 30 hold 20 for 80"
         )
 
     def test_closing_an_input_or_confirm_form_returns_to_its_category(self):
@@ -390,7 +490,7 @@ class PresenterTests(unittest.TestCase):
         click = {text: c for kind, text, c in main.items if kind == "button"}
         click["Movement..."](self.player)
         movement = self.player.forms[-1]
-        {text: c for _, text, c in movement.items}["Jump..."](self.player)
+        {text: c for _, text, c in movement.items}["Move..."](self.player)
         modal = self.player.forms[-1]
         self.assertEqual(type(modal).__name__, "ModalForm")
         modal.kwargs["on_close"](self.player)

@@ -10,9 +10,10 @@ from dataclasses import dataclass, field
 
 from endstone_endbot.control import RuntimeControlError
 from endstone_endbot.forms import BotListView, BotView
+from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 
 
-class CommandSyntaxError(ValueError):
+class CommandSyntaxError(LocalizedError):
     pass
 
 
@@ -46,6 +47,11 @@ def reply(detail: str, name: str | None = None, color: str = "") -> str:
     """Format one reply as ``Endbot: <Bot>: <detail>`` with a colored prefix."""
     prefix = f"Endbot: {name}:" if name else "Endbot:"
     return f"{PREFIX}{prefix}{RESET} {color}{detail}{RESET if color else ''}"
+
+
+def _language(source) -> str:
+    """The reply language a command source captured; console and tests default to English."""
+    return getattr(source, "language", None) or "en"
 
 
 def color_syntax(text: str) -> str:
@@ -82,6 +88,8 @@ class CommandResult:
     log_level: str | None = None
     # Set when the result is a form screen (BotListView/BotView) for a player.
     view: object | None = None
+    # English wording for the log when ``messages`` are in another language.
+    log_messages: tuple[str, ...] | None = None
 
     @property
     def message(self) -> str | None:
@@ -319,44 +327,49 @@ def _help_prefix(topic: HelpTopic) -> str:
     return "/bot <name>" if topic.named else "/bot"
 
 
-def help_page(page: int) -> tuple[str, ...]:
+def help_page(page: int, lang: str = "en") -> tuple[str, ...]:
     """Render one paginated help index, modeled on vanilla Bedrock /help."""
     total = len(HELP_PAGES)
-    lines = [f"{HEADING}--- Endbot help page {page} of {total}: {HELP_PAGE_TITLES[page - 1]} ---{RESET}"]
+    title = Text(HELP_PAGE_TITLES[page - 1])
+    heading = tr(lang, "--- Endbot help page {page} of {total}: {title} ---", page=page, total=total, title=title)
+    lines = [f"{HEADING}{heading}{RESET}"]
     separator = f"{DIM} - {RESET}"
     if page == 1:
         commands = f"{DIM} | {RESET}".join(color_syntax(f"/bot {key}") for key in ("ping", "list", "help"))
-        lines.append(f"{commands}{separator}connectivity, profiles, this help")
-        lines.append(f"{color_syntax('/bot menu')}{separator}open the Bot control forms (players only)")
+        lines.append(f"{commands}{separator}{tr(lang, 'connectivity, profiles, this help')}")
+        lines.append(f"{color_syntax('/bot menu')}{separator}{tr(lang, 'open the Bot control forms (players only)')}")
     for key in HELP_PAGES[page - 1]:
         topic = HELP_TOPICS[key]
-        lines.append(f"{color_syntax(f'{_help_prefix(topic)} {topic.syntaxes[0]}')}{separator}{topic.summary}")
+        syntax = color_syntax(f"{_help_prefix(topic)} {topic.syntaxes[0]}")
+        lines.append(f"{syntax}{separator}{tr(lang, topic.summary)}")
     if page < total:
         lines.append(
-            f"{DIM}Next page:{RESET} {color_syntax(f'/bot help {page + 1}')}"
-            f"{DIM} - detail:{RESET} {color_syntax('/bot help <command>')}"
+            f"{DIM}{tr(lang, 'Next page:')}{RESET} {color_syntax(f'/bot help {page + 1}')}"
+            f"{DIM}{tr(lang, ' - detail:')}{RESET} {color_syntax('/bot help <command>')}"
         )
     else:
         lines.append(
-            f"{DIM}Detail:{RESET} {color_syntax('/bot help <command>')}"
-            f" {DIM}(for example{RESET} {color_syntax('/bot help move')}{DIM}){RESET}"
+            f"{DIM}{tr(lang, 'Detail:')}{RESET} {color_syntax('/bot help <command>')}"
+            f" {DIM}{tr(lang, '(for example')}{RESET} {color_syntax('/bot help move')}{DIM}){RESET}"
         )
     return tuple(lines)
 
 
-def help_detail(key: str) -> tuple[str, ...]:
+def help_detail(key: str, lang: str = "en") -> tuple[str, ...]:
     """Render detailed help for one operation, listing every supported syntax."""
     topic = HELP_TOPICS[key]
     lines = [
-        f"{HEADING}Endbot help: {topic.operation}{RESET}",
+        f"{HEADING}{tr(lang, 'Endbot help: {operation}', operation=topic.operation)}{RESET}",
         *(color_syntax(f"{_help_prefix(topic)} {syntax}") for syntax in topic.syntaxes),
-        *topic.details,
+        *(tr(lang, detail) for detail in topic.details),
     ]
     return tuple(lines)
 
 
-def _for_suffix(parameters: dict[str, object]) -> str:
-    return f" for {parameters['durationTicks']} ticks" if "durationTicks" in parameters else ""
+def _for_suffix(parameters: dict[str, object], lang: str = "en") -> str:
+    if "durationTicks" not in parameters:
+        return ""
+    return tr(lang, " for {ticks} ticks", ticks=parameters["durationTicks"])
 
 
 BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
@@ -408,16 +421,16 @@ def _number(value: str, label: str) -> float:
     try:
         result = float(value)
     except ValueError as error:
-        raise CommandSyntaxError(f"{label} must be a number") from error
+        raise CommandSyntaxError("{label} must be a number", label=label) from error
     if not math.isfinite(result):
-        raise CommandSyntaxError(f"{label} must be finite")
+        raise CommandSyntaxError("{label} must be finite", label=label)
     return result
 
 
 def _coordinate(value: str) -> float | tuple[str, float]:
     if value.startswith("~"):
-        return ("relative", _number(value[1:] or "0", "relative coordinate"))
-    return _number(value, "coordinate")
+        return ("relative", _number(value[1:] or "0", Text("relative coordinate")))
+    return _number(value, Text("coordinate"))
 
 
 def _position(tokens: list[str]) -> tuple[dict[str, object], list[str]]:
@@ -443,16 +456,16 @@ def _ticks(value: str, label: str) -> int:
     try:
         ticks = int(value)
     except ValueError as error:
-        raise CommandSyntaxError(f"{label} must be an integer number of ticks") from error
+        raise CommandSyntaxError("{label} must be an integer number of ticks", label=label) from error
     if not 1 <= ticks <= 72_000:
-        raise CommandSyntaxError(f"{label} must be between 1 and 72000 ticks")
+        raise CommandSyntaxError("{label} must be between 1 and 72000 ticks", label=label)
     return ticks
 
 
 TICK_CLAUSES = {
-    "interval": ("intervalTicks", "Action interval"),
-    "hold": ("holdTicks", "Hold"),
-    "for": ("durationTicks", "Duration"),
+    "interval": ("intervalTicks", Text("Action interval")),
+    "hold": ("holdTicks", Text("Hold")),
+    "for": ("durationTicks", Text("Duration")),
 }
 
 
@@ -464,28 +477,30 @@ def _action(name: str, action: str, remaining: list[str]) -> BotCommand:
     that many ticks per trigger, then releases. Clauses may appear in any order.
     """
     hold = " [hold <ticks>]" if action == "use" else ""
-    usage = f"{action} accepts [once|continuous|interval <ticks>|stop]{hold} [for <ticks>]"
+    usage = "{action} accepts [once|continuous|interval <ticks>|stop]{hold} [for <ticks>]"
     tokens = [value.lower() for value in remaining]
     mode = tokens.pop(0) if tokens and tokens[0] in {"once", "continuous", "stop"} else None
     parameters: dict[str, object] = {}
     while tokens:
         clause = tokens.pop(0)
         if clause not in TICK_CLAUSES or (clause == "hold" and action != "use"):
-            raise CommandSyntaxError(usage)
+            raise CommandSyntaxError(usage, action=action, hold=hold)
         key, label = TICK_CLAUSES[clause]
         if key in parameters or not tokens:
-            raise CommandSyntaxError(usage)
+            raise CommandSyntaxError(usage, action=action, hold=hold)
         parameters[key] = _ticks(tokens.pop(0), label)
     if mode == "stop" and parameters:
-        raise CommandSyntaxError(f"{action} stop takes no ticks")
+        raise CommandSyntaxError("{action} stop takes no ticks", action=action)
     if "intervalTicks" in parameters:
         if mode is not None:
-            raise CommandSyntaxError(f"{action} interval replaces once/continuous")
+            raise CommandSyntaxError("{action} interval replaces once/continuous", action=action)
         mode = "interval"
     elif mode is None:
         mode = "continuous" if "durationTicks" in parameters else "once"
     if mode == "once" and "durationTicks" in parameters:
-        raise CommandSyntaxError(f"{action} once runs one time; use continuous or interval with for <ticks>")
+        raise CommandSyntaxError(
+            "{action} once runs one time; use continuous or interval with for <ticks>", action=action
+        )
     if parameters.get("intervalTicks", math.inf) <= parameters.get("holdTicks", 0):
         raise CommandSyntaxError("Use interval must be longer than hold")
     return BotCommand("action", name, {"action": action, "mode": mode, **parameters})
@@ -528,11 +543,11 @@ def _help_topic(raw: str) -> BotCommand:
         page = int(token)
         if 1 <= page <= len(HELP_PAGES):
             return BotCommand("help", parameters={"page": page})
-        raise CommandSyntaxError(f"Help page must be from 1 to {len(HELP_PAGES)}")
+        raise CommandSyntaxError("Help page must be from 1 to {total}", total=len(HELP_PAGES))
     key = HELP_TOPIC_ALIASES.get(token, token)
     if key in HELP_TOPICS:
         return BotCommand("help", parameters={"topic": key})
-    raise CommandSyntaxError(f"Unknown help topic '{raw}'. Use /bot help <page> or /bot help <command>")
+    raise CommandSyntaxError("Unknown help topic '{topic}'. Use /bot help <page> or /bot help <command>", topic=raw)
 
 
 def parse_command(arguments: list[str]) -> BotCommand:
@@ -572,7 +587,7 @@ def parse_command(arguments: list[str]) -> BotCommand:
         if len(remaining) == 1:
             return BotCommand(operation, name, {"direction": direction})
         if len(remaining) == 3 and remaining[1].lower() == "for" and direction != "stop":
-            duration = _ticks(remaining[2], "Duration")
+            duration = _ticks(remaining[2], Text("Duration"))
             return BotCommand(operation, name, {"direction": direction, "durationTicks": duration})
         raise CommandSyntaxError("move accepts forward|backward|left|right [for <ticks>], or stop")
     if operation == "look" and len(remaining) == 2:
@@ -621,7 +636,7 @@ def parse_command(arguments: list[str]) -> BotCommand:
             # for is how long mining keeps going, so it implies continuous.
             if modes[:-2] not in ([], ["continuous"]):
                 raise CommandSyntaxError("destroy for <ticks> runs continuous mining; one block has no duration")
-            duration = _ticks(remaining[-1], "Duration")
+            duration = _ticks(remaining[-1], Text("Duration"))
             return BotCommand(operation, name, {"mode": "continuous", "durationTicks": duration})
         if not remaining or modes == ["once"]:
             return BotCommand(operation, name)
@@ -646,7 +661,7 @@ def parse_command(arguments: list[str]) -> BotCommand:
         return _action(name, operation, remaining)
     if operation in {"sprint", "sneak"} and len(remaining) == 1 and remaining[0].lower() in {"on", "off"}:
         return BotCommand("flag", name, {"flag": operation, "value": remaining[0].lower() == "on"})
-    raise CommandSyntaxError(f"Unknown or invalid Bot action: {operation}")
+    raise CommandSyntaxError("Unknown or invalid Bot action: {operation}", operation=operation)
 
 
 class BotCommandService:
@@ -665,33 +680,29 @@ class BotCommandService:
         # Consecutive polls that could not reach the runtime, per loop entry.
         self._mining_unreachable = {}
 
-    def poll_mining(self, authorize) -> list[tuple[object, str, str]]:
-        """Renew/retarget loops; return (source, level, message) notices.
+    def poll_mining(self, authorize) -> list[tuple[object, str, str, str]]:
+        """Renew/retarget loops; return (source, level, message, log message) notices.
 
         Notices cover only abnormal ends. Commanded stops already replied, and
-        each successfully broken block would be far too chatty.
+        each successfully broken block would be far too chatty. The message is
+        in the source's language; the log message is English.
         """
         notices = []
         with self._mining_lock:
             loops = tuple(self._mining_loops.items())
         for key, entry in loops:
             name, identity, loop_id, source, position = entry
-            stopped = f"{'destroy continuous' if loop_id else 'destroy'} stopped: "
             try:
                 if not authorize(source):
                     if self._end_mining_loop(key, entry):
-                        notices.append(
-                            (source, "warning", reply(stopped + "control permission revoked", name, WARNING))
-                        )
+                        notices.append(self._mining_notice(entry, "warning", "control permission revoked"))
                     continue
                 status = self.control.request("status", name=name)
                 self._mining_unreachable.pop(key, None)  # reached the runtime again
                 mining = status.get("mining") or {}
                 if status["identityId"] != identity:
                     if self._take_mining_loop(key, entry):
-                        notices.append(
-                            (source, "warning", reply(stopped + "Bot was renamed or removed", name, WARNING))
-                        )
+                        notices.append(self._mining_notice(entry, "warning", "Bot was renamed or removed"))
                     continue
                 if loop_id is None:
                     reason = self._single_mining_end(status, mining, position)
@@ -703,10 +714,8 @@ class BotCommandService:
                 if reason is False:
                     continue  # still breaking
                 if self._take_mining_loop(key, entry) and reason:
-                    if reason in EXPECTED_MINING_ENDS:
-                        notices.append((source, "info", reply(stopped + reason, name)))
-                    else:
-                        notices.append((source, "warning", reply(stopped + reason, name, WARNING)))
+                    level = "info" if reason in EXPECTED_MINING_ENDS else "warning"
+                    notices.append(self._mining_notice(entry, level, reason))
             except RuntimeControlError as error:
                 # Windows loopback can refuse a fresh connection (WinError 10048)
                 # under rapid reconnects. Retry for about one runtime lease
@@ -714,11 +723,24 @@ class BotCommandService:
                 if error.code == "unavailable" and self._unreachable(key, entry) < UNREACHABLE_POLL_LIMIT:
                     continue
                 if self._end_mining_loop(key, entry):
-                    notices.append((source, "warning", reply(stopped + str(error), name, WARNING)))
+                    notices.append(self._mining_notice(entry, "warning", error))
             except (RuntimeError, ValueError) as error:
                 if self._end_mining_loop(key, entry):
-                    notices.append((source, "warning", reply(stopped + str(error), name, WARNING)))
+                    notices.append(self._mining_notice(entry, "warning", error))
         return notices
+
+    @staticmethod
+    def _mining_notice(entry, level: str, reason) -> tuple[object, str, str, str]:
+        """A notice for an ended job; ``reason`` is an English reason or an error."""
+        name, _, loop_id, source, _ = entry
+        command = "destroy continuous" if loop_id else "destroy"
+        color = WARNING if level == "warning" else ""
+
+        def render(lang: str) -> str:
+            text = localize_error(reason, lang) if isinstance(reason, BaseException) else tr(lang, reason)
+            return reply(tr(lang, "{command} stopped: {reason}", command=command, reason=text), name, color)
+
+        return (source, level, render(_language(source)), render("en"))
 
     def _unreachable(self, key, entry) -> int:
         previous, count = self._mining_unreachable.get(key, (None, 0))
@@ -786,17 +808,20 @@ class BotCommandService:
 
     def execute(self, arguments: list[str], sender=None) -> CommandResult:
         command = None
+        lang = _language(sender)
         try:
             command = parse_command(arguments)
-            return self._execute(command, sender)
+            return self._execute(command, sender, lang)
         except (CommandSyntaxError, RuntimeError, ValueError) as error:
+            detail = localize_error(error, lang)
             if command is not None and command.name:
                 operation = command.operation
                 if operation in {"action", "flag"}:
                     operation = str(command.parameters[operation])
-                name, context = command.name, f"{operation} failed: "
+                name = command.name
+                detail = tr(lang, "{operation} failed: {error}", operation=operation, error=detail)
             else:
-                name, context = None, ""
+                name = None
                 try:
                     tokens = _tokens(arguments)
                 except ValueError:
@@ -804,20 +829,29 @@ class BotCommandService:
                 if len(tokens) >= 2 and tokens[0].lower() != "help":
                     # Syntax errors still name the Bot the operator addressed.
                     name = tokens[0]
-            return CommandResult(True, (reply(f"{context}{error}", name, ERROR),))
+            return CommandResult(True, (reply(detail, name, ERROR),))
 
-    def _execute(self, command: BotCommand, sender) -> CommandResult:
+    def _execute(self, command: BotCommand, sender, lang: str = "en") -> CommandResult:
+        def say(template: str, bot: str | None = None, /, **params) -> CommandResult:
+            return CommandResult(True, (reply(tr(lang, template, **params), bot),))
+
+        def logged(name: str, render) -> CommandResult:
+            """A reply also written to the console log, which stays English."""
+            return CommandResult(
+                True, (reply(render(lang), name),), log_level="info", log_messages=(reply(render("en"), name),)
+            )
+
         if command.operation == "ping":
             # Keep the server-side safety probe independent of runtime health.
             return CommandResult(True, (reply("pong"),))
         if command.operation == "help":
             if "topic" in command.parameters:
-                return CommandResult(True, help_detail(command.parameters["topic"]))
-            return CommandResult(True, help_page(int(command.parameters.get("page", 1))))
+                return CommandResult(True, help_detail(command.parameters["topic"], lang))
+            return CommandResult(True, help_page(int(command.parameters.get("page", 1)), lang))
         if command.operation == "menu" and getattr(sender, "player_id", None) is None:
             if command.parameters.get("default"):
-                return CommandResult(True, help_page(1))
-            return CommandResult(True, (reply("menu is available only to players; use /bot help"),))
+                return CommandResult(True, help_page(1, lang))
+            return say("menu is available only to players; use /bot help")
         if self.control is None:
             raise RuntimeError("runtime control is not configured")
         if command.operation == "menu":
@@ -826,18 +860,18 @@ class BotCommandService:
             status = self.control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
             return CommandResult(
-                True, view=BotView(status["name"], self._status_reply(status, observed), status, observed)
+                True, view=BotView(status["name"], self._status_reply(status, observed, lang), status, observed)
             )
         if command.operation == "list":
             bots = self.control.request("list")
             if not bots:
-                return CommandResult(True, (reply("no Bot profiles"),))
-            summary = ", ".join(f"{bot['name']} {DIM}[{bot['connectionState']}]{RESET}" for bot in bots)
+                return say("no Bot profiles")
+            summary = ", ".join(f"{bot['name']} {DIM}[{tr(lang, bot['connectionState'])}]{RESET}" for bot in bots)
             return CommandResult(True, (reply(summary),))
         if command.operation == "status":
             status = self.control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
-            return CommandResult(True, (self._status_reply(status, observed),))
+            return CommandResult(True, (self._status_reply(status, observed, lang),))
         if command.operation == "spawn":
             existing = None
             try:
@@ -853,28 +887,28 @@ class BotCommandService:
             if result.get("alreadyOnline"):
                 state = result.get("connectionState")
                 if state == "connecting":
-                    return CommandResult(True, (reply("already connecting", result["name"]),))
+                    return say("already connecting", result["name"])
                 if state == "reconnecting":
-                    return CommandResult(True, (reply("already reconnecting", result["name"]),))
+                    return say("already reconnecting", result["name"])
                 if state == "online":
-                    return CommandResult(True, (reply("already online", result["name"]),))
+                    return say("already online", result["name"])
                 # Missing or unknown states stay neutral rather than claiming online.
-                return CommandResult(True, (reply("already active", result["name"]),))
-            verb = "created and connecting" if result.get("created") else "connecting"
+                return say("already active", result["name"])
+            verb = Text("created and connecting" if result.get("created") else "connecting")
             if placement is None:
                 # Console spawn without coordinates: BDS places the Bot.
                 self.world.clear_pending_placement(result["identityId"])
-                where = "at the world spawn" if result.get("created") else "where it last was"
-                return CommandResult(True, (reply(f"{verb} ({where})", result["name"]),))
+                where = Text("at the world spawn" if result.get("created") else "where it last was")
+                return say("{verb} ({where})", result["name"], verb=verb, where=where)
             self.world.queue_spawn_placement(result["identityId"], placement)
-            return CommandResult(True, (reply(verb, result["name"]),))
+            return say(verb, result["name"])
         if command.operation == "teleport":
             status = self.control.request("status", name=command.name)
             location = self.world.teleport(status["identityId"], command.parameters, sender)
-            return CommandResult(True, (reply(f"teleported to {location}", status["name"]),))
+            return say("teleported to {location}", status["name"], location=location)
         if command.operation == "radius":
             result = self.control.request("radius", name=command.name, **command.parameters)
-            return CommandResult(True, (reply(self._radius_summary(result), result["name"]),))
+            return CommandResult(True, (reply(self._radius_summary(result, lang), result["name"]),))
         if command.operation == "destroy":
             mode = command.parameters.get("mode")
             if mode == "continuous":
@@ -907,36 +941,39 @@ class BotCommandService:
                         list(target["blockPosition"]),
                     )
             if mode == "continuous":
-                return CommandResult(
-                    True,
-                    (
-                        reply(
-                            f"destroy continuous started{_for_suffix(command.parameters)}; destroy stop to cancel",
-                            result["name"],
-                        ),
+                return logged(
+                    result["name"],
+                    lambda lang: tr(
+                        lang,
+                        "destroy continuous started{duration}; destroy stop to cancel",
+                        duration=_for_suffix(command.parameters, lang),
                     ),
-                    log_level="info",
                 )
             if mode == "stop":
-                return CommandResult(True, (reply("destroy stopped", result["name"]),), log_level="info")
+                return logged(result["name"], lambda lang: tr(lang, "destroy stopped"))
             position = " ".join(str(value) for value in target["blockPosition"])
-            started = f"destroying {target['blockName']} at {position}"
-            return CommandResult(True, (reply(f"{started}; see status for the result", result["name"]),))
+            return say(
+                "destroying {block} at {position}; see status for the result",
+                result["name"],
+                block=target["blockName"],
+                position=position,
+            )
         if command.operation == "interact":
             status = self.control.request("status", name=command.name)
             interaction = self.world.resolve_interaction(status["identityId"], command.parameters, sender)
             result = self.control.request("interact", name=command.name, **interaction)
         elif command.operation == "hotbar":
             result = self.control.request("hotbar", name=command.name, **command.parameters)
-            selected = " selected" if command.parameters else ""
-            return CommandResult(
-                True,
-                (reply(f"hotbar slot {result['selectedHotbarSlot']}{selected}", result["name"]),),
+            return say(
+                "hotbar slot {slot} selected" if command.parameters else "hotbar slot {slot}",
+                result["name"],
+                slot=result["selectedHotbarSlot"],
             )
         elif command.operation == "drop":
             result = self.control.request("drop", name=command.name, **command.parameters)
-            amount = "stack" if command.parameters["stack"] else "one item"
-            return CommandResult(True, (reply(f"drop {amount} requested", result["name"]),))
+            return say(
+                "drop stack requested" if command.parameters["stack"] else "drop one item requested", result["name"]
+            )
         elif command.operation == "look" and "targetCoordinates" in command.parameters:
             status = self.control.request("status", name=command.name)
             yaw, pitch = self.world.look_at(status["identityId"], command.parameters["targetCoordinates"])
@@ -953,87 +990,116 @@ class BotCommandService:
         else:
             result = self.control.request(command.operation, name=command.name, **command.parameters)
         name = result.get("name", command.name)
-        state = result.get("connectionState", command.operation)
+        state = Text(result.get("connectionState", command.operation))
         parameters = command.parameters
+        duration = _for_suffix(parameters, lang)
         if command.operation == "move":
-            detail = (
-                "movement stopped"
-                if parameters["direction"] == "stop"
-                else f"movement set to {parameters['direction']}{_for_suffix(parameters)}"
-            )
-        elif command.operation == "look":
+            if parameters["direction"] == "stop":
+                return say("movement stopped", name)
+            direction = parameters["direction"]
+            return say("movement set to {direction}{duration}", name, direction=direction, duration=duration)
+        if command.operation == "look":
             if "targetCoordinates" not in parameters:
                 yaw, pitch = parameters["yaw"], parameters["pitch"]
-            detail = f"look set to yaw={yaw:.1f} pitch={pitch:.1f}"
-        elif command.operation == "action":
+            return say("look set to yaw={yaw} pitch={pitch}", name, yaw=f"{yaw:.1f}", pitch=f"{pitch:.1f}")
+        if command.operation == "action":
             action, mode = parameters["action"], parameters["mode"]
-            hold = f": hold {parameters['holdTicks']} ticks, then release" if "holdTicks" in parameters else ""
+            hold = (
+                tr(lang, ": hold {ticks} ticks, then release", ticks=parameters["holdTicks"])
+                if "holdTicks" in parameters
+                else ""
+            )
             if mode == "stop":
-                detail = f"{action} stopped"
-            elif mode == "interval":
-                detail = f"{action} started every {parameters['intervalTicks']} ticks{hold}{_for_suffix(parameters)}"
-            elif mode == "continuous" and hold:
-                detail = f"{action} repeating{hold}{_for_suffix(parameters)}"
-            elif mode == "continuous" and action == "use" and "durationTicks" in parameters:
-                detail = f"{action} started for {parameters['durationTicks']} ticks, then releases"
-            elif mode == "continuous":
-                detail = f"{action} continuous started{_for_suffix(parameters)}"
-            else:
-                detail = f"{action} once requested{hold}"
-        elif command.operation == "flag":
-            detail = f"{parameters['flag']} {'on' if parameters['value'] else 'off'}"
-        elif command.operation == "stop":
-            detail = "movement and actions stopped (sprint/sneak off)"
-        elif command.operation == "interact":
+                return say("{action} stopped", name, action=action)
+            if mode == "interval":
+                return say(
+                    "{action} started every {interval} ticks{hold}{duration}",
+                    name,
+                    action=action,
+                    interval=parameters["intervalTicks"],
+                    hold=hold,
+                    duration=duration,
+                )
+            if mode == "continuous" and hold:
+                return say("{action} repeating{hold}{duration}", name, action=action, hold=hold, duration=duration)
+            if mode == "continuous" and action == "use" and "durationTicks" in parameters:
+                return say(
+                    "{action} started for {ticks} ticks, then releases",
+                    name,
+                    action=action,
+                    ticks=parameters["durationTicks"],
+                )
+            if mode == "continuous":
+                return say("{action} continuous started{duration}", name, action=action, duration=duration)
+            return say("{action} once requested{hold}", name, action=action, hold=hold)
+        if command.operation == "flag":
+            return say("{flag} on" if parameters["value"] else "{flag} off", name, flag=parameters["flag"])
+        if command.operation == "stop":
+            return say("movement and actions stopped (sprint/sneak off)", name)
+        if command.operation == "interact":
             position = " ".join(str(value) for value in interaction["blockPosition"])
             face = next(key for key, value in BLOCK_FACES.items() if value == interaction["face"])
-            detail = f"block interaction requested at {position} face={face}"
-        elif command.operation == "rename":
-            return CommandResult(True, (reply(f"renamed to {name} ({state})", command.name),))
-        elif command.operation == "forget":
-            detail = "profile registration removed"
-        else:
-            detail = f"{command.operation} requested ({state})"
-        return CommandResult(True, (reply(detail, name),))
+            return say("block interaction requested at {position} face={face}", name, position=position, face=face)
+        if command.operation == "rename":
+            return say("renamed to {name} ({state})", command.name, name=name, state=state)
+        if command.operation == "forget":
+            return say("profile registration removed", name)
+        return say("{operation} requested ({state})", name, operation=command.operation, state=state)
 
     @classmethod
-    def _status_reply(cls, status: dict[str, object], observed: dict[str, object] | None) -> str:
+    def _status_reply(cls, status: dict[str, object], observed: dict[str, object] | None, lang: str = "en") -> str:
         """The status reply line; the Bot menu form shows the same text."""
-        fields = [status["connectionState"], f"desired={status['desiredState']}"]
+        fields = [
+            tr(lang, str(status["connectionState"])),
+            tr(lang, "desired={state}", state=Text(status["desiredState"])),
+        ]
         if observed:
             fields.append(
                 f"{observed['dimension']} {observed['x']:.2f} {observed['y']:.2f} {observed['z']:.2f} "
                 f"yaw={observed['yaw']:.1f} pitch={observed['pitch']:.1f}"
             )
         if status.get("lastError"):
-            fields.append(f"{ERROR}error={status['lastError']}{RESET}")
+            fields.append(f"{ERROR}{tr(lang, 'error={error}', error=status['lastError'])}{RESET}")
         if "chunkRadius" in status:
-            fields.append(cls._radius_summary(status))
-        timed = cls._timed_inputs_summary(status.get("inputs") or {})
+            fields.append(cls._radius_summary(status, lang))
+        timed = cls._timed_inputs_summary(status.get("inputs") or {}, lang)
         if timed:
             fields.append(timed)
         if status.get("mining"):
-            fields.append(cls._mining_summary(status["mining"]))
+            fields.append(cls._mining_summary(status["mining"], lang))
         return reply(f"{DIM} | {RESET}".join(fields), status["name"])
 
     @staticmethod
-    def _radius_summary(status: dict[str, object]) -> str:
-        source = "Bot override" if status.get("chunkRadiusSource") == "bot" else "shared default"
+    def _radius_summary(status: dict[str, object], lang: str = "en") -> str:
+        source = Text("Bot override" if status.get("chunkRadiusSource") == "bot" else "shared default")
         confirmed = status.get("serverChunkRadius")
         if confirmed is not None:
-            server = f"server confirmed {confirmed}"
+            server = tr(lang, "server confirmed {radius}", radius=confirmed)
         elif status.get("connectionState") == "online":
-            server = "server confirmation pending"
+            server = tr(lang, "server confirmation pending")
         else:
-            server = "applies when online"
-        return f"chunk radius {status['chunkRadius']} ({source}); {server}"
+            server = tr(lang, "applies when online")
+        return tr(
+            lang,
+            "chunk radius {radius} ({source}); {server}",
+            radius=status["chunkRadius"],
+            source=source,
+            server=server,
+        )
 
     @staticmethod
-    def _timed_inputs_summary(inputs: dict[str, object]) -> str | None:
+    def _timed_inputs_summary(inputs: dict[str, object], lang: str = "en") -> str | None:
         """Inputs that end on their own (for/hold), with ticks left."""
         parts = []
         if inputs.get("movementRemainingTicks") is not None:
-            parts.append(f"move {inputs.get('movement')} {inputs['movementRemainingTicks']} ticks left")
+            parts.append(
+                tr(
+                    lang,
+                    "move {direction} {ticks} ticks left",
+                    direction=inputs.get("movement"),
+                    ticks=inputs["movementRemainingTicks"],
+                )
+            )
         for action, state in (inputs.get("actions") or {}).items():
             if state.get("remainingTicks") is None and state.get("holdTicks") is None:
                 continue
@@ -1043,31 +1109,41 @@ class BotCommandService:
             if state.get("holdTicks") is not None:
                 words.append(f"hold {state['holdTicks']}")
             if state.get("remainingTicks") is not None:
-                words.append(f"{state['remainingTicks']} ticks left")
+                words.append(tr(lang, "{ticks} ticks left", ticks=state["remainingTicks"]))
             parts.append(" ".join(words))
-        return f"timed: {', '.join(parts)}" if parts else None
+        return tr(lang, "timed: {inputs}", inputs=", ".join(parts)) if parts else None
 
     @staticmethod
-    def _mining_summary(mining: dict[str, object]) -> str | None:
+    def _mining_summary(mining: dict[str, object], lang: str = "en") -> str | None:
         position = " ".join(str(value) for value in mining.get("blockPosition") or [])
         block = mining.get("blockName")
-        target = f"{block} at {position}" if block and block != "unknown" and position else position
+        if block and block != "unknown" and position:
+            target = tr(lang, "{block} at {position}", block=block, position=position)
+        else:
+            target = position
         state = mining.get("state")
-        left = f"{mining['remainingTicks']} ticks left" if mining.get("remainingTicks") is not None else ""
+        left = (
+            tr(lang, "{ticks} ticks left", ticks=mining["remainingTicks"])
+            if mining.get("remainingTicks") is not None
+            else ""
+        )
         if state == "active":
             mode = f" (continuous{', ' + left if left else ''})" if mining.get("continuous") else ""
-            return f"destroying {target}{mode}".rstrip()
+            return tr(lang, "destroying {target}{mode}", target=target, mode=mode).rstrip()
         if mining.get("continuous"):
-            notes = ", ".join(note for note in (f"last: {target}" if target else "", left) if note)
-            return f"destroy continuous waiting for a block in sight{f' ({notes})' if notes else ''}"
+            last = tr(lang, "last: {target}", target=target) if target else ""
+            notes = ", ".join(note for note in (last, left) if note)
+            return tr(
+                lang, "destroy continuous waiting for a block in sight{notes}", notes=f" ({notes})" if notes else ""
+            )
         # A finished job stays visible until the next one, labelled as past.
         reason = str(MINING_REASONS.get(str(mining.get("reason", "")), mining.get("reason") or ""))
         if state == "completed":
-            outcome = reason or "completed"
+            outcome = tr(lang, reason or "completed")
         elif state == "failed":
-            outcome = f"failed: {reason}" if reason else "failed"
+            outcome = tr(lang, "failed: {reason}", reason=Text(reason)) if reason else tr(lang, "failed")
         elif reason.startswith(("canceled", "replaced", "stopped")):
-            outcome = reason
+            outcome = tr(lang, reason)
         else:
-            outcome = f"canceled: {reason}" if reason else "canceled"
-        return f"last destroy: {outcome}" + (f" ({target})" if target else "")
+            outcome = tr(lang, "canceled: {reason}", reason=Text(reason)) if reason else tr(lang, "canceled")
+        return tr(lang, "last destroy: {outcome}{target}", outcome=outcome, target=f" ({target})" if target else "")

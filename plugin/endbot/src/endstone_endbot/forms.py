@@ -4,6 +4,7 @@ Forms never execute anything themselves: every button or modal submission
 resolves to the same argument lists a typed /bot command would carry, and the
 plugin feeds them through the normal command path. Authorization, revocation,
 validation and reply wording therefore stay identical to typed commands.
+Screens take the viewer's language; command words stay English.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from endstone_endbot.i18n import LocalizedError, Text, tr
+
 Argv = tuple[str, ...]
 
 DIRECTIONS = ("forward", "backward", "left", "right", "stop")
@@ -21,7 +24,7 @@ FLAG_CHOICES = ("no change", "on", "off")
 TELEPORT_COORDINATES = "coordinates below"
 
 
-class FormResponseError(ValueError):
+class FormResponseError(LocalizedError):
     pass
 
 
@@ -141,13 +144,13 @@ def menu_argv(name: str | None = None) -> Argv:
 
 TRANSITIONAL_STATES = {
     # Dark colors: the button background is light gray, so §7 would vanish.
-    "connecting": "§6JOIN",
-    "reconnecting": "§6RETRY",
-    "failed": "§4FAIL",
+    "connecting": ("§6", "JOIN"),
+    "reconnecting": ("§6", "RETRY"),
+    "failed": ("§4", "FAIL"),
 }
 
 
-def bot_list_screen(view: BotListView) -> ActionScreen:
+def bot_list_screen(view: BotListView, lang: str = "en") -> ActionScreen:
     """Online Bots by name; offline ones sit behind one button to keep the list short."""
     bots = sorted(view.bots, key=lambda bot: (bot["connectionState"] != "online", str(bot["name"]).lower()))
     offline = [bot for bot in bots if bot["connectionState"] == "offline"]
@@ -156,32 +159,33 @@ def bot_list_screen(view: BotListView) -> ActionScreen:
         state = bot["connectionState"]
         if state == "offline":
             continue
-        badge = TRANSITIONAL_STATES.get(state)
-        text = bot["name"] if state == "online" else f"{badge or '§8?'}§r · {bot['name']}"
+        color, badge = TRANSITIONAL_STATES.get(state, ("§8", "?"))
+        text = bot["name"] if state == "online" else f"{color}{tr(lang, badge)}§r · {bot['name']}"
         items.append(Button(text, run(menu_argv(bot["name"]))))
     if offline:
         offline_items = [Button(bot["name"], run(menu_argv(bot["name"]))) for bot in offline]
-        offline_items.append(Button("Back to Bot list", run(menu_argv())))
-        offline_screen = ActionScreen("Endbot: offline Bots", "Pick a Bot.", tuple(offline_items))
-        items.append(Button(f"Offline ({len(offline)})...", Show(offline_screen)))
-    items.append(Button("+ New Bot here", Show(spawn_modal())))
-    content = "Pick a Bot. (/bot help lists commands)" if bots else "No Bot profiles yet. Spawn one to start."
+        offline_items.append(Button(tr(lang, "Back to Bot list"), run(menu_argv())))
+        offline_screen = ActionScreen(tr(lang, "Endbot: offline Bots"), tr(lang, "Pick a Bot."), tuple(offline_items))
+        items.append(Button(tr(lang, "Offline ({count})...", count=len(offline)), Show(offline_screen)))
+    items.append(Button(tr(lang, "+ New Bot here"), Show(spawn_modal(lang))))
+    content = tr(lang, "Pick a Bot. (/bot help lists commands)" if bots else "No Bot profiles yet. Spawn one to start.")
     return ActionScreen("Endbot", content, tuple(items))
 
 
-def _offline_content(status: dict) -> str:
+def _offline_content(status: dict, lang: str = "en") -> str:
     state = str(status.get("connectionState", "offline"))
-    content = {"failed": "§cfailed", "connecting": "§econnecting", "reconnecting": "§ereconnecting"}.get(
-        state, "§8offline"
-    )
+    color = {"failed": "§c", "connecting": "§e", "reconnecting": "§e"}.get(state, "§8")
+    content = color + tr(lang, state if color != "§8" else "offline")
     radius = status.get("chunkRadius")
     if isinstance(radius, int | float):
-        source = "" if status.get("chunkRadiusSource") == "bot" else " (shared)"
-        content += f"§r · chunk radius {radius:g}{source}"
+        source = Text("" if status.get("chunkRadiusSource") == "bot" else " (shared)")
+        content += "§r · " + tr(lang, "chunk radius {radius}{source}", radius=f"{radius:g}", source=source)
     return content + "§r"
 
 
-def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...] = ()) -> ActionScreen:
+def bot_screen(
+    view: BotView, caller: str | None = None, players: tuple[str, ...] = (), lang: str = "en"
+) -> ActionScreen:
     """Action screen for one Bot, grouped by what the player is doing.
 
     ``caller`` is the viewing player's name and ``players`` the online player
@@ -189,81 +193,86 @@ def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...
     """
     name = view.name
     state = str(view.status.get("connectionState", ""))
-    back = Button("Back to Bot", run(menu_argv(name)))
+    back = Button(tr(lang, "Back to Bot"), run(menu_argv(name)))
+
+    def label(text):
+        return tr(lang, text)
 
     def category(title, *buttons, content=""):
-        return Show(ActionScreen(f"{name}: {title}", content, (*buttons, back)))
+        return Show(ActionScreen(tr(lang, "{name}: {title}", name=name, title=Text(title)), content, (*buttons, back)))
 
     items: list[Button | Header]
     if state == "online":
         teleport = []
         if caller:
-            teleport.append(Button("Teleport to me", run((name, "tp", shlex.quote(caller)))))
-        teleport.append(Button("Teleport...", Show(teleport_modal(name, tuple(p for p in players if p != name)))))
+            teleport.append(Button(label("Teleport to me"), run((name, "tp", shlex.quote(caller)))))
+        teleport.append(
+            Button(label("Teleport..."), Show(teleport_modal(name, tuple(p for p in players if p != name), lang)))
+        )
         items = [
-            Button("Stop everything", run((name, "stop"))),
+            Button(label("Stop everything"), run((name, "stop"))),
             Button(
-                "Movement...",
+                label("Movement..."),
                 category(
                     "movement",
-                    Button("Move...", Show(move_modal(name))),
-                    Button("Jump...", Show(action_screen(name, "jump"))),
-                    Button("Sprint / sneak...", Show(flags_modal(name))),
+                    Button(label("Move..."), Show(move_modal(name, lang))),
+                    Button(label("Jump..."), Show(action_screen(name, "jump", lang))),
+                    Button(label("Sprint / sneak..."), Show(flags_modal(name, lang))),
                 ),
             ),
-            Button("Look...", Show(look_modal(name, view.observed))),
-            Button("Teleport...", category("teleport", *teleport)),
+            Button(label("Look..."), Show(look_modal(name, view.observed, lang))),
+            Button(label("Teleport..."), category("teleport", *teleport)),
             Button(
-                "Gameplay...",
+                label("Gameplay..."),
                 category(
                     "gameplay",
-                    Button("Attack...", Show(action_screen(name, "attack"))),
-                    Button("Use item...", Show(action_screen(name, "use"))),
-                    Button("Destroy blocks...", Show(destroy_screen(name))),
+                    Button(label("Attack..."), Show(action_screen(name, "attack", lang))),
+                    Button(label("Use item..."), Show(action_screen(name, "use", lang))),
+                    Button(label("Destroy blocks..."), Show(destroy_screen(name, lang))),
                 ),
             ),
             Button(
-                "Inventory...",
+                label("Inventory..."),
                 category(
                     "inventory",
-                    Button("Hotbar slot...", Show(hotbar_modal(name, view.status))),
-                    Button("Drop item...", Show(drop_modal(name))),
+                    Button(label("Hotbar slot..."), Show(hotbar_modal(name, view.status, lang))),
+                    Button(label("Drop item..."), Show(drop_modal(name, lang))),
                 ),
             ),
             Button(
-                "Bot...",
+                label("Bot..."),
                 category(
                     "bot",
-                    Button("Reconnect", run((name, "reconnect"))),
-                    Button("Despawn...", Show(despawn_confirm(name))),
-                    Button("Chunk radius...", Show(radius_modal(name, view.status))),
+                    Button(label("Reconnect"), run((name, "reconnect"))),
+                    Button(label("Despawn..."), Show(despawn_confirm(name, lang))),
+                    Button(label("Chunk radius..."), Show(radius_modal(name, view.status, lang))),
                     content=view.summary,
                 ),
             ),
         ]
     else:
         items = [
-            Button("Resume (where it was)", run((name, "resume"))),
-            Button("Spawn here", run((name, "spawn"))),
+            Button(label("Resume (where it was)"), run((name, "resume"))),
+            Button(label("Spawn here"), run((name, "spawn"))),
         ]
         if state in {"connecting", "reconnecting"}:
-            items.append(Button("Despawn...", Show(despawn_confirm(name))))
-        items.append(Button("Chunk radius...", Show(radius_modal(name, view.status))))
-    items.append(Button("Back to Bot list", run(menu_argv())))
+            items.append(Button(label("Despawn..."), Show(despawn_confirm(name, lang))))
+        items.append(Button(label("Chunk radius..."), Show(radius_modal(name, view.status, lang))))
+    items.append(Button(label("Back to Bot list"), run(menu_argv())))
     if state == "online":
-        content = "§2online§r"
+        content = f"§2{label('online')}§r"
         if view.observed:
             observed = view.observed
             content += f" · {observed['dimension']} {observed['x']:.1f} {observed['y']:.1f} {observed['z']:.1f}"
         mining = view.status.get("mining") or {}
         if mining.get("continuous") or mining.get("state") == "active":
-            content += " · mining " + ("continuous" if mining.get("continuous") else "active")
+            content += " · " + label("mining continuous" if mining.get("continuous") else "mining active")
     else:
-        content = _offline_content(view.status)
+        content = _offline_content(view.status, lang)
     return ActionScreen(f"Endbot: {name}", content, tuple(items))
 
 
-def spawn_modal() -> ModalScreen:
+def spawn_modal(lang: str = "en") -> ModalScreen:
     def build(values):
         (name,) = values
         name = _text(name)
@@ -272,14 +281,14 @@ def spawn_modal() -> ModalScreen:
         return ((name, "spawn"),)
 
     return ModalScreen(
-        "Spawn a new Bot",
-        (TextInput("Bot name (letters, digits, underscore; up to 16)", "Alice"),),
+        tr(lang, "Spawn a new Bot"),
+        (TextInput(tr(lang, "Bot name (letters, digits, underscore; up to 16)"), "Alice"),),
         build,
-        "Spawn",
+        tr(lang, "Spawn"),
     )
 
 
-def look_modal(name: str, observed: dict | None) -> ModalScreen:
+def look_modal(name: str, observed: dict | None, lang: str = "en") -> ModalScreen:
     yaw = round(float(observed["yaw"])) if observed else 0
     pitch = round(float(observed["pitch"])) if observed else 0
 
@@ -295,14 +304,14 @@ def look_modal(name: str, observed: dict | None) -> ModalScreen:
         (
             Slider("Yaw", -180, 180, 5, max(-180, min(180, yaw))),
             Slider("Pitch", -90, 90, 5, max(-90, min(90, pitch))),
-            TextInput("Or look at x y z (overrides the sliders; ~ is relative to the Bot)", "~ ~-1 ~2"),
+            TextInput(tr(lang, "Or look at x y z (overrides the sliders; ~ is relative to the Bot)"), "~ ~-1 ~2"),
         ),
         build,
-        "Look",
+        tr(lang, "Look"),
     )
 
 
-def flags_modal(name: str) -> ModalScreen:
+def flags_modal(name: str, lang: str = "en") -> ModalScreen:
     def build(values):
         commands = []
         for flag, value in zip(("sprint", "sneak"), values, strict=True):
@@ -311,11 +320,12 @@ def flags_modal(name: str) -> ModalScreen:
                 commands.append((name, flag, choice))
         return tuple(commands)
 
+    choices = tuple(tr(lang, choice) for choice in FLAG_CHOICES)
     return ModalScreen(
         f"{name}: sprint / sneak",
-        (Dropdown("Sprint", FLAG_CHOICES), Dropdown("Sneak", FLAG_CHOICES)),
+        (Dropdown(tr(lang, "Sprint"), choices), Dropdown(tr(lang, "Sneak"), choices)),
         build,
-        "Apply",
+        tr(lang, "Apply"),
     )
 
 
@@ -323,17 +333,20 @@ def flags_modal(name: str) -> ModalScreen:
 # command's modes, a mode without parameters runs at once, and a mode with
 # parameters opens a form holding exactly its clauses, named and measured
 # (ticks) as typed. A blank optional clause is omitted; the parser validates.
-TICKS = "20 = 1 second"
-FOR_FIELD = f"for <ticks> (optional; {TICKS}; blank = until stopped)"
-HOLD_FIELD = "hold <ticks> (optional; charge each press, then release)"
-INTERVAL_FIELD = f"interval <ticks> ({TICKS})"
-MODE_CONTENT = f"Pick a mode, as in the typed command. Ticks: {TICKS}."
+# Mode buttons and clause names stay English in every language: they are the
+# command words the form teaches.
+TICKS = Text("20 = 1 second")
+FOR_FIELD = Text("for <ticks> (optional; {ticks}; blank = until stopped)")
+HOLD_FIELD = Text("hold <ticks> (optional; charge each press, then release)")
+INTERVAL_FIELD = Text("interval <ticks> ({ticks})")
+FOR_REQUIRED_FIELD = Text("for <ticks> ({ticks})")
+MODE_CONTENT = Text("Pick a mode, as in the typed command. Ticks: {ticks}.")
 
 
 def _required(value, clause: str) -> Argv:
     ticks = _text(value)
     if not ticks:
-        raise FormResponseError(f"enter {clause} <ticks>")
+        raise FormResponseError("enter {clause} <ticks>", clause=clause)
     return (clause, ticks)
 
 
@@ -342,7 +355,7 @@ def _optional(value, clause: str) -> Argv:
     return (clause, ticks) if ticks else ()
 
 
-def _clause_form(name: str, words: Argv, fields: tuple[tuple[str, str, bool], ...]) -> ModalScreen:
+def _clause_form(name: str, words: Argv, fields: tuple[tuple[str, str, bool], ...], lang: str = "en") -> ModalScreen:
     """A form for ``/bot <name> <words...>`` plus ``(clause, label, required)`` fields."""
 
     def build(values):
@@ -353,32 +366,33 @@ def _clause_form(name: str, words: Argv, fields: tuple[tuple[str, str, bool], ..
 
     # Required clauses start with a typical value; optional ones start blank.
     controls = tuple(
-        TextInput(label, "20" if required else "", "20" if required else "") for _, label, required in fields
+        TextInput(tr(lang, label, ticks=TICKS), "20" if required else "", "20" if required else "")
+        for _, label, required in fields
     )
-    return ModalScreen(f"{name}: {' '.join(words)}", controls, build, "Run")
+    return ModalScreen(f"{name}: {' '.join(words)}", controls, build, tr(lang, "Run"))
 
 
-def action_screen(name: str, action: str) -> ActionScreen:
+def action_screen(name: str, action: str, lang: str = "en") -> ActionScreen:
     """``/bot <name> jump|attack|use [once|continuous|interval|stop] ...``"""
     use = action == "use"
     hold = (("hold", HOLD_FIELD, False),) if use else ()
     duration = (("for", FOR_FIELD, False),)
-    once = Show(_clause_form(name, (action, "once"), hold)) if use else run((name, action, "once"))
+    once = Show(_clause_form(name, (action, "once"), hold, lang)) if use else run((name, action, "once"))
     items = [
         Button("once..." if use else "once", once),
-        Button("continuous...", Show(_clause_form(name, (action, "continuous"), (*hold, *duration)))),
+        Button("continuous...", Show(_clause_form(name, (action, "continuous"), (*hold, *duration), lang))),
         Button(
             "interval...",
-            Show(_clause_form(name, (action,), (("interval", INTERVAL_FIELD, True), *hold, *duration))),
+            Show(_clause_form(name, (action,), (("interval", INTERVAL_FIELD, True), *hold, *duration), lang)),
         ),
     ]
     if use:
-        items.append(Button("for...", Show(_clause_form(name, (action,), (("for", f"for <ticks> ({TICKS})", True),)))))
-    items += [Button("stop", run((name, action, "stop"))), Button("Back to Bot", run(menu_argv(name)))]
-    return ActionScreen(f"{name}: {action}", MODE_CONTENT, tuple(items))
+        items.append(Button("for...", Show(_clause_form(name, (action,), (("for", FOR_REQUIRED_FIELD, True),), lang))))
+    items += [Button("stop", run((name, action, "stop"))), Button(tr(lang, "Back to Bot"), run(menu_argv(name)))]
+    return ActionScreen(f"{name}: {action}", tr(lang, MODE_CONTENT, ticks=TICKS), tuple(items))
 
 
-def move_modal(name: str) -> ModalScreen:
+def move_modal(name: str, lang: str = "en") -> ModalScreen:
     """``/bot <name> move forward|backward|left|right|stop [for <ticks>]``"""
 
     def build(values):
@@ -387,28 +401,29 @@ def move_modal(name: str) -> ModalScreen:
 
     return ModalScreen(
         f"{name}: move",
-        (Dropdown("direction", DIRECTIONS), TextInput(FOR_FIELD, "", "")),
+        (Dropdown(tr(lang, "direction"), DIRECTIONS), TextInput(tr(lang, FOR_FIELD, ticks=TICKS), "", "")),
         build,
-        "Run",
+        tr(lang, "Run"),
     )
 
 
-def destroy_screen(name: str) -> ActionScreen:
+def destroy_screen(name: str, lang: str = "en") -> ActionScreen:
     """``/bot <name> destroy [once|continuous [for]|stop]`` or ``destroy <x> <y> <z> [face]``"""
+    continuous = _clause_form(name, ("destroy", "continuous"), (("for", FOR_FIELD, False),), lang)
     return ActionScreen(
         f"{name}: destroy",
-        MODE_CONTENT,
+        tr(lang, MODE_CONTENT, ticks=TICKS),
         (
             Button("once", run((name, "destroy", "once"))),
-            Button("continuous...", Show(_clause_form(name, ("destroy", "continuous"), (("for", FOR_FIELD, False),)))),
-            Button("x y z...", Show(destroy_coordinates_modal(name))),
+            Button("continuous...", Show(continuous)),
+            Button("x y z...", Show(destroy_coordinates_modal(name, lang))),
             Button("stop", run((name, "destroy", "stop"))),
-            Button("Back to Bot", run(menu_argv(name))),
+            Button(tr(lang, "Back to Bot"), run(menu_argv(name))),
         ),
     )
 
 
-def destroy_coordinates_modal(name: str) -> ModalScreen:
+def destroy_coordinates_modal(name: str, lang: str = "en") -> ModalScreen:
     face_options = ("automatic", *FACES)
 
     def build(values):
@@ -420,15 +435,15 @@ def destroy_coordinates_modal(name: str) -> ModalScreen:
     return ModalScreen(
         f"{name}: destroy x y z",
         (
-            TextInput("x y z (~ is relative to the Bot)", "~ ~-1 ~"),
-            Dropdown("face", face_options),
+            TextInput(tr(lang, "x y z (~ is relative to the Bot)"), "~ ~-1 ~"),
+            Dropdown("face", (tr(lang, "automatic"), *FACES)),
         ),
         build,
-        "Run",
+        tr(lang, "Run"),
     )
 
 
-def teleport_modal(name: str, players: tuple[str, ...]) -> ModalScreen:
+def teleport_modal(name: str, players: tuple[str, ...], lang: str = "en") -> ModalScreen:
     options = (*players, TELEPORT_COORDINATES)
 
     def build(values):
@@ -441,15 +456,15 @@ def teleport_modal(name: str, players: tuple[str, ...]) -> ModalScreen:
     return ModalScreen(
         f"{name}: teleport",
         (
-            Dropdown("Destination", options),
-            TextInput("x y z (coordinates only; ~ is relative to you)", "~ ~ ~"),
+            Dropdown(tr(lang, "Destination"), (*players, tr(lang, TELEPORT_COORDINATES))),
+            TextInput(tr(lang, "x y z (coordinates only; ~ is relative to you)"), "~ ~ ~"),
         ),
         build,
-        "Teleport",
+        tr(lang, "Teleport"),
     )
 
 
-def hotbar_modal(name: str, status: dict | None = None) -> ModalScreen:
+def hotbar_modal(name: str, status: dict | None = None, lang: str = "en") -> ModalScreen:
     slots = tuple(str(slot) for slot in range(1, 10))
 
     def build(values):
@@ -458,20 +473,27 @@ def hotbar_modal(name: str, status: dict | None = None) -> ModalScreen:
 
     selected = (status or {}).get("selectedHotbarSlot", 1)
     default = selected - 1 if isinstance(selected, int) and 1 <= selected <= 9 else 0
-    return ModalScreen(f"{name}: hotbar", (StepSlider("Hotbar slot", slots, default),), build, "Select")
+    return ModalScreen(
+        f"{name}: hotbar", (StepSlider(tr(lang, "Hotbar slot"), slots, default),), build, tr(lang, "Select")
+    )
 
 
-def drop_modal(name: str) -> ModalScreen:
+def drop_modal(name: str, lang: str = "en") -> ModalScreen:
     options = ("one item", "whole stack")
 
     def build(values):
         choice = _option(options, values[0])
         return ((name, "drop", "stack") if choice == "whole stack" else (name, "drop"),)
 
-    return ModalScreen(f"{name}: drop", (Dropdown("Amount from the selected hotbar slot", options),), build, "Drop")
+    return ModalScreen(
+        f"{name}: drop",
+        (Dropdown(tr(lang, "Amount from the selected hotbar slot"), tuple(tr(lang, option) for option in options)),),
+        build,
+        tr(lang, "Drop"),
+    )
 
 
-def radius_modal(name: str, status: dict) -> ModalScreen:
+def radius_modal(name: str, status: dict, lang: str = "en") -> ModalScreen:
     current = status.get("chunkRadius")
     default = int(current) if isinstance(current, int | float) and 2 <= current <= 32 else 8
 
@@ -482,22 +504,22 @@ def radius_modal(name: str, status: dict) -> ModalScreen:
         return ((name, "radius", str(round(_float(radius)))),)
 
     return ModalScreen(
-        f"{name}: chunk radius",
+        tr(lang, "{name}: chunk radius", name=name),
         (
-            Toggle("Use the shared default", status.get("chunkRadiusSource") != "bot"),
-            Slider("Chunk radius (this Bot only)", 2, 32, 1, default),
+            Toggle(tr(lang, "Use the shared default"), status.get("chunkRadiusSource") != "bot"),
+            Slider(tr(lang, "Chunk radius (this Bot only)"), 2, 32, 1, default),
         ),
         build,
-        "Apply",
+        tr(lang, "Apply"),
     )
 
 
-def despawn_confirm(name: str) -> ConfirmScreen:
+def despawn_confirm(name: str, lang: str = "en") -> ConfirmScreen:
     return ConfirmScreen(
         f"{name}: despawn",
-        f"Take {name} offline? It stays registered; resume or spawn brings it back.",
-        "Despawn",
-        "Cancel",
+        tr(lang, "Take {name} offline? It stays registered; resume or spawn brings it back.", name=name),
+        tr(lang, "Despawn"),
+        tr(lang, "Cancel"),
         run((name, "despawn")),
     )
 

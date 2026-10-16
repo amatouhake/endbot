@@ -46,6 +46,14 @@ class RuntimeConfigTests(ConfigGenTestCase):
         self.assertEqual(runtime["hotbar-sync-resend-ticks"], 40)
         self.assertEqual(warnings, [])
 
+    def test_ui_language_reaches_generated_plugin_config(self):
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        self.assertEqual(tomllib.loads(target.read_text(encoding="utf-8"))["ui"], {"language": "auto"})
+        with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
+            config.write('\n[ui]\nlanguage = "ja"\n')
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        self.assertEqual(tomllib.loads(target.read_text(encoding="utf-8"))["ui"], {"language": "ja"})
+
     def test_chunk_radius_reaches_generated_runtime_config(self) -> None:
         for radius in (2, 6):
             write_endbot_toml(self.root)

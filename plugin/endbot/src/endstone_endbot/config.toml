@@ -28,3 +28,10 @@ hotbar-sync-interval-ticks = 4
 # Resend unchanged state for rejected/predicted actions (1..72000).
 # Resends occur at a read; effective spacing rounds up to a read interval.
 hotbar-sync-resend-ticks = 20
+
+[ui]
+# Language of player-facing replies, help and forms: "auto" follows each
+# player's game language (Japanese clients get Japanese, others English),
+# "en" or "ja" fixes it for everyone. Command words, the server console and
+# logs stay English.
+language = "auto"

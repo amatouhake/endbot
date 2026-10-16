@@ -17,6 +17,7 @@ from endstone_endbot.controller_requests import execute_request
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
 from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
 from endstone_endbot.form_adapter import FormPresenter
+from endstone_endbot.i18n import DEFAULT_LANGUAGE_SETTING, language_setting, resolve_language, tr
 from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings
 from endstone_endbot.world import EndstoneWorld
 
@@ -159,9 +160,15 @@ class EndbotPlugin(Plugin):
         self._hotbar_interval = 4
         self._hotbar_tick = 0
         self._hotbar_publisher = HotbarPublisher()
+        self._language_setting = DEFAULT_LANGUAGE_SETTING
 
     def on_load(self) -> None:
         self.save_default_config()
+        try:
+            self._language_setting = language_setting((self.config.get("ui") or {}).get("language"))
+        except ValueError as error:
+            self._language_setting = DEFAULT_LANGUAGE_SETTING
+            self.logger.warning(f"{error}; using {DEFAULT_LANGUAGE_SETTING}")
         authorization = self.config.get("authorization", {})
         self._allowed_players = AllowedPlayers.from_config(authorization)
         self._controllers = ControllerEnrollment.from_config(authorization, self.data_folder)
@@ -207,7 +214,9 @@ class EndbotPlugin(Plugin):
         command_world = ServerThreadWorld(self._world, self._server_thread, authorized_sender)
         # Forms resolve to ordinary /bot arguments and re-enter through _submit_bot.
         presenter = FormPresenter(
-            self._submit_bot, lambda: tuple(str(player.name) for player in self.server.online_players)
+            self._submit_bot,
+            lambda: tuple(str(player.name) for player in self.server.online_players),
+            language=self._language,
         )
         self._bot_commands = BotCommandService(control, command_world)
         self._command_runner = AsyncCommandRunner(
@@ -218,6 +227,7 @@ class EndbotPlugin(Plugin):
             authorize_loop=self._authorize_loop,
             log=self._log_endbot,
             show_view=presenter.show_view,
+            language=self._language,
             revision=lambda sender: (
                 self._authorization_versions.get(str(sender.unique_id), 0) if hasattr(sender, "unique_id") else None
             ),
@@ -519,12 +529,22 @@ class EndbotPlugin(Plugin):
         self._submit_bot(sender, args)
         return True
 
+    def _language(self, sender) -> str:
+        """Reply language for a sender; server thread only. The console stays English."""
+        if not hasattr(sender, "unique_id"):
+            return "en"
+        try:
+            locale = sender.locale
+        except Exception:  # noqa: BLE001 - a missing locale must not block commands
+            locale = None
+        return resolve_language(self._language_setting, locale)
+
     def _submit_bot(self, sender, args: list[str]) -> None:
         """Shared entry for typed /bot commands and form submissions."""
         if not isinstance(sender, ConsoleCommandSender) and (
             not hasattr(sender, "unique_id") or not self._allows_control(sender)
         ):
-            sender.send_message("Endbot: you do not have Bot control permission")
+            sender.send_message(f"Endbot: {tr(self._language(sender), 'you do not have Bot control permission')}")
             return
         if self._command_runner is None or not self._command_runner.submit(args, sender):
-            sender.send_message("Endbot: command service is unavailable")
+            sender.send_message(f"Endbot: {tr(self._language(sender), 'command service is unavailable')}")

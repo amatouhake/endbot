@@ -8,6 +8,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
 from endstone_endbot.commands import ERROR, WARNING, CommandResult, reply, strip_colors
+from endstone_endbot.i18n import tr
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,15 +27,19 @@ class CommandSource:
     # after its controller logs off, without retaining the player wrapper.
     xuid: str | None = None
     name: str | None = None
+    # Reply language, resolved on the server thread when the command arrives.
+    language: str = "en"
 
     @classmethod
-    def capture(cls, sender) -> CommandSource:
+    def capture(cls, sender, language: str = "en") -> CommandSource:
         if hasattr(sender, "unique_id") and hasattr(sender, "location"):
             return cls(
                 player_id=str(sender.unique_id),
                 xuid=str(getattr(sender, "xuid", None) or "") or None,
                 name=str(getattr(sender, "name", None) or "") or None,
+                language=language,
             )
+        # The console stays English, like the server log it shares.
         return cls(sender=sender)
 
 
@@ -182,6 +187,7 @@ class AsyncCommandRunner:
         authorize_loop: Callable[[CommandSource], bool] | None = None,
         log: Callable[[str, str], None] | None = None,
         show_view: Callable[[object, object], None] | None = None,
+        language: Callable[[object], str] | None = None,
     ) -> None:
         self._service = service
         self._bridge = bridge
@@ -193,6 +199,8 @@ class AsyncCommandRunner:
         self._log = log
         # Presents a result's form view to its player on the server thread.
         self._show_view = show_view
+        # Resolves a player's reply language on the server thread.
+        self._language = language
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
@@ -217,13 +225,13 @@ class AsyncCommandRunner:
         def authorize(source):
             return self._authorize_loop is None or self._bridge.call(lambda: self._authorize_loop(source))
 
-        for source, level, message in self._service.poll_mining(authorize) or ():
-            self._notify(source, level, message)
+        for source, level, message, log_message in self._service.poll_mining(authorize) or ():
+            self._notify(source, level, message, log_message)
 
-    def _notify(self, source: CommandSource, level: str, message: str) -> None:
+    def _notify(self, source: CommandSource, level: str, message: str, log_message: str) -> None:
         def deliver() -> None:
             if self._log is not None:
-                self._log(level, strip_colors(message))
+                self._log(level, strip_colors(log_message))
                 if source.player_id is None:
                     return  # The console already shows the log entry.
             # A controller who has logged off still gets the console log entry.
@@ -232,7 +240,7 @@ class AsyncCommandRunner:
         self._bridge.post(deliver)
 
     def submit(self, arguments: list[str], sender) -> bool:
-        source = CommandSource.capture(sender)
+        source = CommandSource.capture(sender, self._language(sender) if self._language else "en")
         if self._revision is not None:
             source = replace(source, authorization_revision=self._revision(sender))
         with self._lock:
@@ -261,17 +269,16 @@ class AsyncCommandRunner:
                 return
         try:
             if self._authorize is not None and not self._bridge.call(lambda: self._authorize(source)):
-                result = CommandResult(
-                    True, (reply("Bot control permission was revoked; command canceled", color=WARNING),)
-                )
+                revoked = tr(source.language, "Bot control permission was revoked; command canceled")
+                result = CommandResult(True, (reply(revoked, color=WARNING),))
             else:
                 result = self._service.execute(arguments, source)
         except Exception:  # noqa: BLE001 - never strand command delivery on an unexpected service failure
-            result = CommandResult(True, (reply("internal command failure", color=ERROR),))
+            result = CommandResult(True, (reply(tr(source.language, "internal command failure"), color=ERROR),))
 
         def deliver() -> None:
             if result.log_level is not None and self._log is not None:
-                for message in result.messages:
+                for message in result.messages if result.log_messages is None else result.log_messages:
                     self._log(result.log_level, strip_colors(message))
                 if source.player_id is None:
                     return  # The console already shows the log entry.

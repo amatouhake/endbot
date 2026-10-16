@@ -317,6 +317,34 @@ class PluginAdapterTests(unittest.TestCase):
             plugin._submit_bot(player, ["Alice", "stop"])
             self.assertEqual(submissions, [(["Alice", "stop"], player)])
 
+    def test_reply_language_follows_setting_and_client_locale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            player.locale = "ja_JP"
+            plugin._submit_bot(player, ["Alice", "stop"])
+            self.assertEqual(player.messages, ["Endbot: Bot の操作権限がありません"])
+            plugin._language_setting = "en"
+            plugin._submit_bot(player, ["Alice", "stop"])
+            self.assertEqual(player.messages[-1], "Endbot: you do not have Bot control permission")
+            plugin._language_setting = "ja"
+            self.assertEqual(plugin._language(player), "ja")
+            # The console stays English, like the server log.
+            self.assertEqual(plugin._language(FakeConsole()), "en")
+
+    def test_language_setting_loads_from_config_and_falls_back_to_auto(self):
+        for configured, expected, warned in ((None, "auto", False), ("ja", "ja", False), ("fr", "auto", True)):
+            with self.subTest(configured=configured), tempfile.TemporaryDirectory() as directory:
+                plugin = self.module.EndbotPlugin()
+                plugin.config = {} if configured is None else {"ui": {"language": configured}}
+                plugin.data_folder = Path(directory)
+                warnings = []
+                plugin.logger = types.SimpleNamespace(info=lambda message: None, warning=warnings.append)
+                plugin.save_default_config = lambda: None
+                plugin.on_load()
+                self.assertEqual(plugin._language_setting, expected)
+                self.assertEqual(bool(warnings), warned)
+
     def test_mining_loop_survives_controller_logoff_but_not_revocation(self):
         from endstone_endbot.dispatch import CommandSource
 

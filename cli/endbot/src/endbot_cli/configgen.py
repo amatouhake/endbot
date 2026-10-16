@@ -227,6 +227,10 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
     runtime["hotbar-sync-resend-ticks"] = config.runtime.hotbar_sync_resend_ticks
     document.add("runtime", runtime)
 
+    ui = tomlkit.table()
+    ui["language"] = config.ui.language
+    document.add("ui", ui)
+
     atomic_write_text(plugin_config, tomlkit.dumps(document))
     warnings = [warning] if warning else []
     return plugin_config, warnings

@@ -72,6 +72,22 @@ class ConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(ConfigError, "runtime.chunk-radius"):
                     load_config(self.path)
 
+    def test_ui_language_defaults_to_auto_and_is_validated(self) -> None:
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base)
+        self.assertEqual(load_config(self.path).ui.language, "auto")
+        for value in ("auto", "en", "ja"):
+            self.write(base + f'[ui]\nlanguage="{value}"\n')
+            self.assertEqual(load_config(self.path).ui.language, value)
+        for value in ('"fr"', '"JA"', '""', "1", "true"):
+            with self.subTest(value=value):
+                self.write(base + f"[ui]\nlanguage={value}\n")
+                with self.assertRaisesRegex(ConfigError, "ui.language"):
+                    load_config(self.path)
+        self.write(base + '[ui]\nlocale="ja"\n')
+        with self.assertRaisesRegex(ConfigError, "ui.locale"):
+            load_config(self.path)
+
     def test_absolute_server_path_is_kept(self) -> None:
         self.write(f"[server]\npath = '{self.root.as_posix()}'\n[controllers]\ngamertags = []\n")
         config = load_config(self.path)

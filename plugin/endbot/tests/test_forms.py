@@ -521,6 +521,31 @@ class PresenterTests(unittest.TestCase):
         {text: click for _, text, click in form.items}["Alice"](self.player)
         self.assertEqual(self.submitted, [["Alice", "menu"]])
 
+    def test_japanese_viewer_gets_japanese_screens_and_errors_but_english_commands(self):
+        presenter = FormPresenter(
+            lambda player, argv: self.submitted.append(argv),
+            lambda: ("Steve", "Alice"),
+            FakeFormModule(),
+            language=lambda player: "ja",
+        )
+        presenter.show_view(self.player, forms.BotView("Alice", "Alice: online", ONLINE, OBSERVED))
+        main = self.player.forms[-1]
+        click = {text: c for kind, text, c in main.items if kind == "button"}
+        self.assertIn("すべて止める (stop)", click)
+        click["ゲームプレイ..."](self.player)
+        self.assertEqual(self.player.forms[-1].kwargs["title"], "Alice: ゲームプレイ")
+        {text: c for _, text, c in self.player.forms[-1].items}["ブロックを壊す (destroy)..."](self.player)
+        modes = {text: c for _, text, c in self.player.forms[-1].items}
+        modes["x y z..."](self.player)
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps(["1 2", 0]))
+        self.assertEqual(
+            strip_colors(self.player.messages[-1]),
+            "Endbot: Alice: destroy x y z: 座標は x y z の 3 つを入力してください",
+        )
+        modes["stop"](self.player)
+        self.assertEqual(self.submitted, [["Alice", "destroy", "stop"]])
+        self.assertEqual(strip_colors(self.player.messages[-1]), "/bot Alice destroy stop")
+
 
 if __name__ == "__main__":
     unittest.main()

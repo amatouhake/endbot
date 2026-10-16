@@ -101,6 +101,25 @@ view delivery/revocation. Rendering and input on a real client are a manual chec
 open `/bot`, `/bot menu` and `/bot <name> menu`, submit each input form once, cancel the despawn confirmation, close forms with
 Escape, and confirm a revoked controller cannot act from an already open form.
 
+## Reply language
+
+Replies, help text and form screens are available in English and Japanese. By default (`[ui] language = "auto"` in
+`endbot.toml`, see [OPERATIONS.md](OPERATIONS.md) section 2) each player gets the language of their game client:
+Japanese clients see Japanese, every other client sees English. `language = "en"` or `"ja"` fixes one language for
+every player.
+
+Only the wording changes. Command words and syntax stay English in every language: the help shows
+`/bot <name> move forward|backward|left|right for <ticks>` with a Japanese description, and form mode buttons and
+clause fields keep their command names (`once`, `continuous`, `interval <ticks>`, `for <ticks>`), so forms still teach
+the typed command, and the gray echo of a form's command is unchanged. The server console, the server log, and the
+`/bot` description in command autocompletion stay English. Messages that come from the Endbot runtime (for example a
+missing Bot) are not translated. A notice from an ongoing job, such as continuous mining ending, uses the language of the
+player who started it; its log entry stays English.
+
+Japanese text uses only kana, kanji, ASCII and the Japanese comma and full stop, because the Bedrock chat font lacks many
+symbols (arrows show as boxes). How it looks on a real client is a manual check: with a Japanese client, read
+`/bot help` pages 1-3, a `status` reply, an error, the Bot list and Bot screens, and one mode form.
+
 ## Mining blocks
 
 ```text

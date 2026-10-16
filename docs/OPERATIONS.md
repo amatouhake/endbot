@@ -314,6 +314,9 @@ the `bds-version` mismatch, so `endbot update` performs the §6 backup and previ
 is opened by the newer BDS afterwards. Back up `worlds/` first: rolling back to 0.2.0 would put an older BDS in front of
 a world the newer one has saved.
 
+Updating from 0.2.1 to 0.3.0 keeps Endstone `0.11.13+endbot.1`, BDS `1.26.52.3` and protocol `2193`, so no BDS update
+runs. An existing `endbot.toml` without `[ui]` keeps working and uses `language = "auto"`.
+
 ## 7. Doctor
 
 `endbot doctor` reports, without changing anything:

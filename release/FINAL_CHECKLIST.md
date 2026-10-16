@@ -243,10 +243,27 @@ context-only patch rebase, and the `operators` doctor WARN. Compatibility eviden
 - [x] Publish the draft unchanged, then re-verify checksums from the published assets. (2026-10-09: tag `v0.2.1`
   = `f62a059`; every published asset matches the candidate `SHA256SUMS`; both bundle attestations verified)
 
+### 0.3.0 release — features on the unchanged 0.2.1 baseline (decided 2026-10-16)
+
+Scope: everything merged since `v0.2.1` (#51–#63): Survival mining (`destroy`), per-Bot chunk radius, live controller
+management, compact menus and hotbar/pickup synchronization, held/timed item use, `for`/`hold` durations, command-mirroring
+action forms, and Japanese player-facing text (`[ui] language`). `endstone.lock`, `patches/endstone/` and the runtime
+dependencies are unchanged from 0.2.1, so no compatibility gate is required. The installer moves to 0.4.0.
+
+- [ ] `release-candidate.yml` with `0.3.0` on `main`; attach the exact artifacts to a **draft** `v0.3.0`.
+- [ ] Bot-side live check on the exact Windows bundle: fresh setup over NetherNet and RakNet with a Bot joining, the
+  mining/item-use/duration smoke, and `endbot update` from published 0.2.1 (no BDS change, `[ui]` defaulting to auto).
+- [ ] Human gate on the exact bundle over NetherNet: join, `/bot` menu (Japanese and English), a charged bow `hold`, and a
+  `destroy ... for`. Decide whether to re-run the Xbox achievement gate or cite the 0.2.1 observation (same lock,
+  patches and runtime dependencies); the release notes say which.
+- [ ] Release notes list the open manual gates in `docs/BACKLOG.md` as known limitations.
+- [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
+
 ### After 0.1.0 (direction)
 
 - 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).
-- 0.3.0: a runtime-download installer becomes the primary distribution. The
+- 0.3.0: gameplay controls, forms and Japanese text on the 0.2.1 baseline (above).
+- 0.4.0: a runtime-download installer becomes the primary distribution. The
   release then carries only Endbot's own artifacts (patched Endstone wheel,
   plugin, CLI, runtime source; about 25 MB on Windows and 50 MB on Linux), and
   the installer fetches CPython, Node.js, and third-party packages from their

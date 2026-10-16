@@ -69,14 +69,14 @@ Players can run the common operations from native Bedrock forms instead of typin
 /bot Alice menu    -> Alice's actions and compact state/position summary
 ```
 
-The online Bot screen has six primary buttons: Stop everything, Move / look, Actions, Teleport, Settings and Connection,
-plus Back to Bot list. Category screens have at most six buttons including Back to Bot. Actions include jump, attack,
-use, destroy and drop (one item or a stack). Settings include hotbar, radius and sprint/sneak. Connection includes
-reconnect, despawn with a confirmation, refresh and the full status text. An offline Bot offers resume/spawn and radius.
-Bot list buttons put a colored `ON`, `OFF`, `JOIN`, `RETRY` or `FAIL` before the name on a single line so the state stays
-visible even if the client truncates a long name. Input forms use
-dropdowns, sliders and text fields; coordinate fields accept the same `~` forms as the command, and their labels say what
-`~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot` again to continue.
+The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
+`FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
+Movement (forward, backward, left, right, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy),
+Inventory (hotbar, drop) and Bot (reconnect, despawn with a confirmation, radius and the full status text). Group names
+follow Minecraft's control settings. An offline Bot offers resume/spawn and radius.
+Input forms use dropdowns, sliders and text fields; coordinate fields accept the same `~` forms as the command, and their
+labels say what `~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot` again to
+continue.
 
 Forms are only another way to type commands: every button or form submission becomes the equivalent `/bot` arguments
 (for example `/bot Alice attack interval 40`) and goes through the same permission check, command queue, parser and

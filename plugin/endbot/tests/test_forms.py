@@ -43,36 +43,50 @@ class ScreenTests(unittest.TestCase):
         view = forms.BotView("Alice", "Alice: online", ONLINE, OBSERVED)
         return forms.bot_screen(view, caller, players)
 
-    def test_bot_list_opens_each_bot_through_the_menu_command(self):
+    def test_bot_list_shows_online_bots_and_hides_offline_ones_behind_a_button(self):
         screen = forms.bot_list_screen(
             forms.BotListView(
-                ({"name": "Alice", "connectionState": "online"}, {"name": "Bob", "connectionState": "offline"})
+                (
+                    {"name": "Bob", "connectionState": "offline"},
+                    {"name": "Zed", "connectionState": "online"},
+                    {"name": "Alice", "connectionState": "online"},
+                    {"name": "Cy", "connectionState": "failed"},
+                    {"name": "Dee", "connectionState": "offline"},
+                )
             )
         )
+        self.assertEqual(
+            [strip_colors(i.text) for i in screen.items],
+            ["Alice", "Zed", "FAIL · Cy", "Offline (2)...", "+ New Bot here"],
+        )
         actions = buttons(screen)
-        self.assertEqual(actions["§aON§r · Alice"], forms.Run((("Alice", "menu"),)))
-        self.assertEqual(actions["§7OFF§r · Bob"], forms.Run((("Bob", "menu"),)))
-        self.assertEqual(submit(actions["+ Spawn a new Bot here"].screen, " Carol "), (("Carol", "spawn"),))
+        self.assertEqual(actions["Alice"], forms.Run((("Alice", "menu"),)))
+        self.assertEqual(actions["Bob"], forms.Run((("Bob", "menu"),)))
+        offline = next(i.action.screen for i in screen.items if i.text.startswith("Offline"))
+        self.assertEqual([i.text for i in offline.items], ["Bob", "Dee", "Back to Bot list"])
+        self.assertEqual(submit(actions["+ New Bot here"].screen, " Carol "), (("Carol", "spawn"),))
         empty = forms.bot_list_screen(forms.BotListView(()))
         self.assertIn("No Bot profiles", empty.content)
+        self.assertEqual([i.text for i in empty.items], ["+ New Bot here"])
 
-    def test_main_screen_has_six_categories_and_list_navigation(self):
+    def test_main_screen_groups_actions_like_the_game_controls(self):
         screen = self.online_screen()
         self.assertEqual(
             [item.text for item in screen.items],
             [
                 "Stop everything",
-                "Move / look...",
-                "Actions...",
+                "Movement...",
+                "Look...",
                 "Teleport...",
-                "Settings...",
-                "Connection...",
+                "Gameplay...",
+                "Inventory...",
+                "Bot...",
                 "Back to Bot list",
             ],
         )
         for item in screen.items:
-            if isinstance(item.action, forms.Show):
-                self.assertLessEqual(len(item.action.screen.items), 6)
+            if isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
+                self.assertLessEqual(len(item.action.screen.items), 7)
                 self.assertEqual(item.action.screen.items[-1].text, "Back to Bot")
 
     def test_long_bot_names_keep_state_first_on_one_line(self):
@@ -81,31 +95,35 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(strip_colors(screen.items[0].text), f"RETRY · {name}")
         self.assertNotIn("\n", screen.items[0].text)
 
-    def test_offline_bot_offers_only_connection_and_settings(self):
+    def test_offline_bot_offers_only_connection_and_radius(self):
         view = forms.BotView("Bob", "Bob: offline", {**ONLINE, "name": "Bob", "connectionState": "offline"})
-        actions = buttons(forms.bot_screen(view, "Steve"))
+        screen = forms.bot_screen(view, "Steve")
+        self.assertEqual(strip_colors(screen.content), "offline · chunk radius 12")
+        actions = buttons(screen)
         self.assertEqual(actions["Resume (where it was)"], forms.Run((("Bob", "resume"),)))
         self.assertEqual(actions["Spawn here"], forms.Run((("Bob", "spawn"),)))
-        self.assertNotIn("Move...", actions)
+        self.assertNotIn("Forward", actions)
         self.assertNotIn("Despawn...", actions)
         self.assertEqual(actions["Back to Bot list"], forms.Run((("menu",),)))
+        self.assertFalse(any(isinstance(item, forms.Header) for item in screen.items))
 
     def test_online_bot_screen_shows_status_and_command_backed_buttons(self):
         screen = self.online_screen()
-        self.assertEqual(strip_colors(screen.content), "online\nOverworld 1.0 64.0 2.0")
+        self.assertEqual(strip_colors(screen.content), "online · Overworld 1.0 64.0 2.0")
         actions = buttons(screen)
         self.assertEqual(actions["Stop everything"], forms.Run((("Alice", "stop"),)))
+        self.assertEqual(actions["Forward"], forms.Run((("Alice", "move", "forward"),)))
+        self.assertEqual(actions["Backward"], forms.Run((("Alice", "move", "backward"),)))
         self.assertEqual(actions["Reconnect"], forms.Run((("Alice", "reconnect"),)))
-        self.assertEqual(actions["Refresh"], forms.Run((("Alice", "menu"),)))
         confirm = actions["Despawn..."].screen
         self.assertEqual(confirm.action, forms.Run((("Alice", "despawn"),)))
         # Interact, rename and forget stay command-only.
         self.assertFalse(any(word in text.lower() for text in actions for word in ("interact", "rename", "forget")))
 
-    def test_full_status_stays_in_connection_and_hotbar_defaults_to_current_slot(self):
+    def test_full_status_stays_under_bot_and_hotbar_defaults_to_current_slot(self):
         view = forms.BotView("Alice", "full status and radius details", {**ONLINE, "selectedHotbarSlot": 9}, OBSERVED)
         screen = forms.bot_screen(view, "Steve")
-        connection = next(item.action.screen for item in screen.items if item.text == "Connection...")
+        connection = next(item.action.screen for item in screen.items if item.text == "Bot...")
         self.assertEqual(connection.content, view.summary)
         self.assertEqual(buttons(screen)["Hotbar slot..."].screen.controls[0].default_index, 8)
 
@@ -124,8 +142,6 @@ class ScreenTests(unittest.TestCase):
     def test_every_modal_produces_commands_the_parser_accepts(self):
         actions = buttons(self.online_screen())
         cases = [
-            ("Move...", (0,), [("Alice", "move", "forward")]),
-            ("Move...", (4,), [("Alice", "move", "stop")]),
             ("Look...", (90.0, -15.0, ""), [("Alice", "look", "90", "-15")]),
             ("Look...", (0, 0, "1 64 ~2"), [("Alice", "look", "at", "1", "64", "~2")]),
             ("Sprint / sneak...", (1, 2), [("Alice", "sprint", "on"), ("Alice", "sneak", "off")]),
@@ -160,7 +176,7 @@ class ScreenTests(unittest.TestCase):
 
     def test_malformed_responses_are_rejected_without_commands(self):
         actions = buttons(self.online_screen())
-        move = actions["Move..."].screen
+        move = actions["Hotbar slot..."].screen
         destroy = actions["Destroy blocks..."].screen
         for screen, response in (
             (move, None),
@@ -326,7 +342,7 @@ class PresenterTests(unittest.TestCase):
         for kind, text, click in form.items:
             if kind != "button":
                 continue
-            if text in {"Move / look...", "Actions...", "Teleport...", "Settings...", "Connection..."}:
+            if text in {"Movement...", "Teleport...", "Gameplay...", "Inventory...", "Bot..."}:
                 click(self.player)
                 for child_kind, child_text, child_click in self.player.forms[-1].items:
                     if child_kind == "button":
@@ -337,17 +353,18 @@ class PresenterTests(unittest.TestCase):
 
     def test_buttons_submit_commands_or_open_screens(self):
         form, clicks = self.bot_form()
-        self.assertEqual(strip_colors(form.kwargs["content"]), "online\nOverworld 1.0 64.0 2.0")
-        self.assertEqual(len(form.items), 7)
+        self.assertEqual(strip_colors(form.kwargs["content"]), "online · Overworld 1.0 64.0 2.0")
+        self.assertEqual(len(form.items), 8)
         clicks["Teleport to me"](self.player)
         clicks["Stop everything"](self.player)
         self.assertEqual(self.submitted, [["Alice", "tp", "Steve"], ["Alice", "stop"]])
-        clicks["Move..."](self.player)
+        clicks["Hotbar slot..."](self.player)
         modal = self.player.forms[-1]
         self.assertEqual(type(modal).__name__, "ModalForm")
-        self.assertEqual(modal.kwargs["submit_button"], "Move")
+        self.assertEqual(modal.kwargs["submit_button"], "Select")
+        self.submitted.clear()
         modal.kwargs["on_submit"](self.player, json.dumps([1]))
-        self.assertEqual(self.submitted[-1], ["Alice", "move", "backward"])
+        self.assertEqual(self.submitted, [["Alice", "hotbar", "2"]])
 
     def test_modal_errors_reply_instead_of_submitting(self):
         _, clicks = self.bot_form()
@@ -377,7 +394,7 @@ class PresenterTests(unittest.TestCase):
     def test_list_view_renders_bot_buttons(self):
         self.presenter.show_view(self.player, forms.BotListView(({"name": "Alice", "connectionState": "online"},)))
         form = self.player.forms[-1]
-        {text: click for _, text, click in form.items}["§aON§r · Alice"](self.player)
+        {text: click for _, text, click in form.items}["Alice"](self.player)
         self.assertEqual(self.submitted, [["Alice", "menu"]])
 
 

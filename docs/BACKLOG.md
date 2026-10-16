@@ -159,12 +159,12 @@ NetherNet and broader effects/enchantment/tool-break combinations remain validat
 
 Status: **Implemented — revised layout awaits human-client rendering confirmation** (2026-10-16 JST).
 
-The Bot list now prefixes each name with a colored `ON`, `OFF`, `JOIN`, `RETRY` or `FAIL` on one line. The online Bot
-screen has six primary buttons plus list navigation; category screens have at most six buttons including Back.
-The main summary is compact; full status remains in Connection. Drop one/stack is available under Actions, and the
-hotbar input defaults to the selected slot. `/bot` now opens the list for players, while console `/bot` retains help;
-the explicit `/bot menu` and `/bot <name> menu` paths remain. No resource pack is introduced. Automated response,
-navigation, authorization and command-path tests pass; 1080p/default-scale rendering still needs a human check.
+The Bot list shows online Bots by name, with connecting/failed Bots prefixed by a dark-colored `JOIN`, `RETRY` or
+`FAIL` and offline Bots behind one `Offline (n)...` button. The online Bot screen has Stop everything plus Movement,
+Look, Teleport, Gameplay, Inventory and Bot, named after Minecraft's control settings so inventory features can grow
+under Inventory. `/bot` now opens the list for players, while console `/bot` retains help; the explicit `/bot menu` and
+`/bot <name> menu` paths remain. No resource pack is introduced. Automated response, navigation, authorization and
+command-path tests pass; 1080p/default-scale rendering still needs a human check.
 
 The colored `/bot help` and replies and the `/bot menu` forms were checked on the Windows client (1.26.52) over
 RakNet on main `061bcc8`. Colors render as intended and the forms work, but three usability problems were reported:

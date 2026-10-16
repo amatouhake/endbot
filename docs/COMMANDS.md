@@ -72,12 +72,22 @@ Players can run the common operations from native Bedrock forms instead of typin
 
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
-Movement (forward, backward, left, right, stop moving, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy),
+Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy),
 Inventory (hotbar, drop) and Bot (reconnect, despawn with a confirmation, radius and the full status text). Group names
 follow Minecraft's control settings. An offline Bot offers resume/spawn and radius.
 Input forms use dropdowns, sliders and text fields; closing one (or cancelling the despawn confirmation) returns to the screen it was opened from; coordinate fields accept the same `~` forms as the command, and their
 labels say what `~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot` again to
 continue.
+
+Jump, Attack, Use item and Destroy blocks mirror their command grammar instead of adding form-only meanings. Their
+first screen offers the command's modes (`once`, `continuous`, `interval`, `stop`, plus `for` for use and `x y z` for
+destroy). A mode without parameters runs at once; a mode with parameters opens a form holding only its clauses, named
+as typed and measured in ticks (`interval <ticks>`, `hold <ticks>`, `for <ticks>`; 20 = 1 second). A blank optional
+clause is omitted, so a blank `for` means until stopped. Use item `once` opens a form because it accepts `hold`.
+For example, three charged bow shots are `interval...` with interval 30, hold 20, for 80. Move opens one form for
+`move <direction> [for <ticks>]`; quick single-tap movement is left to the typed command.
+Every command a form or button runs is echoed once in chat as its typed form, for example
+`→ /bot Alice use interval 30 hold 20 for 80`, before the normal reply. Menu navigation is not echoed.
 
 Forms are only another way to type commands: every button or form submission becomes the equivalent `/bot` arguments
 (for example `/bot Alice attack interval 40`) and goes through the same permission check, command queue, parser and
@@ -351,8 +361,8 @@ arrives mid-charge releases at once, which may fire a partly charged item; choos
 avoid it. Like timed use, holds are canceled by hotbar selection, a changed or empty held item, dimension change,
 death and disconnect, and they never resume after reconnect. Each release confirms an input only, not a shot.
 
-The forms do not offer `for` or `hold` yet, except the existing Use item `for` mode (one timed hold); a form
-redesign around seconds, per-mode steps and charged-shot counts is separate work. See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and
+The Jump, Attack, Use item, Move and Destroy blocks forms offer the same `interval`, `hold` and `for` clauses (see
+[control forms](#control-forms)). See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and
 [the backlog](BACKLOG.md).
 
 `use` means using or holding the selected item in the air, such as food, a bow, or a trident. `interact` is a normal

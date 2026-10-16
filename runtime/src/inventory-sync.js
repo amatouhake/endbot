@@ -77,12 +77,29 @@ export function decodeHotbar (data, identityId, itemPalette) {
   })
 }
 
+// Canonical form for comparing a native item with a synchronized one. The
+// protocol decoder yields numbers where the observation uses booleans
+// (`has_nbt: 0` vs `false`) and 64-bit values as BigInt, so equal items must
+// not differ by representation, key order or absent optional fields.
+function canonical (value) {
+  if (typeof value === 'bigint' || (typeof value === 'number' && Number.isInteger(value))) return `n:${value}`
+  if (Array.isArray(value)) return value.map(canonical)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value)
+      .filter(([, child]) => child !== undefined)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, child]) => [key, canonical(child)]))
+  }
+  return value
+}
+
 export function sameItem (left, right) {
   // Stack network IDs are connection bookkeeping, absent from the read-only
   // SDK observation. Keep native IDs when the actual item is unchanged.
   const comparable = item => {
-    const { has_stack_id: unusedPresence, stack_id: unusedId, ...rest } = item ?? EMPTY_ITEM
-    return JSON.stringify(rest, (key, value) => typeof value === 'bigint' ? value.toString() : value)
+    const { has_stack_id: unusedPresence, stack_id: unusedId, extra, ...rest } = item ?? EMPTY_ITEM
+    const normalized = extra && { ...extra, has_nbt: Boolean(extra.has_nbt) }
+    return JSON.stringify(canonical({ ...rest, extra: normalized }))
   }
   return comparable(left) === comparable(right)
 }

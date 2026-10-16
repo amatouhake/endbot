@@ -99,6 +99,32 @@ test('BDS hotbar observations make same-session pickups usable and correct rejec
   assert.equal(queued.length, unchanged)
 })
 
+test('an unchanged hotbar observation keeps native stack IDs and an active use', async t => {
+  const { client, session, inputs, queued, tick } = await fixture(t)
+  client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })
+  const original = session.inventory[0]
+  inputs.setAction('use', 'continuous')
+  tick()
+  const slots = Array(9).fill(null)
+  // Native packets carry has_nbt as 0; the observation decodes to false.
+  slots[0] = { name: 'minecraft:diamond_sword', count: 3, metadata: 0, blockRuntimeId: 0, nbt: { type: 'compound', value: {} } }
+  queued.length = 0
+  const publish = () => client.emit('script_custom_event', {
+    event_name: 'endbot:hotbar-v1', event_data: JSON.stringify({ identityId: session.profile.identityId, slots })
+  })
+  publish()
+  assert.equal(session.inventory[0], original)
+  assert.equal(session.inventory[0].stack_id, 34)
+  assert.equal(queued.some(packet => packet.name === 'mob_equipment'), false)
+  inputs.setAction('use', 'stop')
+  session.applyInputs(inputs)
+  assert.equal(queued.at(-1).params.transaction.transaction_type, 'item_release')
+  // A differing stack (count) is still a real change.
+  slots[0].count = 2
+  publish()
+  assert.equal(session.inventory[0].count, 2)
+})
+
 test('unknown, partial and wrong-Bot inventory observations leave the good cache intact', async t => {
   const { client, session } = await fixture(t)
   client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })

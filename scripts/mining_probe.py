@@ -361,6 +361,23 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     wait("Bot respawned", lambda: control("status").get("connectionState") == "online", 20)
     time.sleep(2)
     report["mining"]["death-notice"] = True
+
+    # destroy for: the loop ends after its duration and aborts the slow block.
+    setup("duration", "minecraft:obsidian", "minecraft:diamond_pickaxe")
+    offset = len(log())
+    console("bot RakNetSpike destroy for 40")
+    wait("destroy for reply", lambda: "destroy continuous started for 40 ticks" in log()[offset:], 10)
+    wait("mining active", lambda: mining().get("state") == "active", 5)
+    wait("destroy for expired", lambda: not mining().get("continuous"), 6)
+    wait(
+        "duration notice in the console log",
+        lambda: "destroy continuous stopped: duration elapsed" in log()[offset:],
+        10,
+    )
+    time.sleep(1)
+    if mining().get("reason") != "duration elapsed" or observed()["block"] != "minecraft:obsidian":
+        raise RuntimeError(f"destroy for did not abort the block: {mining()} {observed()}")
+    report["mining"]["duration-end"] = True
     setup("cleanup", "minecraft:air")
 
 

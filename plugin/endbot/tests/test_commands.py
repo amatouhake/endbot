@@ -6,7 +6,7 @@ from endstone_endbot.commands import parse_command
 
 
 class BotCommandServiceTests(unittest.TestCase):
-    def test_timed_use_preserves_other_modes_and_does_not_enable_for_on_other_actions(self):
+    def test_timed_use_keeps_its_meaning(self):
         self.assertEqual(
             parse_command(["Alice", "use", "for", "20"]).parameters,
             {"action": "use", "mode": "continuous", "durationTicks": 20},
@@ -14,15 +14,59 @@ class BotCommandServiceTests(unittest.TestCase):
         for value in ("0", "72001", "1.5", "true"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse_command(["Alice", "use", "for", value])
-        for arguments in (
-            ["use", "for"],
-            ["attack", "for", "20"],
-            ["jump", "for", "20"],
-            ["use", "interval", "20", "for", "100"],
-        ):
-            with self.subTest(arguments=arguments), self.assertRaises(ValueError):
-                parse_command(["Alice", *arguments])
         self.assertEqual(parse_command(["Alice", "use"]).parameters, {"action": "use", "mode": "once"})
+
+    def test_for_is_a_duration_that_implies_continuous(self):
+        cases = {
+            ("jump", "for", "20"): {"action": "jump", "mode": "continuous", "durationTicks": 20},
+            ("attack", "continuous", "for", "20"): {"action": "attack", "mode": "continuous", "durationTicks": 20},
+            ("jump", "interval", "20", "for", "100"): {
+                "action": "jump", "mode": "interval", "intervalTicks": 20, "durationTicks": 100,
+            },
+            ("use", "FOR", "100", "interval", "20"): {
+                "action": "use", "mode": "interval", "intervalTicks": 20, "durationTicks": 100,
+            },
+            ("use", "hold", "30"): {"action": "use", "mode": "once", "holdTicks": 30},
+            ("use", "hold", "30", "for", "200"): {
+                "action": "use", "mode": "continuous", "holdTicks": 30, "durationTicks": 200,
+            },
+            ("use", "continuous", "hold", "30"): {"action": "use", "mode": "continuous", "holdTicks": 30},
+            ("use", "hold", "30", "interval", "40", "for", "200"): {
+                "action": "use", "mode": "interval", "holdTicks": 30, "intervalTicks": 40, "durationTicks": 200,
+            },
+        }
+        for arguments, parameters in cases.items():
+            with self.subTest(arguments=arguments):
+                self.assertEqual(parse_command(["Alice", *arguments]).parameters, parameters)
+        self.assertEqual(
+            parse_command(["Alice", "move", "forward", "for", "40"]).parameters,
+            {"direction": "forward", "durationTicks": 40},
+        )
+        self.assertEqual(
+            parse_command(["Alice", "destroy", "for", "200"]).parameters, {"mode": "continuous", "durationTicks": 200}
+        )
+        self.assertEqual(
+            parse_command(["Alice", "destroy", "continuous", "for", "200"]).parameters,
+            {"mode": "continuous", "durationTicks": 200},
+        )
+        for arguments, message in (
+            (["use", "for"], "accepts"),
+            (["jump", "once", "for", "20"], "once runs one time"),
+            (["jump", "stop", "for", "20"], "stop takes no ticks"),
+            (["jump", "continuous", "interval", "20"], "replaces once/continuous"),
+            (["jump", "for", "20", "for", "30"], "accepts"),
+            (["jump", "hold", "20"], "accepts"),
+            (["use", "hold", "30", "interval", "30"], "longer than hold"),
+            (["use", "hold", "0"], "Hold must be between"),
+            (["attack", "for", "72001"], "Duration must be between"),
+            (["move", "stop", "for", "20"], "move accepts"),
+            (["move", "forward", "for"], "move accepts"),
+            (["move", "forward", "for", "x"], "Duration must be an integer"),
+            (["destroy", "once", "for", "20"], "one block has no duration"),
+            (["destroy", "1", "64", "2", "for", "20"], "one block has no duration"),
+        ):
+            with self.subTest(arguments=arguments), self.assertRaisesRegex(ValueError, message):
+                parse_command(["Alice", *arguments])
 
     def setUp(self) -> None:
         self.service = PlainCommandService()
@@ -114,7 +158,7 @@ class BotCommandServiceTests(unittest.TestCase):
             f"{SYNTAX}/bot {DIM}<name>{SYNTAX} jump {DIM}[once|continuous|interval <ticks>|stop]{RESET}",
         )
         # Descriptions stay in the default color.
-        self.assertEqual(detail[2:], HELP_TOPICS["jump"].details)
+        self.assertEqual(detail[1 + len(HELP_TOPICS["jump"].syntaxes) :], HELP_TOPICS["jump"].details)
         self.assertEqual(service.execute(["ping"]).message, f"{PREFIX}Endbot:{RESET} pong")
         error = service.execute(["Alice", "move", "sideways"]).message
         self.assertTrue(error.startswith(f"{PREFIX}Endbot: Alice:{RESET} {ERROR}"))

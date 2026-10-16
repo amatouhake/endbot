@@ -257,12 +257,21 @@ decide whether to keep it from the experiment's results.
 
 ## Deferred priorities
 
-- Generalize `for <ticks>` as an execution-duration suffix for other actions (attack, jump, movement and `destroy`),
-  distinct from `interval <ticks>` as repetition spacing. Only `use for <ticks>` is implemented now. Future examples
-  include `move forward for 40`, `jump interval 20 for 100` and `destroy continuous for 200`; these are not supported
-  commands. Specify single-block versus continuous mining termination, replacement/stop behavior and affected inputs
-  before implementation. Repeated charge/release shots need separate hold duration and repetition spacing; existing
-  `use interval` remains repeated short presses. Item-count/completion conditions are separate from duration.
+- `for <ticks>` duration and `use hold <ticks>` repeated charges are implemented on `feat/action-duration`; see
+  [durations](COMMANDS.md#durations-for-and-charged-presses-hold). Real-server and human-client validation (bow/trident
+  `hold` repeats, mining duration end, forms) remains a manual gate. Item-count/completion conditions are separate
+  from duration and not implemented. Live RakNet smoke (2026-10-16 JST, locked Endstone `0.11.13+endbot.1` / BDS
+  `1.26.52.3`, `scripts/raknet_spike.py --mining --item-use`) passed through the native parser: `move forward for 20`
+  moved 4.3 blocks then held still, `jump interval 10 for 30` expired, `use hold 25 interval 30 for 90` fired exactly
+  three arrows, and `destroy for 40` aborted obsidian with the info notice.
+  First human Windows Client check (2026-10-16 JST, RakNet, same locked pair): `jump interval 10 for 60` and
+  `jump interval 20 for 60` each jumped three times. This is expected: a jump trigger while the Bot is still airborne
+  (a jump lasts about 12 ticks) does not start a new jump, so interval 10 cannot jump more often than landing allows.
+  The remaining command checks (bow/trident `hold`, `destroy for`, status) were not reached. The form check stopped
+  when in-game night made the world hard to inspect, but the operator judged the added For/Hold fields and Move for
+  form as visibly bolted on and hard to understand, so they were removed from this change. The forms will be
+  redesigned separately: seconds and sliders instead of ticks, a mode choice followed by only the fields it needs,
+  charged shots by count, and one Walk form for direction, duration and sprint/sneak.
 - Command completion redesign remains dependent on a suitable upstream Endstone API and is lower priority while the
   menu provides a practical control surface; revisit its need after menu feedback.
 - Vanilla sneak edge protection remains deferred as client collision/edge simulation work; it is not part of the

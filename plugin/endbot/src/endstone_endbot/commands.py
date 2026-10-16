@@ -167,8 +167,8 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "move": HelpTopic(
         "move",
         "walk a Bot in a direction",
-        ("move forward|backward|left|right|stop",),
-        ("Movement acts as held input; stop halts it.",),
+        ("move forward|backward|left|right|stop", "move forward|backward|left|right for <ticks>"),
+        ("Movement acts as held input; stop halts it. for stops it after that many ticks.",),
     ),
     "look": HelpTopic(
         "look",
@@ -179,20 +179,31 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "jump": HelpTopic(
         "jump",
         "make a Bot jump",
-        ("jump [once|continuous|interval <ticks>|stop]",),
-        ("Omitting the mode means once; interval takes 1-72000 ticks.",),
+        ("jump [once|continuous|interval <ticks>|stop]", "jump [continuous|interval <ticks>] for <ticks>"),
+        (
+            "Omitting the mode means once, or continuous with for; ticks are 1-72000.",
+            "for is how long the input keeps going; once cannot take it.",
+        ),
     ),
     "attack": HelpTopic(
         "attack",
         "make a Bot attack",
-        ("attack [once|continuous|interval <ticks>|stop]",),
-        ("Continuous actions run every input tick.",),
+        ("attack [once|continuous|interval <ticks>|stop]", "attack [continuous|interval <ticks>] for <ticks>"),
+        ("Continuous actions run every input tick; for stops them after that many ticks.",),
     ),
     "use": HelpTopic(
         "use",
         "use the held item in air",
-        ("use [once|continuous|interval <ticks>|stop]", "use for <ticks>"),
-        ("With an empty hand it is a safe no-op; blocks need interact.",),
+        (
+            "use [once|continuous|interval <ticks>|stop]",
+            "use for <ticks>",
+            "use hold <ticks> [interval <ticks>] [for <ticks>]",
+        ),
+        (
+            "use for holds use that long, counted from the first press, then releases.",
+            "hold charges each press (bow, trident) and releases; for limits the repeats.",
+            "With an empty hand it is a safe no-op; blocks need interact.",
+        ),
     ),
     "sprint": HelpTopic(
         "sprint",
@@ -232,12 +243,14 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         "break reachable blocks with the held tool (hold left-click)",
         (
             "destroy [once|continuous|stop]",
+            "destroy [continuous] for <ticks>",
             "destroy <x> <y> <z> [down|up|north|south|west|east]",
         ),
         (
             "once (default) breaks one block in sight; x y z breaks that block. ~ is relative to the Bot.",
             "continuous holds left-click along the Bot's sight, also after you log off; waits when empty.",
             "Other commands do not cancel it; only destroy stop, stop, death or disconnect end it.",
+            "for ends continuous mining after that many ticks, aborting a block in progress.",
             "No interval mode. No automatic walking; BDS controls speed, drops and durability.",
         ),
     ),
@@ -342,6 +355,10 @@ def help_detail(key: str) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def _for_suffix(parameters: dict[str, object]) -> str:
+    return f" for {parameters['durationTicks']} ticks" if "durationTicks" in parameters else ""
+
+
 BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
 
 # Polls (every 4 ticks) a loop may fail to reach the runtime before it ends:
@@ -373,7 +390,11 @@ MINING_REASONS = {
     "target moved out of reach": "target out of reach",
     "mining controller timed out": "lost contact with the Endbot plugin",
     "timed out waiting for BDS to change target": "block did not break within 10 minutes; protected or unbreakable?",
+    "duration elapsed": "duration elapsed",
 }
+
+# Mining ends that are the requested outcome: notify at info level, not warning.
+EXPECTED_MINING_ENDS = {"duration elapsed"}
 
 
 def _tokens(arguments: list[str]) -> list[str]:
@@ -418,28 +439,56 @@ def _placement(tokens: list[str]) -> dict[str, object]:
     return position
 
 
+def _ticks(value: str, label: str) -> int:
+    try:
+        ticks = int(value)
+    except ValueError as error:
+        raise CommandSyntaxError(f"{label} must be an integer number of ticks") from error
+    if not 1 <= ticks <= 72_000:
+        raise CommandSyntaxError(f"{label} must be between 1 and 72000 ticks")
+    return ticks
+
+
+TICK_CLAUSES = {
+    "interval": ("intervalTicks", "Action interval"),
+    "hold": ("holdTicks", "Hold"),
+    "for": ("durationTicks", "Duration"),
+}
+
+
 def _action(name: str, action: str, remaining: list[str]) -> BotCommand:
-    mode = remaining[0].lower() if remaining else "once"
-    if mode == "for" and action == "use" and len(remaining) == 2:
-        try:
-            ticks = int(remaining[1])
-        except ValueError as error:
-            raise CommandSyntaxError("Use duration must be an integer number of ticks") from error
-        if not 1 <= ticks <= 72_000:
-            raise CommandSyntaxError("Use duration must be between 1 and 72000 ticks")
-        return BotCommand("action", name, {"action": action, "mode": "continuous", "durationTicks": ticks})
-    if (mode in {"once", "continuous", "stop"} and len(remaining) == 1) or not remaining:
-        return BotCommand("action", name, {"action": action, "mode": mode})
-    if mode == "interval" and len(remaining) == 2:
-        try:
-            ticks = int(remaining[1])
-        except ValueError as error:
-            raise CommandSyntaxError("Action interval must be an integer number of ticks") from error
-        if not 1 <= ticks <= 72_000:
-            raise CommandSyntaxError("Action interval must be between 1 and 72000 ticks")
-        return BotCommand("action", name, {"action": action, "mode": mode, "intervalTicks": ticks})
-    duration = ", or for <ticks>" if action == "use" else ""
-    raise CommandSyntaxError(f"{action} accepts once, continuous, interval <ticks>, or stop{duration}")
+    """Parse ``[once|continuous|stop]`` plus ``interval``/``hold``/``for`` clauses.
+
+    ``for`` is how long the input keeps going, so it implies continuous when no
+    mode is given and is rejected with once. ``hold`` (use only) presses use for
+    that many ticks per trigger, then releases. Clauses may appear in any order.
+    """
+    hold = " [hold <ticks>]" if action == "use" else ""
+    usage = f"{action} accepts [once|continuous|interval <ticks>|stop]{hold} [for <ticks>]"
+    tokens = [value.lower() for value in remaining]
+    mode = tokens.pop(0) if tokens and tokens[0] in {"once", "continuous", "stop"} else None
+    parameters: dict[str, object] = {}
+    while tokens:
+        clause = tokens.pop(0)
+        if clause not in TICK_CLAUSES or (clause == "hold" and action != "use"):
+            raise CommandSyntaxError(usage)
+        key, label = TICK_CLAUSES[clause]
+        if key in parameters or not tokens:
+            raise CommandSyntaxError(usage)
+        parameters[key] = _ticks(tokens.pop(0), label)
+    if mode == "stop" and parameters:
+        raise CommandSyntaxError(f"{action} stop takes no ticks")
+    if "intervalTicks" in parameters:
+        if mode is not None:
+            raise CommandSyntaxError(f"{action} interval replaces once/continuous")
+        mode = "interval"
+    elif mode is None:
+        mode = "continuous" if "durationTicks" in parameters else "once"
+    if mode == "once" and "durationTicks" in parameters:
+        raise CommandSyntaxError(f"{action} once runs one time; use continuous or interval with for <ticks>")
+    if parameters.get("intervalTicks", math.inf) <= parameters.get("holdTicks", 0):
+        raise CommandSyntaxError("Use interval must be longer than hold")
+    return BotCommand("action", name, {"action": action, "mode": mode, **parameters})
 
 
 def _teleport(name: str, tokens: list[str]) -> BotCommand:
@@ -518,12 +567,14 @@ def parse_command(arguments: list[str]) -> BotCommand:
         return BotCommand(operation, name, {"newName": remaining[0]})
     if operation == "tp":
         return _teleport(name, remaining)
-    if (
-        operation == "move"
-        and len(remaining) == 1
-        and remaining[0].lower() in {"forward", "backward", "left", "right", "stop"}
-    ):
-        return BotCommand(operation, name, {"direction": remaining[0].lower()})
+    if operation == "move" and remaining and remaining[0].lower() in {"forward", "backward", "left", "right", "stop"}:
+        direction = remaining[0].lower()
+        if len(remaining) == 1:
+            return BotCommand(operation, name, {"direction": direction})
+        if len(remaining) == 3 and remaining[1].lower() == "for" and direction != "stop":
+            duration = _ticks(remaining[2], "Duration")
+            return BotCommand(operation, name, {"direction": direction, "durationTicks": duration})
+        raise CommandSyntaxError("move accepts forward|backward|left|right [for <ticks>], or stop")
     if operation == "look" and len(remaining) == 2:
         return BotCommand(
             operation,
@@ -566,6 +617,12 @@ def parse_command(arguments: list[str]) -> BotCommand:
         )
     if operation == "destroy":
         modes = [value.lower() for value in remaining]
+        if len(modes) >= 2 and modes[-2] == "for":
+            # for is how long mining keeps going, so it implies continuous.
+            if modes[:-2] not in ([], ["continuous"]):
+                raise CommandSyntaxError("destroy for <ticks> runs continuous mining; one block has no duration")
+            duration = _ticks(remaining[-1], "Duration")
+            return BotCommand(operation, name, {"mode": "continuous", "durationTicks": duration})
         if not remaining or modes == ["once"]:
             return BotCommand(operation, name)
         if modes in (["continuous"], ["stop"]):
@@ -582,7 +639,7 @@ def parse_command(arguments: list[str]) -> BotCommand:
                     raise CommandSyntaxError("Invalid block face")
                 target["face"] = BLOCK_FACES[remaining[3].lower()]
             return BotCommand(operation, name, target)
-        raise CommandSyntaxError("destroy accepts once, continuous, stop, or x y z [face]")
+        raise CommandSyntaxError("destroy accepts once, continuous, stop, [continuous] for <ticks>, or x y z [face]")
     if operation == "drop" and (not remaining or remaining == ["stack"]):
         return BotCommand(operation, name, {"stack": bool(remaining)})
     if operation in {"jump", "attack", "use"}:
@@ -646,7 +703,10 @@ class BotCommandService:
                 if reason is False:
                     continue  # still breaking
                 if self._take_mining_loop(key, entry) and reason:
-                    notices.append((source, "warning", reply(stopped + reason, name, WARNING)))
+                    if reason in EXPECTED_MINING_ENDS:
+                        notices.append((source, "info", reply(stopped + reason, name)))
+                    else:
+                        notices.append((source, "warning", reply(stopped + reason, name, WARNING)))
             except RuntimeControlError as error:
                 # Windows loopback can refuse a fresh connection (WinError 10048)
                 # under rapid reconnects. Retry for about one runtime lease
@@ -819,6 +879,8 @@ class BotCommandService:
             mode = command.parameters.get("mode")
             if mode == "continuous":
                 target = {"mode": "start"}  # Runtime IPC name for a continuous loop.
+                if "durationTicks" in command.parameters:
+                    target["durationTicks"] = command.parameters["durationTicks"]
             elif mode == "stop":
                 target = {"mode": "stop"}
             else:
@@ -847,7 +909,12 @@ class BotCommandService:
             if mode == "continuous":
                 return CommandResult(
                     True,
-                    (reply("destroy continuous started; destroy stop to cancel", result["name"]),),
+                    (
+                        reply(
+                            f"destroy continuous started{_for_suffix(command.parameters)}; destroy stop to cancel",
+                            result["name"],
+                        ),
+                    ),
                     log_level="info",
                 )
             if mode == "stop":
@@ -892,7 +959,7 @@ class BotCommandService:
             detail = (
                 "movement stopped"
                 if parameters["direction"] == "stop"
-                else f"movement set to {parameters['direction']}"
+                else f"movement set to {parameters['direction']}{_for_suffix(parameters)}"
             )
         elif command.operation == "look":
             if "targetCoordinates" not in parameters:
@@ -900,18 +967,19 @@ class BotCommandService:
             detail = f"look set to yaw={yaw:.1f} pitch={pitch:.1f}"
         elif command.operation == "action":
             action, mode = parameters["action"], parameters["mode"]
+            hold = f": hold {parameters['holdTicks']} ticks, then release" if "holdTicks" in parameters else ""
             if mode == "stop":
                 detail = f"{action} stopped"
             elif mode == "interval":
-                detail = f"{action} started every {parameters['intervalTicks']} ticks"
+                detail = f"{action} started every {parameters['intervalTicks']} ticks{hold}{_for_suffix(parameters)}"
+            elif mode == "continuous" and hold:
+                detail = f"{action} repeating{hold}{_for_suffix(parameters)}"
+            elif mode == "continuous" and action == "use" and "durationTicks" in parameters:
+                detail = f"{action} started for {parameters['durationTicks']} ticks, then releases"
             elif mode == "continuous":
-                detail = (
-                    f"{action} started for {parameters['durationTicks']} ticks, then releases"
-                    if "durationTicks" in parameters
-                    else f"{action} continuous started"
-                )
+                detail = f"{action} continuous started{_for_suffix(parameters)}"
             else:
-                detail = f"{action} once requested"
+                detail = f"{action} once requested{hold}"
         elif command.operation == "flag":
             detail = f"{parameters['flag']} {'on' if parameters['value'] else 'off'}"
         elif command.operation == "stop":
@@ -941,6 +1009,9 @@ class BotCommandService:
             fields.append(f"{ERROR}error={status['lastError']}{RESET}")
         if "chunkRadius" in status:
             fields.append(cls._radius_summary(status))
+        timed = cls._timed_inputs_summary(status.get("inputs") or {})
+        if timed:
+            fields.append(timed)
         if status.get("mining"):
             fields.append(cls._mining_summary(status["mining"]))
         return reply(f"{DIM} | {RESET}".join(fields), status["name"])
@@ -958,17 +1029,37 @@ class BotCommandService:
         return f"chunk radius {status['chunkRadius']} ({source}); {server}"
 
     @staticmethod
+    def _timed_inputs_summary(inputs: dict[str, object]) -> str | None:
+        """Inputs that end on their own (for/hold), with ticks left."""
+        parts = []
+        if inputs.get("movementRemainingTicks") is not None:
+            parts.append(f"move {inputs.get('movement')} {inputs['movementRemainingTicks']} ticks left")
+        for action, state in (inputs.get("actions") or {}).items():
+            if state.get("remainingTicks") is None and state.get("holdTicks") is None:
+                continue
+            words = [action, str(state.get("mode"))]
+            if state.get("mode") == "interval":
+                words.append(str(state.get("intervalTicks")))
+            if state.get("holdTicks") is not None:
+                words.append(f"hold {state['holdTicks']}")
+            if state.get("remainingTicks") is not None:
+                words.append(f"{state['remainingTicks']} ticks left")
+            parts.append(" ".join(words))
+        return f"timed: {', '.join(parts)}" if parts else None
+
+    @staticmethod
     def _mining_summary(mining: dict[str, object]) -> str | None:
         position = " ".join(str(value) for value in mining.get("blockPosition") or [])
         block = mining.get("blockName")
         target = f"{block} at {position}" if block and block != "unknown" and position else position
         state = mining.get("state")
+        left = f"{mining['remainingTicks']} ticks left" if mining.get("remainingTicks") is not None else ""
         if state == "active":
-            mode = " (continuous)" if mining.get("continuous") else ""
+            mode = f" (continuous{', ' + left if left else ''})" if mining.get("continuous") else ""
             return f"destroying {target}{mode}".rstrip()
         if mining.get("continuous"):
-            last = f" (last: {target})" if target else ""
-            return f"destroy continuous waiting for a block in sight{last}"
+            notes = ", ".join(note for note in (f"last: {target}" if target else "", left) if note)
+            return f"destroy continuous waiting for a block in sight{f' ({notes})' if notes else ''}"
         # A finished job stays visible until the next one, labelled as past.
         reason = str(MINING_REASONS.get(str(mining.get("reason", "")), mining.get("reason") or ""))
         if state == "completed":

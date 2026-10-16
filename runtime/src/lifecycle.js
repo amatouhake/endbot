@@ -200,9 +200,9 @@ export class BotLifecycle extends EventEmitter {
     })
   }
 
-  move (name, direction) {
+  move (name, direction, durationTicks) {
     const { profile, state } = this.#requireOnline(name)
-    state.inputs.setMovement(direction)
+    state.inputs.setMovement(direction, durationTicks)
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -214,9 +214,9 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
-  action (name, action, mode, intervalTicks, durationTicks) {
+  action (name, action, mode, intervalTicks, durationTicks, holdTicks) {
     const { profile, state } = this.#requireOnline(name)
-    state.inputs.setAction(action, mode, intervalTicks, durationTicks)
+    state.inputs.setAction(action, mode, intervalTicks, durationTicks, holdTicks)
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -267,7 +267,7 @@ export class BotLifecycle extends EventEmitter {
           (!Number.isFinite(parameters.yaw) || !Number.isFinite(parameters.pitch) || Math.abs(parameters.pitch) > 90)) {
         throw new Error('Invalid destroy look direction')
       }
-      if (parameters.mode === 'start') state.session.startMiningLoop()
+      if (parameters.mode === 'start') state.session.startMiningLoop(parameters.durationTicks)
       else state.session.startMining(parameters)
       state.inputs.setAction('attack', 'stop')
       state.inputs.setAction('use', 'stop')

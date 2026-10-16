@@ -469,6 +469,69 @@ class CommandServiceTests(unittest.TestCase):
                 self.assertIn(expected, reply.message)
                 self.assertNotEqual(reply.message, "Endbot: Alice online")
 
+    def test_duration_and_hold_replies_and_runtime_parameters(self):
+        self.service.execute(["Alice", "spawn"], object())
+        cases = [
+            (["move", "forward", "for", "40"], "movement set to forward for 40 ticks",
+             ("move", {"direction": "forward", "durationTicks": 40})),
+            (["jump", "for", "20"], "jump continuous started for 20 ticks",
+             ("action", {"action": "jump", "mode": "continuous", "durationTicks": 20})),
+            (["attack", "interval", "20", "for", "100"], "attack started every 20 ticks for 100 ticks",
+             ("action", {"action": "attack", "mode": "interval", "intervalTicks": 20, "durationTicks": 100})),
+            (["use", "for", "40"], "use started for 40 ticks, then releases",
+             ("action", {"action": "use", "mode": "continuous", "durationTicks": 40})),
+            (["use", "hold", "30"], "use once requested: hold 30 ticks, then release",
+             ("action", {"action": "use", "mode": "once", "holdTicks": 30})),
+            (["use", "hold", "30", "for", "200"], "use repeating: hold 30 ticks, then release for 200 ticks",
+             ("action", {"action": "use", "mode": "continuous", "holdTicks": 30, "durationTicks": 200})),
+            (["use", "hold", "30", "interval", "40", "for", "200"],
+             "use started every 40 ticks: hold 30 ticks, then release for 200 ticks",
+             ("action", {"action": "use", "mode": "interval", "holdTicks": 30, "intervalTicks": 40,
+                         "durationTicks": 200})),
+            (["destroy", "for", "200"], "destroy continuous started for 200 ticks; destroy stop to cancel",
+             ("mine", {"mode": "start", "durationTicks": 200})),
+        ]
+        for args, expected, (operation, parameters) in cases:
+            with self.subTest(args=args):
+                reply = self.service.execute(["Alice", *args], object())
+                self.assertIn(f"Alice: {expected}", reply.message)
+                self.assertEqual(self.control.calls[-1], (operation, {"name": "Alice", **parameters}))
+
+    def test_destroy_duration_end_is_an_info_notice_and_status_shows_time_left(self):
+        self.service.execute(["Alice", "spawn"])
+        source = object()
+        self.service.execute(["Alice", "destroy", "for", "200"], source)
+        self.control.bots["Alice"]["mining"] = {
+            "state": "waiting", "continuous": True, "loopId": self.control.bots["Alice"]["mining"]["loopId"],
+            "remainingTicks": 120,
+        }
+        self.world.resolve_mining = lambda *args: None
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        status = self.service.execute(["Alice", "status"]).message
+        self.assertIn("destroy continuous waiting for a block in sight (120 ticks left)", status)
+        stone = {"blockPosition": [1, 64, 2], "blockName": "minecraft:stone"}
+        self.control.bots["Alice"]["mining"] = {**stone, "state": "completed", "reason": "duration elapsed"}
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertEqual(notices, [(source, "info", "Endbot: Alice: destroy continuous stopped: duration elapsed")])
+        self.assertIn("last destroy: duration elapsed", self.service.execute(["Alice", "status"]).message)
+
+    def test_status_lists_inputs_that_end_on_their_own(self):
+        self.service.execute(["Alice", "spawn"])
+        self.control.bots["Alice"]["inputs"] = {
+            "movement": "forward", "movementRemainingTicks": 30, "actions": {
+                "attack": {"mode": "continuous", "intervalTicks": 1},
+                "jump": {"mode": "interval", "intervalTicks": 20, "remainingTicks": 80},
+                "use": {"mode": "interval", "intervalTicks": 40, "holdTicks": 30},
+            },
+        }
+        status = self.service.execute(["Alice", "status"]).message
+        self.assertIn(
+            "timed: move forward 30 ticks left, jump interval 20 80 ticks left, use interval 40 hold 30", status
+        )
+        self.assertNotIn("attack", status)
+        self.control.bots["Alice"]["inputs"] = {"movement": None, "actions": {}}
+        self.assertNotIn("timed:", self.service.execute(["Alice", "status"]).message)
+
     def test_failed_action_identifies_bot_and_operation(self):
         def unavailable(operation, **parameters):
             raise RuntimeControlError("not_online", "Bot is offline")

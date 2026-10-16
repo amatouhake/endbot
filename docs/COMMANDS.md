@@ -33,7 +33,8 @@ Next page: /bot help 2 - detail: /bot help <command>
 ```text
 Endbot help: move
 /bot <name> move forward|backward|left|right|stop
-Movement acts as held input; stop halts it.
+/bot <name> move forward|backward|left|right for <ticks>
+Movement acts as held input; stop halts it. for stops it after that many ticks.
 ```
 
 Page 1 covers lifecycle, status, and teleport; page 2 covers movement and actions; page 3 covers
@@ -71,7 +72,8 @@ Players can run the common operations from native Bedrock forms instead of typin
 
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
-Movement (forward, backward, left, right, stop moving, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy),
+Movement (forward, backward, left, right, stop moving, move for, sprint / sneak), Look, Teleport,
+Gameplay (jump, attack, use item, destroy),
 Inventory (hotbar, drop) and Bot (reconnect, despawn with a confirmation, radius and the full status text). Group names
 follow Minecraft's control settings. An offline Bot offers resume/spawn and radius.
 Input forms use dropdowns, sliders and text fields; closing one (or cancelling the despawn confirmation) returns to the screen it was opened from; coordinate fields accept the same `~` forms as the command, and their
@@ -97,6 +99,7 @@ Escape, and confirm a revoked controller cannot act from an already open form.
 /bot Alice destroy
 /bot Alice destroy once
 /bot Alice destroy continuous
+/bot Alice destroy continuous for 200
 /bot Alice destroy 100 64 -20
 /bot Alice destroy ~ ~-1 ~ up
 /bot Alice destroy stop
@@ -115,6 +118,10 @@ use inputs are cleared on start. Select the desired tool with `hotbar` first; mi
 next reachable block along that same ray. When there is no target within 5 blocks (or bedrock is in front), it waits;
 placing a reachable block in sight resumes mining automatically. It stays in place and does not excavate a chosen area.
 Use `destroy stop` to disable this waiting/resume behavior as well as an active break attempt.
+`destroy for <ticks>` (or `destroy continuous for <ticks>`) runs continuous mining for that many input ticks from the
+command, then ends the loop and aborts a block still in progress. Single-block `destroy` and coordinates take no `for`;
+they keep the 10-minute safety timeout. When the duration ends, the starting controller gets one info-level message,
+`Endbot: Alice: destroy continuous stopped: duration elapsed`, and `status` shows the ticks left while it runs.
 
 BDS performs ordinary Survival breaking, including hardness/tool speed, harvest drops, durability and cancellable
 `BlockBreakEvent` handling. The plugin never sets the mined block to air, dispatches `/setblock`, or grants operator
@@ -142,7 +149,8 @@ pickup or a broken tool) restarts the current block with the new item. A telepor
 moves out of reach, or the 10-minute timeout ends the current block; single-block mining ends there, while continuous
 mining selects its next target. Attacking or using an item while mining sends both inputs; BDS decides the outcome.
 
-Mining ends only on `destroy stop` (mining only), `stop` (mining and all movement/actions), death, disconnect, revocation of
+Mining ends only on `destroy stop` (mining only), `stop` (mining and all movement/actions), an elapsed `for` duration,
+death, disconnect, revocation of
 the starting controller's permission, or plugin disable. An expiring runtime lease also ends it if the plugin/control
 worker stops responding (200 input ticks, about ten seconds). Continuous mining keeps running after its controller logs
 off. Active mining is not saved or resumed on reconnect.
@@ -253,8 +261,11 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice move forward|backward|left|right|stop
 /bot Alice look <yaw> <pitch>
 /bot Alice look at <x> <y> <z>
+/bot Alice move forward|backward|left|right for <ticks>
 /bot Alice jump|attack|use [once|continuous|interval <ticks>|stop]
+/bot Alice jump|attack|use [continuous|interval <ticks>] for <ticks>
 /bot Alice use for <ticks>
+/bot Alice use hold <ticks> [interval <ticks>] [for <ticks>]
 /bot Alice sprint on|off
 /bot Alice sneak on|off
 /bot Alice hotbar
@@ -307,9 +318,44 @@ cancels timed use; death, dimension change and disconnect discard it. A new time
 one with a fresh hold/deadline. Movement and other inputs continue when its duration expires. Nothing resumes after
 reconnect. Existing `use`/`once`, `continuous` and `interval` behavior remains available.
 
-The Use item form adds `for` with a ticks field; `interval` uses that field for spacing and `for` for hold duration.
-Duration suffixes for other actions and repeated charged shots are future work, not accepted syntax. See
-[item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and [the backlog](BACKLOG.md).
+### Durations (`for`) and charged presses (`hold`)
+
+`for <ticks>` says how long an input keeps going, for every action, movement and continuous mining:
+
+```text
+/bot Alice move forward for 40                 walk forward for 2 seconds, then stop moving
+/bot Alice jump for 100                        jump every tick for 100 ticks (same as jump continuous for 100)
+/bot Alice attack interval 20 for 200          attack every 20 ticks for 200 ticks
+/bot Alice use for 40                          hold use for 40 ticks, then release (unchanged)
+/bot Alice use hold 30                         charge for 30 ticks, release once
+/bot Alice use hold 30 for 200                 charge 30 / release, repeated back to back for 200 ticks
+/bot Alice use hold 30 interval 40 for 200     start a 30-tick charge every 40 ticks for 200 ticks
+/bot Alice destroy for 200                     continuous mining for 200 ticks
+```
+
+Without a mode, an action is `once`; with `for` it is `continuous`. `once ... for` and `stop ... for` are rejected
+because one press has no duration. `interval`, `hold` and `for` clauses may appear in any order, at most once each;
+`interval` replaces `once`/`continuous`. All values are 1–72000 runtime input ticks (20 per second).
+
+`for` counts from the command (the next input tick), so the input runs for exactly that many ticks. The one exception
+is the existing plain `use for <ticks>` / `use continuous for <ticks>`: it still counts from its first air use, so a
+deferred press cannot eat the charge (see above). When a duration ends, only that input stops; movement, other
+actions, sprint/sneak and mining continue. A new command for the same input replaces its deadline, and a command
+without `for` removes it. Global `stop`, `<input> stop`, death and disconnect end it early. `status` lists inputs that
+end on their own with the ticks left, for example `timed: move forward 30 ticks left, use interval 40 hold 30`.
+
+`hold <ticks>` (use only) holds use for that many use transactions per press and then releases, the same press/release
+as `use for`, so a bow or trident can be shot repeatedly. `hold` without `for` or a mode charges once; `hold ... for`
+(or `continuous hold`) starts the next charge right after the release tick; `hold ... interval <ticks>` starts a charge
+every interval ticks, which must be longer than the hold so each release gets its own tick. A `for` deadline that
+arrives mid-charge releases at once, which may fire a partly charged item; choose a multiple of the press cycle to
+avoid it. Like timed use, holds are canceled by hotbar selection, a changed or empty held item, dimension change,
+death and disconnect, and they never resume after reconnect. Each release confirms an input only, not a shot.
+
+The Jump, Attack and Use item forms have an optional For field (blank means until stopped; with the default `once`
+mode it means continuous for that long) and Use item adds an optional Hold field. Movement has a Move for form, and
+Destroy blocks has a For field for continuous mining. See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and
+[the backlog](BACKLOG.md).
 
 `use` means using or holding the selected item in the air, such as food, a bow, or a trident. `interact` is a normal
 right-click on the named block face. It sends the protocol-2193 press, server-authoritative item-interaction tick, and
@@ -374,6 +420,10 @@ Bedrock syntax error):
 /bot Alice look at 1 64 2
 /bot Alice attack interval 20
 /bot Alice use for 40
+/bot Alice use hold 30 interval 40 for 200
+/bot Alice jump interval 20 for 100
+/bot Alice move forward for 40
+/bot Alice destroy for 200
 /bot Alice interact 1 64 2 up
 /bot Alice hotbar 9
 /bot Alice radius

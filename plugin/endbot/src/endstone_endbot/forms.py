@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 Argv = tuple[str, ...]
 
 ACTION_MODES = ("once", "continuous", "interval", "stop")
+DIRECTIONS = ("forward", "backward", "left", "right")
 DESTROY_MODES = ("once", "continuous", "stop", "block at coordinates")
 FACES = ("down", "up", "north", "south", "west", "east")
 FLAG_CHOICES = ("no change", "on", "off")
@@ -212,7 +213,7 @@ def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...
                     Button("Left", run((name, "move", "left"))),
                     Button("Right", run((name, "move", "right"))),
                     Button("Stop moving", run((name, "move", "stop"))),
-                    Button("Jump...", Show(action_modal(name, "jump"))),
+                    Button("Move for...", Show(move_modal(name))),
                     Button("Sprint / sneak...", Show(flags_modal(name))),
                 ),
             ),
@@ -222,6 +223,7 @@ def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...
                 "Gameplay...",
                 category(
                     "gameplay",
+                    Button("Jump...", Show(action_modal(name, "jump"))),
                     Button("Attack...", Show(action_modal(name, "attack"))),
                     Button("Use item...", Show(action_modal(name, "use"))),
                     Button("Destroy blocks...", Show(destroy_modal(name))),
@@ -324,41 +326,63 @@ def flags_modal(name: str) -> ModalScreen:
     )
 
 
-def action_modal(name: str, action: str) -> ModalScreen:
-    modes = ("once", "for", "continuous", "interval", "stop") if action == "use" else ACTION_MODES
+FOR_LABEL = "For ticks (optional; stops after this long, 20 = 1 second; blank = until stopped)"
 
+
+def _for(value) -> Argv:
+    ticks = _text(value)
+    return ("for", ticks) if ticks else ()
+
+
+def move_modal(name: str) -> ModalScreen:
     def build(values):
-        mode_value, ticks = values
-        mode = _option(modes, mode_value)
-        if mode in {"interval", "for"}:
-            return ((name, action, mode, _text(ticks) or "20"),)
-        return ((name, action, mode),)
+        direction_value, ticks = values
+        return ((name, "move", _option(DIRECTIONS, direction_value), "for", _text(ticks) or "40"),)
 
     return ModalScreen(
-        f"{name}: {action}",
-        (
-            Dropdown("Mode (for = hold, then release)" if action == "use" else "Mode", modes),
-            TextInput(
-                "Ticks (20 = 1 second; interval spacing / for duration)"
-                if action == "use"
-                else "Interval ticks (interval mode only; 20 = 1 second)",
-                "20",
-                "20",
-            ),
-        ),
+        f"{name}: move for",
+        (Dropdown("Direction", DIRECTIONS), TextInput("Ticks (20 = 1 second)", "40", "40")),
         build,
-        "Start" if action != "jump" else "Jump",
+        "Move",
     )
+
+
+def action_modal(name: str, action: str) -> ModalScreen:
+    """Mode plus optional interval/for (and hold for use), as the typed grammar.
+
+    The parser validates combinations (for example once with for), so the
+    form reports the same errors a typed command would.
+    """
+
+    def build(values):
+        mode_value, interval, duration, *hold = values
+        mode = _option(ACTION_MODES, mode_value)
+        if mode == "stop":
+            return ((name, action, "stop"),)
+        words = ("interval", _text(interval) or "20") if mode == "interval" else (mode,)
+        hold_ticks = _text(hold[0]) if hold else ""
+        if mode == "once" and _text(duration):
+            words = ()  # The default mode with for means "keep going that long".
+        return ((name, action, *words, *(("hold", hold_ticks) if hold_ticks else ()), *_for(duration)),)
+
+    controls = [
+        Dropdown("Mode", ACTION_MODES),
+        TextInput("Interval ticks (interval mode only; 20 = 1 second)", "20", "20"),
+        TextInput(FOR_LABEL, "100"),
+    ]
+    if action == "use":
+        controls.append(TextInput("Hold ticks (optional; charge each press, then release: bow, trident)", "30"))
+    return ModalScreen(f"{name}: {action}", tuple(controls), build, "Start" if action != "jump" else "Jump")
 
 
 def destroy_modal(name: str) -> ModalScreen:
     face_options = ("automatic", *FACES)
 
     def build(values):
-        mode_value, target, face_value = values
+        mode_value, target, face_value, duration = values
         mode = _option(DESTROY_MODES, mode_value)
         if mode != "block at coordinates":
-            return ((name, "destroy", mode),)
+            return ((name, "destroy", mode, *_for(duration)),)
         face = _option(face_options, face_value)
         suffix = () if face == "automatic" else (face,)
         return ((name, "destroy", *_coordinates(_text(target)), *suffix),)
@@ -369,6 +393,7 @@ def destroy_modal(name: str) -> ModalScreen:
             Dropdown("Mode (continuous keeps breaking blocks in sight until destroy stop)", DESTROY_MODES),
             TextInput("Block x y z (coordinates mode; ~ is relative to the Bot)", "~ ~-1 ~"),
             Dropdown("Face (coordinates mode)", face_options),
+            TextInput("For ticks (continuous only; blank = until destroy stop)", "200"),
         ),
         build,
         "Destroy",

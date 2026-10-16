@@ -601,6 +601,48 @@ def exercise(
                     "BDS did not observe meaningful horizontal movement"
                 )
             time.sleep(2)
+            report["stage"] = "timed movement and jump"
+            # Native parser path: typed console commands, not the control port.
+            offset = len(logtext())
+            before = observed_position(bds, output / "server.log")
+            console(bds, f"bot {BOT} move forward for 20")
+            wait_for(
+                "move for reply",
+                lambda: "movement set to forward for 20 ticks" in logtext()[offset:],
+                10,
+                bds,
+            )
+            wait_for(
+                "timed movement expired",
+                lambda: control_request(control_port, token, "status", name=BOT)["inputs"]["movement"] is None,
+                5,
+                bds,
+            )
+            time.sleep(0.5)
+            stopped = observed_position(bds, output / "server.log")
+            time.sleep(1)
+            settled = observed_position(bds, output / "server.log")
+            moved = ((stopped[0] - before[0]) ** 2 + (stopped[2] - before[2]) ** 2) ** 0.5
+            drift = ((settled[0] - stopped[0]) ** 2 + (settled[2] - stopped[2]) ** 2) ** 0.5
+            report["timed_movement_bds"] = {"moved": round(moved, 2), "drift_after_expiry": round(drift, 3)}
+            if moved < 0.5 or drift > 0.05:
+                raise ConsumerError(f"move for did not move then stop: {report['timed_movement_bds']}")
+            offset = len(logtext())
+            console(bds, f"bot {BOT} jump interval 10 for 30")
+            wait_for(
+                "jump interval for reply",
+                lambda: "jump started every 10 ticks for 30 ticks" in logtext()[offset:],
+                10,
+                bds,
+            )
+            wait_for(
+                "timed jump expired",
+                lambda: "jump" not in control_request(control_port, token, "status", name=BOT)["inputs"]["actions"],
+                5,
+                bds,
+            )
+            report["timed_jump_expired"] = True
+            time.sleep(1)
             report["stage"] = "jump"
             base = observed_position(bds, output / "server.log")
             control_request(

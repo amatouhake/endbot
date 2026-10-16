@@ -257,12 +257,13 @@ decide whether to keep it from the experiment's results.
 
 ## Deferred priorities
 
-- Generalize `for <ticks>` as an execution-duration suffix for other actions (attack, jump, movement and `destroy`),
-  distinct from `interval <ticks>` as repetition spacing. Only `use for <ticks>` is implemented now. Future examples
-  include `move forward for 40`, `jump interval 20 for 100` and `destroy continuous for 200`; these are not supported
-  commands. Specify single-block versus continuous mining termination, replacement/stop behavior and affected inputs
-  before implementation. Repeated charge/release shots need separate hold duration and repetition spacing; existing
-  `use interval` remains repeated short presses. Item-count/completion conditions are separate from duration.
+- `for <ticks>` duration and `use hold <ticks>` repeated charges are implemented on `feat/action-duration`; see
+  [durations](COMMANDS.md#durations-for-and-charged-presses-hold). Real-server and human-client validation (bow/trident
+  `hold` repeats, mining duration end, forms) remains a manual gate. Item-count/completion conditions are separate
+  from duration and not implemented. Live RakNet smoke (2026-10-16 JST, locked Endstone `0.11.13+endbot.1` / BDS
+  `1.26.52.3`, `scripts/raknet_spike.py --mining --item-use`) passed through the native parser: `move forward for 20`
+  moved 4.3 blocks then held still, `jump interval 10 for 30` expired, `use hold 25 interval 30 for 90` fired exactly
+  three arrows, and `destroy for 40` aborted obsidian with the info notice. Human client and form checks are pending.
 - Command completion redesign remains dependent on a suitable upstream Endstone API and is lower priority while the
   menu provides a practical control surface; revisit its need after menu feedback.
 - Vanilla sneak edge protection remains deferred as client collision/edge simulation work; it is not part of the

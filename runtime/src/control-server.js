@@ -103,9 +103,10 @@ export class ControlServer {
       case 'despawn': return this.lifecycle.despawn(params.name)
       case 'forget': return this.lifecycle.forget(params.name)
       case 'rename': return this.lifecycle.rename(params.name, params.newName)
-      case 'move': return this.lifecycle.move(params.name, params.direction)
+      case 'move': return this.lifecycle.move(params.name, params.direction, params.durationTicks)
       case 'look': return this.lifecycle.look(params.name, params.yaw, params.pitch)
-      case 'action': return this.lifecycle.action(params.name, params.action, params.mode, params.intervalTicks, params.durationTicks)
+      case 'action': return this.lifecycle.action(params.name, params.action, params.mode, params.intervalTicks, params.durationTicks,
+        params.holdTicks)
       case 'flag': return this.lifecycle.flag(params.name, params.flag, params.value)
       case 'hotbar': return this.lifecycle.hotbar(params.name, params.slot)
       case 'radius': return this.lifecycle.radius(params.name, params.value)

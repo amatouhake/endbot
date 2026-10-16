@@ -147,16 +147,29 @@ class ScreenTests(unittest.TestCase):
             ("Look...", (0, 0, "1 64 ~2"), [("Alice", "look", "at", "1", "64", "~2")]),
             ("Sprint / sneak...", (1, 2), [("Alice", "sprint", "on"), ("Alice", "sneak", "off")]),
             ("Sprint / sneak...", (0, 0), []),
-            ("Jump...", (0, "20"), [("Alice", "jump", "once")]),
-            ("Attack...", (2, " 40 "), [("Alice", "attack", "interval", "40")]),
-            ("Use item...", (1, " 30 "), [("Alice", "use", "for", "30")]),
-            ("Use item...", (2, ""), [("Alice", "use", "continuous")]),
-            ("Use item...", (3, "40"), [("Alice", "use", "interval", "40")]),
-            ("Use item...", (4, "20"), [("Alice", "use", "stop")]),
-            ("Destroy blocks...", (1, "", 0), [("Alice", "destroy", "continuous")]),
-            ("Destroy blocks...", (2, "", 0), [("Alice", "destroy", "stop")]),
-            ("Destroy blocks...", (3, "~ ~-1 ~", 0), [("Alice", "destroy", "~", "~-1", "~")]),
-            ("Destroy blocks...", (3, "1 64 2", 2), [("Alice", "destroy", "1", "64", "2", "up")]),
+            ("Move for...", (1, " 60 "), [("Alice", "move", "backward", "for", "60")]),
+            ("Move for...", (0, ""), [("Alice", "move", "forward", "for", "40")]),
+            ("Jump...", (0, "20", ""), [("Alice", "jump", "once")]),
+            ("Jump...", (0, "20", "100"), [("Alice", "jump", "for", "100")]),
+            ("Jump...", (2, "20", "100"), [("Alice", "jump", "interval", "20", "for", "100")]),
+            ("Attack...", (2, " 40 ", ""), [("Alice", "attack", "interval", "40")]),
+            ("Attack...", (1, "", "60"), [("Alice", "attack", "continuous", "for", "60")]),
+            ("Use item...", (0, "", " 30 ", ""), [("Alice", "use", "for", "30")]),
+            ("Use item...", (1, "", "", ""), [("Alice", "use", "continuous")]),
+            ("Use item...", (2, "40", "", ""), [("Alice", "use", "interval", "40")]),
+            ("Use item...", (3, "20", "100", "30"), [("Alice", "use", "stop")]),
+            ("Use item...", (0, "", "", "30"), [("Alice", "use", "once", "hold", "30")]),
+            ("Use item...", (0, "", "200", "30"), [("Alice", "use", "hold", "30", "for", "200")]),
+            (
+                "Use item...",
+                (2, "40", "200", "30"),
+                [("Alice", "use", "interval", "40", "hold", "30", "for", "200")],
+            ),
+            ("Destroy blocks...", (1, "", 0, ""), [("Alice", "destroy", "continuous")]),
+            ("Destroy blocks...", (1, "", 0, "200"), [("Alice", "destroy", "continuous", "for", "200")]),
+            ("Destroy blocks...", (2, "", 0, ""), [("Alice", "destroy", "stop")]),
+            ("Destroy blocks...", (3, "~ ~-1 ~", 0, ""), [("Alice", "destroy", "~", "~-1", "~")]),
+            ("Destroy blocks...", (3, "1 64 2", 2, ""), [("Alice", "destroy", "1", "64", "2", "up")]),
             ("Hotbar slot...", (8,), [("Alice", "hotbar", "9")]),
             ("Drop item...", (0,), [("Alice", "drop")]),
             ("Drop item...", (1,), [("Alice", "drop", "stack")]),
@@ -191,7 +204,7 @@ class ScreenTests(unittest.TestCase):
             (move, json.dumps([True])),
             (move, json.dumps([0.5])),
             (move, json.dumps(["0"])),
-            (destroy, json.dumps([3, "1 2", 0])),
+            (destroy, json.dumps([3, "1 2", 0, ""])),
             (actions["Chunk radius..."].screen, json.dumps(["yes", 4])),
             (forms.spawn_modal(), json.dumps(["  "])),
         ):
@@ -372,7 +385,7 @@ class PresenterTests(unittest.TestCase):
     def test_modal_errors_reply_instead_of_submitting(self):
         _, clicks = self.bot_form()
         clicks["Destroy blocks..."](self.player)
-        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([3, "1 2", 0]))
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([3, "1 2", 0, ""]))
         clicks["Sprint / sneak..."](self.player)
         self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([0, 0]))
         self.assertEqual(self.submitted, [])
@@ -390,7 +403,7 @@ class PresenterTests(unittest.TestCase):
         click = {text: c for kind, text, c in main.items if kind == "button"}
         click["Movement..."](self.player)
         movement = self.player.forms[-1]
-        {text: c for _, text, c in movement.items}["Jump..."](self.player)
+        {text: c for _, text, c in movement.items}["Move for..."](self.player)
         modal = self.player.forms[-1]
         self.assertEqual(type(modal).__name__, "ModalForm")
         modal.kwargs["on_close"](self.player)

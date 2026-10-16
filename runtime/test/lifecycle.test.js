@@ -22,7 +22,10 @@ class FakeSession extends EventEmitter {
   dropSelected (stack) { this.drops.push(stack) }
   setChunkRadius (radius) { this.radius = radius; this.serverChunkRadius = undefined }
   startMining (target) { this.mining = { state: 'active', ...target } }
-  startMiningLoop () { this.mining = { state: 'waiting', continuous: true, loopId: 'test-loop' } }
+  startMiningLoop (durationTicks) {
+    this.mining = { state: 'waiting', continuous: true, loopId: 'test-loop',
+      ...(durationTicks === undefined ? {} : { remainingTicks: durationTicks }) }
+  }
   continueMining ({ loopId, ...target }) {
     if (loopId === this.mining?.loopId) this.mining = { ...this.mining, ...target, state: 'active' }
   }
@@ -453,4 +456,17 @@ test('spawn and resume report the current connection state with alreadyOnline', 
   const third = await lifecycle.spawn('Alice')
   assert.equal(third.alreadyOnline, true)
   assert.equal(third.connectionState, 'online')
+})
+
+test('move, action and destroy forward durations and hold to the online Bot', async () => {
+  const { lifecycle } = fixture()
+  await lifecycle.spawn('Alice')
+  await turn()
+  assert.equal(lifecycle.move('Alice', 'forward', 40).inputs.movementRemainingTicks, 40)
+  assert.equal(lifecycle.action('Alice', 'jump', 'interval', 20, 100).inputs.actions.jump.remainingTicks, 100)
+  const use = lifecycle.action('Alice', 'use', 'interval', 40, 200, 30).inputs.actions.use
+  assert.deepEqual([use.intervalTicks, use.holdTicks, use.remainingTicks], [40, 30, 200])
+  assert.equal(lifecycle.mine('Alice', { mode: 'start', durationTicks: 200 }).mining.remainingTicks, 200)
+  assert.throws(() => lifecycle.action('Alice', 'jump', 'once', undefined, 20), /Duration/)
+  await lifecycle.close()
 })

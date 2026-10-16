@@ -604,3 +604,79 @@ test('a one-shot air use is deferred when block interaction occupies its tick', 
   assert.ok(air.input_data.includes('start_using_item'))
   assert.equal(tick().transaction, undefined)
 })
+
+function releases (queued) {
+  return queued.filter(packet => packet.name === 'inventory_transaction' &&
+    packet.params.transaction.transaction_type === 'item_release').length
+}
+
+test('use hold presses for N transactions, releases once, and a one-shot hold then ends', async t => {
+  const { session, inputs, queued, tick } = await fixture(t)
+  inputs.setMovement('forward')
+  inputs.setAction('use', 'once', undefined, undefined, 3)
+  session.applyInputs(inputs)
+  for (let held = 0; held < 3; held++) {
+    const packet = tick()
+    assert.equal(packet.input_data.includes('start_using_item'), held === 0)
+    assert.ok(packet.input_data.includes('item_interact'))
+    assert.equal(releases(queued), 0)
+  }
+  const released = tick()
+  assert.equal(releases(queued), 1)
+  assert.equal(released.input_data.includes('item_interact'), false)
+  assert.ok(released.input_data.includes('up'))
+  assert.equal(inputs.actionMode('use'), undefined)
+  tick()
+  assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+})
+
+test('repeated holds leave a release tick and for releases a hold in progress', async t => {
+  const { session, inputs, queued, tick } = await fixture(t)
+  inputs.setAction('use', 'continuous', undefined, 6, 3)
+  session.applyInputs(inputs)
+  const log = []
+  for (let i = 0; i < 7; i++) {
+    const packet = tick()
+    log.push(packet.input_data.includes('start_using_item') ? 'start'
+      : packet.input_data.includes('item_interact') ? 'hold' : releases(queued) ? 'release' : 'idle')
+  }
+  // Presses at 1 and 5 (hold 3 + one release tick); for 6 cuts the second hold.
+  assert.deepEqual(log, ['start', 'hold', 'hold', 'release', 'start', 'hold', 'release'])
+  assert.equal(inputs.actionMode('use'), undefined)
+  tick()
+  assert.equal(queued.some(packet => packet.name === 'inventory_transaction'), false)
+})
+
+test('interval holds do not release on the next tick and a new command releases a hold', async t => {
+  const { session, inputs, queued, tick } = await fixture(t)
+  inputs.setAction('use', 'interval', 5, undefined, 3)
+  session.applyInputs(inputs)
+  tick()
+  tick()
+  assert.equal(releases(queued), 0)
+  inputs.setAction('use', 'interval', 5, undefined, 3)
+  session.applyInputs(inputs)
+  assert.equal(releases(queued), 1)
+  inputs.setAction('use', 'once', undefined, undefined, 4)
+  tick()
+  session.selectHotbar(0)
+  assert.equal(inputs.actionMode('use'), undefined)
+})
+
+test('destroy continuous for N ends the loop and aborts the block in progress', async t => {
+  const { session, tick } = await fixture(t)
+  assert.throws(() => session.startMiningLoop(0), /duration/)
+  session.startMiningLoop(3)
+  const loopId = session.miningStatus().loopId
+  assert.equal(session.miningStatus().remainingTicks, 3)
+  session.continueMining({ loopId, ...miningTarget })
+  assert.deepEqual(tick().block_action.map(action => action.action), ['start_break'])
+  tick()
+  tick()
+  assert.equal(session.miningStatus().state, 'active')
+  assert.deepEqual(tick().block_action.map(action => action.action), ['abort_break'])
+  assert.equal(session.miningStatus().state, 'completed')
+  assert.equal(session.miningStatus().reason, 'duration elapsed')
+  assert.equal(session.miningStatus().loopId, undefined)
+  assert.equal(session.continueMining({ loopId, ...miningTarget }), false)
+})

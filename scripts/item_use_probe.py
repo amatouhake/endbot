@@ -219,6 +219,28 @@ def exercise_item_use(output: Path, console, control, wait, log, report):
             "projectiles": state()["projectiles"],
             "equipment": state()["equipment"],
         }
+    # Repeated charged shots: hold 25, a press every 30 ticks, for 90 ticks
+    # gives presses at ticks 1, 31 and 61, so exactly three arrows fly.
+    control("stop")
+    temporary = output / "item-use-request.tmp"
+    temporary.write_text(json.dumps({"id": "bow-hold", "item": "minecraft:bow", "count": 1}))
+    temporary.replace(output / "item-use-request.json")
+    wait("bow hold fixture ready", lambda: state().get("id") == "bow-hold", 10)
+    time.sleep(0.6)
+    control("hotbar", slot=1)
+    offset = len(log())
+    console("bot RakNetSpike use hold 25 interval 30 for 90")
+    wait(
+        "native parser accepts use hold",
+        lambda: "use started every 30 ticks: hold 25 ticks, then release for 90 ticks" in log()[offset:],
+        10,
+    )
+    wait("repeated hold expired", lambda: "use" not in control("status")["inputs"]["actions"], 10)
+    wait("three arrows consumed", lambda: state()["hotbar"][1]["count"] == 2, 10)
+    time.sleep(1)
+    if state()["hotbar"][1]["count"] != 2:
+        raise RuntimeError(f"use hold fired after its duration: {state()['hotbar']}")
+    results["bow-hold-repeat"] = {"hotbar": state()["hotbar"], "projectiles": state()["projectiles"]}
     # Stable held item: compare observed sends with reads on the real server.
     before = state()["sync_metrics"]
     time.sleep(3)

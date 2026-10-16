@@ -162,7 +162,8 @@ export class BedrockSession extends EventEmitter {
     if (this.activeItemUse) {
       const changed = inputs.actionRevision('use') !== this.activeItemUse.revision
       if (inputs.actionMode('use') !== this.activeItemUse.mode ||
-          (changed && (this.activeItemUse.timed || inputs.hasTimedUse()))) this.#releaseItemUse()
+          (changed && (this.activeItemUse.timed || this.activeItemUse.holdTicks !== undefined ||
+            inputs.hasTimedUse()))) this.#releaseItemUse()
       else this.activeItemUse.revision = inputs.actionRevision('use')
     }
   }
@@ -174,14 +175,19 @@ export class BedrockSession extends EventEmitter {
     if (!this.miningLoop) return job
     return { ...job, state: job?.state === 'active' ? 'active' : 'waiting',
       reason: job?.state === 'active' ? job.reason : 'waiting for a reachable block',
-      continuous: true, loopId: this.miningLoop.id }
+      continuous: true, loopId: this.miningLoop.id,
+      ...(this.miningLoop.remainingTicks === undefined ? {} : { remainingTicks: this.miningLoop.remainingTicks }) }
   }
 
-  startMiningLoop () {
+  startMiningLoop (durationTicks = undefined) {
+    if (durationTicks !== undefined && (!Number.isSafeInteger(durationTicks) || durationTicks < 1 || durationTicks > 72_000)) {
+      throw new Error('Destroy duration must be an integer from 1 to 72000 ticks')
+    }
     this.#assertMiningAvailable()
     this.stopMining('continuous mining restarted')
     this.mining = undefined
-    this.miningLoop = { id: randomUUID(), leaseTicks: 0 }
+    this.miningLoop = { id: randomUUID(), leaseTicks: 0,
+      ...(durationTicks === undefined ? {} : { remainingTicks: durationTicks }) }
   }
 
   continueMining ({ loopId, ...target }) {
@@ -261,6 +267,10 @@ export class BedrockSession extends EventEmitter {
     // The plugin renews this lease while resolving targets. Losing the plugin
     // or its command worker must stop even an already active break attempt.
     if (this.miningLoop && ++this.miningLoop.leaseTicks >= 200) this.stopMining('mining controller timed out', 'failed')
+    // `destroy continuous for <ticks>` ends the loop and any block in progress.
+    if (this.miningLoop?.remainingTicks !== undefined && this.miningLoop.remainingTicks-- <= 0) {
+      this.stopMining('duration elapsed', 'completed')
+    }
     if (this.mining?.state === 'active') {
       const job = this.mining
       // A failed block ends single-block mining; a continuous loop retargets.
@@ -636,8 +646,11 @@ export class BedrockSession extends EventEmitter {
       this.interactionStopNextTick = undefined
     }
     if (this.activeItemUse && this.releaseItemUseNextTick) this.#releaseItemUse()
+    // A hold releases after holdTicks use transactions, like a timed use.
+    if (this.activeItemUse?.holdTicks !== undefined &&
+        this.activeItemUse.heldTicks >= this.activeItemUse.holdTicks) this.#releaseItemUse()
     const state = this.inputs.step()
-    if (this.activeItemUse?.mode === 'continuous' &&
+    if ((this.activeItemUse?.mode === 'continuous' || this.activeItemUse?.holdTicks !== undefined) &&
         this.inputs.actionRevision('use') !== this.activeItemUse.revision) this.#releaseItemUse()
     const previous = vector(this.position)
     const move = { x: 0, z: 0 }
@@ -699,7 +712,8 @@ export class BedrockSession extends EventEmitter {
       const mode = this.inputs.actionMode('use') ?? 'once'
       // Block interaction and air use share one packed transaction per tick.
       this.activeItemUse = { hotbarSlot: this.hotbarSlot, heldItem: this.heldItem, mode,
-        revision: this.inputs.actionRevision('use'), timed: this.inputs.hasTimedUse(), starting: true }
+        revision: this.inputs.actionRevision('use'), timed: this.inputs.hasTimedUse(), starting: true,
+        holdTicks: this.inputs.holdTicks('use'), heldTicks: 0 }
     }
     if (state.triggered.includes('use') && !hasUsableHeldItem(this.heldItem)) this.inputs.cancelTimedUse()
     if (this.activeItemUse && !transaction) {
@@ -715,7 +729,9 @@ export class BedrockSession extends EventEmitter {
         triggerType: this.activeItemUse.starting ? 'player_input' : 'simulation_tick'
       })
       this.activeItemUse.starting = false
-      this.releaseItemUseNextTick = this.activeItemUse.mode !== 'continuous'
+      this.activeItemUse.heldTicks += 1
+      this.releaseItemUseNextTick = this.activeItemUse.mode !== 'continuous' &&
+        this.activeItemUse.holdTicks === undefined
     }
     this.client.queue('player_auth_input', {
       pitch: state.pitch,
@@ -764,6 +780,7 @@ export class BedrockSession extends EventEmitter {
     const use = this.activeItemUse
     this.activeItemUse = undefined
     this.releaseItemUseNextTick = false
+    if (use.holdTicks !== undefined) this.inputs?.finishHold(use.revision)
     if (use.starting) return // A deferred use has not pressed the button yet.
     if (!this.client || this.transportClosed || this.client.status !== 4 || !this.position) return
     this.client.queue('inventory_transaction', createReleaseTransaction({
@@ -827,6 +844,7 @@ export class BedrockSession extends EventEmitter {
       // the stale stack; continuous mode may start the current item next tick.
       this.activeItemUse = undefined
       this.releaseItemUseNextTick = false
+      if (use.holdTicks !== undefined) this.inputs?.finishHold(use.revision)
       if (use.hotbarSlot !== this.hotbarSlot || !hasUsableHeldItem(item) ||
           use.heldItem.network_id !== item.network_id) this.inputs?.cancelTimedUse()
     } else {

@@ -257,7 +257,10 @@ decide whether to keep it from the experiment's results.
 
 ## Deferred priorities
 
-- `for <ticks>` duration and `use hold <ticks>` repeated charges are implemented on `feat/action-duration`; see
+- Inspecting a Bot's inventory and hotbar contents from commands and the menu, and a wider range of operations, are
+  likely next wishes from the operator (noted 2026-10-16 after 0.3.0); not designed yet. Keep the menu rule: forms
+  mirror commands and add no meaning of their own.
+- `for <ticks>` duration and `use hold <ticks>` repeated charges shipped in 0.3.0; see
   [durations](COMMANDS.md#durations-for-and-charged-presses-hold). Real-server and human-client validation (bow/trident
   `hold` repeats, mining duration end, forms) remains a manual gate. Item-count/completion conditions are separate
   from duration and not implemented. Live RakNet smoke (2026-10-16 JST, locked Endstone `0.11.13+endbot.1` / BDS

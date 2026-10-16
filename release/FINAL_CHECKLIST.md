@@ -250,14 +250,20 @@ management, compact menus and hotbar/pickup synchronization, held/timed item use
 action forms, and Japanese player-facing text (`[ui] language`). `endstone.lock`, `patches/endstone/` and the runtime
 dependencies are unchanged from 0.2.1, so no compatibility gate is required. The installer moves to 0.4.0.
 
-- [ ] `release-candidate.yml` with `0.3.0` on `main`; attach the exact artifacts to a **draft** `v0.3.0`.
-- [ ] Bot-side live check on the exact Windows bundle: fresh setup over NetherNet and RakNet with a Bot joining, the
-  mining/item-use/duration smoke, and `endbot update` from published 0.2.1 (no BDS change, `[ui]` defaulting to auto).
-- [ ] Human gate on the exact bundle over NetherNet: join, `/bot` menu (Japanese and English), a charged bow `hold`, and a
-  `destroy ... for`. Decide whether to re-run the Xbox achievement gate or cite the 0.2.1 observation (same lock,
-  patches and runtime dependencies); the release notes say which.
-- [ ] Release notes list the open manual gates in `docs/BACKLOG.md` as known limitations.
-- [ ] Publish the draft unchanged, then re-verify checksums from the published assets.
+- [x] `release-candidate.yml` with `0.3.0` on `main`; attach the exact artifacts to a **draft** `v0.3.0`.
+  (run 38880209586 from `23d9f7f`; all four consumer jobs passed)
+- [x] Bot-side live check on the exact Windows bundle (2026-10-16): fresh NetherNet setup with update/rollback and
+  fresh RakNet setup each had a Bot join with `doctor --live` passing and clean world flags; a published-0.2.1
+  instance updated to 0.3.0 kept BDS `1.26.52.3` and `endbot.toml` byte-identical, its Bot resumed, and the plugin
+  config carried `[ui] language = "auto"`. The mining/item-use/duration smoke (bundle Python and Endstone, same-commit
+  plugin/runtime source) passed over RakNet and NetherNet, including exactly three `use hold` shots and `destroy for`.
+- Human gate: **not run on the 0.3.0 bytes** (the operator's client was unavailable). The release notes cite the
+  2026-10-16 RakNet human checks of the same source (durations, redesigned forms, command echo, Japanese text).
+  Xbox achievement gate not re-run; the 0.2.1 observation is cited (same lock, patches and runtime dependencies), with
+  the operator's note that no "achievements disabled" notice appeared during the checks.
+- [x] Release notes list the open manual gates in `docs/BACKLOG.md` as known limitations.
+- [x] Publish the draft unchanged, then re-verify checksums from the published assets. (2026-10-16: tag `v0.3.0`
+  = `23d9f7f`; every published asset matches the candidate `SHA256SUMS`; both bundle attestations verified)
 
 ### After 0.1.0 (direction)
 

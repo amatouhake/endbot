@@ -103,9 +103,21 @@ other server work. It is not a before/after CPU benchmark, a large-NBT test, a s
 guarantee. Do not extrapolate the small idle sample into a supported Bot-count limit. The read interval stays at 4 by
 default to preserve pickup responsiveness; operators can tune both intervals.
 
+## Human Windows-client follow-up (2026-10-16 JST)
+
+On implementation commit `29e782a`, the normally authenticated Windows client on the pinned RakNet server confirmed
+successful trident throwing and that the trident disappeared from the Bot's hand. The user also confirmed `for` worked
+from both typed commands and the Use item form. This supplies human rendering evidence for the reported trident issue;
+it does not establish the other item or transport gates.
+
+The same check reported two form presentation issues. The `for` choice was last because it had been appended to the
+existing modes; the agreed order is now `once`, `for`, `continuous`, `interval`, `stop`. The screenshot showed `≈` as a
+missing glyph in the ticks label. The label now uses ASCII `20 = 1 second` and shorter wording. The revised order and
+label still need a visual recheck; the earlier successful command/menu behavior is recorded separately.
+
 ## Remaining human/broader gates
 
-- A normally authenticated Windows client must recheck the trident hand image after a throw without reselection, and
-  verify the revised Use item form. A server receiving empty equipment does not prove final client rendering.
+- Visually recheck the reordered Use item choices and ASCII ticks label. Bow/food and other inventory rendering on
+  human clients, and trident rendering over NetherNet, remain separate from the confirmed RakNet trident case.
 - Hunger-dependent food, charged-item effects/enchantments, tool breakage, low TPS, large NBT, other plugins and
   sustained many-Bot load remain broader checks. This change makes no new compatibility or Xbox achievement claim.

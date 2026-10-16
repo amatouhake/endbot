@@ -99,7 +99,8 @@ the trident, but its held-item image can remain until hotbar reselection; track 
 BOT-007. The two-command charge/release sequence now has a one-command alternative: `use for <ticks>` holds for 1–72000
 input ticks and releases. The form exposes `for` and a ticks field. Stop releases early (and can fire a charged item),
 hotbar selection releases/cancels timed use, and death/dimension change/disconnect discard it. Existing modes remain.
-See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) for trident/bow/food evidence and human rendering gates.
+The human Windows RakNet check on `29e782a` confirmed `for` through both commands and forms, a successful trident throw,
+and clearing of the held trident image. See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) for scope and gates.
 
 ## BOT-004: Change Bot control authorization while the server is running
 
@@ -195,7 +196,7 @@ still submit the same `/bot` arguments); confirmed on a normally authenticated h
 
 ## BOT-007: Synchronize picked-up hotbar items and held-item rendering
 
-Status: **Equipment update fix and configurable synchronization implemented — human trident rendering recheck open**
+Status: **Equipment update fix and configurable sync implemented — Windows RakNet trident rendering confirmed**
 (2026-10-16 JST).
 
 Previously, a Bot could visibly hold a newly picked-up item while its runtime cache still considered the slot empty;
@@ -223,8 +224,9 @@ the implementation follow-up is below.
 Implemented follow-up: native selected-slot updates and periodic observations share an equipment announcer that
 compares against the last announcement, separately from the inventory cache. Regressions cover native-empty updates
 followed by identical snapshots, counts, nonselected slots and explicit reselection. Configurable read/resend intervals,
-change-only sending between corrections and cached block palette lookups reduce avoidable work. Actual human rendering
-after a throw, tool breakage and multi-Bot load remain gates. See [the new validation record](ITEM_USE_SYNC_VALIDATION.md)
+change-only sending between corrections and cached block palette lookups reduce avoidable work. The human Windows
+RakNet check on `29e782a` confirmed the thrown trident disappeared from the hand. Other item/transport rendering,
+tool breakage and multi-Bot load remain gates. See [the new validation record](ITEM_USE_SYNC_VALIDATION.md)
 and [the original report](INVENTORY_VALIDATION.md#human-windows-client-trident-follow-up-2026-10-16-jst).
 
 ## BOT-008: Experiment with a selected-Bot command context

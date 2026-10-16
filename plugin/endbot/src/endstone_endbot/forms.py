@@ -325,7 +325,7 @@ def flags_modal(name: str) -> ModalScreen:
 
 
 def action_modal(name: str, action: str) -> ModalScreen:
-    modes = (*ACTION_MODES, "for") if action == "use" else ACTION_MODES
+    modes = ("once", "for", "continuous", "interval", "stop") if action == "use" else ACTION_MODES
 
     def build(values):
         mode_value, ticks = values
@@ -339,7 +339,7 @@ def action_modal(name: str, action: str) -> ModalScreen:
         (
             Dropdown("Mode (for = hold, then release)" if action == "use" else "Mode", modes),
             TextInput(
-                "Ticks (interval = spacing; for = hold duration; 20 ≈ 1 second)"
+                "Ticks (20 = 1 second; interval spacing / for duration)"
                 if action == "use"
                 else "Interval ticks (interval mode only; 20 = 1 second)",
                 "20",

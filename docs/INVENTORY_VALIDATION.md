@@ -92,12 +92,12 @@ the actual packet order of the reported throw. Hotbar reselection explicitly sen
 reported visual recovery.
 
 This original report preceded the equipment update fix and the `use for <ticks>` addition. The later implementation
-and server-side validation are in [the follow-up record](ITEM_USE_SYNC_VALIDATION.md); human rendering still needs
-a recheck alongside BDS inventory/projectile state.
+and server-side validation are in [the follow-up record](ITEM_USE_SYNC_VALIDATION.md). A later human Windows RakNet
+check on `29e782a` confirmed successful throwing, clearing of the held trident image, and `for` from both commands/forms.
 
 ## Remaining gates
 
-- Resolve the reported trident hand-image persistence and confirm held-item/empty-hand rendering with a normally
-  authenticated human; the revised form layout still needs its own confirmation.
+- The reported trident hand-image persistence is confirmed resolved in the human Windows RakNet check. Other item
+  rendering and the latest form order/ASCII label still need their own confirmation.
 - Broader item variants, shield behavior, other plugins, sustained multi-Bot traffic and pickup under low TPS remain
   separate checks; this is not a new Endstone/BDS compatibility or Xbox achievement claim.

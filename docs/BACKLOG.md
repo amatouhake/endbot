@@ -231,29 +231,33 @@ and [the original report](INVENTORY_VALIDATION.md#human-windows-client-trident-f
 
 ## BOT-008: Experiment with a selected-Bot command context
 
-Status: **Idea recorded — separate experimental branch; not implemented** (2026-10-16 JST).
+Status: **Experiment closed — parked, not merged** (2026-10-16 JST). The work stays on the local
+`feat/bot-selection` branch; `main` has no selected-Bot syntax, and every command still names its Bot.
 
-After the current menu/inventory work, try a player-scoped selection so repeated commands can omit the Bot name:
+The experiment added a separate `/botctl` root (to avoid Bot-name collisions with `/bot`) with player-scoped
+`select <name>`, `select`, `deselect`, `move`, `jump` and `stop`:
 
 ```text
-/bot select Alice
-/bot move forward
-/bot jump
-/bot stop
+/botctl select Alice
+/botctl move forward
+/botctl jump
+/botctl stop
 ```
 
-These are proposed commands, not currently supported syntax. Reusing a selection could reduce typing across multiple
-actions, especially with long Bot names. Fixed operation positions may also help completion, but this is unproven:
-the earlier selection-model `/botprobe` still suffered generic-overload filtering on the pinned Endstone baseline.
-See [the command-parser findings](COMMANDS.md). Do not promise completion improvements from selection alone.
+Execution worked in automated tests, the live console battery and a human Windows Client: selection was bound to the
+Bot UUID and the authenticated player, rechecked authorization per action and cleared on logout/revocation. Completion
+was not satisfying, and the remaining limits are outside what the plugin can fix on Endstone `0.11.13`:
 
-Keep the first experiment small (select/query/clear plus move, jump and stop) and compare repeated-command effort,
-target clarity and actual Windows-client completion with explicit `/bot <name> ...` and the menu. Retain explicit
-targets for commands, console use and automation. Bind selection to the Bot's stable UUID and to the authenticated
-player, show the selected target clearly, recheck authorization on every action, clear selection on player logout,
-and report unavailable/deleted targets without silently selecting another Bot. Resolve syntax collisions with Bot
-names and lifecycle behavior before expanding the experiment. A useful menu may reduce the need for this feature;
-decide whether to keep it from the experiment's results.
+- A generic string/message overload swallows typed suggestions. Removing it and intercepting the exact root through
+  public `PlayerCommandEvent` / `ServerCommandEvent` before native dispatch restored typed suggestions.
+- The Windows Client advertises only the last overload among those sharing a first token. `jump` had to be a single
+  `(once|continuous|stop|interval)` overload, so no `<ticks>` hint can follow `interval` alone.
+- Bot names cannot be suggested without a runtime-updatable (soft) enum, which needs an upstream API rather than a
+  core patch or private registry access.
+
+Selection alone saves typing the name, but the menu already provides a practical repeated-control surface. Revisit
+only when an upstream command-tree/soft-enum API (see the PR #509 note above) is available in a locked, validated pair;
+reuse the event-intercept approach and the one-overload-per-first-token finding then.
 
 ## Deferred priorities
 

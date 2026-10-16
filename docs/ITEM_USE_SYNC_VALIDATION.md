@@ -16,6 +16,9 @@ Implementation/validation follow-up for BOT-003 and BOT-007 (2026-10-16 JST). Ba
   releases the previous item and cancels timed use. Death, dimension change and disconnect discard it. Reissuing
   timed use replaces the old hold/deadline; reissuing unlimited continuous use does not release an existing charge.
 - Expiry stops only use; movement and independent actions continue. Timed input is not persisted/replayed on reconnect.
+- Hold duration starts when the first air-use transaction is emitted. A pending block interaction can defer that
+  start without shortening the hold. Stop before start discards the pending use without releasing an unstarted item;
+  empty-hand timed use remains a no-op and does not wait for a later pickup.
 
 ## Equipment and observation changes
 
@@ -23,7 +26,8 @@ Native inventory slot/content updates and plugin observations converge through o
 announced slot/item is separate from the transient inventory cache. A native update emptying the selected slot therefore
 sends empty equipment even when a later plugin snapshot already matches the cache. Equivalent announcements are
 suppressed; explicit hotbar selection still forces one. An authoritative observation also reselects from the cache
-if a delayed self-equipment packet changed only the held-item view. Incoming equipment for other entities is ignored.
+if a delayed self-equipment packet changed only the held-item view. Incoming equipment for other entities or
+non-inventory windows (including offhand) is ignored by the main-hand handler.
 
 The plugin reads all nine hotbar slots at `hotbar-sync-interval-ticks` (default 4, range 1–1200) and sends changed
 observations plus unchanged corrections at `hotbar-sync-resend-ticks` (default 20, range 1–72000). Resends round up to a
@@ -121,3 +125,22 @@ rechecked commit `d095b18` on the same Windows RakNet server and confirmed the r
   from the confirmed RakNet trident case and Use item form recheck.
 - Hunger-dependent food, charged-item effects/enchantments, tool breakage, low TPS, large NBT, other plugins and
   sustained many-Bot load remain broader checks. This change makes no new compatibility or Xbox achievement claim.
+
+## Review corrections (2026-10-16 JST)
+
+Two boundary cases were reproduced with regression tests that failed before the fixes:
+
+- A wire-decoded self `mob_equipment` update for `offhand` could overwrite the runtime's main-hand state, cancel
+  active use and send that item back as inventory equipment. The handler now checks the window before touching
+  selection, held use or announcements; normal inventory equipment updates still work.
+- A pending block interaction occupied the first tick of `use for 1`, so no air-use start was emitted before expiry
+  sent a release. Timed use now retains its requested duration until the first air-use transaction starts. Tests
+  cover two deferred ticks followed by complete one-/three-tick holds and exactly one release, plus stop before
+  start and empty-hand cancellation. Existing once/interval/continuous behavior remains covered.
+
+The full runtime suite passed 123 tests after these corrections. JavaScript syntax, portability and diff checks passed.
+Fresh `--item-use` smokes also completed on both RakNet and NetherNet: trident throw/empty equipment, bow/arrow
+consumption and golden-apple consumption passed, followed by the runner's lifecycle, negative-authentication and
+shutdown checks. All source hashes recorded by those runners matched the corrected implementation.
+These packet/order boundary cases use the pinned wire serializer in the regression suite; they are not claims of
+human-client or live offhand/interaction-overlap validation.

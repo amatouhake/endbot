@@ -34,7 +34,7 @@ export class InputState {
     }
     if (mode === 'interval' && interval < 1) throw new Error('Action interval must be at least one tick')
     this.actions.set(action, { mode, interval, nextTick: this.tick + 1, revision: ++this.actionSequence,
-      ...(durationTicks === undefined ? {} : { endTick: this.tick + durationTicks + 1 }) })
+      ...(durationTicks === undefined ? {} : { durationTicks }) })
   }
 
   actionMode (action) {
@@ -43,7 +43,16 @@ export class InputState {
 
   actionRevision (action) { return this.actions.get(action)?.revision }
 
-  hasTimedUse () { return this.actions.get('use')?.endTick !== undefined }
+  hasTimedUse () { return this.actions.get('use')?.durationTicks !== undefined }
+
+  startTimedUse (revision) {
+    const state = this.actions.get('use')
+    if (state && state.revision === revision && state.durationTicks !== undefined && state.endTick === undefined) {
+      // Called on the first air-use transaction, after step() selected this
+      // tick's inputs. Waiting for another transaction must not eat the hold.
+      state.endTick = this.tick + state.durationTicks
+    }
+  }
 
   cancelTimedUse () {
     if (this.hasTimedUse()) this.actions.delete('use')
@@ -120,7 +129,9 @@ export class InputState {
       look: { yaw: this.yaw, pitch: this.pitch },
       actions: Object.fromEntries([...this.actions].map(([name, state]) => [name, {
         mode: state.mode, intervalTicks: state.interval || null,
-        ...(state.endTick === undefined ? {} : { remainingTicks: state.endTick - this.tick - 1 })
+        ...(state.durationTicks === undefined ? {} : {
+          remainingTicks: state.endTick === undefined ? state.durationTicks : state.endTick - this.tick - 1
+        })
       }]))
     }
   }

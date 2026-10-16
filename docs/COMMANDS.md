@@ -297,6 +297,9 @@ also releases the previous item. Real item outcomes and dimension-transition beh
 `use for <ticks>` holds use for 1–72000 runtime input ticks and then releases automatically. For example,
 `/bot Alice use for 40` requests one two-second hold/release sequence, suitable for charging a bow or trident.
 These are the runtime's 20 Hz input ticks; server lag and vanilla item conditions still affect the outcome.
+The hold duration starts with the first air-use transaction. If a pending block interaction occupies the input tick,
+use waits without consuming its hold duration. Stopping before that first use cancels it without sending a release;
+an initially empty hand remains a no-op rather than waiting to use a future pickup.
 The reply confirms the request, not a successful shot or consumption. This is a duration, not an item-count or
 completion condition: food may finish early, repeat during a long hold, or fail vanilla prerequisites.
 `use stop` and global `stop` release early, which can fire a charged item. Explicit hotbar selection also releases and

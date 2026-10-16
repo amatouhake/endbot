@@ -12,7 +12,14 @@ test('timed use expires after exactly N input ticks without stopping other input
   inputs.setAction('attack', 'continuous')
   inputs.setAction('use', 'continuous', undefined, 3)
   assert.equal(inputs.snapshot().actions.use.remainingTicks, 3)
-  for (let tick = 0; tick < 3; tick++) assert.deepEqual(inputs.step().triggered, ['attack', 'use'])
+  for (let blocked = 0; blocked < 2; blocked++) {
+    inputs.step()
+    assert.equal(inputs.snapshot().actions.use.remainingTicks, 3)
+  }
+  for (let tick = 0; tick < 3; tick++) {
+    assert.deepEqual(inputs.step().triggered, ['attack', 'use'])
+    inputs.startTimedUse(inputs.actionRevision('use'))
+  }
   assert.deepEqual(inputs.step().triggered, ['attack'])
   assert.equal(inputs.snapshot().movement, 'forward')
   assert.equal(inputs.actionMode('use'), undefined)

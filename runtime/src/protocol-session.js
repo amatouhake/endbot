@@ -544,7 +544,7 @@ export class BedrockSession extends EventEmitter {
       this.#announceHeldItem()
     })
     this.client.on('mob_equipment', packet => {
-      if (String(packet.runtime_entity_id) !== String(this.client.entityId)) return
+      if (String(packet.runtime_entity_id) !== String(this.client.entityId) || !this.#isPlayerInventory(packet.window_id)) return
       this.hotbarSlot = packet.selected_slot
       this.#setHeldItem(packet.item)
       this.#announceHeldItem()
@@ -701,8 +701,12 @@ export class BedrockSession extends EventEmitter {
       this.activeItemUse = { hotbarSlot: this.hotbarSlot, heldItem: this.heldItem, mode,
         revision: this.inputs.actionRevision('use'), timed: this.inputs.hasTimedUse(), starting: true }
     }
+    if (state.triggered.includes('use') && !hasUsableHeldItem(this.heldItem)) this.inputs.cancelTimedUse()
     if (this.activeItemUse && !transaction) {
-      if (this.activeItemUse.starting) inputData.push('start_using_item')
+      if (this.activeItemUse.starting) {
+        inputData.push('start_using_item')
+        this.inputs.startTimedUse(this.activeItemUse.revision)
+      }
       inputData.push('item_interact')
       transaction = createUseInput({
         hotbarSlot: this.hotbarSlot,
@@ -760,6 +764,7 @@ export class BedrockSession extends EventEmitter {
     const use = this.activeItemUse
     this.activeItemUse = undefined
     this.releaseItemUseNextTick = false
+    if (use.starting) return // A deferred use has not pressed the button yet.
     if (!this.client || this.transportClosed || this.client.status !== 4 || !this.position) return
     this.client.queue('inventory_transaction', createReleaseTransaction({
       hotbarSlot: use.hotbarSlot,

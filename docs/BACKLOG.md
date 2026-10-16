@@ -90,7 +90,7 @@ handling. A relationship to the separate known pickup inventory-sync limitation 
 Implemented: air-use transactions packed into `PlayerAuthInput`, initial press versus held simulation ticks, explicit
 release, release before hotbar changes, and cleanup when BDS consumes/replaces the selected item. A Windows RakNet live
 run observed golden-apple consumption and a thrown-trident actor after release. Food with a hunger prerequisite, bow
-use, and item use after dimension changes remain open. The separate world-pickup cache limitation is not fixed here.
+use, and item use after dimension changes remain open. The separate world-pickup cache limitation is addressed by BOT-007.
 See [validation](BOT_BEHAVIOR_VALIDATION.md).
 
 ## BOT-004: Change Bot control authorization while the server is running
@@ -157,7 +157,14 @@ NetherNet and broader effects/enchantment/tool-break combinations remain validat
 
 ## BOT-006: Make the control forms compact and readable
 
-Status: **Open — reported in the first human Windows client check of `/bot menu`** (2026-10-16 JST).
+Status: **Implemented — revised layout awaits human-client rendering confirmation** (2026-10-16 JST).
+
+The Bot list shows online Bots by name, with connecting/failed Bots prefixed by a dark-colored `JOIN`, `RETRY` or
+`FAIL` and offline Bots behind one `Offline (n)...` button. The online Bot screen has Stop everything plus Movement,
+Look, Teleport, Gameplay, Inventory and Bot, named after Minecraft's control settings so inventory features can grow
+under Inventory. `/bot` now opens the list for players, while console `/bot` retains help; the explicit `/bot menu` and
+`/bot <name> menu` paths remain. No resource pack is introduced. Automated response, navigation, authorization and
+command-path tests pass; 1080p/default-scale rendering still needs a human check.
 
 The colored `/bot help` and replies and the `/bot menu` forms were checked on the Windows client (1.26.52) over
 RakNet on main `061bcc8`. Colors render as intended and the forms work, but three usability problems were reported:
@@ -169,7 +176,7 @@ RakNet on main `061bcc8`. Colors render as intended and the forms work, but thre
   number of buttons per screen instead. Options: (A) about six buttons on the Bot screen — Stop, Move/Look...,
   Action... (jump/attack/use/destroy and mode chosen in the input form), Teleport..., Settings... (hotbar, radius,
   sprint/sneak), Connection... (reconnect, despawn, resume); or (B) category buttons that each open a sub-screen of
-  actions (one more tap per action). Not yet decided.
+  actions (one more tap per action). Implemented with category sub-screens and direct Stop on the main screen.
 - **The form window itself is small.** Standard server forms cannot set their window size; the client UI decides it.
   Player-side GUI scale enlarges everything. A server-sent resource pack with custom form layouts could restyle them,
   but it adds a distribution path and must be checked manually against achievement eligibility; evaluate separately.
@@ -177,6 +184,31 @@ RakNet on main `061bcc8`. Colors render as intended and the forms work, but thre
 Acceptance criteria: the list shows each Bot's state without truncation; common actions on the Bot screen need little
 or no scrolling on a 1080p Windows client at default GUI scale; behavior stays identical to the typed commands (forms
 still submit the same `/bot` arguments); confirmed on a normally authenticated human client.
+
+## BOT-007: Synchronize picked-up hotbar items and held-item rendering
+
+Status: **Implemented — natural-pickup RakNet and NetherNet live matrices passed; human rendering check open**
+(2026-10-16 JST).
+
+Previously, a Bot could visibly hold a newly picked-up item while its runtime cache still considered the slot empty;
+`drop` then failed, and reconnect was needed. The older own-drop count/rendering fix did not address this pickup gap.
+
+The plugin now reads the nine BDS hotbar slots every four ticks on the server thread and publishes a bounded observation
+over each local Bot's existing connection. The runtime uses the server's item palette and preserves typed item NBT,
+updates its transient cache and re-announces changed held equipment. Native BDS transactions still perform drops/use;
+no item is inserted, reassigned or removed by synchronization. Endstone core patches and the lock are unchanged.
+
+Acceptance: naturally picked-up blocks, food, merged stacks and named/enchanted/damaged tools can be selected and
+dropped one/stack without reconnect; the hand clears after emptying; rejected drops converge back to BDS state; malformed
+or wrong-identity observations do not overwrite good state. BDS inventory/loot and human-client rendering are distinct
+checks. See [inventory validation](INVENTORY_VALIDATION.md) for tested scope and remaining gates.
+
+## Deferred priorities
+
+- Command completion redesign remains dependent on a suitable upstream Endstone API and is lower priority while the
+  menu provides a practical control surface; revisit its need after menu feedback.
+- Vanilla sneak edge protection remains deferred as client collision/edge simulation work; it is not part of the
+  current form/inventory work.
 
 ## Implementation boundary
 

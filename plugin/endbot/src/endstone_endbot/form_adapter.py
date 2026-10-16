@@ -38,24 +38,32 @@ class FormPresenter:
             screen = forms.bot_screen(view, str(player.name), self._online_names())
         self.show(player, screen)
 
-    def show(self, player, screen) -> None:
-        player.send_form(self.render(screen))
+    def show(self, player, screen, parent=None) -> None:
+        player.send_form(self.render(screen, parent))
 
-    def render(self, screen):
+    def render(self, screen, parent=None):
+        """Build the endstone form; closing an input/confirm form returns to ``parent``."""
         form = self._module()
+
+        def back(player) -> None:
+            if parent is not None:
+                self.show(player, parent)
+
         if isinstance(screen, forms.ActionScreen):
             action_form = form.ActionForm(title=screen.title, content=screen.content)
             for item in screen.items:
                 if isinstance(item, forms.Header):
                     action_form.add_header(item.text)
                 else:
-                    action_form.add_button(item.text, on_click=self._on_click(item.action))
+                    action_form.add_button(item.text, on_click=self._on_click(item.action, screen))
             return action_form
         if isinstance(screen, forms.ConfirmScreen):
 
             def confirmed(player, selection: int) -> None:
                 if selection == 0:  # Endstone maps button1 to 0.
                     self._act(player, screen.action)
+                else:
+                    back(player)
 
             return form.MessageForm(
                 title=screen.title,
@@ -63,12 +71,14 @@ class FormPresenter:
                 button1=screen.confirm,
                 button2=screen.cancel,
                 on_submit=confirmed,
+                on_close=back,
             )
         return form.ModalForm(
             title=screen.title,
             controls=[self._control(control) for control in screen.controls],
             submit_button=screen.submit,
             on_submit=lambda player, response: self._on_modal(player, screen, response),
+            on_close=back,
         )
 
     def _control(self, control):
@@ -83,12 +93,12 @@ class FormPresenter:
             return form.Toggle(control.label, control.default_value)
         return form.TextInput(control.label, control.placeholder, control.default_value)
 
-    def _on_click(self, action):
-        return lambda player: self._act(player, action)
+    def _on_click(self, action, origin=None):
+        return lambda player: self._act(player, action, origin)
 
-    def _act(self, player, action) -> None:
+    def _act(self, player, action, origin=None) -> None:
         if isinstance(action, forms.Show):
-            self.show(player, action.screen)
+            self.show(player, action.screen, origin)
             return
         for command in action.commands:
             self._submit(player, list(command))

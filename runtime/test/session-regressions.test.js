@@ -61,6 +61,89 @@ async function fixture (t, options = {}, profile = {}) {
 
 const miningTarget = { blockPosition: [0, 64, 2], blockRuntimeId: 42, blockName: 'minecraft:stone', face: 2, dimension: 'Overworld' }
 
+test('BDS hotbar observations make same-session pickups usable and correct rejected drops', async t => {
+  const { client, session, queued } = await fixture(t)
+  client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })
+  client.emit('inventory_content', { window_id: 'inventory', input: [] })
+  const slots = Array(9).fill(null)
+  slots[0] = { name: 'minecraft:diamond_sword', count: 3, metadata: 0, blockRuntimeId: 0,
+    nbt: { type: 'compound', value: { Damage: { type: 'int', value: 7 },
+      bytes: { type: 'byteArray', value: [-1, 0, 127] },
+      display: { type: 'compound', value: { Name: { type: 'string', value: '拾った道具' } } },
+      map_uuid: { type: 'long', value: '123456789123456789' },
+      ench: { type: 'list', value: { type: 'compound', value: [{ id: { type: 'short', value: 9 }, lvl: { type: 'short', value: 2 } }] } } } } }
+  const publish = (overrides = {}) => {
+    const params = { event_name: 'endbot:hotbar-v1', event_data: JSON.stringify({ identityId: session.profile.identityId, slots, ...overrides }) }
+    const wire = deserializer.parsePacketBuffer(serializer.createPacketBuffer({ name: 'script_custom_event', params })).data
+    client.emit(wire.name, wire.params)
+  }
+  queued.length = 0
+  publish()
+  assert.equal(session.inventory[0].count, 3)
+  assert.equal(queued.at(-1).name, 'mob_equipment')
+  assert.equal(queued.at(-1).params.item.extra.nbt.nbt.value.Damage.value, 7)
+  session.dropSelected(false)
+  assert.equal(session.inventory[0].count, 2)
+  assert.equal(queued.findLast(packet => packet.name === 'inventory_transaction').params.transaction.actions[1].new_item.count, 1)
+  // A canceled/rejected transaction leaves BDS's count unchanged: a fresh
+  // observation restores it, rather than trusting optimistic drop forever.
+  publish()
+  assert.equal(session.inventory[0].count, 3)
+  session.dropSelected(true)
+  slots[0] = null
+  publish()
+  assert.equal(session.heldItem.network_id, 0)
+  assert.equal(queued.findLast(packet => packet.name === 'mob_equipment').params.item.network_id, 0)
+  const unchanged = queued.length
+  publish()
+  assert.equal(queued.length, unchanged)
+})
+
+test('an unchanged hotbar observation keeps native stack IDs and an active use', async t => {
+  const { client, session, inputs, queued, tick } = await fixture(t)
+  client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })
+  const original = session.inventory[0]
+  inputs.setAction('use', 'continuous')
+  tick()
+  const slots = Array(9).fill(null)
+  // Native packets carry has_nbt as 0; the observation decodes to false.
+  slots[0] = { name: 'minecraft:diamond_sword', count: 3, metadata: 0, blockRuntimeId: 0, nbt: { type: 'compound', value: {} } }
+  queued.length = 0
+  const publish = () => client.emit('script_custom_event', {
+    event_name: 'endbot:hotbar-v1', event_data: JSON.stringify({ identityId: session.profile.identityId, slots })
+  })
+  publish()
+  assert.equal(session.inventory[0], original)
+  assert.equal(session.inventory[0].stack_id, 34)
+  assert.equal(queued.some(packet => packet.name === 'mob_equipment'), false)
+  inputs.setAction('use', 'stop')
+  session.applyInputs(inputs)
+  assert.equal(queued.at(-1).params.transaction.transaction_type, 'item_release')
+  // A differing stack (count) is still a real change.
+  slots[0].count = 2
+  publish()
+  assert.equal(session.inventory[0].count, 2)
+})
+
+test('unknown, partial and wrong-Bot inventory observations leave the good cache intact', async t => {
+  const { client, session } = await fixture(t)
+  client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })
+  const original = session.inventory[0]
+  const invalidSlots = Array(9).fill(null)
+  // Even a valid earlier slot must not be cleared if a later slot is bad.
+  invalidSlots[1] = { name: 'minecraft:diamond_sword', count: 1, metadata: 0, blockRuntimeId: 0,
+    nbt: { type: 'compound', value: { Damage: { type: 'int', value: 'invalid' } } } }
+  for (const snapshot of [{ identityId: 'other', slots: Array(9).fill(null) },
+    { identityId: session.profile.identityId, slots: [null] },
+    { identityId: session.profile.identityId, slots: invalidSlots },
+    { identityId: session.profile.identityId, slots: Array(9).fill({ name: 'unknown' }) }]) {
+    client.emit('script_custom_event', { event_name: 'endbot:hotbar-v1', event_data: JSON.stringify(snapshot) })
+    assert.equal(session.inventory[0], original)
+  }
+  client.emit('script_custom_event', { event_name: 'endbot:hotbar-v1', event_data: '{' })
+  assert.equal(session.inventory[0], original)
+})
+
 test('continuous mining waits, retargets after BDS updates, and rejects stopped/replaced loop messages', async t => {
   const { client, session, tick } = await fixture(t)
   session.startMiningLoop()

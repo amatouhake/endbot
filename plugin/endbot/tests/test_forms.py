@@ -23,7 +23,15 @@ OBSERVED = {"dimension": "Overworld", "x": 1.0, "y": 64.0, "z": 2.0, "yaw": 91.0
 
 
 def buttons(screen):
-    return {item.text: item.action for item in screen.items if isinstance(item, forms.Button)}
+    result = {}
+    for item in screen.items:
+        if not isinstance(item, forms.Button):
+            continue
+        if isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
+            result.update(buttons(item.action.screen))
+        else:
+            result[item.text] = item.action
+    return result
 
 
 def submit(screen, *values):
@@ -35,39 +43,90 @@ class ScreenTests(unittest.TestCase):
         view = forms.BotView("Alice", "Alice: online", ONLINE, OBSERVED)
         return forms.bot_screen(view, caller, players)
 
-    def test_bot_list_opens_each_bot_through_the_menu_command(self):
+    def test_bot_list_shows_online_bots_and_hides_offline_ones_behind_a_button(self):
         screen = forms.bot_list_screen(
             forms.BotListView(
-                ({"name": "Alice", "connectionState": "online"}, {"name": "Bob", "connectionState": "offline"})
+                (
+                    {"name": "Bob", "connectionState": "offline"},
+                    {"name": "Zed", "connectionState": "online"},
+                    {"name": "Alice", "connectionState": "online"},
+                    {"name": "Cy", "connectionState": "failed"},
+                    {"name": "Dee", "connectionState": "offline"},
+                )
             )
         )
+        self.assertEqual(
+            [strip_colors(i.text) for i in screen.items],
+            ["Alice", "Zed", "FAIL · Cy", "Offline (2)...", "+ New Bot here"],
+        )
         actions = buttons(screen)
-        self.assertEqual(actions["Alice\n[online]"], forms.Run((("Alice", "menu"),)))
-        self.assertEqual(actions["Bob\n[offline]"], forms.Run((("Bob", "menu"),)))
-        self.assertEqual(submit(actions["+ Spawn a new Bot here"].screen, " Carol "), (("Carol", "spawn"),))
+        self.assertEqual(actions["Alice"], forms.Run((("Alice", "menu"),)))
+        self.assertEqual(actions["Bob"], forms.Run((("Bob", "menu"),)))
+        offline = next(i.action.screen for i in screen.items if i.text.startswith("Offline"))
+        self.assertEqual([i.text for i in offline.items], ["Bob", "Dee", "Back to Bot list"])
+        self.assertEqual(submit(actions["+ New Bot here"].screen, " Carol "), (("Carol", "spawn"),))
         empty = forms.bot_list_screen(forms.BotListView(()))
         self.assertIn("No Bot profiles", empty.content)
+        self.assertEqual([i.text for i in empty.items], ["+ New Bot here"])
 
-    def test_offline_bot_offers_only_connection_and_settings(self):
+    def test_main_screen_groups_actions_like_the_game_controls(self):
+        screen = self.online_screen()
+        self.assertEqual(
+            [item.text for item in screen.items],
+            [
+                "Stop everything",
+                "Movement...",
+                "Look...",
+                "Teleport...",
+                "Gameplay...",
+                "Inventory...",
+                "Bot...",
+                "Back to Bot list",
+            ],
+        )
+        for item in screen.items:
+            if isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
+                self.assertLessEqual(len(item.action.screen.items), 8)
+                self.assertEqual(item.action.screen.items[-1].text, "Back to Bot")
+
+    def test_long_bot_names_keep_state_first_on_one_line(self):
+        name = "RakNetTest1234567"
+        screen = forms.bot_list_screen(forms.BotListView(({"name": name, "connectionState": "reconnecting"},)))
+        self.assertEqual(strip_colors(screen.items[0].text), f"RETRY · {name}")
+        self.assertNotIn("\n", screen.items[0].text)
+
+    def test_offline_bot_offers_only_connection_and_radius(self):
         view = forms.BotView("Bob", "Bob: offline", {**ONLINE, "name": "Bob", "connectionState": "offline"})
-        actions = buttons(forms.bot_screen(view, "Steve"))
+        screen = forms.bot_screen(view, "Steve")
+        self.assertEqual(strip_colors(screen.content), "offline · chunk radius 12")
+        actions = buttons(screen)
         self.assertEqual(actions["Resume (where it was)"], forms.Run((("Bob", "resume"),)))
         self.assertEqual(actions["Spawn here"], forms.Run((("Bob", "spawn"),)))
-        self.assertNotIn("Move...", actions)
+        self.assertNotIn("Forward", actions)
         self.assertNotIn("Despawn...", actions)
         self.assertEqual(actions["Back to Bot list"], forms.Run((("menu",),)))
+        self.assertFalse(any(isinstance(item, forms.Header) for item in screen.items))
 
     def test_online_bot_screen_shows_status_and_command_backed_buttons(self):
         screen = self.online_screen()
-        self.assertEqual(screen.content, "Alice: online")
+        self.assertEqual(strip_colors(screen.content), "online · Overworld 1.0 64.0 2.0")
         actions = buttons(screen)
         self.assertEqual(actions["Stop everything"], forms.Run((("Alice", "stop"),)))
+        self.assertEqual(actions["Forward"], forms.Run((("Alice", "move", "forward"),)))
+        self.assertEqual(actions["Backward"], forms.Run((("Alice", "move", "backward"),)))
+        self.assertEqual(actions["Stop moving"], forms.Run((("Alice", "move", "stop"),)))
         self.assertEqual(actions["Reconnect"], forms.Run((("Alice", "reconnect"),)))
-        self.assertEqual(actions["Refresh"], forms.Run((("Alice", "menu"),)))
         confirm = actions["Despawn..."].screen
         self.assertEqual(confirm.action, forms.Run((("Alice", "despawn"),)))
-        # Interact, rename, forget and drop stay command-only.
+        # Interact, rename and forget stay command-only.
         self.assertFalse(any(word in text.lower() for text in actions for word in ("interact", "rename", "forget")))
+
+    def test_full_status_stays_under_bot_and_hotbar_defaults_to_current_slot(self):
+        view = forms.BotView("Alice", "full status and radius details", {**ONLINE, "selectedHotbarSlot": 9}, OBSERVED)
+        screen = forms.bot_screen(view, "Steve")
+        connection = next(item.action.screen for item in screen.items if item.text == "Bot...")
+        self.assertEqual(connection.content, view.summary)
+        self.assertEqual(buttons(screen)["Hotbar slot..."].screen.controls[0].default_index, 8)
 
     def test_teleport_targets_quote_player_names_for_the_command_tokenizer(self):
         actions = buttons(self.online_screen(caller="Some Name"))
@@ -84,8 +143,6 @@ class ScreenTests(unittest.TestCase):
     def test_every_modal_produces_commands_the_parser_accepts(self):
         actions = buttons(self.online_screen())
         cases = [
-            ("Move...", (0,), [("Alice", "move", "forward")]),
-            ("Move...", (4,), [("Alice", "move", "stop")]),
             ("Look...", (90.0, -15.0, ""), [("Alice", "look", "90", "-15")]),
             ("Look...", (0, 0, "1 64 ~2"), [("Alice", "look", "at", "1", "64", "~2")]),
             ("Sprint / sneak...", (1, 2), [("Alice", "sprint", "on"), ("Alice", "sneak", "off")]),
@@ -99,6 +156,8 @@ class ScreenTests(unittest.TestCase):
             ("Destroy blocks...", (3, "~ ~-1 ~", 0), [("Alice", "destroy", "~", "~-1", "~")]),
             ("Destroy blocks...", (3, "1 64 2", 2), [("Alice", "destroy", "1", "64", "2", "up")]),
             ("Hotbar slot...", (8,), [("Alice", "hotbar", "9")]),
+            ("Drop item...", (0,), [("Alice", "drop")]),
+            ("Drop item...", (1,), [("Alice", "drop", "stack")]),
             ("Chunk radius...", (False, 16.0), [("Alice", "radius", "16")]),
             ("Chunk radius...", (True, 16.0), [("Alice", "radius", "default")]),
         ]
@@ -118,7 +177,7 @@ class ScreenTests(unittest.TestCase):
 
     def test_malformed_responses_are_rejected_without_commands(self):
         actions = buttons(self.online_screen())
-        move = actions["Move..."].screen
+        move = actions["Hotbar slot..."].screen
         destroy = actions["Destroy blocks..."].screen
         for screen, response in (
             (move, None),
@@ -165,6 +224,10 @@ class ServiceMenuTests(unittest.TestCase):
         self.assertEqual(bot.view.summary, status.message)
         self.assertNotEqual(strip_colors(bot.view.summary), bot.view.summary)
         self.assertEqual((bot.view.name, bot.view.observed), ("Alice", OBSERVED))
+
+    def test_bare_bot_opens_list_for_players_and_help_for_console(self):
+        self.assertEqual(self.service.execute([], self.player).view, forms.BotListView((ONLINE,)))
+        self.assertIn("Endbot help page 1", self.service.execute([], CommandSource()).message)
 
     def test_unknown_bot_menu_fails_like_any_command(self):
         result = self.service.execute(["Ghost", "menu"], self.player)
@@ -273,21 +336,36 @@ class PresenterTests(unittest.TestCase):
     def bot_form(self):
         self.presenter.show_view(self.player, forms.BotView("Alice", "Alice: online", ONLINE, OBSERVED))
         form = self.player.forms[-1]
-        return form, {text: on_click for kind, text, on_click in form.items if kind == "button"}
+        clicks = {}
+
+        # Only category buttons open ActionForms; do not invoke commands or
+        # modal/confirmation buttons while collecting the nested callbacks.
+        for kind, text, click in form.items:
+            if kind != "button":
+                continue
+            if text in {"Movement...", "Teleport...", "Gameplay...", "Inventory...", "Bot..."}:
+                click(self.player)
+                for child_kind, child_text, child_click in self.player.forms[-1].items:
+                    if child_kind == "button":
+                        clicks[child_text] = child_click
+            else:
+                clicks[text] = click
+        return form, clicks
 
     def test_buttons_submit_commands_or_open_screens(self):
         form, clicks = self.bot_form()
-        self.assertEqual(form.kwargs["content"], "Alice: online")
-        self.assertIn(("header", "Movement", None), form.items)
+        self.assertEqual(strip_colors(form.kwargs["content"]), "online · Overworld 1.0 64.0 2.0")
+        self.assertEqual(len(form.items), 8)
         clicks["Teleport to me"](self.player)
         clicks["Stop everything"](self.player)
         self.assertEqual(self.submitted, [["Alice", "tp", "Steve"], ["Alice", "stop"]])
-        clicks["Move..."](self.player)
+        clicks["Hotbar slot..."](self.player)
         modal = self.player.forms[-1]
         self.assertEqual(type(modal).__name__, "ModalForm")
-        self.assertEqual(modal.kwargs["submit_button"], "Move")
+        self.assertEqual(modal.kwargs["submit_button"], "Select")
+        self.submitted.clear()
         modal.kwargs["on_submit"](self.player, json.dumps([1]))
-        self.assertEqual(self.submitted[-1], ["Alice", "move", "backward"])
+        self.assertEqual(self.submitted, [["Alice", "hotbar", "2"]])
 
     def test_modal_errors_reply_instead_of_submitting(self):
         _, clicks = self.bot_form()
@@ -304,6 +382,27 @@ class PresenterTests(unittest.TestCase):
             ],
         )
 
+    def test_closing_an_input_or_confirm_form_returns_to_its_category(self):
+        self.presenter.show_view(self.player, forms.BotView("Alice", "Alice: online", ONLINE, OBSERVED))
+        main = self.player.forms[-1]
+        click = {text: c for kind, text, c in main.items if kind == "button"}
+        click["Movement..."](self.player)
+        movement = self.player.forms[-1]
+        {text: c for _, text, c in movement.items}["Jump..."](self.player)
+        modal = self.player.forms[-1]
+        self.assertEqual(type(modal).__name__, "ModalForm")
+        modal.kwargs["on_close"](self.player)
+        self.assertEqual(self.player.forms[-1].kwargs["title"], "Alice: movement")
+        click["Inventory..."](self.player)
+        click_inventory = self.player.forms[-1]
+        self.assertEqual(click_inventory.kwargs["title"], "Alice: inventory")
+        click["Bot..."](self.player)
+        {text: c for _, text, c in self.player.forms[-1].items}["Despawn..."](self.player)
+        confirm = self.player.forms[-1]
+        confirm.kwargs["on_submit"](self.player, 1)
+        self.assertEqual(self.player.forms[-1].kwargs["title"], "Alice: bot")
+        self.assertEqual(self.submitted, [])
+
     def test_despawn_needs_the_confirm_button(self):
         _, clicks = self.bot_form()
         clicks["Despawn..."](self.player)
@@ -317,7 +416,7 @@ class PresenterTests(unittest.TestCase):
     def test_list_view_renders_bot_buttons(self):
         self.presenter.show_view(self.player, forms.BotListView(({"name": "Alice", "connectionState": "online"},)))
         form = self.player.forms[-1]
-        {text: click for _, text, click in form.items}["Alice\n[online]"](self.player)
+        {text: click for _, text, click in form.items}["Alice"](self.player)
         self.assertEqual(self.submitted, [["Alice", "menu"]])
 
 

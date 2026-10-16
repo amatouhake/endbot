@@ -37,7 +37,8 @@ class BotCommandServiceTests(unittest.TestCase):
         result = self.service.execute([])
         self.assertIn("Endbot help page 1 of", result.message)
         bare = parse_command([])
-        self.assertEqual(bare.parameters, {"page": 1})
+        self.assertEqual(bare.operation, "menu")
+        self.assertEqual(bare.parameters, {"default": True})
         self.assertEqual(parse_command(["help"]).parameters, {"page": 1})
 
     def test_help_pages_are_paginated_like_vanilla_help(self) -> None:

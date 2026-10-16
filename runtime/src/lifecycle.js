@@ -369,6 +369,7 @@ export class BotLifecycle extends EventEmitter {
       name: profile.name,
       desiredState: profile.desiredOnline ? 'online' : 'offline',
       connectionState: state.state,
+      selectedHotbarSlot: state.state === 'online' && state.session?.selectedHotbarSlot ? state.session.selectedHotbarSlot() + 1 : null,
       reconnectAttempt: state.reconnectAttempt,
       nextReconnectAt: state.nextReconnectAt,
       lastError: state.lastError,

@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 
 import { botChunkRadius, LOOPBACK_HOSTS, serverTransport } from './config.js'
 import { discoverServer } from './discovery.js'
+import { decodeHotbar, INVENTORY_EVENT, sameItem } from './inventory-sync.js'
 import { createLocalBotAuth } from './local-identity.js'
 import {
   addJumpInputFlags,
@@ -38,6 +39,7 @@ export class BedrockSession extends EventEmitter {
     this.heldItem = EMPTY_ITEM
     this.hotbarSlot = 0
     this.inventory = []
+    this.itemPalette = new Map()
     this.closeEmitted = false
     this.transportClosed = false
     this.spawned = false
@@ -387,6 +389,30 @@ export class BedrockSession extends EventEmitter {
   }
 
   #wireClient () {
+    this.client.on('item_registry', packet => {
+      this.itemPalette = new Map(packet.itemstates.map(item => [item.name, item.runtime_id]))
+    })
+    this.client.on('script_custom_event', packet => {
+      if (packet.event_name !== INVENTORY_EVENT || !this.spawned || this.disconnecting || this.transportClosed) return
+      try {
+        const slots = decodeHotbar(packet.event_data, this.profile.identityId, this.itemPalette)
+        let heldChanged = false
+        for (let slot = 0; slot < slots.length; slot++) {
+          if (sameItem(this.inventory[slot], slots[slot])) continue
+          this.inventory[slot] = slots[slot]
+          if (slot === this.hotbarSlot) heldChanged = true
+        }
+        if (heldChanged) {
+          this.#selectHeldItem()
+          // BDS supplies the actual stack; the normal equipment path updates
+          // observers too, including an emptied or newly picked-up hand.
+          this.client.queue('mob_equipment', { runtime_entity_id: this.client.entityId,
+            item: this.heldItem, slot: this.hotbarSlot, selected_slot: this.hotbarSlot, window_id: 'inventory' })
+        }
+      } catch {
+        // Partial/unknown observations never replace a good native cache.
+      }
+    })
     this.client.on('chunk_radius_update', packet => {
       if (Number.isSafeInteger(packet.chunk_radius) && packet.chunk_radius > 0) {
         this.serverChunkRadius = packet.chunk_radius

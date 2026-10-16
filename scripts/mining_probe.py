@@ -12,11 +12,23 @@ from pathlib import Path
 
 def install_probe(plugin_class):
     from endstone.actor import Item
-    from endstone.event import BlockBreakEvent, event_handler
+    from endstone.event import BlockBreakEvent, PlayerDropItemEvent, event_handler
     from endstone.inventory import ItemStack
     from endstone.level import Location
 
     original_enable = plugin_class.on_enable
+
+    @event_handler
+    def on_probe_drop(self, event: PlayerDropItemEvent):
+        probe = getattr(self, "_mining_probe", None)
+        if (
+            probe
+            and event.player.name == "RakNetSpike"
+            and probe.get("inventory")
+            and probe.get("cancel_drop")
+        ):
+            event.is_cancelled = True
+            probe["canceled_drops"] = probe.get("canceled_drops", 0) + 1
 
     @event_handler
     def on_probe_break(self, event: BlockBreakEvent):
@@ -27,8 +39,13 @@ def install_probe(plugin_class):
             return
         if probe["cancel"]:
             event.is_cancelled = True
-        probe["events"].append({"player": event.player.name, "block": event.block.type,
-                                "canceled": event.is_cancelled})
+        probe["events"].append(
+            {
+                "player": event.player.name,
+                "block": event.block.type,
+                "canceled": event.is_cancelled,
+            }
+        )
 
     def enable(self):
         original_enable(self)
@@ -53,39 +70,117 @@ def install_probe(plugin_class):
                             actor.remove()
                     for dx in range(-3, 4):
                         for dz in range(-3, 8):
-                            dimension.get_block_at(x + dx, 199, z + dz).set_type("minecraft:stone")
+                            dimension.get_block_at(x + dx, 199, z + dz).set_type(
+                                "minecraft:stone"
+                            )
                             for y in range(200, 204):
-                                dimension.get_block_at(x + dx, y, z + dz).set_type("minecraft:air")
+                                dimension.get_block_at(x + dx, y, z + dz).set_type(
+                                    "minecraft:air"
+                                )
                     target = [x, 201, z + 2]
-                    targets = [[x, 201, z + 2 + index] for index in range(data.get("count", 1))]
+                    targets = [
+                        [x, 201, z + 2 + index] for index in range(data.get("count", 1))
+                    ]
                     for cell in targets:
                         dimension.get_block_at(*cell).set_type(data["block"])
                     player.inventory.clear()
+                    inventory_test = data.get("inventory")
+                    if inventory_test:
+                        for slot in range(data.get("slot", 0)):
+                            player.inventory.set_item(
+                                slot, ItemStack("minecraft:stone", 64)
+                            )
+                        if data.get("existing"):
+                            player.inventory.set_item(
+                                data.get("slot", 0),
+                                ItemStack(inventory_test, data["existing"]),
+                            )
                     if data.get("tool"):
                         player.inventory.set_item(0, ItemStack(data["tool"], 1))
                     player.inventory.held_item_slot = 0
                     player.teleport(Location(dimension, x + 0.5, 200, z + 0.5, 0, 0))
-                    self._mining_probe = {"id": data["id"], "target": target, "cancel": data.get("cancel", False),
-                                          "targets": targets, "events": [], "refill": data.get("refill", 0),
-                                          "kill": data.get("kill", 0)}
+                    self._mining_probe = {
+                        "id": data["id"],
+                        "target": target,
+                        "cancel": data.get("cancel", False),
+                        "targets": targets,
+                        "events": [],
+                        "refill": data.get("refill", 0),
+                        "kill": data.get("kill", 0),
+                        "inventory": inventory_test,
+                        "cancel_drop": data.get("cancel_drop", False),
+                        "dropped": [],
+                    }
+                    if inventory_test:
+                        stack = ItemStack(inventory_test, data.get("amount", 5))
+                        if data.get("named"):
+                            meta = stack.item_meta
+                            meta.display_name = "Endbot pickup probe"
+                            meta.damage = 7
+                            meta.add_enchant("minecraft:efficiency", 2)
+                            stack.set_item_meta(meta)
+                        self._mining_probe["pickup_actor"] = str(
+                            dimension.drop_item(player.location, stack).id
+                        )
                 elif self._mining_probe["refill"] != data.get("refill", 0):
                     # Replace blocks without teleporting/restarting the Bot.
                     for cell in self._mining_probe["targets"]:
-                        player.location.dimension.get_block_at(*cell).set_type(data["block"])
+                        player.location.dimension.get_block_at(*cell).set_type(
+                            data["block"]
+                        )
                     self._mining_probe["refill"] = data.get("refill", 0)
-                if self._mining_probe is not None and self._mining_probe.get("kill", 0) != data.get("kill", 0):
+                if self._mining_probe is not None and self._mining_probe.get(
+                    "kill", 0
+                ) != data.get("kill", 0):
                     self._mining_probe["kill"] = data.get("kill", 0)
                     player.health = 0
             if self._mining_probe is None:
                 return
             probe = self._mining_probe
+            if probe.get("inventory"):
+                probe["cancel_drop"] = (
+                    data.get("cancel_drop", False) if request.exists() else False
+                )
+                for actor in player.location.dimension.actors:
+                    if (
+                        isinstance(actor, Item)
+                        and str(actor.id) != probe["pickup_actor"]
+                    ):
+                        probe["dropped"].append(
+                            {
+                                "name": actor.item_stack.type.id,
+                                "count": actor.item_stack.amount,
+                                "nbt": str(actor.item_stack.nbt),
+                            }
+                        )
+                        actor.remove()  # Observe each ejection once; prevent a later re-pickup in the fixture.
             item = player.inventory.get_item(0)
-            state = {**probe, "block": player.location.dimension.get_block_at(*probe["target"]).type,
-                     "blocks": [player.location.dimension.get_block_at(*cell).type for cell in probe["targets"]],
-                     "damage": item.item_meta.damage if item else 0,
-                     "position": [player.location.x, player.location.y, player.location.z],
-                     "drops": [actor.item_stack.type.id for actor in player.location.dimension.actors
-                               if isinstance(actor, Item)]}
+            state = {
+                **probe,
+                "block": player.location.dimension.get_block_at(*probe["target"]).type,
+                "blocks": [
+                    player.location.dimension.get_block_at(*cell).type
+                    for cell in probe["targets"]
+                ],
+                "damage": item.item_meta.damage if item else 0,
+                "position": [player.location.x, player.location.y, player.location.z],
+                "drops": [
+                    actor.item_stack.type.id
+                    for actor in player.location.dimension.actors
+                    if isinstance(actor, Item)
+                ],
+            }
+            if probe.get("inventory"):
+                state["hotbar"] = [
+                    None
+                    if (stack := player.inventory.get_item(slot)) is None
+                    else {
+                        "name": stack.type.id,
+                        "count": stack.amount,
+                        "nbt": str(stack.nbt),
+                    }
+                    for slot in range(9)
+                ]
             temporary = base / "mining-state.tmp"
             temporary.write_text(json.dumps(state), encoding="utf-8")
             try:
@@ -96,6 +191,7 @@ def install_probe(plugin_class):
         self.server.scheduler.run_task(self, sample, delay=1, period=1)
 
     plugin_class.on_probe_break = on_probe_break
+    plugin_class.on_probe_drop = on_probe_drop
     plugin_class.on_enable = enable
 
 
@@ -266,3 +362,127 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     time.sleep(2)
     report["mining"]["death-notice"] = True
     setup("cleanup", "minecraft:air")
+
+
+def exercise_inventory(output: Path, console, control, wait, report):
+    """Natural pickups and real BDS transactions, with no Bot reconnect."""
+    import time
+
+    last_state = {}
+
+    def state():
+        nonlocal last_state
+        try:
+            last_state = json.loads((output / "mining-state.json").read_text())
+        except (OSError, ValueError):
+            pass  # Atomic replacement can briefly deny reads on Windows.
+        return last_state
+
+    def request(data):
+        temporary = output / "mining-request.tmp"
+        temporary.write_text(json.dumps(data))
+        temporary.replace(output / "mining-request.json")
+
+    results = {}
+    for label, name, slot, amount, existing, named in (
+        ("block", "minecraft:dirt", 0, 5, 0, False),
+        ("food-nonselected-slot", "minecraft:apple", 1, 5, 0, False),
+        ("merge", "minecraft:apple", 0, 4, 3, False),
+        ("named-enchanted-damaged-tool", "minecraft:diamond_pickaxe", 2, 1, 0, True),
+        ("canceled-drop", "minecraft:apple", 0, 5, 0, False),
+    ):
+        control("stop")
+        fixture = {
+            "id": f"inventory-{label}",
+            "block": "minecraft:air",
+            "inventory": name,
+            "slot": slot,
+            "amount": amount,
+            "existing": existing,
+            "named": named,
+            "cancel_drop": label == "canceled-drop",
+        }
+        request(fixture)
+
+        def picked_up(slot=slot, label=label, amount=amount, existing=existing):
+            current = state()
+            stack = (current.get("hotbar") or [None] * 9)[slot]
+            return (
+                current.get("id") == f"inventory-{label}"
+                and stack
+                and stack["count"] == amount + existing
+            )
+
+        wait("natural world pickup", picked_up, 15)
+        time.sleep(0.6)  # Two or more observations after BDS completed the pickup.
+        before = state()["hotbar"][slot]
+        control("hotbar", slot=slot + 1)
+        if label == "canceled-drop":
+            control("drop", stack=False)
+            wait(
+                "native drop cancellation",
+                lambda: state().get("canceled_drops", 0) == 1,
+                10,
+            )
+            time.sleep(0.6)
+            if state()["hotbar"][slot]["count"] != amount or state().get("dropped"):
+                raise RuntimeError(
+                    "Canceled drop changed BDS inventory or created loot"
+                )
+            request({**fixture, "cancel_drop": False})
+            wait(
+                "drop cancellation disabled", lambda: not state().get("cancel_drop"), 10
+            )
+        control("drop", stack=False)
+        remaining = amount + existing - 1
+
+        def dropped_one(slot=slot, remaining=remaining):
+            current = state()
+            stack = (current.get("hotbar") or [None] * 9)[slot]
+            return (
+                bool(current.get("dropped"))
+                and (stack["count"] if stack else 0) == remaining
+            )
+
+        wait("one real selected item dropped", dropped_one, 10)
+        first = state()
+        if first["dropped"][0]["count"] != 1 or first["dropped"][0]["name"] != name:
+            raise RuntimeError(f"Wrong item/count dropped after pickup: {label}")
+        if named and first["dropped"][0]["nbt"] != before["nbt"]:
+            raise RuntimeError("Pickup/drop lost custom item NBT")
+        if remaining:
+            control("drop", stack=True)
+            wait(
+                "remaining real stack dropped",
+                lambda slot=slot: (
+                    len(state().get("dropped", [])) == 2
+                    and state()["hotbar"][slot] is None
+                ),
+                10,
+            )
+            if state()["dropped"][1]["count"] != remaining:
+                raise RuntimeError("Drop stack ejected the wrong amount")
+        time.sleep(0.4)
+        try:
+            control("drop", stack=False)
+        except RuntimeError as error:
+            if "Selected hotbar slot is empty" not in str(error):
+                raise
+        else:
+            raise RuntimeError(
+                "Empty selected slot still appeared usable after the drop"
+            )
+        results[label] = {
+            "picked_up": amount,
+            "existing": existing,
+            "slot": slot + 1,
+            "dropped": [drop["count"] for drop in state()["dropped"]],
+            "nbt_preserved": True,
+        }
+    request({"id": "inventory-cleanup", "block": "minecraft:air"})
+    wait(
+        "inventory fixture cleanup",
+        lambda: state().get("id") == "inventory-cleanup",
+        10,
+    )
+    report["pickup_inventory"] = results

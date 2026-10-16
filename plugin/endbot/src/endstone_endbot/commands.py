@@ -272,9 +272,9 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         "open the Bot control forms (players only)",
         ("menu", "<name> menu"),
         (
-            "menu lists every Bot; <name> menu opens that Bot's actions directly.",
+            "/bot or /bot menu lists every Bot; <name> menu opens that Bot's actions directly.",
             "Forms run the same /bot commands, so replies and permissions match typed commands.",
-            "interact, rename, forget, drop and spawn at coordinates stay command-only.",
+            "interact, rename, forget and spawn at coordinates stay command-only.",
         ),
         named=False,
     ),
@@ -480,7 +480,7 @@ def _help_topic(raw: str) -> BotCommand:
 def parse_command(arguments: list[str]) -> BotCommand:
     tokens = _tokens(arguments)
     if not tokens:
-        return BotCommand("help", parameters={"page": 1})
+        return BotCommand("menu", parameters={"default": True})
     first = tokens[0].lower()
     if first == "ping" and len(tokens) == 1:
         return BotCommand("ping")
@@ -746,6 +746,8 @@ class BotCommandService:
                 return CommandResult(True, help_detail(command.parameters["topic"]))
             return CommandResult(True, help_page(int(command.parameters.get("page", 1))))
         if command.operation == "menu" and getattr(sender, "player_id", None) is None:
+            if command.parameters.get("default"):
+                return CommandResult(True, help_page(1))
             return CommandResult(True, (reply("menu is available only to players; use /bot help"),))
         if self.control is None:
             raise RuntimeError("runtime control is not configured")

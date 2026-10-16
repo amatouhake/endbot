@@ -3,6 +3,9 @@
 Scope: [BOT-001, BOT-002, and BOT-003](BACKLOG.md). These are source changes against the existing locked baseline, not
 a new release or compatibility claim. Endstone core patches, `endstone.lock`, and the support manifest are unchanged.
 
+Later work: [BOT-007 inventory synchronization](INVENTORY_VALIDATION.md) addresses the pickup-cache limitation described
+in these historical runs. Its natural-pickup tests and held-item rendering gate are recorded separately.
+
 ## Changes and evidence
 
 - Loading: default requested radius reduced from the protocol library's implicit 10 chunks to 5. Operator configuration
@@ -140,6 +143,7 @@ finish; a revoked queued operation must not start. This is a separate gate from 
 - Measure sustained multi-Bot load and effective chunk-loading/resource cost beyond the two-Bot and custom-radius smoke.
 - Complete the applicable human login and actual Xbox achievement gates before making broader release claims.
 
-For manual item checks, put the item in a known hotbar slot (reconnect after a world pickup if necessary), select it with
+For manual item checks, put the item in a known hotbar slot (allow the matching plugin's four-tick observation after a
+world pickup; reconnect remains the fallback without that plugin), select it with
 `/bot Alice hotbar <1-9>`, then run `/bot Alice use continuous`. Allow enough time to eat or charge; use
 `/bot Alice use stop` to release. Observe the actual inventory/projectile and BDS state, not only the command reply.

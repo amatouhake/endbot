@@ -69,8 +69,35 @@ separate; no product change was needed to resolve that observation failure.
 Automated verification: plugin 146 tests, serial runtime 112 tests and repository 47 tests passed. Python lint used the
 repository's CI-pinned Ruff `0.17.1`; JavaScript syntax and portability checks passed.
 
+## Human Windows-client trident follow-up (2026-10-16 JST)
+
+During the ongoing normally authenticated Windows-client check on the same pinned RakNet server, the user reported:
+
+1. `use continuous`, followed by `use stop`, throws the selected trident.
+2. The observer sees both the projectile and a trident remaining in the Bot's hand.
+3. Reselecting the hotbar with `hotbar 2` or another slot clears the stale hand image.
+
+This is evidence of incomplete held-equipment rendering synchronization, not evidence that BDS created a second item.
+Actual inventory counts and projectile state were not captured for this reproduction, so duplication is not ruled out
+solely by the visual recovery. The earlier pickup/drop matrices do not cover this throw sequence.
+
+A separate in-memory session replay equipped an item, delivered a native `inventory_slot` update emptying the selected
+slot, and then delivered an all-empty plugin hotbar observation. The runtime's selected inventory slot and held item
+became empty, but it sent no empty-hand `mob_equipment` announcement after those updates. Source inspection agrees:
+native inventory handlers update the held-item cache, while the plugin-observation handler announces equipment only
+when the observation differs from that cache. A native update arriving first can therefore suppress the subsequent
+announcement. This explains a possible path to the live symptom; the replay did not use a real server or establish
+the actual packet order of the reported throw. Hotbar reselection explicitly sends equipment, consistent with the
+reported visual recovery.
+
+No fix is included in this record. BOT-007 remains open for selected-slot equipment synchronization, regression
+coverage for native-update/snapshot ordering, and a real throw observed by a human alongside BDS inventory/projectile
+state. BOT-003 also records the separate usability idea of a single timed charge/release action; existing throwing
+currently requires the two commands above.
+
 ## Remaining gates
 
-- A normally authenticated human must confirm held-item/empty-hand rendering and the revised form layout.
+- Resolve the reported trident hand-image persistence and confirm held-item/empty-hand rendering with a normally
+  authenticated human; the revised form layout still needs its own confirmation.
 - Broader item variants, shield behavior, other plugins, sustained multi-Bot traffic and pickup under low TPS remain
   separate checks; this is not a new Endstone/BDS compatibility or Xbox achievement claim.

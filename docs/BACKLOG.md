@@ -93,6 +93,13 @@ run observed golden-apple consumption and a thrown-trident actor after release. 
 use, and item use after dimension changes remain open. The separate world-pickup cache limitation is addressed by BOT-007.
 See [validation](BOT_BEHAVIOR_VALIDATION.md).
 
+Human Windows-client follow-up (2026-10-16 JST): charging with `use continuous` and releasing with `use stop` throws
+the trident, but its held-item image can remain until hotbar reselection; track that unresolved rendering issue under
+BOT-007. The two-command charge/release sequence is also a usability improvement candidate: consider a single action
+that holds for a specified duration and releases. Its syntax and timing are not decided or implemented. Any future
+shortcut must preserve the existing hold/stop controls, cancel safely on stop, hotbar change and disconnect, and be
+validated with both a trident and bow under normal BDS charge/release rules.
+
 ## BOT-004: Change Bot control authorization while the server is running
 
 Status: **Implemented — human Windows client (RakNet) confirmed live revoke/regrant and command visibility**
@@ -187,7 +194,7 @@ still submit the same `/bot` arguments); confirmed on a normally authenticated h
 
 ## BOT-007: Synchronize picked-up hotbar items and held-item rendering
 
-Status: **Implemented — natural-pickup RakNet and NetherNet live matrices passed; human rendering check open**
+Status: **Pickup synchronization implemented — live matrices passed; trident held-item rendering bug open**
 (2026-10-16 JST).
 
 Previously, a Bot could visibly hold a newly picked-up item while its runtime cache still considered the slot empty;
@@ -202,6 +209,45 @@ Acceptance: naturally picked-up blocks, food, merged stacks and named/enchanted/
 dropped one/stack without reconnect; the hand clears after emptying; rejected drops converge back to BDS state; malformed
 or wrong-identity observations do not overwrite good state. BDS inventory/loot and human-client rendering are distinct
 checks. See [inventory validation](INVENTORY_VALIDATION.md) for tested scope and remaining gates.
+
+Human Windows-client follow-up (2026-10-16 JST): after a trident is thrown, the observer can see both the projectile
+and a trident still in the Bot's hand. Reselecting with `hotbar 2` or another slot clears the stale hand image. This
+supports a missing equipment announcement; actual inventory duplication has not been established. An in-memory event
+replay also emptied the runtime's selected slot and held item without sending an empty-hand equipment announcement.
+The suspected path is a native inventory update changing the cache before the periodic snapshot: the snapshot then
+sees no difference and skips its equipment announcement. This remains a hypothesis for the live symptom, not a fix.
+
+Next work: ensure selected-slot changes from native updates and periodic observations also converge the equipment
+shown to observers, without repeated packet spam. Add a regression for a native selected-slot update followed by an
+identical snapshot, then verify a real throw with a human observer and BDS inventory/projectile observations. Also
+check consumption, tool breakage, hotbar reselection and ordinary drop/rejected-drop behavior. Details and evidence
+limits are in [inventory validation](INVENTORY_VALIDATION.md#human-windows-client-trident-follow-up-2026-10-16-jst).
+
+## BOT-008: Experiment with a selected-Bot command context
+
+Status: **Idea recorded — separate experimental branch; not implemented** (2026-10-16 JST).
+
+After the current menu/inventory work, try a player-scoped selection so repeated commands can omit the Bot name:
+
+```text
+/bot select Alice
+/bot move forward
+/bot jump
+/bot stop
+```
+
+These are proposed commands, not currently supported syntax. Reusing a selection could reduce typing across multiple
+actions, especially with long Bot names. Fixed operation positions may also help completion, but this is unproven:
+the earlier selection-model `/botprobe` still suffered generic-overload filtering on the pinned Endstone baseline.
+See [the command-parser findings](COMMANDS.md). Do not promise completion improvements from selection alone.
+
+Keep the first experiment small (select/query/clear plus move, jump and stop) and compare repeated-command effort,
+target clarity and actual Windows-client completion with explicit `/bot <name> ...` and the menu. Retain explicit
+targets for commands, console use and automation. Bind selection to the Bot's stable UUID and to the authenticated
+player, show the selected target clearly, recheck authorization on every action, clear selection on player logout,
+and report unavailable/deleted targets without silently selecting another Bot. Resolve syntax collisions with Bot
+names and lifecycle behavior before expanding the experiment. A useful menu may reduce the need for this feature;
+decide whether to keep it from the experiment's results.
 
 ## Deferred priorities
 

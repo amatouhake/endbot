@@ -112,12 +112,12 @@ it does not establish the other item or transport gates.
 
 The same check reported two form presentation issues. The `for` choice was last because it had been appended to the
 existing modes; the agreed order is now `once`, `for`, `continuous`, `interval`, `stop`. The screenshot showed `≈` as a
-missing glyph in the ticks label. The label now uses ASCII `20 = 1 second` and shorter wording. The revised order and
-label still need a visual recheck; the earlier successful command/menu behavior is recorded separately.
+missing glyph in the ticks label. The label now uses ASCII `20 = 1 second` and shorter wording. The user visually
+rechecked commit `d095b18` on the same Windows RakNet server and confirmed the revised order and label.
 
 ## Remaining human/broader gates
 
-- Visually recheck the reordered Use item choices and ASCII ticks label. Bow/food and other inventory rendering on
-  human clients, and trident rendering over NetherNet, remain separate from the confirmed RakNet trident case.
+- Bow/food and other inventory rendering on human clients, and trident rendering over NetherNet, remain separate
+  from the confirmed RakNet trident case and Use item form recheck.
 - Hunger-dependent food, charged-item effects/enchantments, tool breakage, low TPS, large NBT, other plugins and
   sustained many-Bot load remain broader checks. This change makes no new compatibility or Xbox achievement claim.

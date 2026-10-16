@@ -97,7 +97,7 @@ check on `29e782a` confirmed successful throwing, clearing of the held trident i
 
 ## Remaining gates
 
-- The reported trident hand-image persistence is confirmed resolved in the human Windows RakNet check. Other item
-  rendering and the latest form order/ASCII label still need their own confirmation.
+- The reported trident hand-image persistence is confirmed resolved in the human Windows RakNet check; the latest
+  form order/ASCII label was also confirmed on `d095b18`. Other item/transport rendering remains a separate check.
 - Broader item variants, shield behavior, other plugins, sustained multi-Bot traffic and pickup under low TPS remain
   separate checks; this is not a new Endstone/BDS compatibility or Xbox achievement claim.

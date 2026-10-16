@@ -86,6 +86,9 @@ CI/release-artifact baseline, so this smoke does not claim identical Linux/Windo
 
 ## Native-Windows runtime-correctness matrix (M2 primitives, 2026-09-21/22 JST)
 
+Historical record: the pickup-cache limitation below describes the previous pair and implementation. The later
+plugin-assisted read-only hotbar synchronization and current-pair results are in [inventory validation](INVENTORY_VALIDATION.md).
+
 Fresh native-Windows session on the previous pinned pair (patched Endstone `0.11.11+endbot.2`, official Windows BDS
 `1.26.51.1`, protocol `2193`, fresh vanilla Survival world, `online-mode=true`, `allow-cheats=false`, fresh runtime
 secrets on current local-bot defaults). One human client (normal Microsoft/Xbox login, single-XUID allowlist)

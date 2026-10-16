@@ -55,6 +55,32 @@ class PluginAdapterTests(unittest.TestCase):
         )
         cls.module = importlib.reload(importlib.import_module("endstone_endbot.plugin"))
 
+    def test_inventory_observations_only_go_to_local_bot_connections(self):
+        from unittest.mock import patch
+
+        plugin = self.module.EndbotPlugin()
+        local_bot = types.SimpleNamespace(xuid="")
+        human = types.SimpleNamespace(xuid="123456789")
+        plugin.server = types.SimpleNamespace(online_players=[human, local_bot])
+        with patch.object(self.module, "publish_hotbar") as publish:
+            plugin._publish_hotbars()
+        publish.assert_called_once_with(local_bot, plugin.server)
+
+    def test_inventory_observation_failure_does_not_skip_the_next_bot_or_spam_logs(self):
+        from unittest.mock import Mock, patch
+
+        plugin = self.module.EndbotPlugin()
+        bots = [types.SimpleNamespace(xuid=""), types.SimpleNamespace(xuid="")]
+        plugin.server = types.SimpleNamespace(online_players=bots)
+        plugin.logger = Mock()
+        with patch.object(
+            self.module, "publish_hotbar", side_effect=[ValueError("bad data"), None, ValueError("bad"), None]
+        ) as publish:
+            plugin._publish_hotbars()
+            plugin._publish_hotbars()
+        self.assertEqual(publish.call_count, 4)
+        plugin.logger.warning.assert_called_once()
+
     def test_metadata_registers_narrow_command_and_permission(self) -> None:
         plugin_class = self.module.EndbotPlugin
         self.assertEqual(plugin_class.api_version, "0.11")
@@ -125,9 +151,7 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertIn("/bot <name: string> (drop)<operation: EndbotDropOne>", usages)
         # Each no-argument operation is its own literal so the client lists it by name.
         for operation in ("status", "resume", "reconnect", "despawn", "forget", "stop"):
-            self.assertIn(
-                f"/bot <name: string> ({operation})<operation: Endbot{operation.capitalize()}>", usages
-            )
+            self.assertIn(f"/bot <name: string> ({operation})<operation: Endbot{operation.capitalize()}>", usages)
         self.assertFalse(any("EndbotNoArgs" in usage for usage in usages))
         self.assertTrue(any("EndbotDirection" in usage for usage in usages))
         self.assertTrue(any("EndbotActionMode" in usage and "once|continuous|stop" in usage for usage in usages))

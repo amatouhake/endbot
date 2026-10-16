@@ -17,6 +17,7 @@ from endstone_endbot.controller_requests import execute_request
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
 from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
 from endstone_endbot.form_adapter import FormPresenter
+from endstone_endbot.inventory_sync import publish_hotbar
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
@@ -153,6 +154,7 @@ class EndbotPlugin(Plugin):
         self._control_attachments = {}
         self._control_granted = {}
         self._authorization_versions = {}
+        self._inventory_warning = False
 
     def on_load(self) -> None:
         self.save_default_config()
@@ -214,6 +216,7 @@ class EndbotPlugin(Plugin):
             ),
         )
         self.server.scheduler.run_task(self, self._command_runner.poll, delay=4, period=4)
+        self.server.scheduler.run_task(self, self._publish_hotbars, delay=4, period=4)
         # The server console belongs to the operator who installed Endbot; it
         # gets the control permission directly. Operator players do not.
         self.server.command_sender.add_attachment(self, "endbot.command.control", True)
@@ -231,6 +234,19 @@ class EndbotPlugin(Plugin):
             self._server_thread = None
         self._control_attachments.clear()
         self._control_granted.clear()
+
+    def _publish_hotbars(self) -> None:
+        # online-mode guarantees normal humans have Xbox identities. Only
+        # local-auth Bot connections receive Endbot's private observation.
+        for player in self.server.online_players:
+            if str(player.xuid):
+                continue
+            try:
+                publish_hotbar(player, self.server)
+            except (RuntimeError, ValueError, TypeError) as error:
+                if not self._inventory_warning:
+                    self.logger.warning(f"Bot hotbar synchronization unavailable: {type(error).__name__}")
+                    self._inventory_warning = True
 
     @event_handler
     def on_player_join(self, event: PlayerJoinEvent) -> None:

@@ -143,8 +143,16 @@ def menu_argv(name: str | None = None) -> Argv:
 
 def bot_list_screen(view: BotListView) -> ActionScreen:
     items: list[Button | Header] = []
+    states = {
+        "online": "§aON",
+        "offline": "§7OFF",
+        "connecting": "§eJOIN",
+        "reconnecting": "§eRETRY",
+        "failed": "§cFAIL",
+    }
     for bot in view.bots:
-        items.append(Button(f"{bot['name']}\n[{bot['connectionState']}]", run(menu_argv(bot["name"]))))
+        state = states.get(bot["connectionState"], "§7?")
+        items.append(Button(f"{state}§r · {bot['name']}", run(menu_argv(bot["name"]))))
     items.append(Button("+ Spawn a new Bot here", Show(spawn_modal())))
     items.append(Button("Help (chat)", run(("help",))))
     content = "Pick a Bot to control." if view.bots else "No Bot profiles yet. Spawn one to start."
@@ -160,30 +168,57 @@ def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...
     name = view.name
     state = str(view.status.get("connectionState", ""))
     items: list[Button | Header] = []
+    back = Button("Back to Bot", run(menu_argv(name)))
+
+    def category(title, *buttons, content=""):
+        return Show(ActionScreen(f"{name}: {title}", content, (*buttons, back)))
+
     if state == "online":
-        items += [
-            Header("Movement"),
-            Button("Move...", Show(move_modal(name))),
-            Button("Look...", Show(look_modal(name, view.observed))),
-            Button("Sprint / sneak...", Show(flags_modal(name))),
-            Button("Stop everything", run((name, "stop"))),
-            Header("Actions"),
-            Button("Jump...", Show(action_modal(name, "jump"))),
-            Button("Attack...", Show(action_modal(name, "attack"))),
-            Button("Use item...", Show(action_modal(name, "use"))),
-            Button("Destroy blocks...", Show(destroy_modal(name))),
-            Header("Teleport"),
-        ]
+        teleport = []
         if caller:
-            items.append(Button("Teleport to me", run((name, "tp", shlex.quote(caller)))))
-        items += [
-            Button("Teleport...", Show(teleport_modal(name, tuple(p for p in players if p != name)))),
-            Header("Settings"),
-            Button("Hotbar slot...", Show(hotbar_modal(name))),
-            Button("Chunk radius...", Show(radius_modal(name, view.status))),
-            Header("Connection"),
-            Button("Reconnect", run((name, "reconnect"))),
-            Button("Despawn...", Show(despawn_confirm(name))),
+            teleport.append(Button("Teleport to me", run((name, "tp", shlex.quote(caller)))))
+        teleport.append(Button("Teleport...", Show(teleport_modal(name, tuple(p for p in players if p != name)))))
+        items = [
+            Button("Stop everything", run((name, "stop"))),
+            Button(
+                "Move / look...",
+                category(
+                    "movement",
+                    Button("Move...", Show(move_modal(name))),
+                    Button("Look...", Show(look_modal(name, view.observed))),
+                ),
+            ),
+            Button(
+                "Actions...",
+                category(
+                    "actions",
+                    Button("Jump...", Show(action_modal(name, "jump"))),
+                    Button("Attack...", Show(action_modal(name, "attack"))),
+                    Button("Use item...", Show(action_modal(name, "use"))),
+                    Button("Destroy blocks...", Show(destroy_modal(name))),
+                    Button("Drop item...", Show(drop_modal(name))),
+                ),
+            ),
+            Button("Teleport...", category("teleport", *teleport)),
+            Button(
+                "Settings...",
+                category(
+                    "settings",
+                    Button("Hotbar slot...", Show(hotbar_modal(name, view.status))),
+                    Button("Chunk radius...", Show(radius_modal(name, view.status))),
+                    Button("Sprint / sneak...", Show(flags_modal(name))),
+                ),
+            ),
+            Button(
+                "Connection...",
+                category(
+                    "connection",
+                    Button("Reconnect", run((name, "reconnect"))),
+                    Button("Despawn...", Show(despawn_confirm(name))),
+                    Button("Refresh", run(menu_argv(name))),
+                    content=view.summary,
+                ),
+            ),
         ]
     else:
         items += [
@@ -194,8 +229,18 @@ def bot_screen(view: BotView, caller: str | None = None, players: tuple[str, ...
         if state in {"connecting", "reconnecting"}:
             items.append(Button("Despawn...", Show(despawn_confirm(name))))
         items += [Header("Settings"), Button("Chunk radius...", Show(radius_modal(name, view.status)))]
-    items += [Button("Refresh", run(menu_argv(name))), Button("Back to Bot list", run(menu_argv()))]
-    return ActionScreen(f"Endbot: {name}", view.summary, tuple(items))
+        items.append(Button("Refresh", run(menu_argv(name))))
+    items.append(Button("Back to Bot list", run(menu_argv())))
+    content = view.summary
+    if state == "online":
+        content = "§aonline§r"
+        if view.observed:
+            observed = view.observed
+            content += f"\n{observed['dimension']} {observed['x']:.1f} {observed['y']:.1f} {observed['z']:.1f}"
+        mining = view.status.get("mining") or {}
+        if mining.get("continuous") or mining.get("state") == "active":
+            content += "\nMining: " + ("continuous" if mining.get("continuous") else "active")
+    return ActionScreen(f"Endbot: {name}", content, tuple(items))
 
 
 def spawn_modal() -> ModalScreen:
@@ -323,14 +368,26 @@ def teleport_modal(name: str, players: tuple[str, ...]) -> ModalScreen:
     )
 
 
-def hotbar_modal(name: str) -> ModalScreen:
+def hotbar_modal(name: str, status: dict | None = None) -> ModalScreen:
     slots = tuple(str(slot) for slot in range(1, 10))
 
     def build(values):
         (slot,) = values
         return ((name, "hotbar", _option(slots, slot)),)
 
-    return ModalScreen(f"{name}: hotbar", (StepSlider("Hotbar slot", slots),), build, "Select")
+    selected = (status or {}).get("selectedHotbarSlot", 1)
+    default = selected - 1 if isinstance(selected, int) and 1 <= selected <= 9 else 0
+    return ModalScreen(f"{name}: hotbar", (StepSlider("Hotbar slot", slots, default),), build, "Select")
+
+
+def drop_modal(name: str) -> ModalScreen:
+    options = ("one item", "whole stack")
+
+    def build(values):
+        choice = _option(options, values[0])
+        return ((name, "drop", "stack") if choice == "whole stack" else (name, "drop"),)
+
+    return ModalScreen(f"{name}: drop", (Dropdown("Amount from the selected hotbar slot", options),), build, "Drop")
 
 
 def radius_modal(name: str, status: dict) -> ModalScreen:

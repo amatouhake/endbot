@@ -13,7 +13,8 @@ Every command names its Bot; there is no selected-target state.
 /bot Alice despawn
 ```
 
-`/bot` and `/bot help` show help page 1. `/bot help <page>` (1-3) shows a paginated command summary modeled on
+For players, `/bot` opens the Bot list, just like `/bot menu`. At the server console, `/bot` still shows help page 1.
+`/bot help` always shows help page 1. `/bot help <page>` (1-3) shows a paginated command summary modeled on
 vanilla Bedrock `/help`, and `/bot help <operation>` (for example `/bot help move`) shows every supported
 syntax for that operation with a concise explanation. `/bot list` summarizes every known profile and
 its lifecycle state. `/bot Alice status` combines runtime state with authoritative dimension/position/rotation when the
@@ -63,26 +64,30 @@ observations to check the outcome. Connection lifecycle remains asynchronous (`c
 Players can run the common operations from native Bedrock forms instead of typing them:
 
 ```text
+/bot               -> Bot list (players); help page 1 (console)
 /bot menu          -> Bot list (name and connection state), plus "Spawn a new Bot here"
-/bot Alice menu    -> Alice's actions; the form text is the same line /bot Alice status prints
+/bot Alice menu    -> Alice's actions and compact state/position summary
 ```
 
-The Bot screen groups buttons into movement (move, look, sprint/sneak, stop), actions (jump, attack, use, destroy),
-teleport (to you, to an online player, or to coordinates), settings (hotbar slot, chunk radius) and connection
-(reconnect, despawn with a confirmation; resume or spawn here when offline). Buttons with `...` open an input form with
+The online Bot screen has six primary buttons: Stop everything, Move / look, Actions, Teleport, Settings and Connection,
+plus Back to Bot list. Category screens have at most six buttons including Back to Bot. Actions include jump, attack,
+use, destroy and drop (one item or a stack). Settings include hotbar, radius and sprint/sneak. Connection includes
+reconnect, despawn with a confirmation, refresh and the full status text. An offline Bot offers resume/spawn and radius.
+Bot list buttons put a colored `ON`, `OFF`, `JOIN`, `RETRY` or `FAIL` before the name on a single line so the state stays
+visible even if the client truncates a long name. Input forms use
 dropdowns, sliders and text fields; coordinate fields accept the same `~` forms as the command, and their labels say what
-`~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot menu` again to continue.
+`~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot` again to continue.
 
 Forms are only another way to type commands: every button or form submission becomes the equivalent `/bot` arguments
 (for example `/bot Alice attack interval 40`) and goes through the same permission check, command queue, parser and
 replies, so a typed command and a form submission always behave identically. A controller whose permission is revoked
 while a form is open gets the usual permission reply on submit. The server console cannot open forms (`/bot menu` replies
-with a pointer to `/bot help`). `spawn at ...`, `interact`, `rename`, `forget`, `drop`, `tp ... facing ...` and help
+with a pointer to `/bot help`). `spawn at ...`, `interact`, `rename`, `forget`, `tp ... facing ...` and help
 detail pages stay command-only.
 
 Unit tests cover screen contents, every form response mapping to parser-accepted arguments, malformed responses, and
 view delivery/revocation. Rendering and input on a real client are a manual check: on a normal Microsoft/Xbox client,
-open `/bot menu` and `/bot <name> menu`, submit each input form once, cancel the despawn confirmation, close forms with
+open `/bot`, `/bot menu` and `/bot <name> menu`, submit each input form once, cancel the despawn confirmation, close forms with
 Escape, and confirm a revoked controller cannot act from an already open form.
 
 ## Mining blocks
@@ -268,9 +273,15 @@ does not replay transitions from the previous transport.
 
 `hotbar` reports or changes the selected slot using human-facing 1–9 numbering. Selection is sent through the normal
 Bedrock equipment path and inventory updates continue to come from BDS; Endbot does not keep a second inventory.
-BDS does not push per-pickup inventory deltas to the picker, so items picked up from the world mid-session become
-visible to inventory-sensitive operations only after a reconnect (login full-sync), not instantly; `drop` against
-an unknown selected slot fails closed with `Selected hotbar slot is empty` instead of guessing.
+BDS does not push every pickup's inventory delta to the picker. The Endbot plugin therefore reads the nine actual BDS
+hotbar slots every four server ticks and sends a read-only observation over that Bot's existing connection. The runtime
+updates its transient cache, including counts and typed NBT, and re-announces a changed held item through normal Bedrock
+equipment packets. This makes same-session pickups usable by `hotbar`, `drop` and held-item actions without reconnecting,
+normally within four server ticks (about 0.2 seconds at 20 TPS). No item is added, removed or reassigned by the observer.
+`drop` still uses a normal BDS-validated transaction; the reply says requested, not completed. Fresh observations also
+correct an optimistic drop if BDS rejected it. Unknown/invalid observations are ignored as a whole; an unknown or empty
+selected slot still fails with `Selected hotbar slot is empty`. Without the matching plugin, reconnect remains the
+recovery for missing native deltas. See [pickup validation](INVENTORY_VALIDATION.md).
 
 `use continuous` holds right-click: its first input tick sends the initial air-use interaction, and later ticks send
 simulation-tick interactions in the same authoritative input stream. `use stop` or global `stop` releases it, for example

@@ -68,7 +68,7 @@ still require validation. See [validation](BOT_BEHAVIOR_VALIDATION.md).
 
 ## BOT-003: Fix held item use (right-click hold), including tridents and food
 
-Status: **Fix implemented — food/trident live smoke passed; broader item matrix open** (updated 2026-10-16 JST).
+Status: **Held use and timed release implemented — broader item/manual gates open** (updated 2026-10-16 JST).
 
 Bots reportedly cannot perform item actions that require holding right-click, including trident use and eating food.
 The intended `use continuous` / `use stop` interface exists, but its presence and the historical held-item use/release
@@ -89,16 +89,17 @@ handling. A relationship to the separate known pickup inventory-sync limitation 
 
 Implemented: air-use transactions packed into `PlayerAuthInput`, initial press versus held simulation ticks, explicit
 release, release before hotbar changes, and cleanup when BDS consumes/replaces the selected item. A Windows RakNet live
-run observed golden-apple consumption and a thrown-trident actor after release. Food with a hunger prerequisite, bow
-use, and item use after dimension changes remain open. The separate world-pickup cache limitation is addressed by BOT-007.
+run observed golden-apple consumption and a thrown-trident actor after release. Food with a hunger prerequisite and
+item use after dimension changes remain open; timed bow use is covered by the follow-up below. The separate
+world-pickup cache limitation is addressed by BOT-007.
 See [validation](BOT_BEHAVIOR_VALIDATION.md).
 
 Human Windows-client follow-up (2026-10-16 JST): charging with `use continuous` and releasing with `use stop` throws
 the trident, but its held-item image can remain until hotbar reselection; track that unresolved rendering issue under
-BOT-007. The two-command charge/release sequence is also a usability improvement candidate: consider a single action
-that holds for a specified duration and releases. Its syntax and timing are not decided or implemented. Any future
-shortcut must preserve the existing hold/stop controls, cancel safely on stop, hotbar change and disconnect, and be
-validated with both a trident and bow under normal BDS charge/release rules.
+BOT-007. The two-command charge/release sequence now has a one-command alternative: `use for <ticks>` holds for 1–72000
+input ticks and releases. The form exposes `for` and a ticks field. Stop releases early (and can fire a charged item),
+hotbar selection releases/cancels timed use, and death/dimension change/disconnect discard it. Existing modes remain.
+See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) for trident/bow/food evidence and human rendering gates.
 
 ## BOT-004: Change Bot control authorization while the server is running
 
@@ -194,13 +195,14 @@ still submit the same `/bot` arguments); confirmed on a normally authenticated h
 
 ## BOT-007: Synchronize picked-up hotbar items and held-item rendering
 
-Status: **Pickup synchronization implemented — live matrices passed; trident held-item rendering bug open**
+Status: **Equipment update fix and configurable synchronization implemented — human trident rendering recheck open**
 (2026-10-16 JST).
 
 Previously, a Bot could visibly hold a newly picked-up item while its runtime cache still considered the slot empty;
 `drop` then failed, and reconnect was needed. The older own-drop count/rendering fix did not address this pickup gap.
 
-The plugin now reads the nine BDS hotbar slots every four ticks on the server thread and publishes a bounded observation
+The plugin now reads the nine BDS hotbar slots at a configurable interval (four ticks by default) and publishes changed
+bounded observations plus periodic unchanged corrections (20 ticks by default)
 over each local Bot's existing connection. The runtime uses the server's item palette and preserves typed item NBT,
 updates its transient cache and re-announces changed held equipment. Native BDS transactions still perform drops/use;
 no item is inserted, reassigned or removed by synchronization. Endstone core patches and the lock are unchanged.
@@ -215,13 +217,15 @@ and a trident still in the Bot's hand. Reselecting with `hotbar 2` or another sl
 supports a missing equipment announcement; actual inventory duplication has not been established. An in-memory event
 replay also emptied the runtime's selected slot and held item without sending an empty-hand equipment announcement.
 The suspected path is a native inventory update changing the cache before the periodic snapshot: the snapshot then
-sees no difference and skips its equipment announcement. This remains a hypothesis for the live symptom, not a fix.
+sees no difference and skips its equipment announcement. At report time this was a hypothesis for the live symptom;
+the implementation follow-up is below.
 
-Next work: ensure selected-slot changes from native updates and periodic observations also converge the equipment
-shown to observers, without repeated packet spam. Add a regression for a native selected-slot update followed by an
-identical snapshot, then verify a real throw with a human observer and BDS inventory/projectile observations. Also
-check consumption, tool breakage, hotbar reselection and ordinary drop/rejected-drop behavior. Details and evidence
-limits are in [inventory validation](INVENTORY_VALIDATION.md#human-windows-client-trident-follow-up-2026-10-16-jst).
+Implemented follow-up: native selected-slot updates and periodic observations share an equipment announcer that
+compares against the last announcement, separately from the inventory cache. Regressions cover native-empty updates
+followed by identical snapshots, counts, nonselected slots and explicit reselection. Configurable read/resend intervals,
+change-only sending between corrections and cached block palette lookups reduce avoidable work. Actual human rendering
+after a throw, tool breakage and multi-Bot load remain gates. See [the new validation record](ITEM_USE_SYNC_VALIDATION.md)
+and [the original report](INVENTORY_VALIDATION.md#human-windows-client-trident-follow-up-2026-10-16-jst).
 
 ## BOT-008: Experiment with a selected-Bot command context
 
@@ -251,6 +255,12 @@ decide whether to keep it from the experiment's results.
 
 ## Deferred priorities
 
+- Generalize `for <ticks>` as an execution-duration suffix for other actions (attack, jump, movement and `destroy`),
+  distinct from `interval <ticks>` as repetition spacing. Only `use for <ticks>` is implemented now. Future examples
+  include `move forward for 40`, `jump interval 20 for 100` and `destroy continuous for 200`; these are not supported
+  commands. Specify single-block versus continuous mining termination, replacement/stop behavior and affected inputs
+  before implementation. Repeated charge/release shots need separate hold duration and repetition spacing; existing
+  `use interval` remains repeated short presses. Item-count/completion conditions are separate from duration.
 - Command completion redesign remains dependent on a suitable upstream Endstone API and is lower priority while the
   menu provides a practical control surface; revisit its need after menu feedback.
 - Vanilla sneak edge protection remains deferred as client collision/edge simulation work; it is not part of the

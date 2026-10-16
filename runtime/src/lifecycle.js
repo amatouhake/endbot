@@ -214,9 +214,9 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
-  action (name, action, mode, intervalTicks) {
+  action (name, action, mode, intervalTicks, durationTicks) {
     const { profile, state } = this.#requireOnline(name)
-    state.inputs.setAction(action, mode, intervalTicks)
+    state.inputs.setAction(action, mode, intervalTicks, durationTicks)
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }

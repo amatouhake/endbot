@@ -5,8 +5,9 @@ Source changes on Endstone `0.11.13+endbot.1`, official Windows BDS `1.26.52.3` 
 
 ## Implementation
 
-The plugin reads all nine BDS hotbar slots on the server thread every four ticks and sends a bounded, UUID-scoped
-observation over the local Bot's existing connection using public `Player.send_packet`. The `script_custom_event`
+The plugin reads all nine BDS hotbar slots at a configurable interval (four ticks by default) and sends changed
+observations plus periodic unchanged corrections (20 ticks by default). Each bounded, UUID-scoped
+observation is sent over the local Bot's existing connection using public `Player.send_packet`. The `script_custom_event`
 envelope is a protocol-2193 pair of strings, not execution of scripts or an experimental/Beta API. The runtime resolves
 item identifiers through that connection's server item registry, preserves typed NBT and updates its transient cache.
 Block runtime IDs are observed through public `create_block_data`. No inventory assignment, item creation or removal
@@ -90,10 +91,9 @@ announcement. This explains a possible path to the live symptom; the replay did 
 the actual packet order of the reported throw. Hotbar reselection explicitly sends equipment, consistent with the
 reported visual recovery.
 
-No fix is included in this record. BOT-007 remains open for selected-slot equipment synchronization, regression
-coverage for native-update/snapshot ordering, and a real throw observed by a human alongside BDS inventory/projectile
-state. BOT-003 also records the separate usability idea of a single timed charge/release action; existing throwing
-currently requires the two commands above.
+This original report preceded the equipment update fix and the `use for <ticks>` addition. The later implementation
+and server-side validation are in [the follow-up record](ITEM_USE_SYNC_VALIDATION.md); human rendering still needs
+a recheck alongside BDS inventory/projectile state.
 
 ## Remaining gates
 

@@ -2,7 +2,15 @@ import json
 import unittest
 from types import SimpleNamespace
 
-from endstone_endbot.inventory_sync import EVENT_NAME, PACKET_ID, hotbar_snapshot, publish_hotbar, typed_nbt
+from endstone_endbot.inventory_sync import (
+    EVENT_NAME,
+    PACKET_ID,
+    HotbarPublisher,
+    hotbar_snapshot,
+    publish_hotbar,
+    sync_settings,
+    typed_nbt,
+)
 
 
 def tag(kind, value):
@@ -34,6 +42,38 @@ def string_at(payload, offset=0):
 
 
 class InventorySyncTests(unittest.TestCase):
+    def test_changes_send_immediately_and_unchanged_state_is_resent_for_rejected_actions(self):
+        from unittest.mock import Mock
+
+        item = SimpleNamespace(type=SimpleNamespace(id="minecraft:apple"), amount=5, data=0, nbt=CompoundTag())
+        player = SimpleNamespace(
+            unique_id="bot",
+            inventory=SimpleNamespace(get_item=lambda slot: item if slot == 0 else None),
+            send_packet=Mock(),
+        )
+        server = SimpleNamespace(create_block_data=Mock(side_effect=ValueError("not a block")))
+        publisher = HotbarPublisher(20)
+        self.assertTrue(publisher.publish(player, server, 4))
+        for tick in range(8, 24, 4):
+            self.assertFalse(publisher.publish(player, server, tick))
+        self.assertTrue(publisher.publish(player, server, 24))
+        item.amount = 4
+        self.assertTrue(publisher.publish(player, server, 28))
+        self.assertEqual(player.send_packet.call_count, 3)
+        server.create_block_data.assert_called_once_with("minecraft:apple")
+        publisher.retain(set())
+        self.assertEqual(publisher.previous, {})
+        self.assertTrue(publisher.publish(player, server, 32))
+
+    def test_sync_settings_validate_manual_plugin_installs(self):
+        self.assertEqual(sync_settings({}), (4, 20))
+        self.assertEqual(sync_settings({"hotbar-sync-interval-ticks": 10}), (10, 20))
+        for key, maximum in (("hotbar-sync-interval-ticks", 1200), ("hotbar-sync-resend-ticks", 72000)):
+            self.assertIn(maximum, sync_settings({key: maximum}))
+            for value in (0, maximum + 1, True, "4", 4.5):
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, key):
+                    sync_settings({key: value})
+
     def test_snapshot_is_read_only_and_packet_preserves_unicode_nbt_and_counts(self):
         nbt = CompoundTag(
             {

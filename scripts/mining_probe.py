@@ -424,7 +424,7 @@ def exercise_inventory(output: Path, console, control, wait, report):
                 lambda: state().get("canceled_drops", 0) == 1,
                 10,
             )
-            time.sleep(0.6)
+            time.sleep(1.2)  # Include the default unchanged-state resend after a rejected prediction.
             if state()["hotbar"][slot]["count"] != amount or state().get("dropped"):
                 raise RuntimeError(
                     "Canceled drop changed BDS inventory or created loot"

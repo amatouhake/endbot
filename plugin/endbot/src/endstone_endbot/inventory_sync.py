@@ -53,7 +53,7 @@ def _string(value: str) -> bytes:
     return bytes(prefix) + data
 
 
-def hotbar_snapshot(player, server) -> dict:
+def hotbar_snapshot(player, server, block_ids: dict | None = None) -> dict:
     inventory = player.inventory
     slots = []
     for slot in range(9):
@@ -64,10 +64,17 @@ def hotbar_snapshot(player, server) -> dict:
         name = item.type.id
         # Modern vanilla block items have their own identifier. BlockData is
         # an observation of the server palette, never a placed/edited block.
-        try:
-            block_id = int(server.create_block_data(name).runtime_id)
-        except (RuntimeError, ValueError):
-            block_id = 0  # Non-block item.
+        if block_ids is not None and name in block_ids:
+            block_id = block_ids[name]
+        else:
+            try:
+                block_id = int(server.create_block_data(name).runtime_id)
+            except (RuntimeError, ValueError):
+                block_id = 0  # Non-block item.
+            if block_ids is not None:
+                if len(block_ids) >= 4096:
+                    block_ids.clear()
+                block_ids[name] = block_id
         slots.append(
             {
                 "name": name,
@@ -81,8 +88,47 @@ def hotbar_snapshot(player, server) -> dict:
 
 
 def publish_hotbar(player, server) -> None:
-    data = json.dumps(hotbar_snapshot(player, server), separators=(",", ":"), allow_nan=False)
+    player.send_packet(PACKET_ID, _payload(hotbar_snapshot(player, server)))
+
+
+def _payload(snapshot) -> bytes:
+    data = json.dumps(snapshot, separators=(",", ":"), allow_nan=False)
     payload = _string(EVENT_NAME) + _string(data)
     if len(payload) > MAX_PAYLOAD:
         raise ValueError("Bot hotbar observation exceeds the packet limit")
-    player.send_packet(PACKET_ID, payload)
+    return payload
+
+
+def sync_settings(config) -> tuple[int, int]:
+    values = []
+    for key, default, maximum in (
+        ("hotbar-sync-interval-ticks", 4, 1200),
+        ("hotbar-sync-resend-ticks", 20, 72000),
+    ):
+        value = config.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= maximum:
+            raise ValueError(f"runtime.{key} must be an integer from 1 to {maximum}")
+        values.append(value)
+    return tuple(values)
+
+
+class HotbarPublisher:
+    """Send changes and periodic corrections, retaining only online Bot state."""
+
+    def __init__(self, resend_ticks: int = 20):
+        self.resend_ticks = resend_ticks
+        self.previous = {}
+        self.block_ids = {}
+
+    def publish(self, player, server, tick: int) -> bool:
+        identity = str(player.unique_id)
+        payload = _payload(hotbar_snapshot(player, server, self.block_ids))
+        previous = self.previous.get(identity)
+        if previous is not None and payload == previous[0] and tick - previous[1] < self.resend_ticks:
+            return False
+        player.send_packet(PACKET_ID, payload)
+        self.previous[identity] = (payload, tick)
+        return True
+
+    def retain(self, identities: set[str]) -> None:
+        self.previous = {key: value for key, value in self.previous.items() if key in identities}

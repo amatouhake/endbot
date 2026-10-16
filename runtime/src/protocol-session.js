@@ -37,6 +37,7 @@ export class BedrockSession extends EventEmitter {
     this.inputs = undefined
     this.disconnecting = false
     this.heldItem = EMPTY_ITEM
+    this.announcedEquipment = undefined
     this.hotbarSlot = 0
     this.inventory = []
     this.itemPalette = new Map()
@@ -137,6 +138,7 @@ export class BedrockSession extends EventEmitter {
         settled = true
         this.client.off('close', closed)
         this.spawned = true
+        this.#announceHeldItem()
         this.#requestChunks()
         this.client.queue('serverbound_loading_screen', { type: 2 })
         this.timer = setInterval(() => {
@@ -157,8 +159,12 @@ export class BedrockSession extends EventEmitter {
     if (firstAttachment && this.authoritativeLook) {
       inputs.setLook(this.authoritativeLook.yaw, this.authoritativeLook.pitch)
     }
-    const useMode = inputs.actionMode('use')
-    if (this.activeItemUse && useMode !== this.activeItemUse.mode) this.#releaseItemUse()
+    if (this.activeItemUse) {
+      const changed = inputs.actionRevision('use') !== this.activeItemUse.revision
+      if (inputs.actionMode('use') !== this.activeItemUse.mode ||
+          (changed && (this.activeItemUse.timed || inputs.hasTimedUse()))) this.#releaseItemUse()
+      else this.activeItemUse.revision = inputs.actionRevision('use')
+    }
   }
 
   selectedHotbarSlot () { return this.hotbarSlot }
@@ -287,16 +293,11 @@ export class BedrockSession extends EventEmitter {
     if (!Number.isSafeInteger(slot) || slot < 0 || slot > 8) throw new Error('Hotbar slot must be from 1 to 9')
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
     this.#restartMining()
+    this.inputs?.cancelTimedUse()
     this.#releaseItemUse()
     this.hotbarSlot = slot
     this.#selectHeldItem()
-    this.client.queue('mob_equipment', {
-      runtime_entity_id: this.client.entityId,
-      item: this.heldItem,
-      slot,
-      selected_slot: slot,
-      window_id: 'inventory'
-    })
+    this.#announceHeldItem(true)
   }
 
   interactBlock ({ blockPosition, blockRuntimeId, face }) {
@@ -346,6 +347,7 @@ export class BedrockSession extends EventEmitter {
   }
 
   disconnect (reason = 'Endbot disconnect') {
+    this.inputs?.cancelTimedUse()
     if (this.disconnectPromise) return this.disconnectPromise
     this.stopMining('disconnected')
     if (this.pendingBlockActions.length && this.client?.status === 4 && !this.transportClosed) this.#sendTick()
@@ -396,19 +398,12 @@ export class BedrockSession extends EventEmitter {
       if (packet.event_name !== INVENTORY_EVENT || !this.spawned || this.disconnecting || this.transportClosed) return
       try {
         const slots = decodeHotbar(packet.event_data, this.profile.identityId, this.itemPalette)
-        let heldChanged = false
         for (let slot = 0; slot < slots.length; slot++) {
           if (sameItem(this.inventory[slot], slots[slot])) continue
           this.inventory[slot] = slots[slot]
-          if (slot === this.hotbarSlot) heldChanged = true
         }
-        if (heldChanged) {
-          this.#selectHeldItem()
-          // BDS supplies the actual stack; the normal equipment path updates
-          // observers too, including an emptied or newly picked-up hand.
-          this.client.queue('mob_equipment', { runtime_entity_id: this.client.entityId,
-            item: this.heldItem, slot: this.hotbarSlot, selected_slot: this.hotbarSlot, window_id: 'inventory' })
-        }
+        this.#selectHeldItem()
+        this.#announceHeldItem()
       } catch {
         // Partial/unknown observations never replace a good native cache.
       }
@@ -431,6 +426,7 @@ export class BedrockSession extends EventEmitter {
       this.client.queue('serverbound_loading_screen', { type: 1 })
     })
     this.client.on('change_dimension', packet => {
+      this.inputs?.cancelTimedUse()
       this.stopMining('dimension changed', 'canceled', true, true)
       // Discard all old-dimension prediction/targets before acknowledging the
       // transition. Otherwise BDS keeps waiting while we send the old position.
@@ -531,21 +527,27 @@ export class BedrockSession extends EventEmitter {
       if (!this.#isPlayerInventory(packet.window_id)) return
       this.inventory = packet.input
       this.#selectHeldItem()
+      this.#announceHeldItem()
     })
     this.client.on('inventory_slot', packet => {
       if (!this.#isPlayerInventory(packet.window_id)) return
       this.inventory[packet.slot] = packet.item
-      if (packet.slot === this.hotbarSlot) this.#selectHeldItem()
+      if (packet.slot === this.hotbarSlot) {
+        this.#selectHeldItem()
+        this.#announceHeldItem()
+      }
     })
     this.client.on('player_hotbar', packet => {
       if (!this.#isPlayerInventory(packet.window_id)) return
       this.hotbarSlot = packet.selected_slot
       this.#selectHeldItem()
+      this.#announceHeldItem()
     })
     this.client.on('mob_equipment', packet => {
       if (String(packet.runtime_entity_id) !== String(this.client.entityId)) return
       this.hotbarSlot = packet.selected_slot
       this.#setHeldItem(packet.item)
+      this.#announceHeldItem()
     })
     this.client.on('set_health', packet => {
       if (Number(packet.health) <= 0) this.#requestRespawn()
@@ -635,6 +637,8 @@ export class BedrockSession extends EventEmitter {
     }
     if (this.activeItemUse && this.releaseItemUseNextTick) this.#releaseItemUse()
     const state = this.inputs.step()
+    if (this.activeItemUse?.mode === 'continuous' &&
+        this.inputs.actionRevision('use') !== this.activeItemUse.revision) this.#releaseItemUse()
     const previous = vector(this.position)
     const move = { x: 0, z: 0 }
     if (state.movement === 'forward') move.z = 1
@@ -694,7 +698,8 @@ export class BedrockSession extends EventEmitter {
     if (state.triggered.includes('use') && !this.activeItemUse && hasUsableHeldItem(this.heldItem)) {
       const mode = this.inputs.actionMode('use') ?? 'once'
       // Block interaction and air use share one packed transaction per tick.
-      this.activeItemUse = { hotbarSlot: this.hotbarSlot, heldItem: this.heldItem, mode, starting: true }
+      this.activeItemUse = { hotbarSlot: this.hotbarSlot, heldItem: this.heldItem, mode,
+        revision: this.inputs.actionRevision('use'), timed: this.inputs.hasTimedUse(), starting: true }
     }
     if (this.activeItemUse && !transaction) {
       if (this.activeItemUse.starting) inputData.push('start_using_item')
@@ -793,6 +798,17 @@ export class BedrockSession extends EventEmitter {
     this.#setHeldItem(this.inventory[this.hotbarSlot] ?? EMPTY_ITEM)
   }
 
+  #announceHeldItem (force = false) {
+    if (!this.spawned || this.disconnecting || this.transportClosed || this.client?.status !== 4) return
+    const previous = this.announcedEquipment
+    if (!force && previous?.slot === this.hotbarSlot && sameItem(previous.item, this.heldItem)) return
+    // Track what observers were told separately from the inventory cache.
+    // Native deltas can arrive before an identical plugin observation.
+    this.client.queue('mob_equipment', { runtime_entity_id: this.client.entityId,
+      item: this.heldItem, slot: this.hotbarSlot, selected_slot: this.hotbarSlot, window_id: 'inventory' })
+    this.announcedEquipment = { slot: this.hotbarSlot, item: structuredClone(this.heldItem) }
+  }
+
   #setHeldItem (item) {
     // Pickups into an empty selected slot and broken tools change the held item;
     // BDS restarts break progress for a new tool, so the runtime does too.
@@ -806,6 +822,8 @@ export class BedrockSession extends EventEmitter {
       // the stale stack; continuous mode may start the current item next tick.
       this.activeItemUse = undefined
       this.releaseItemUseNextTick = false
+      if (use.hotbarSlot !== this.hotbarSlot || !hasUsableHeldItem(item) ||
+          use.heldItem.network_id !== item.network_id) this.inputs?.cancelTimedUse()
     } else {
       use.heldItem = item
     }

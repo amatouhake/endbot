@@ -53,6 +53,8 @@ gamertags = ["ExampleTag"] # Xbox GamerTags allowed to control Bots; bound to XU
 [runtime]
 control-port = 19142       # loopback only
 chunk-radius = 5           # requested Bot chunk radius, integer 2..32
+hotbar-sync-interval-ticks = 4  # server-side hotbar reads, integer 1..1200
+hotbar-sync-resend-ticks = 20   # unchanged corrections, integer 1..72000
 ```
 
 `[runtime].chunk-radius` defaults to 5 chunks when omitted (previously the protocol library requested 10).
@@ -65,6 +67,19 @@ Endbot requests that Bot's chosen radius at spawn, reconnect, and dimension chan
 This controls the Bot client's requested chunk range; it does not change BDS `view-distance` or `tick-distance` and does
 not guarantee that chunks loaded by other players or server systems will be unloaded.
 On the tested BDS baseline, a request for 3 chunks was raised to 5; the default follows that observed effective range.
+
+`hotbar-sync-interval-ticks` controls how often the plugin reads each online Bot's nine hotbar slots on the server
+thread. `hotbar-sync-resend-ticks` controls periodic unchanged-state corrections; changes are sent at the next read.
+Both settings are shared across Bots, default to 4/20 when omitted, and apply after a server restart. Managed instances
+generate them into the plugin config; manual plugin installs use the same keys under `[runtime]` there.
+Resends happen only at reads, so their spacing rounds up to a multiple of the read interval (and is never shorter than
+one read interval). At 20 TPS, 4 ticks is about 0.2 seconds and 20 ticks about one second; low TPS increases wall time.
+
+Longer read intervals reduce SDK/NBT/JSON work but delay recognizing pickups. Longer resend intervals reduce unchanged
+packets but can delay correcting a predicted drop rejected by BDS, whose inventory then stayed unchanged. Neither
+setting disables native inventory/equipment updates. Unchanged observations are suppressed between resends and block
+palette lookups are cached; all nine slots and item NBT are still read on every scheduled scan. There is no automatic
+load adjustment or per-Bot override. See [measured scope and limits](ITEM_USE_SYNC_VALIDATION.md).
 
 Generated on every `endbot start` (overwritten, never hand-edited):
 

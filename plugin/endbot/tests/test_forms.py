@@ -151,6 +151,7 @@ class ScreenTests(unittest.TestCase):
             ("Attack...", (2, " 40 "), [("Alice", "attack", "interval", "40")]),
             ("Use item...", (1, ""), [("Alice", "use", "continuous")]),
             ("Use item...", (3, "20"), [("Alice", "use", "stop")]),
+            ("Use item...", (4, " 30 "), [("Alice", "use", "for", "30")]),
             ("Destroy blocks...", (1, "", 0), [("Alice", "destroy", "continuous")]),
             ("Destroy blocks...", (2, "", 0), [("Alice", "destroy", "stop")]),
             ("Destroy blocks...", (3, "~ ~-1 ~", 0), [("Alice", "destroy", "~", "~-1", "~")]),

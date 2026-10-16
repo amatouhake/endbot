@@ -325,16 +325,27 @@ def flags_modal(name: str) -> ModalScreen:
 
 
 def action_modal(name: str, action: str) -> ModalScreen:
+    modes = (*ACTION_MODES, "for") if action == "use" else ACTION_MODES
+
     def build(values):
         mode_value, ticks = values
-        mode = _option(ACTION_MODES, mode_value)
-        if mode == "interval":
-            return ((name, action, "interval", _text(ticks) or "20"),)
+        mode = _option(modes, mode_value)
+        if mode in {"interval", "for"}:
+            return ((name, action, mode, _text(ticks) or "20"),)
         return ((name, action, mode),)
 
     return ModalScreen(
         f"{name}: {action}",
-        (Dropdown("Mode", ACTION_MODES), TextInput("Interval ticks (interval mode only; 20 = 1 second)", "20", "20")),
+        (
+            Dropdown("Mode (for = hold, then release)" if action == "use" else "Mode", modes),
+            TextInput(
+                "Ticks (interval = spacing; for = hold duration; 20 ≈ 1 second)"
+                if action == "use"
+                else "Interval ticks (interval mode only; 20 = 1 second)",
+                "20",
+                "20",
+            ),
+        ),
         build,
         "Start" if action != "jump" else "Jump",
     )

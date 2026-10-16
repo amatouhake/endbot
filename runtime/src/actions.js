@@ -8,6 +8,7 @@ export class InputState {
   constructor () {
     this.tick = 0
     this.actions = new Map()
+    this.actionSequence = 0
     this.movement = undefined
     this.sprint = false
     this.sneak = false
@@ -16,9 +17,13 @@ export class InputState {
     this.pitch = 0
   }
 
-  setAction (action, mode = 'once', intervalTicks = undefined) {
+  setAction (action, mode = 'once', intervalTicks = undefined, durationTicks = undefined) {
     if (!ACTIONS.has(action)) throw new Error(`Unsupported action: ${action}`)
     if (!['once', 'continuous', 'interval', 'stop'].includes(mode)) throw new Error(`Unsupported action mode: ${mode}`)
+    if (durationTicks !== undefined && (action !== 'use' || mode !== 'continuous' ||
+        !Number.isSafeInteger(durationTicks) || durationTicks < 1 || durationTicks > 72_000)) {
+      throw new Error('Duration requires use continuous and an integer from 1 to 72000 ticks')
+    }
     if (mode === 'stop') {
       this.actions.delete(action)
       return
@@ -28,11 +33,20 @@ export class InputState {
       throw new Error('Action interval must be between 1 and 72000 ticks')
     }
     if (mode === 'interval' && interval < 1) throw new Error('Action interval must be at least one tick')
-    this.actions.set(action, { mode, interval, nextTick: this.tick + 1 })
+    this.actions.set(action, { mode, interval, nextTick: this.tick + 1, revision: ++this.actionSequence,
+      ...(durationTicks === undefined ? {} : { endTick: this.tick + durationTicks + 1 }) })
   }
 
   actionMode (action) {
     return this.actions.get(action)?.mode
+  }
+
+  actionRevision (action) { return this.actions.get(action)?.revision }
+
+  hasTimedUse () { return this.actions.get('use')?.endTick !== undefined }
+
+  cancelTimedUse () {
+    if (this.hasTimedUse()) this.actions.delete('use')
   }
 
   setMovement (direction) {
@@ -77,6 +91,10 @@ export class InputState {
     this.tick += 1
     const triggered = []
     for (const [action, state] of this.actions) {
+      if (state.endTick !== undefined && this.tick >= state.endTick) {
+        this.actions.delete(action)
+        continue
+      }
       if (this.tick < state.nextTick) continue
       triggered.push(action)
       if (state.mode === 'once') this.actions.delete(action)
@@ -100,7 +118,10 @@ export class InputState {
       sprint: this.sprint,
       sneak: this.sneak,
       look: { yaw: this.yaw, pitch: this.pitch },
-      actions: Object.fromEntries([...this.actions].map(([name, state]) => [name, { mode: state.mode, intervalTicks: state.interval || null }]))
+      actions: Object.fromEntries([...this.actions].map(([name, state]) => [name, {
+        mode: state.mode, intervalTicks: state.interval || null,
+        ...(state.endTick === undefined ? {} : { remainingTicks: state.endTick - this.tick - 1 })
+      }]))
     }
   }
 }

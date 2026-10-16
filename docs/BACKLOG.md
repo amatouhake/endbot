@@ -268,9 +268,10 @@ decide whether to keep it from the experiment's results.
   `jump interval 20 for 60` each jumped three times. This is expected: a jump trigger while the Bot is still airborne
   (a jump lasts about 12 ticks) does not start a new jump, so interval 10 cannot jump more often than landing allows.
   The remaining command checks (bow/trident `hold`, `destroy for`, status) were not reached. The form check stopped
-  when in-game night made the world hard to inspect, but the operator judged the new For/Hold fields and the Move for
-  form as visibly bolted on and hard to understand. Redesign the action forms around the duration/hold grammar before
-  treating the form surface as done; the command grammar itself is unaffected.
+  when in-game night made the world hard to inspect, but the operator judged the added For/Hold fields and Move for
+  form as visibly bolted on and hard to understand, so they were removed from this change. The forms will be
+  redesigned separately: seconds and sliders instead of ticks, a mode choice followed by only the fields it needs,
+  charged shots by count, and one Walk form for direction, duration and sprint/sneak.
 - Command completion redesign remains dependent on a suitable upstream Endstone API and is lower priority while the
   menu provides a practical control surface; revisit its need after menu feedback.
 - Vanilla sneak edge protection remains deferred as client collision/edge simulation work; it is not part of the

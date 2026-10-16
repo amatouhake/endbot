@@ -72,8 +72,7 @@ Players can run the common operations from native Bedrock forms instead of typin
 
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
-Movement (forward, backward, left, right, stop moving, move for, sprint / sneak), Look, Teleport,
-Gameplay (jump, attack, use item, destroy),
+Movement (forward, backward, left, right, stop moving, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy),
 Inventory (hotbar, drop) and Bot (reconnect, despawn with a confirmation, radius and the full status text). Group names
 follow Minecraft's control settings. An offline Bot offers resume/spawn and radius.
 Input forms use dropdowns, sliders and text fields; closing one (or cancelling the despawn confirmation) returns to the screen it was opened from; coordinate fields accept the same `~` forms as the command, and their
@@ -352,9 +351,8 @@ arrives mid-charge releases at once, which may fire a partly charged item; choos
 avoid it. Like timed use, holds are canceled by hotbar selection, a changed or empty held item, dimension change,
 death and disconnect, and they never resume after reconnect. Each release confirms an input only, not a shot.
 
-The Jump, Attack and Use item forms have an optional For field (blank means until stopped; with the default `once`
-mode it means continuous for that long) and Use item adds an optional Hold field. Movement has a Move for form, and
-Destroy blocks has a For field for continuous mining. See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and
+The forms do not offer `for` or `hold` yet, except the existing Use item `for` mode (one timed hold); a form
+redesign around seconds, per-mode steps and charged-shot counts is separate work. See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and
 [the backlog](BACKLOG.md).
 
 `use` means using or holding the selected item in the air, such as food, a bow, or a trident. `interact` is a normal

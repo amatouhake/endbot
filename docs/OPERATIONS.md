@@ -317,6 +317,10 @@ a world the newer one has saved.
 Updating from 0.2.1 to 0.3.0 keeps Endstone `0.11.13+endbot.1`, BDS `1.26.52.3` and protocol `2193`, so no BDS update
 runs. An existing `endbot.toml` without `[ui]` keeps working and uses `language = "auto"`.
 
+Updating from 0.3.0 to 0.3.1 changes only Endbot plugin/runtime/CLI code and versions: `destroy count <blocks>` is
+added to continuous mining, and `for` and `count` can be combined. Endstone `0.11.13+endbot.1`, BDS `1.26.52.3`
+and protocol `2193` remain pinned; no BDS/world format migration is needed.
+
 ## 7. Doctor
 
 `endbot doctor` reports, without changing anything:

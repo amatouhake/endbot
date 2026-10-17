@@ -265,16 +265,36 @@ dependencies are unchanged from 0.2.1, so no compatibility gate is required. The
 - [x] Publish the draft unchanged, then re-verify checksums from the published assets. (2026-10-16: tag `v0.3.0`
   = `23d9f7f`; every published asset matches the candidate `SHA256SUMS`; both bundle attestations verified)
 
+### 0.3.1 release — count-limited continuous mining (decided 2026-10-17)
+
+Scope: [PR #66](https://github.com/amatouhake/endbot/pull/66) only, plus required version and
+release documentation updates. Adds `destroy [continuous] count <blocks>` (1..72000),
+combinable with `for <ticks>`; runtime tracks completed watched block changes and
+reports the finishing count. The caveat that this is not strict Bot-owned
+`BlockBreakEvent` attribution is documented. No Group, Macro, installer or
+new Endstone/BDS compatibility changes in this release.
+
+- [ ] Build `release-candidate.yml` for `0.3.1` from the release-prepared `main`
+  commit; all Windows/Linux wheel, bundle and clean-consumer jobs must pass.
+- [ ] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.3.1`
+  release; verify attestations/checksums and the immutable source commit.
+- [ ] Carry forward the PR #66 RakNet/NetherNet Survival mining smoke evidence;
+  document explicitly that the human Windows-client check on the final release
+  artifact is a separate gate if not performed.
+- [ ] Publish the tested draft unchanged, then verify published asset checksums
+  and provenance. Do not treat package version bump alone as publication.
+
 ### After 0.1.0 (direction)
 
 - 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).
 - 0.3.0: gameplay controls, forms and Japanese text on the 0.2.1 baseline (above).
-- 0.4.0: a runtime-download installer becomes the primary distribution. The
-  release then carries only Endbot's own artifacts (patched Endstone wheel,
-  plugin, CLI, runtime source; about 25 MB on Windows and 50 MB on Linux), and
-  the installer fetches CPython, Node.js, and third-party packages from their
-  official sources with pinned hashes, so no third-party binary is
-  redistributed by this project.
+- 0.3.1: `destroy count <blocks>` patch release on the same pinned Endstone/BDS pair.
+- 0.4.0: scope to be determined after the 0.3.1 release.
+- Runtime-download installer: version **TBD**, no longer a required 0.4.0 feature.
+  Keep the existing managed operator bundles and setup/update workflow until the
+  alternative distribution is designed and validated. A future installer may
+  download official CPython/Node.js/packages with pinned hashes, but this is not
+  committed to a release number.
 
 ## Explicitly deferred (recorded, not blocking 0.1.0)
 

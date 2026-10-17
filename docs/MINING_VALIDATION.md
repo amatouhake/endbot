@@ -4,8 +4,8 @@
 > other operations no longer end mining.
 > The first observation list below used the old name and stop rules; the re-validation section covers the current
 > behavior.
-> **Note (2026-10-17):** `destroy ... for <ticks>`/`count <blocks>` limits and the `count <blocks>` stop are not
-> covered by the runs below; the block-count end still needs a real-server check.
+> **Note (2026-10-17):** the `count <blocks>` stop and the `for`/`count` combination were added after the runs above;
+> see the block-count re-validation section at the end.
 
 Implementation uses packed `start_break` and `abort_break` actions in `PlayerAuthInput` (one `start_break` per block;
 BDS tracks progress itself), following
@@ -152,3 +152,26 @@ are not full passes. Neither an automated build nor the prepared fixture world e
 eligibility/unlocks. A human client over NetherNet, underwater/effects/enchantments, partial block shapes, tool breakage and
 broader multi-player protection-plugin combinations remain separate validation gates. World history is inspected only
 as scoped evidence, with no new Endstone/BDS compatibility claim.
+
+## Block-count limits re-validation (2026-10-17 JST, RakNet)
+
+Real Windows RakNet run on Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, build `51798905`, fresh Survival world
+(`online-mode=true`, `allow-cheats=false`, `allow-list=true`, no experiments), `scripts/raknet_spike.py --mining` on
+the `feat/destroy-count` tree (report `ok`, stage `complete`):
+
+- `destroy count 3` on a prepared five-block stone row (iron pickaxe) ended with
+  `destroy continuous stopped: block count reached`; exactly three Bot-owned `BlockBreakEvent`s fired, the two blocks
+  behind the row were still standing after a two-second grace period, and the runtime reported
+  `reason=block count reached`, `blocksBroken=3`, `blockCount=3`.
+- `status` showed `last destroy: block count reached (3/3 blocks, minecraft:stone at 46 201 -54)`.
+- `destroy for 10 count 4` ended with `duration elapsed` and fewer than four blocks (the earlier limit wins) while
+  keeping the count limit on the finished job.
+- The rest of the smoke passed unchanged: bare-hand dirt/stone, iron-pickaxe stone with cobblestone drop and
+  durability, continuous retarget/wait/resume/stop, mid-break operations, look pause/resume, hotbar restart,
+  explicit/all stop with the block preserved, canceled `BlockBreakEvent` without loot or tool damage, death notice,
+  `destroy for 40` aborting obsidian, radius/movement/jump/reconnect, negative auth, clean shutdown and world
+  history.
+
+`scripts/mining_probe.py` carries both count cases now, so the check is reproducible with the same command. Exact
+break ownership beyond "the watched target changed" remains as documented (another actor changing the watched block
+counts too), and NetherNet plus a human client are not covered by this run.

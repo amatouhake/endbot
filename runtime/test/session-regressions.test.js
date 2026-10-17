@@ -705,6 +705,7 @@ test('destroy continuous count ends the loop after that many completed blocks', 
   assert.equal(status.state, 'completed')
   assert.equal(status.reason, 'block count reached')
   assert.equal(status.blocksBroken, 2)
+  assert.equal(status.blockCount, 2)
   assert.equal(status.loopId, undefined)
   assert.equal(status.continuous, undefined)
   assert.equal(session.continueMining({ loopId, ...miningTarget }), false)

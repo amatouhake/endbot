@@ -162,8 +162,10 @@ Count limit (2026-10-17 JST): `destroy [continuous] count <blocks>` stops contin
 BDS-completed targets. The runtime counts them on its target-update path, so waiting between blocks costs nothing and
 the count is exact under load, unlike the wall-clock `for` budget; `for` and `count` combine and mining ends at
 whichever comes first. `status` shows the blocks broken (and the limit when set), keeps the total of a finished loop,
-and the end reports `block count reached` at info level. Automated tests cover parsing, dispatch, status/notices and
-the runtime loop; real-server validation of the count end remains a manual gate (`scripts/raknet_spike.py --mining`).
+and the end reports `block count reached` at info level. A real Windows RakNet run passed the count end and the
+`for`/`count` combination, and `scripts/mining_probe.py` now carries those cases (see
+[mining validation](MINING_VALIDATION.md#block-count-limits-re-validation-2026-10-17-jst-raknet)); NetherNet and a
+human client remain gates.
 
 Real-server checks covered bare-hand dirt/stone, iron-pickaxe stone with cobblestone drop and durability loss, three
 cancellation paths, native event cancellation preserving the block/tool, consecutive targets and waiting/resume/stop.

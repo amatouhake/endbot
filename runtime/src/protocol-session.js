@@ -240,9 +240,12 @@ export class BedrockSession extends EventEmitter {
 
   stopMining (reason = 'stopped', state = 'canceled', discard = false, preserveLoop = false) {
     const looping = this.miningLoop !== undefined
-    // A loop that ends keeps its completed-block count on the finished job so
-    // `status` can report how much it broke before it stopped.
-    const broken = looping && !preserveLoop ? this.miningLoop.blocksBroken : undefined
+    // A loop that ends keeps its completed-block count (and its count limit)
+    // on the finished job so `status` can report what it broke.
+    const carried = looping && !preserveLoop ? {
+      blocksBroken: this.miningLoop.blocksBroken,
+      ...(this.miningLoop.blockCount === undefined ? {} : { blockCount: this.miningLoop.blockCount })
+    } : undefined
     if (!preserveLoop) this.miningLoop = undefined
     if (this.mining?.state === 'active') {
       const job = this.mining
@@ -251,11 +254,11 @@ export class BedrockSession extends EventEmitter {
       else this.pendingBlockActions = this.pendingBlockActions.filter(action => action.action !== 'start_break')
       job.state = state
       job.reason = reason
-      if (broken !== undefined) job.blocksBroken = broken
+      if (carried !== undefined) Object.assign(job, carried)
     }
     if (looping && !preserveLoop && this.mining?.state !== 'active') {
       this.mining = { ...this.mining, blockPosition: this.mining?.blockPosition ?? [], state, reason,
-        ...(broken === undefined ? {} : { blocksBroken: broken }) }
+        ...(carried ?? {}) }
     }
     if (discard) this.pendingBlockActions = []
   }

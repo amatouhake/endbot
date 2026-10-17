@@ -166,8 +166,10 @@ and the end reports `block count reached` at info level. The count is "the watch
 actor's change to that block counts too; exact Bot break ownership would need plugin-side `BlockBreakEvent`
 counting and remains separate work. Real Windows RakNet and NetherNet runs passed the count end
 and the `for`/`count` combination, and `scripts/mining_probe.py` now carries those cases (see
-[mining validation](MINING_VALIDATION.md#block-count-limits-re-validation-2026-10-17-jst-raknet-and-nethernet)); a
-human client remains a gate.
+[mining validation](MINING_VALIDATION.md#block-count-limits-re-validation-2026-10-17-jst-raknet-and-nethernet)).
+Human Windows-client check (2026-10-17 JST, RakNet, on the 0.3.1 release bundle): `destroy count 3` and
+`destroy count 20` ended on `block count reached`, `destroy for 40 count 100` ended on `duration elapsed`,
+and the form-driven `destroy count` and the `count 0` range error behaved as expected.
 
 Real-server checks covered bare-hand dirt/stone, iron-pickaxe stone with cobblestone drop and durability loss, three
 cancellation paths, native event cancellation preserving the block/tool, consecutive targets and waiting/resume/stop.
@@ -278,7 +280,7 @@ reuse the event-intercept approach and the one-overload-per-first-token finding 
 - `for <ticks>` duration and `use hold <ticks>` repeated charges shipped in 0.3.0; see
   [durations](COMMANDS.md#durations-for-and-charged-presses-hold). Real-server and human-client validation (bow/trident
   `hold` repeats, mining duration end, forms) remains a manual gate. The destroy block-count stop
-  (`count <blocks>`, see BOT-005) is implemented; item-count conditions for other inputs remain separate from duration
+  (`count <blocks>`, see BOT-005) shipped in 0.3.1 (2026-10-17, with its human check); item-count conditions for other inputs remain separate from duration
   and not implemented. Live RakNet smoke (2026-10-16 JST, locked Endstone `0.11.13+endbot.1` / BDS
   `1.26.52.3`, `scripts/raknet_spike.py --mining --item-use`) passed through the native parser: `move forward for 20`
   moved 4.3 blocks then held still, `jump interval 10 for 30` expired, `use hold 25 interval 30 for 90` fired exactly

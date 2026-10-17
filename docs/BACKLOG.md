@@ -161,8 +161,10 @@ instant-break transaction, OP, or authentication/core change is used. Status tra
 Count limit (2026-10-17 JST): `destroy [continuous] count <blocks>` stops continuous mining after that many
 BDS-completed targets. The runtime counts them on its target-update path, so waiting between blocks costs nothing and
 the count is exact under load, unlike the wall-clock `for` budget; `for` and `count` combine and mining ends at
-whichever comes first. `status` shows the blocks broken (and the limit when set), keeps the total of a finished loop,
-and the end reports `block count reached` at info level. Real Windows RakNet and NetherNet runs passed the count end
+which comes first. `status` shows the blocks broken (and the limit when set), keeps the total of a finished loop,
+and the end reports `block count reached` at info level. The count is "the watched target changed", so another
+actor's change to that block counts too; exact Bot break ownership would need plugin-side `BlockBreakEvent`
+counting and remains separate work. Real Windows RakNet and NetherNet runs passed the count end
 and the `for`/`count` combination, and `scripts/mining_probe.py` now carries those cases (see
 [mining validation](MINING_VALIDATION.md#block-count-limits-re-validation-2026-10-17-jst-raknet-and-nethernet)); a
 human client remains a gate.

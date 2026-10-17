@@ -684,7 +684,9 @@ def parse_command(arguments: list[str]) -> BotCommand:
             if tokens:
                 raise CommandSyntaxError(DESTROY_USAGE)
             return BotCommand(operation, name, {"mode": "continuous", **parameters})
-        if len(tokens) in {3, 4} and not any(value.lower() in DESTROY_CLAUSES for value in tokens):
+        # Coordinates are their own command shape: a leading mode word must not
+        # turn `stop 1 64 2` into a single-block break.
+        if mode is None and len(tokens) in {3, 4} and not any(value.lower() in DESTROY_CLAUSES for value in tokens):
             target, unused = _position(tokens[:3])
             assert not unused
             if len(tokens) == 4:

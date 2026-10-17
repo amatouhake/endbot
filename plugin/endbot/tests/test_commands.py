@@ -100,6 +100,20 @@ class BotCommandServiceTests(unittest.TestCase):
             with self.subTest(arguments=arguments), self.assertRaisesRegex(ValueError, message):
                 parse_command(["Alice", *arguments])
 
+    def test_destroy_modes_do_not_take_coordinates(self):
+        # Regression: popping the leading mode must not turn `stop 1 64 2` into
+        # a coordinate command that would start breaking a block.
+        for tail in (
+            ["once", "1", "64", "2"],
+            ["continuous", "1", "64", "2"],
+            ["stop", "1", "64", "2"],
+            ["once", "1", "64", "2", "up"],
+            ["stop", "1", "64", "2", "up"],
+            ["continuous", "~", "~-1", "~", "up"],
+        ):
+            with self.subTest(tail=tail), self.assertRaisesRegex(ValueError, "destroy accepts"):
+                parse_command(["Alice", "destroy", *tail])
+
     def setUp(self) -> None:
         self.service = PlainCommandService()
 

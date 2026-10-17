@@ -221,11 +221,21 @@ class ScreenTests(unittest.TestCase):
                 ("Alice", "use", "interval", "30", "hold", "20", "for", "80"),
             ),
             (("Gameplay...", "Use item...", "for..."), ("40",), ("Alice", "use", "for", "40")),
-            (("Gameplay...", "Destroy blocks...", "continuous..."), ("",), ("Alice", "destroy", "continuous")),
+            (("Gameplay...", "Destroy blocks...", "continuous..."), ("", ""), ("Alice", "destroy", "continuous")),
             (
                 ("Gameplay...", "Destroy blocks...", "continuous..."),
-                ("200",),
+                ("200", ""),
                 ("Alice", "destroy", "continuous", "for", "200"),
+            ),
+            (
+                ("Gameplay...", "Destroy blocks...", "continuous..."),
+                ("", "64"),
+                ("Alice", "destroy", "continuous", "count", "64"),
+            ),
+            (
+                ("Gameplay...", "Destroy blocks...", "continuous..."),
+                ("200", "64"),
+                ("Alice", "destroy", "continuous", "for", "200", "count", "64"),
             ),
             (
                 ("Gameplay...", "Destroy blocks...", "x y z..."),

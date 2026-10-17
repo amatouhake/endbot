@@ -68,6 +68,52 @@ class BotCommandServiceTests(unittest.TestCase):
             with self.subTest(arguments=arguments), self.assertRaisesRegex(ValueError, message):
                 parse_command(["Alice", *arguments])
 
+    def test_count_is_a_block_budget_that_implies_continuous(self):
+        cases = {
+            ("destroy", "count", "64"): {"mode": "continuous", "blockCount": 64},
+            ("destroy", "continuous", "count", "64"): {"mode": "continuous", "blockCount": 64},
+            ("destroy", "COUNT", "1"): {"mode": "continuous", "blockCount": 1},
+            ("destroy", "for", "200", "count", "64"): {
+                "mode": "continuous", "durationTicks": 200, "blockCount": 64,
+            },
+            ("destroy", "count", "64", "for", "200"): {
+                "mode": "continuous", "durationTicks": 200, "blockCount": 64,
+            },
+            ("destroy", "continuous", "count", "64", "for", "200"): {
+                "mode": "continuous", "durationTicks": 200, "blockCount": 64,
+            },
+        }
+        for arguments, parameters in cases.items():
+            with self.subTest(arguments=arguments):
+                self.assertEqual(parse_command(["Alice", *arguments]).parameters, parameters)
+        for arguments, message in (
+            (["destroy", "once", "count", "5"], "one block has no duration"),
+            (["destroy", "stop", "count", "5"], "one block has no duration"),
+            (["destroy", "1", "64", "2", "count", "5"], "one block has no duration"),
+            (["destroy", "count"], "destroy accepts"),
+            (["destroy", "count", "5", "count", "6"], "destroy accepts"),
+            (["destroy", "count", "5", "jump"], "destroy accepts"),
+            (["destroy", "count", "0"], "Block count must be between"),
+            (["destroy", "count", "72001"], "Block count must be between"),
+            (["destroy", "count", "1.5"], "Block count must be an integer"),
+        ):
+            with self.subTest(arguments=arguments), self.assertRaisesRegex(ValueError, message):
+                parse_command(["Alice", *arguments])
+
+    def test_destroy_modes_do_not_take_coordinates(self):
+        # Regression: popping the leading mode must not turn `stop 1 64 2` into
+        # a coordinate command that would start breaking a block.
+        for tail in (
+            ["once", "1", "64", "2"],
+            ["continuous", "1", "64", "2"],
+            ["stop", "1", "64", "2"],
+            ["once", "1", "64", "2", "up"],
+            ["stop", "1", "64", "2", "up"],
+            ["continuous", "~", "~-1", "~", "up"],
+        ):
+            with self.subTest(tail=tail), self.assertRaisesRegex(ValueError, "destroy accepts"):
+                parse_command(["Alice", "destroy", *tail])
+
     def setUp(self) -> None:
         self.service = PlainCommandService()
 

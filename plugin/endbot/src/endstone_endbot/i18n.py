@@ -181,6 +181,9 @@ JA: dict[str, str] = {
     "for ends continuous mining after that many ticks, aborting a block in progress.": (
         "for を付けるとその tick 数で連続採掘を終え、壊している途中のブロックはやめます。"
     ),
+    "count ends it after that many broken blocks; waiting costs nothing, and both limits combine.": (
+        "count を付けるとその数のブロックを壊したところで終わり、待ち時間は消費しません。for と併用できます。"
+    ),
     "No interval mode. No automatic walking; BDS controls speed, drops and durability.": (
         "interval はありません。自動では歩きません。速さ、ドロップ、耐久値は BDS が決めます。"
     ),
@@ -215,6 +218,7 @@ JA: dict[str, str] = {
     "Action interval": "interval",
     "Hold": "hold",
     "Duration": "for",
+    "Block count": "count",
     "relative coordinate": "相対座標",
     "Expected x y z coordinates": "x y z の座標が必要です",
     "Spawn syntax: at <x> <y> <z> [facing <yaw> <pitch>] [in <dimension>]": (
@@ -222,6 +226,8 @@ JA: dict[str, str] = {
     ),
     "{label} must be an integer number of ticks": "{label} の tick 数は整数で指定してください",
     "{label} must be between 1 and 72000 ticks": "{label} の tick 数は 1 から 72000 で指定してください",
+    "{label} must be an integer number of blocks": "{label} のブロック数は整数で指定してください",
+    "{label} must be between 1 and 72000 blocks": "{label} のブロック数は 1 から 72000 で指定してください",
     "{action} accepts [once|continuous|interval <ticks>|stop]{hold} [for <ticks>]": (
         "{action} に使えるのは [once|continuous|interval <ticks>|stop]{hold} [for <ticks>] です"
     ),
@@ -251,15 +257,15 @@ JA: dict[str, str] = {
     "Hotbar slot must be from 1 to 9": "ホットバーのスロットは 1 から 9 で指定してください",
     "radius accepts an integer from 2 to 32, or default": "radius に使えるのは 2 から 32 の整数か default です",
     "Chunk radius must be from 2 to 32": "チャンク半径は 2 から 32 で指定してください",
-    "destroy for <ticks> runs continuous mining; one block has no duration": (
-        "destroy for <ticks> は連続採掘です。1 ブロックだけの採掘に長さは指定できません"
+    "destroy for <ticks> and count <blocks> run continuous mining; one block has no duration": (
+        "destroy for <ticks> と count <blocks> は連続採掘です。1 ブロックだけの採掘には指定できません"
     ),
     "destroy has no interval mode; destroy continuous waits for the next block automatically": (
         "destroy に interval はありません。destroy continuous は次のブロックを自動で待ちます"
     ),
     "Invalid block face": "ブロックの面の指定が正しくありません",
-    "destroy accepts once, continuous, stop, [continuous] for <ticks>, or x y z [face]": (
-        "destroy に使えるのは once、continuous、stop、[continuous] for <ticks>、x y z [face] です"
+    "destroy accepts once, continuous, stop, [continuous] for <ticks> [count <blocks>], or x y z [face]": (
+        "destroy に使えるのは once、continuous、stop、[continuous] for <ticks> [count <blocks>]、x y z [face] です"
     ),
     "Unknown or invalid Bot action: {operation}": "不明または正しくない Bot の操作です: {operation}",
     "{operation} failed: {error}": "{operation} に失敗しました: {error}",
@@ -277,8 +283,9 @@ JA: dict[str, str] = {
     "where it last was": "前回の場所",
     "teleported to {location}": "{location} にテレポートしました",
     " for {ticks} ticks": " ({ticks} tick の間)",
-    "destroy continuous started{duration}; destroy stop to cancel": (
-        "destroy continuous を始めました{duration}。destroy stop で止められます"
+    " until {blocks} blocks": " ({blocks} ブロックまで)",
+    "destroy continuous started{duration}{count}; destroy stop to cancel": (
+        "destroy continuous を始めました{duration}{count}。destroy stop で止められます"
     ),
     "destroy stopped": "destroy を止めました",
     "destroying {block} at {position}; see status for the result": (
@@ -318,6 +325,8 @@ JA: dict[str, str] = {
     "chunk radius {radius} ({source}); {server}": "チャンク半径 {radius} ({source})、{server}",
     "move {direction} {ticks} ticks left": "move {direction} 残り {ticks} tick",
     "{ticks} ticks left": "残り {ticks} tick",
+    "{done} blocks": "{done} ブロック",
+    "{done}/{total} blocks": "{done}/{total} ブロック",
     "timed: {inputs}": "時間指定: {inputs}",
     "{block} at {position}": "{position} の {block}",
     "destroying {target}{mode}": "{target} を採掘中{mode}",
@@ -353,6 +362,7 @@ JA: dict[str, str] = {
         "10 分たってもブロックが壊れませんでした。保護されているか、壊せないブロックかもしれません"
     ),
     "duration elapsed": "指定の時間が終わりました",
+    "block count reached": "指定のブロック数に達しました",
     "ended": "終了",
     "{command} stopped: {reason}": "{command} が止まりました: {reason}",
     "control permission revoked": "操作権限が取り消されました",
@@ -436,6 +446,9 @@ JA: dict[str, str] = {
     "Run": "実行",
     "20 = 1 second": "20 で 1 秒",
     "for <ticks> (optional; {ticks}; blank = until stopped)": "for <ticks> (任意。{ticks}。空欄なら止めるまで)",
+    "count <blocks> (optional; stop after that many blocks)": (
+        "count <blocks> (任意。その数のブロックを壊したら停止)"
+    ),
     "hold <ticks> (optional; charge each press, then release)": "hold <ticks> (任意。押すたびにこの長さためてから離す)",
     "interval <ticks> ({ticks})": "interval <ticks> ({ticks})",
     "for <ticks> ({ticks})": "for <ticks> ({ticks})",

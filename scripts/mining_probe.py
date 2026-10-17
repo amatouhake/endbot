@@ -378,6 +378,49 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     if mining().get("reason") != "duration elapsed" or observed()["block"] != "minecraft:obsidian":
         raise RuntimeError(f"destroy for did not abort the block: {mining()} {observed()}")
     report["mining"]["duration-end"] = True
+    # count: the loop ends exactly at its block budget, leaves the blocks after
+    # it standing, and reports the total; combined for/count limits end at
+    # whichever comes first.
+    setup("count-end", "minecraft:stone", "minecraft:iron_pickaxe", count=5)
+    offset = len(log())
+    console("bot RakNetSpike destroy count 3")
+    wait("destroy count reply", lambda: "destroy continuous started until 3 blocks" in log()[offset:], 10)
+    wait("count budget ended the loop", lambda: not mining().get("continuous"), 30)
+    wait(
+        "count notice in the console log",
+        lambda: "destroy continuous stopped: block count reached" in log()[offset:],
+        10,
+    )
+    time.sleep(2)  # A loop that failed to stop would start the fourth block well within this.
+    state = observed()
+    if state["blocks"] != ["minecraft:air"] * 3 + ["minecraft:stone"] * 2:
+        raise RuntimeError(f"count budget did not stop after three blocks: {state}")
+    if len(state["events"]) != 3:
+        raise RuntimeError(f"count budget break events: {state['events']}")
+    if mining().get("reason") != "block count reached" or mining().get("blocksBroken") != 3:
+        raise RuntimeError(f"count end state: {mining()}")
+    if mining().get("blockCount") != 3:
+        raise RuntimeError(f"count limit missing from the finished job: {mining()}")
+    status_offset = len(log())
+    console("bot RakNetSpike status")
+    wait(
+        "finished count in status",
+        lambda: "last destroy: block count reached (3/3 blocks" in log()[status_offset:],
+        10,
+    )
+    report["mining"]["count-end"] = True
+
+    setup("count-for", "minecraft:stone", "minecraft:iron_pickaxe", count=5)
+    offset = len(log())
+    console("bot RakNetSpike destroy for 10 count 4")
+    wait("destroy for count reply", lambda: "destroy continuous started for 10 ticks until 4 blocks" in log()[offset:], 10)
+    wait("combined limits ended the loop", lambda: not mining().get("continuous"), 20)
+    wait("combined end notice", lambda: "stopped: duration elapsed" in log()[offset:], 10)
+    if mining().get("reason") != "duration elapsed" or mining().get("blocksBroken", 0) >= 4:
+        raise RuntimeError(f"combined limits ended for the wrong reason: {mining()}")
+    if mining().get("blockCount") != 4:
+        raise RuntimeError(f"combined limits lost the count limit: {mining()}")
+    report["mining"]["count-for-end"] = True
     setup("cleanup", "minecraft:air")
 
 

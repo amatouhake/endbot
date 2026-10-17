@@ -680,3 +680,36 @@ test('destroy continuous for N ends the loop and aborts the block in progress', 
   assert.equal(session.miningStatus().loopId, undefined)
   assert.equal(session.continueMining({ loopId, ...miningTarget }), false)
 })
+
+test('destroy continuous count ends the loop after that many completed blocks', async t => {
+  const { client, session, tick } = await fixture(t)
+  assert.throws(() => session.startMiningLoop(undefined, 0), /block count/)
+  assert.throws(() => session.startMiningLoop(undefined, 1.5), /block count/)
+  session.startMiningLoop(undefined, 2)
+  const loopId = session.miningStatus().loopId
+  assert.deepEqual([session.miningStatus().blocksBroken, session.miningStatus().blockCount], [0, 2])
+  session.continueMining({ loopId, ...miningTarget })
+  assert.deepEqual(tick().block_action.map(action => action.action), ['start_break'])
+  client.emit('update_block', { position: { x: 0, y: 64, z: 2 }, block_runtime_id: 0, layer: 0 })
+  // One block is gone but the budget is not spent: the loop waits for the
+  // next target, and waiting does not count against the block budget.
+  assert.equal(session.miningStatus().state, 'waiting')
+  assert.equal(session.miningStatus().loopId, loopId)
+  assert.deepEqual([session.miningStatus().blocksBroken, session.miningStatus().blockCount], [1, 2])
+  session.continueMining({ loopId, ...miningTarget, blockPosition: [0, 64, 3] })
+  // The finished block's cleanup abort rides the next input tick with the new
+  // target's start, as for a plain continuous retarget.
+  assert.deepEqual(tick().block_action.map(action => action.action), ['abort_break', 'start_break'])
+  client.emit('update_block', { position: { x: 0, y: 64, z: 3 }, block_runtime_id: 0, layer: 0 })
+  const status = session.miningStatus()
+  assert.equal(status.state, 'completed')
+  assert.equal(status.reason, 'block count reached')
+  assert.equal(status.blocksBroken, 2)
+  assert.equal(status.blockCount, 2)
+  assert.equal(status.loopId, undefined)
+  assert.equal(status.continuous, undefined)
+  assert.equal(session.continueMining({ loopId, ...miningTarget }), false)
+  // The last block's cleanup abort still drains; no new break starts.
+  assert.deepEqual(tick().block_action.map(action => action.action), ['abort_break'])
+  assert.equal(tick().block_action, undefined)
+})

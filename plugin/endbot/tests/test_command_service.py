@@ -490,6 +490,11 @@ class CommandServiceTests(unittest.TestCase):
                          "durationTicks": 200})),
             (["destroy", "for", "200"], "destroy continuous started for 200 ticks; destroy stop to cancel",
              ("mine", {"mode": "start", "durationTicks": 200})),
+            (["destroy", "count", "64"], "destroy continuous started until 64 blocks; destroy stop to cancel",
+             ("mine", {"mode": "start", "blockCount": 64})),
+            (["destroy", "for", "200", "count", "64"],
+             "destroy continuous started for 200 ticks until 64 blocks; destroy stop to cancel",
+             ("mine", {"mode": "start", "durationTicks": 200, "blockCount": 64})),
         ]
         for args, expected, (operation, parameters) in cases:
             with self.subTest(args=args):
@@ -514,6 +519,48 @@ class CommandServiceTests(unittest.TestCase):
         notices = self.service.poll_mining(lambda _: True)
         self.assertEqual(notices, [(source, "info", "Endbot: Alice: destroy continuous stopped: duration elapsed")])
         self.assertIn("last destroy: duration elapsed", self.service.execute(["Alice", "status"]).message)
+
+    def test_destroy_count_shows_blocks_and_ends_as_an_info_notice(self):
+        self.service.execute(["Alice", "spawn"])
+        source = object()
+        self.service.execute(["Alice", "destroy", "count", "64"], source)
+        loop_id = self.control.bots["Alice"]["mining"]["loopId"]
+        self.world.resolve_mining = lambda *args: None
+        self.control.bots["Alice"]["mining"] = {
+            "state": "waiting", "continuous": True, "loopId": loop_id, "blocksBroken": 12, "blockCount": 64,
+        }
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        status = self.service.execute(["Alice", "status"]).message
+        self.assertIn("destroy continuous waiting for a block in sight (12/64 blocks)", status)
+        stone = {"blockPosition": [1, 64, 2], "blockName": "minecraft:stone"}
+        self.control.bots["Alice"]["mining"] = {
+            **stone, "state": "active", "continuous": True, "loopId": loop_id, "blocksBroken": 12, "blockCount": 64,
+        }
+        status = self.service.execute(["Alice", "status"]).message
+        self.assertIn("destroying minecraft:stone at 1 64 2 (continuous, 12/64 blocks)", status)
+        self.control.bots["Alice"]["mining"] = {
+            **stone, "state": "completed", "reason": "block count reached", "blocksBroken": 64, "blockCount": 64,
+        }
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertEqual(
+            notices, [(source, "info", "Endbot: Alice: destroy continuous stopped: block count reached")]
+        )
+        self.assertIn(
+            "last destroy: block count reached (64/64 blocks, minecraft:stone at 1 64 2)",
+            self.service.execute(["Alice", "status"]).message,
+        )
+
+    def test_destroy_loop_status_shows_broken_blocks_without_a_limit(self):
+        self.service.execute(["Alice", "spawn"])
+        self.service.execute(["Alice", "destroy", "continuous"])
+        loop_id = self.control.bots["Alice"]["mining"]["loopId"]
+        self.world.resolve_mining = lambda *args: None
+        self.control.bots["Alice"]["mining"] = {
+            "state": "waiting", "continuous": True, "loopId": loop_id, "blocksBroken": 3,
+        }
+        self.service.poll_mining(lambda _: True)
+        status = self.service.execute(["Alice", "status"]).message
+        self.assertIn("destroy continuous waiting for a block in sight (3 blocks)", status)
 
     def test_status_lists_inputs_that_end_on_their_own(self):
         self.service.execute(["Alice", "spawn"])

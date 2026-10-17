@@ -251,7 +251,8 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         "break reachable blocks with the held tool (hold left-click)",
         (
             "destroy [once|continuous|stop]",
-            "destroy [continuous] for <ticks>",
+            "destroy [continuous] for <ticks> [count <blocks>]",
+            "destroy [continuous] count <blocks>",
             "destroy <x> <y> <z> [down|up|north|south|west|east]",
         ),
         (
@@ -259,6 +260,7 @@ HELP_TOPICS: dict[str, HelpTopic] = {
             "continuous holds left-click along the Bot's sight, also after you log off; waits when empty.",
             "Other commands do not cancel it; only destroy stop, stop, death or disconnect end it.",
             "for ends continuous mining after that many ticks, aborting a block in progress.",
+            "count ends it after that many broken blocks; waiting costs nothing, and both limits combine.",
             "No interval mode. No automatic walking; BDS controls speed, drops and durability.",
         ),
     ),
@@ -372,6 +374,12 @@ def _for_suffix(parameters: dict[str, object], lang: str = "en") -> str:
     return tr(lang, " for {ticks} ticks", ticks=parameters["durationTicks"])
 
 
+def _count_suffix(parameters: dict[str, object], lang: str = "en") -> str:
+    if "blockCount" not in parameters:
+        return ""
+    return tr(lang, " until {blocks} blocks", blocks=parameters["blockCount"])
+
+
 BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
 
 # Polls (every 4 ticks) a loop may fail to reach the runtime before it ends:
@@ -407,7 +415,7 @@ MINING_REASONS = {
 }
 
 # Mining ends that are the requested outcome: notify at info level, not warning.
-EXPECTED_MINING_ENDS = {"duration elapsed"}
+EXPECTED_MINING_ENDS = {"duration elapsed", "block count reached"}
 
 
 def _tokens(arguments: list[str]) -> list[str]:
@@ -462,11 +470,32 @@ def _ticks(value: str, label: str) -> int:
     return ticks
 
 
+def _blocks(value: str, label: str) -> int:
+    try:
+        blocks = int(value)
+    except ValueError as error:
+        raise CommandSyntaxError("{label} must be an integer number of blocks", label=label) from error
+    if not 1 <= blocks <= 72_000:
+        raise CommandSyntaxError("{label} must be between 1 and 72000 blocks", label=label)
+    return blocks
+
+
 TICK_CLAUSES = {
     "interval": ("intervalTicks", Text("Action interval")),
     "hold": ("holdTicks", Text("Hold")),
     "for": ("durationTicks", Text("Duration")),
 }
+
+# destroy takes limits instead of a target block when it is continuous: `for`
+# counts input ticks from the command, `count` counts completed blocks. Order
+# is free, each at most once, and both imply continuous when no mode is given.
+DESTROY_CLAUSES = {
+    "for": ("durationTicks", Text("Duration"), _ticks),
+    "count": ("blockCount", Text("Block count"), _blocks),
+}
+
+DESTROY_USAGE = "destroy accepts once, continuous, stop, [continuous] for <ticks> [count <blocks>], or x y z [face]"
+DESTROY_SINGLE_BLOCK = "destroy for <ticks> and count <blocks> run continuous mining; one block has no duration"
 
 
 def _action(name: str, action: str, remaining: list[str]) -> BotCommand:
@@ -632,12 +661,6 @@ def parse_command(arguments: list[str]) -> BotCommand:
         )
     if operation == "destroy":
         modes = [value.lower() for value in remaining]
-        if len(modes) >= 2 and modes[-2] == "for":
-            # for is how long mining keeps going, so it implies continuous.
-            if modes[:-2] not in ([], ["continuous"]):
-                raise CommandSyntaxError("destroy for <ticks> runs continuous mining; one block has no duration")
-            duration = _ticks(remaining[-1], Text("Duration"))
-            return BotCommand(operation, name, {"mode": "continuous", "durationTicks": duration})
         if not remaining or modes == ["once"]:
             return BotCommand(operation, name)
         if modes in (["continuous"], ["stop"]):
@@ -646,15 +669,34 @@ def parse_command(arguments: list[str]) -> BotCommand:
             raise CommandSyntaxError(
                 "destroy has no interval mode; destroy continuous waits for the next block automatically"
             )
-        if len(remaining) in {3, 4}:
-            target, unused = _position(remaining[:3])
+        # for and count limit continuous mining; both imply it without a mode.
+        tokens = list(remaining)
+        mode = tokens.pop(0).lower() if tokens[0].lower() in {"once", "continuous", "stop"} else None
+        parameters: dict[str, object] = {}
+        while tokens and tokens[0].lower() in DESTROY_CLAUSES:
+            key, label, measure = DESTROY_CLAUSES[tokens.pop(0).lower()]
+            if key in parameters or not tokens or tokens[0].lower() in DESTROY_CLAUSES:
+                raise CommandSyntaxError(DESTROY_USAGE)
+            parameters[key] = measure(tokens.pop(0), label)
+        if parameters:
+            if mode not in (None, "continuous"):
+                raise CommandSyntaxError(DESTROY_SINGLE_BLOCK)
+            if tokens:
+                raise CommandSyntaxError(DESTROY_USAGE)
+            return BotCommand(operation, name, {"mode": "continuous", **parameters})
+        # Coordinates are their own command shape: a leading mode word must not
+        # turn `stop 1 64 2` into a single-block break.
+        if mode is None and len(tokens) in {3, 4} and not any(value.lower() in DESTROY_CLAUSES for value in tokens):
+            target, unused = _position(tokens[:3])
             assert not unused
-            if len(remaining) == 4:
-                if remaining[3].lower() not in BLOCK_FACES:
+            if len(tokens) == 4:
+                if tokens[3].lower() not in BLOCK_FACES:
                     raise CommandSyntaxError("Invalid block face")
-                target["face"] = BLOCK_FACES[remaining[3].lower()]
+                target["face"] = BLOCK_FACES[tokens[3].lower()]
             return BotCommand(operation, name, target)
-        raise CommandSyntaxError("destroy accepts once, continuous, stop, [continuous] for <ticks>, or x y z [face]")
+        if any(value.lower() in DESTROY_CLAUSES for value in tokens):
+            raise CommandSyntaxError(DESTROY_SINGLE_BLOCK)
+        raise CommandSyntaxError(DESTROY_USAGE)
     if operation == "drop" and (not remaining or remaining == ["stack"]):
         return BotCommand(operation, name, {"stack": bool(remaining)})
     if operation in {"jump", "attack", "use"}:
@@ -913,8 +955,9 @@ class BotCommandService:
             mode = command.parameters.get("mode")
             if mode == "continuous":
                 target = {"mode": "start"}  # Runtime IPC name for a continuous loop.
-                if "durationTicks" in command.parameters:
-                    target["durationTicks"] = command.parameters["durationTicks"]
+                for limit in ("durationTicks", "blockCount"):
+                    if limit in command.parameters:
+                        target[limit] = command.parameters[limit]
             elif mode == "stop":
                 target = {"mode": "stop"}
             else:
@@ -945,8 +988,9 @@ class BotCommandService:
                     result["name"],
                     lambda lang: tr(
                         lang,
-                        "destroy continuous started{duration}; destroy stop to cancel",
+                        "destroy continuous started{duration}{count}; destroy stop to cancel",
                         duration=_for_suffix(command.parameters, lang),
+                        count=_count_suffix(command.parameters, lang),
                     ),
                 )
             if mode == "stop":
@@ -1127,12 +1171,17 @@ class BotCommandService:
             if mining.get("remainingTicks") is not None
             else ""
         )
+        blocks = BotCommandService._blocks_summary(mining, lang)
         if state == "active":
-            mode = f" (continuous{', ' + left if left else ''})" if mining.get("continuous") else ""
+            if mining.get("continuous"):
+                notes = ", ".join(note for note in (blocks, left) if note)
+                mode = f" (continuous{', ' + notes if notes else ''})"
+            else:
+                mode = ""
             return tr(lang, "destroying {target}{mode}", target=target, mode=mode).rstrip()
         if mining.get("continuous"):
             last = tr(lang, "last: {target}", target=target) if target else ""
-            notes = ", ".join(note for note in (last, left) if note)
+            notes = ", ".join(note for note in (last, blocks, left) if note)
             return tr(
                 lang, "destroy continuous waiting for a block in sight{notes}", notes=f" ({notes})" if notes else ""
             )
@@ -1146,4 +1195,16 @@ class BotCommandService:
             outcome = tr(lang, reason)
         else:
             outcome = tr(lang, "canceled: {reason}", reason=Text(reason)) if reason else tr(lang, "canceled")
-        return tr(lang, "last destroy: {outcome}{target}", outcome=outcome, target=f" ({target})" if target else "")
+        details = ", ".join(note for note in (blocks, target) if note)
+        return tr(lang, "last destroy: {outcome}{target}", outcome=outcome, target=f" ({details})" if details else "")
+
+    @staticmethod
+    def _blocks_summary(mining: dict[str, object], lang: str = "en") -> str:
+        """Broken blocks of a continuous run, against its count limit when set."""
+        done = mining.get("blocksBroken")
+        if done is None:
+            return ""
+        total = mining.get("blockCount")
+        if total is None:
+            return tr(lang, "{done} blocks", done=done)
+        return tr(lang, "{done}/{total} blocks", done=done, total=total)

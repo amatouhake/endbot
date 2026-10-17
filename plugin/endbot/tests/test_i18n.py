@@ -7,7 +7,16 @@ from plain_service import PlainCommandService
 from test_command_service import FakeControl, FakeWorld
 
 from endstone_endbot import forms
-from endstone_endbot.commands import HELP_PAGE_TITLES, HELP_TOPICS, MINING_REASONS, help_detail, help_page, strip_colors
+from endstone_endbot.commands import (
+    DESTROY_SINGLE_BLOCK,
+    DESTROY_USAGE,
+    HELP_PAGE_TITLES,
+    HELP_TOPICS,
+    MINING_REASONS,
+    help_detail,
+    help_page,
+    strip_colors,
+)
 from endstone_endbot.i18n import JA, Text, language_setting, localize_error, resolve_language, tr
 
 SOURCE = Path(__file__).resolve().parents[1] / "src" / "endstone_endbot"
@@ -38,6 +47,8 @@ INDIRECT_TEMPLATES = (
     forms.TELEPORT_COORDINATES,
     "one item",
     "whole stack",
+    DESTROY_USAGE,
+    DESTROY_SINGLE_BLOCK,
     *HELP_PAGE_TITLES,
     *(topic.summary for topic in HELP_TOPICS.values()),
     *(detail for topic in HELP_TOPICS.values() for detail in topic.details),
@@ -222,6 +233,16 @@ class JapaneseServiceTests(unittest.TestCase):
             ("Endbot: Alice: destroy continuous started for 100 ticks; destroy stop to cancel",),
         )
         self.assertEqual(result.log_level, "info")
+        counted = self.service.execute(["Alice", "destroy", "count", "64"], Source("ja"))
+        self.assertEqual(
+            counted.messages,
+            ("Endbot: Alice: destroy continuous を始めました (64 ブロックまで)。destroy stop で止められます",),
+        )
+        self.assertEqual(
+            tuple(strip_colors(message) for message in counted.log_messages),
+            ("Endbot: Alice: destroy continuous started until 64 blocks; destroy stop to cancel",),
+        )
+        self.assertEqual(counted.log_level, "info")
 
     def test_mining_notices_use_the_source_language_and_log_in_english(self):
         source = Source("ja")

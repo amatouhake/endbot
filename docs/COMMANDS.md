@@ -82,8 +82,10 @@ continue.
 Jump, Attack, Use item and Destroy blocks mirror their command grammar instead of adding form-only meanings. Their
 first screen offers the command's modes (`once`, `continuous`, `interval`, `stop`, plus `for` for use and `x y z` for
 destroy). A mode without parameters runs at once; a mode with parameters opens a form holding only its clauses, named
-as typed and measured in ticks (`interval <ticks>`, `hold <ticks>`, `for <ticks>`; 20 = 1 second). A blank optional
-clause is omitted, so a blank `for` means until stopped. Use item `once` opens a form because it accepts `hold`.
+as typed and measured in ticks (`interval <ticks>`, `hold <ticks>`, `for <ticks>`; the Destroy blocks continuous form
+also offers `count <blocks>`; 20 = 1 second). A blank optional
+clause is omitted, so a blank `for` means until stopped and a blank `count` means no block limit. Use item `once` opens
+a form because it accepts `hold`.
 For example, three charged bow shots are `interval...` with interval 30, hold 20, for 80. Move opens one form for
 `move <direction> [for <ticks>]`; quick single-tap movement is left to the typed command.
 Every command a form or button runs is echoed once in chat as its typed form, for example
@@ -128,6 +130,8 @@ symbols (arrows show as boxes). How it looks on a real client is a manual check:
 /bot Alice destroy once
 /bot Alice destroy continuous
 /bot Alice destroy continuous for 200
+/bot Alice destroy count 64
+/bot Alice destroy continuous for 200 count 64
 /bot Alice destroy 100 64 -20
 /bot Alice destroy ~ ~-1 ~ up
 /bot Alice destroy stop
@@ -147,9 +151,18 @@ next reachable block along that same ray. When there is no target within 5 block
 placing a reachable block in sight resumes mining automatically. It stays in place and does not excavate a chosen area.
 Use `destroy stop` to disable this waiting/resume behavior as well as an active break attempt.
 `destroy for <ticks>` (or `destroy continuous for <ticks>`) runs continuous mining for that many input ticks from the
-command, then ends the loop and aborts a block still in progress. Single-block `destroy` and coordinates take no `for`;
-they keep the 10-minute safety timeout. When the duration ends, the starting controller gets one info-level message,
-`Endbot: Alice: destroy continuous stopped: duration elapsed`, and `status` shows the ticks left while it runs.
+command, then ends the loop and aborts a block still in progress. Single-block `destroy` and coordinates take no `for`
+or `count`; they keep the 10-minute safety timeout. When the duration ends, the starting controller gets one info-level
+message, `Endbot: Alice: destroy continuous stopped: duration elapsed`, and `status` shows the ticks left while it
+runs.
+
+`destroy count <blocks>` (or `destroy continuous count <blocks>`) runs continuous mining until that many blocks are
+gone, then ends the loop. The budget counts BDS-completed targets, so a block already breaking is still finished, and
+waiting for the next one costs nothing: unlike the wall-clock `for` budget, the count does not depend on server load,
+TPS or the gaps between blocks. `for` and `count` combine in either order and mining ends at whichever comes first,
+with the matching info-level message (`... stopped: block count reached`). `status` shows the blocks so far after the
+mode, for example `destroying minecraft:stone at 1 64 2 (continuous, 12/64 blocks)`, and a finished run keeps its
+total, for example `last destroy: duration elapsed (137 blocks, minecraft:stone at 1 64 2)`.
 
 BDS performs ordinary Survival breaking, including hardness/tool speed, harvest drops, durability and cancellable
 `BlockBreakEvent` handling. The plugin never sets the mined block to air, dispatches `/setblock`, or grants operator
@@ -160,8 +173,10 @@ result`. No completion message is sent; `status` shows the mining state in playe
 
 ```text
 destroying minecraft:stone at 1 64 2                                (breaking now)
-destroy continuous waiting for a block in sight (last: ...)        (destroy continuous, nothing in reach)
+destroying minecraft:stone at 1 64 2 (continuous, 12/64 blocks)    (destroy count)
+destroy continuous waiting for a block in sight (last: ..., 3 blocks)  (destroy continuous, nothing in reach)
 last destroy: block broken or changed (minecraft:stone at 1 64 2)  (finished)
+last destroy: block count reached (64/64 blocks, minecraft:stone at 1 64 2)  (count reached)
 last destroy: failed: target out of reach (...)                    (failed)
 last destroy: canceled by teleport (...)                           (canceled)
 ```
@@ -178,7 +193,7 @@ moves out of reach, or the 10-minute timeout ends the current block; single-bloc
 mining selects its next target. Attacking or using an item while mining sends both inputs; BDS decides the outcome.
 
 Mining ends only on `destroy stop` (mining only), `stop` (mining and all movement/actions), an elapsed `for` duration,
-death, disconnect, revocation of
+a reached `count` budget, death, disconnect, revocation of
 the starting controller's permission, or plugin disable. An expiring runtime lease also ends it if the plugin/control
 worker stops responding (200 input ticks, about ten seconds). Continuous mining keeps running after its controller logs
 off. Active mining is not saved or resumed on reconnect.
@@ -359,6 +374,7 @@ reconnect. Existing `use`/`once`, `continuous` and `interval` behavior remains a
 /bot Alice use hold 30 for 200                 charge 30 / release, repeated back to back for 200 ticks
 /bot Alice use hold 30 interval 40 for 200     start a 30-tick charge every 40 ticks for 200 ticks
 /bot Alice destroy for 200                     continuous mining for 200 ticks
+/bot Alice destroy count 64                    continuous mining until 64 blocks are broken
 ```
 
 Without a mode, an action is `once`; with `for` it is `continuous`. `once ... for` and `stop ... for` are rejected
@@ -372,6 +388,10 @@ actions, sprint/sneak and mining continue. A new command for the same input repl
 without `for` removes it. Global `stop`, `<input> stop`, death and disconnect end it early. `status` lists inputs that
 end on their own with the ticks left, for example `timed: move forward 30 ticks left, use interval 40 hold 30`.
 
+`count <blocks>` is the destroy-only completion counterpart to `for`: it stops continuous mining once that many
+blocks are gone (1–72000), waiting between blocks costs nothing, and `for ... count ...` in either order ends at
+whichever comes first. Item-count conditions for other inputs are not implemented.
+
 `hold <ticks>` (use only) holds use for that many use transactions per press and then releases, the same press/release
 as `use for`, so a bow or trident can be shot repeatedly. `hold` without `for` or a mode charges once; `hold ... for`
 (or `continuous hold`) starts the next charge right after the release tick; `hold ... interval <ticks>` starts a charge
@@ -380,7 +400,8 @@ arrives mid-charge releases at once, which may fire a partly charged item; choos
 avoid it. Like timed use, holds are canceled by hotbar selection, a changed or empty held item, dimension change,
 death and disconnect, and they never resume after reconnect. Each release confirms an input only, not a shot.
 
-The Jump, Attack, Use item, Move and Destroy blocks forms offer the same `interval`, `hold` and `for` clauses (see
+The Jump, Attack, Use item, Move and Destroy blocks forms offer the same `interval`, `hold` and `for` clauses (the
+Destroy blocks form adds `count` for its continuous mode) (see
 [control forms](#control-forms)). See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and
 [the backlog](BACKLOG.md).
 
@@ -451,6 +472,7 @@ Bedrock syntax error):
 /bot Alice jump interval 20 for 100
 /bot Alice move forward for 40
 /bot Alice destroy for 200
+/bot Alice destroy count 64
 /bot Alice interact 1 64 2 up
 /bot Alice hotbar 9
 /bot Alice radius

@@ -337,6 +337,7 @@ def flags_modal(name: str, lang: str = "en") -> ModalScreen:
 # command words the form teaches.
 TICKS = Text("20 = 1 second")
 FOR_FIELD = Text("for <ticks> (optional; {ticks}; blank = until stopped)")
+COUNT_FIELD = Text("count <blocks> (optional; stop after that many blocks)")
 HOLD_FIELD = Text("hold <ticks> (optional; charge each press, then release)")
 INTERVAL_FIELD = Text("interval <ticks> ({ticks})")
 FOR_REQUIRED_FIELD = Text("for <ticks> ({ticks})")
@@ -408,8 +409,10 @@ def move_modal(name: str, lang: str = "en") -> ModalScreen:
 
 
 def destroy_screen(name: str, lang: str = "en") -> ActionScreen:
-    """``/bot <name> destroy [once|continuous [for]|stop]`` or ``destroy <x> <y> <z> [face]``"""
-    continuous = _clause_form(name, ("destroy", "continuous"), (("for", FOR_FIELD, False),), lang)
+    """``/bot <name> destroy [once|continuous [for|count]|stop]`` or ``destroy <x> <y> <z> [face]``"""
+    continuous = _clause_form(
+        name, ("destroy", "continuous"), (("for", FOR_FIELD, False), ("count", COUNT_FIELD, False)), lang
+    )
     return ActionScreen(
         f"{name}: destroy",
         tr(lang, MODE_CONTENT, ticks=TICKS),

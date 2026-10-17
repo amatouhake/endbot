@@ -22,9 +22,10 @@ class FakeSession extends EventEmitter {
   dropSelected (stack) { this.drops.push(stack) }
   setChunkRadius (radius) { this.radius = radius; this.serverChunkRadius = undefined }
   startMining (target) { this.mining = { state: 'active', ...target } }
-  startMiningLoop (durationTicks) {
-    this.mining = { state: 'waiting', continuous: true, loopId: 'test-loop',
-      ...(durationTicks === undefined ? {} : { remainingTicks: durationTicks }) }
+  startMiningLoop (durationTicks, blockCount) {
+    this.mining = { state: 'waiting', continuous: true, loopId: 'test-loop', blocksBroken: 0,
+      ...(durationTicks === undefined ? {} : { remainingTicks: durationTicks }),
+      ...(blockCount === undefined ? {} : { blockCount }) }
   }
   continueMining ({ loopId, ...target }) {
     if (loopId === this.mining?.loopId) this.mining = { ...this.mining, ...target, state: 'active' }
@@ -467,6 +468,8 @@ test('move, action and destroy forward durations and hold to the online Bot', as
   const use = lifecycle.action('Alice', 'use', 'interval', 40, 200, 30).inputs.actions.use
   assert.deepEqual([use.intervalTicks, use.holdTicks, use.remainingTicks], [40, 30, 200])
   assert.equal(lifecycle.mine('Alice', { mode: 'start', durationTicks: 200 }).mining.remainingTicks, 200)
+  const counted = lifecycle.mine('Alice', { mode: 'start', durationTicks: 200, blockCount: 3 }).mining
+  assert.deepEqual([counted.remainingTicks, counted.blockCount, counted.blocksBroken], [200, 3, 0])
   assert.throws(() => lifecycle.action('Alice', 'jump', 'once', undefined, 20), /Duration/)
   await lifecycle.close()
 })

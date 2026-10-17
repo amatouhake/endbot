@@ -4,6 +4,8 @@
 > other operations no longer end mining.
 > The first observation list below used the old name and stop rules; the re-validation section covers the current
 > behavior.
+> **Note (2026-10-17):** `destroy ... for <ticks>`/`count <blocks>` limits and the `count <blocks>` stop are not
+> covered by the runs below; the block-count end still needs a real-server check.
 
 Implementation uses packed `start_break` and `abort_break` actions in `PlayerAuthInput` (one `start_break` per block;
 BDS tracks progress itself), following

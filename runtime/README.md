@@ -7,8 +7,12 @@ canceled/failed state, target and reason. BDS owns speed, drops, durability and 
 and disconnect clear mining; other inputs keep it (a held-item change restarts the current block, teleport and
 dimension changes end only the current block). Jobs are not persisted or retried after reconnect. For continuous mining, the plugin reselects
 targets on the server thread and sends authenticated `continue` requests with the runtime's unique loop ID. These
-renew a 200-input-tick lease; stale requests cannot resume a stopped/replaced session. `status.mining` also exposes
-`continuous`, `loopId` and `waiting` state. See [commands](../docs/COMMANDS.md#mining-blocks)
+renew a 200-input-tick lease; stale requests cannot resume a stopped/replaced session. `mine start` also accepts the
+plugin's `for <ticks>` and `count <blocks>` limits: the tick budget counts input sends (wall clock, including waits
+between blocks), while the block budget counts completed targets and is unaffected by waiting; a loop that sets both
+ends at whichever comes first. `status.mining` also exposes
+`continuous`, `loopId`, `waiting`, `blocksBroken` and `blockCount` state, and a finished loop keeps its final
+`blocksBroken` count. See [commands](../docs/COMMANDS.md#mining-blocks)
 and [validation](../docs/MINING_VALIDATION.md).
 
 The runtime owns persistent Bot profiles and accountless Bedrock client sessions. A profile contains an immutable UUID,

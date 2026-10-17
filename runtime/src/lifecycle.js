@@ -267,7 +267,7 @@ export class BotLifecycle extends EventEmitter {
           (!Number.isFinite(parameters.yaw) || !Number.isFinite(parameters.pitch) || Math.abs(parameters.pitch) > 90)) {
         throw new Error('Invalid destroy look direction')
       }
-      if (parameters.mode === 'start') state.session.startMiningLoop(parameters.durationTicks)
+      if (parameters.mode === 'start') state.session.startMiningLoop(parameters.durationTicks, parameters.blockCount)
       else state.session.startMining(parameters)
       state.inputs.setAction('attack', 'stop')
       state.inputs.setAction('use', 'stop')

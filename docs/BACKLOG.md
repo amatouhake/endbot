@@ -158,6 +158,13 @@ unobstructed target. `destroy continuous` continuously selects targets along the
 when a reachable block appears; `destroy stop` cancels both mining and waiting. Packed player block actions let BDS perform normal mining; no world edit,
 instant-break transaction, OP, or authentication/core change is used. Status tracks the server's target updates.
 
+Count limit (2026-10-17 JST): `destroy [continuous] count <blocks>` stops continuous mining after that many
+BDS-completed targets. The runtime counts them on its target-update path, so waiting between blocks costs nothing and
+the count is exact under load, unlike the wall-clock `for` budget; `for` and `count` combine and mining ends at
+whichever comes first. `status` shows the blocks broken (and the limit when set), keeps the total of a finished loop,
+and the end reports `block count reached` at info level. Automated tests cover parsing, dispatch, status/notices and
+the runtime loop; real-server validation of the count end remains a manual gate (`scripts/raknet_spike.py --mining`).
+
 Real-server checks covered bare-hand dirt/stone, iron-pickaxe stone with cobblestone drop and durability loss, three
 cancellation paths, native event cancellation preserving the block/tool, consecutive targets and waiting/resume/stop.
 The same automated matrix (with radius, controller management and abnormal-end notices) also passed over NetherNet, the
@@ -262,8 +269,9 @@ decide whether to keep it from the experiment's results.
   mirror commands and add no meaning of their own.
 - `for <ticks>` duration and `use hold <ticks>` repeated charges shipped in 0.3.0; see
   [durations](COMMANDS.md#durations-for-and-charged-presses-hold). Real-server and human-client validation (bow/trident
-  `hold` repeats, mining duration end, forms) remains a manual gate. Item-count/completion conditions are separate
-  from duration and not implemented. Live RakNet smoke (2026-10-16 JST, locked Endstone `0.11.13+endbot.1` / BDS
+  `hold` repeats, mining duration end, forms) remains a manual gate. The destroy block-count stop
+  (`count <blocks>`, see BOT-005) is implemented; item-count conditions for other inputs remain separate from duration
+  and not implemented. Live RakNet smoke (2026-10-16 JST, locked Endstone `0.11.13+endbot.1` / BDS
   `1.26.52.3`, `scripts/raknet_spike.py --mining --item-use`) passed through the native parser: `move forward for 20`
   moved 4.3 blocks then held still, `jump interval 10 for 30` expired, `use hold 25 interval 30 for 90` fired exactly
   three arrows, and `destroy for 40` aborted obsidian with the info notice.

@@ -175,19 +175,27 @@ export class BedrockSession extends EventEmitter {
     if (!this.miningLoop) return job
     return { ...job, state: job?.state === 'active' ? 'active' : 'waiting',
       reason: job?.state === 'active' ? job.reason : 'waiting for a reachable block',
-      continuous: true, loopId: this.miningLoop.id,
-      ...(this.miningLoop.remainingTicks === undefined ? {} : { remainingTicks: this.miningLoop.remainingTicks }) }
+      continuous: true, loopId: this.miningLoop.id, blocksBroken: this.miningLoop.blocksBroken,
+      ...(this.miningLoop.remainingTicks === undefined ? {} : { remainingTicks: this.miningLoop.remainingTicks }),
+      ...(this.miningLoop.blockCount === undefined ? {} : { blockCount: this.miningLoop.blockCount }) }
   }
 
-  startMiningLoop (durationTicks = undefined) {
+  startMiningLoop (durationTicks = undefined, blockCount = undefined) {
     if (durationTicks !== undefined && (!Number.isSafeInteger(durationTicks) || durationTicks < 1 || durationTicks > 72_000)) {
       throw new Error('Destroy duration must be an integer from 1 to 72000 ticks')
+    }
+    if (blockCount !== undefined && (!Number.isSafeInteger(blockCount) || blockCount < 1 || blockCount > 72_000)) {
+      throw new Error('Destroy block count must be an integer from 1 to 72000 blocks')
     }
     this.#assertMiningAvailable()
     this.stopMining('continuous mining restarted')
     this.mining = undefined
-    this.miningLoop = { id: randomUUID(), leaseTicks: 0,
-      ...(durationTicks === undefined ? {} : { remainingTicks: durationTicks }) }
+    // `blocksBroken` counts completed targets for `status`. A `count` budget
+    // ends the loop as soon as that many blocks are gone: waiting for the next
+    // target costs nothing, unlike the wall-clock `for` tick budget.
+    this.miningLoop = { id: randomUUID(), leaseTicks: 0, blocksBroken: 0,
+      ...(durationTicks === undefined ? {} : { remainingTicks: durationTicks }),
+      ...(blockCount === undefined ? {} : { blockCount }) }
   }
 
   continueMining ({ loopId, ...target }) {
@@ -232,6 +240,9 @@ export class BedrockSession extends EventEmitter {
 
   stopMining (reason = 'stopped', state = 'canceled', discard = false, preserveLoop = false) {
     const looping = this.miningLoop !== undefined
+    // A loop that ends keeps its completed-block count on the finished job so
+    // `status` can report how much it broke before it stopped.
+    const broken = looping && !preserveLoop ? this.miningLoop.blocksBroken : undefined
     if (!preserveLoop) this.miningLoop = undefined
     if (this.mining?.state === 'active') {
       const job = this.mining
@@ -240,9 +251,11 @@ export class BedrockSession extends EventEmitter {
       else this.pendingBlockActions = this.pendingBlockActions.filter(action => action.action !== 'start_break')
       job.state = state
       job.reason = reason
+      if (broken !== undefined) job.blocksBroken = broken
     }
     if (looping && !preserveLoop && this.mining?.state !== 'active') {
-      this.mining = { ...this.mining, blockPosition: this.mining?.blockPosition ?? [], state, reason }
+      this.mining = { ...this.mining, blockPosition: this.mining?.blockPosition ?? [], state, reason,
+        ...(broken === undefined ? {} : { blocksBroken: broken }) }
     }
     if (discard) this.pendingBlockActions = []
   }
@@ -254,6 +267,20 @@ export class BedrockSession extends EventEmitter {
     else this.pendingBlockActions = this.pendingBlockActions.filter(action => action.action !== 'start_break')
     this.pendingBlockActions.push(createMiningAction('start_break', job.blockPosition, job.face))
     job.ticks = 0
+  }
+
+  // The watched target changed, so BDS completed (or another actor changed)
+  // the block. Continuous loops count the completion for `status`; a `count`
+  // budget ends the loop as soon as it is reached instead of retargeting, so
+  // the stop lands on an already-finished block and aborts nothing.
+  #completeMining () {
+    this.stopMining('BDS changed target block', 'completed', false, true)
+    const loop = this.miningLoop
+    if (loop === undefined) return
+    loop.blocksBroken += 1
+    if (loop.blockCount !== undefined && loop.blocksBroken >= loop.blockCount) {
+      this.stopMining('block count reached', 'completed')
+    }
   }
 
   #miningInReach (blockPosition) {
@@ -504,7 +531,7 @@ export class BedrockSession extends EventEmitter {
       if (packet.layer !== 0 || this.mining?.state !== 'active') return
       const job = this.mining
       if (job.blockPosition.every((value, index) => value === packet.position[['x', 'y', 'z'][index]]) &&
-          packet.block_runtime_id !== job.blockRuntimeId) this.stopMining('BDS changed target block', 'completed', false, true)
+          packet.block_runtime_id !== job.blockRuntimeId) this.#completeMining()
     })
     for (const event of ['add_player', 'add_entity']) {
       this.client.on(event, packet => this.entities.set(String(packet.runtime_id), {

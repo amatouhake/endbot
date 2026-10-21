@@ -348,7 +348,7 @@ promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Group feature implemented on `feat/groups` — revised forms/history need human-client recheck**
+Status: **Group feature implemented on `feat/groups` — shared operation menus need human-client recheck**
 (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -427,8 +427,9 @@ and the result/log presentation of group-targeted `/bot` commands became the nex
 
 The user then agreed to and requested implementation of these rules:
 
-- `/bot menu` links to Groups; `/botgroup` or `/botgroup menu` lists/creates groups; `/bot #group menu` opens ordered member browsing,
-  bulk controls and membership management. Members open the ordinary Bot menu for teleport/individual operations.
+- `/bot menu` lists Bots and direct Group operation targets; `/botgroup` or `/botgroup menu` lists/creates groups.
+  `/bot #group menu` uses the shared Bot operation screen. `/botgroup menu #group` opens ordered member browsing
+  and management, with a nested link to that operation screen. Members open the ordinary Bot menu.
   Group deletion asks for confirmation and retains Bot registrations. Forms run/echo the same typed commands.
 - Every whole-group acknowledgement and its normal audit entry is at most two lines, with accepted/failed/not-run
   counts plus up to three aggregated reason categories and an "other" count. No per-failure automatic line. Counts
@@ -445,7 +446,11 @@ and stale-identity cases. The updated real-BDS probe passed summary/result comma
 form rendering/input was subsequently reported as working, with two screenshots identifying blank deletion-confirmation
 text and default Run buttons for membership edits. The revised UI names the group in deletion/add/remove forms,
 uses Add/Remove labels and an action form for deletion. Bare `/botgroup` opens the menu. The user's chosen result-history
-semantics replace member-row pagination; member-list browsing remains paginated. These revisions need a client recheck.
+semantics replace member-row pagination; member-list browsing remains paginated. The user confirmed the revised
+forms/history checks passed with source `f419241`. They next requested clearer separation of management and operations.
+The shared-screen revision preserves management-first `/botgroup` menus and operation categories, adds direct Group
+targets to `/bot`, and exposes missing command-backed controls including teleport, lifecycle, radius and interaction.
+Back navigation preserves the entry context. Its 231 plugin tests pass; the shared-screen UI needs a client check.
 Live mid-batch revocation remains a manual gate.
 No actual Xbox achievement unlock was reported. See the
 [Group evidence and follow-up](GROUPS.md) for scope and limits.
@@ -457,7 +462,7 @@ Remaining scope choices:
 - Explicit removal compacts later indexes; re-addition appends. Offline/forgotten entries remain until removed.
   Reordering and stable numbered slots can be considered after use.
 - Commands/menus use explicit targets and recheck authority. Offline/missing behavior follows each existing operation.
-- Bulk teleport currently applies the single-Bot teleport independently; the menu exposes individual teleport only.
+- Bulk teleport applies the single-Bot teleport independently, including through the shared operation menu.
   Offset formations, collision-safe placement and a frozen moving-player destination remain separate design work.
 
 The later Luau API should reuse the chosen target-resolution/operation model; script-specific execution lifetime

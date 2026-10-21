@@ -297,7 +297,7 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         (
             "/bot or /bot menu lists every Bot; <name> menu opens that Bot's actions directly.",
             "Forms run the same /bot commands, so replies and permissions match typed commands.",
-            "interact, rename, forget and spawn at coordinates stay command-only.",
+            "Bot and Group operation menus share the same controls; Group management uses /botgroup.",
         ),
         named=False,
     ),

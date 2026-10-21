@@ -39,13 +39,23 @@ When using the OS CLI, quote the whole command, for example `endbot console "bot
 
 ## Menus and operation results
 
-`/bot menu` now includes **Groups...**. `/botgroup` alone (or `/botgroup menu`) opens the group list/create screen;
-`/bot #miners menu` (also
-`/botgroup menu #miners`) opens the group screen. It offers ordered members with connection state, group operations,
-add/remove membership, group deletion with confirmation, and the initiating controller's recent operation result.
-Members are paginated ten at a time (`/botgroup menu #miners 2`). Selecting an existing member opens its ordinary Bot
-menu. Teleport and other individual-only controls remain there; there is no formation or group teleport button.
-Group inputs and mining controls reuse the ordinary forms, with duration/count limits described per Bot.
+`/bot` or `/bot menu` lists individual Bots and direct `#group (count)` operation targets. Selecting a group opens
+`/bot #miners menu`, which uses the same operation screen builder and categories as an individual Bot: stop, movement,
+look, teleport, gameplay, inventory and Bot settings. It also offers the caller's operation history. Group controls remain
+available for mixed online/offline and empty groups; execution reports operation-specific failures normally.
+
+`/botgroup` alone (or `/botgroup menu`) opens the group list/create screen. `/botgroup menu #miners` opens management:
+ordered members with connection state, add/remove membership and group deletion with confirmation. **Group operations...**
+opens the same shared operation screen, with **Back to group management** returning to this management screen.
+Members are paginated ten at a time (`/botgroup menu #miners 2`); selecting one opens its ordinary Bot menu and retains
+the management return path through nested navigation. Direct `/bot #group menu` returns to the Bot/target list.
+
+Teleport, resume/spawn (including coordinates), reconnect/despawn, chunk radius, status and block interaction are
+available from the shared operation menus. Whole-group rename/forget remain rejected by the command and omitted from
+the group menu; individual Bot profile controls offer them. Input forms use the existing command semantics: teleport,
+spawn and interaction `~` coordinates are relative to the controller; look-at/mining coordinates are relative to each
+Bot. Group settings use form defaults rather than displaying one member's value as a group-wide current value.
+There is no formation/scatter feature. Duration/count limits apply per Bot.
 
 Every mutation submitted by a form uses the same `/bot` or `/botgroup` command/permission path and echoes the actual
 root/arguments in chat. Group/Bot UUIDs and membership order are checked on submission; changing membership or
@@ -100,8 +110,9 @@ layout replaces the message-form layout whose title/content appeared blank in th
   undo those inputs. Existing continuous-mining revocation/lease behavior still applies.
 - Runtime requests carry the expected UUID and reject a stale/reused Bot name before applying an operation. This
   supplements the plugin's UUID lookup; it does not change the Microsoft/Xbox or local-bot login paths.
-- Whole-group rename/forget are rejected. Use one member or a Bot name for those operations. Whole-group `menu` opens
-  the group screen; indexed `menu` opens the existing single-Bot screen.
+- Whole-group rename/forget are rejected. Use one member or a Bot name for those operations. Whole-group `/bot ... menu`
+  opens the shared operation screen; indexed `menu` opens the existing single-Bot screen. `/botgroup menu #group` opens
+  the distinct management screen, with a nested link to operations.
 - `/botgroup` advertises separate native hints for `list`, `help`, `create`, `delete`, `add`, `remove`, `menu` and `result`,
   with optional group scope for `list` and group/Bot/member argument hints. It uses the same generic-parseability plus
   typed-enum approach as `/bot`. Generic branches remain for the locked native parser (including indexed removal);
@@ -208,7 +219,19 @@ locked pair passed native bare-command handling, latest/previous operation selec
 broader movement/controller/authentication checks and clean shutdown. This console run does not validate client form
 appearance or actual Xbox achievement unlocks.
 
-Remaining gates include the revised group forms/history presentation and live revocation.
+The user subsequently confirmed the game-client scope for source `f419241` passed, including revised forms/history.
+The next agreed revision keeps `/botgroup` management-first, adds direct group targets to `/bot`, and shares the Bot
+operation screen between single and group targets. It retains operation categories and adds the missing command-backed
+controls rather than flattening the hierarchy. Back navigation preserves the management/operation entry. Common
+despawn/profile confirmations now use the visible action-form presentation as group deletion does.
+The shared-screen revision passes 231 plugin tests, including direct selection, management/member/result return paths,
+mixed/empty groups, UUID-pinned teleport, group radius changes and stale menu rejection.
+Native construction of 132 screens in English/Japanese passed on the locked Endstone environment; this checks the
+form API payloads, not client appearance. Lint, portability and the plugin-wheel build passed. The fresh Windows
+RakNet BDS probe passed all group/history checks, the broader controller/movement/authentication checks and clean
+shutdown with the unchanged locked pair.
+
+Remaining gates include the shared operation screens/return paths on the real client and live revocation.
 Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
 No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
 Endstone/BDS pair.

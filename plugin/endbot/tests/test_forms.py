@@ -94,7 +94,7 @@ class ScreenTests(unittest.TestCase):
         )
         for item in screen.items:
             if isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
-                self.assertLessEqual(len(item.action.screen.items), 8)
+                self.assertLessEqual(len(item.action.screen.items), 9)
                 self.assertEqual(item.action.screen.items[-1].text, "Back to Bot")
 
     def test_long_bot_names_keep_state_first_on_one_line(self):
@@ -111,7 +111,7 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(actions["Resume (where it was)"], forms.Run((("Bob", "resume"),)))
         self.assertEqual(actions["Spawn here"], forms.Run((("Bob", "spawn"),)))
         self.assertNotIn("Forward", actions)
-        self.assertNotIn("Despawn...", actions)
+        self.assertIn("Despawn...", actions)
         self.assertEqual(actions["Back to Bot list"], forms.Run((("menu",),)))
         self.assertFalse(any(isinstance(item, forms.Header) for item in screen.items))
 
@@ -127,8 +127,10 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(actions["Reconnect"], forms.Run((("Alice", "reconnect"),)))
         confirm = actions["Despawn..."].screen
         self.assertEqual(confirm.action, forms.Run((("Alice", "despawn"),)))
-        # Interact, rename and forget stay command-only.
-        self.assertFalse(any(word in text.lower() for text in actions for word in ("interact", "rename", "forget")))
+        self.assertIn("Interact with block...", actions)
+        profile = at(screen, "Bot...", "Profile...")
+        self.assertIn("Rename...", buttons(profile))
+        self.assertIn("Forget...", buttons(profile))
 
     def test_full_status_stays_under_bot_and_hotbar_defaults_to_current_slot(self):
         view = forms.BotView("Alice", "full status and radius details", {**ONLINE, "selectedHotbarSlot": 9}, OBSERVED)
@@ -161,6 +163,8 @@ class ScreenTests(unittest.TestCase):
             ("Drop item...", (1,), [("Alice", "drop", "stack")]),
             ("Chunk radius...", (False, 16.0), [("Alice", "radius", "16")]),
             ("Chunk radius...", (True, 16.0), [("Alice", "radius", "default")]),
+            ("Spawn at coordinates...", ("~1 64 ~2",), [("Alice", "spawn", "at", "~1", "64", "~2")]),
+            ("Interact with block...", ("1 64 2", 1), [("Alice", "interact", "1", "64", "2", "up")]),
         ]
         for button, values, expected in cases:
             with self.subTest(button=button, values=values):
@@ -168,6 +172,11 @@ class ScreenTests(unittest.TestCase):
                 self.assertEqual([tuple(command) for command in commands], expected)
                 for command in commands:
                     parse_command(list(command))
+
+    def test_profile_forms_mirror_rename_and_forget_without_broadcast(self):
+        actions = buttons(at(self.online_screen(), "Bot...", "Profile..."))
+        self.assertEqual(submit(actions["Rename..."].screen, "Alicia"), (("Alice", "rename", "Alicia"),))
+        self.assertEqual(actions["Forget..."].screen.action.commands, (("Alice", "forget"),))
 
     def test_action_forms_mirror_command_modes_and_clauses(self):
         screen = self.online_screen()
@@ -511,7 +520,7 @@ class PresenterTests(unittest.TestCase):
         click["Bot..."](self.player)
         {text: c for _, text, c in self.player.forms[-1].items}["Despawn..."](self.player)
         confirm = self.player.forms[-1]
-        confirm.kwargs["on_submit"](self.player, 1)
+        {text: c for _, text, c in confirm.items}["Cancel"](self.player)
         self.assertEqual(self.player.forms[-1].kwargs["title"], "Alice: bot")
         self.assertEqual(self.submitted, [])
 
@@ -519,10 +528,11 @@ class PresenterTests(unittest.TestCase):
         _, clicks = self.bot_form()
         clicks["Despawn..."](self.player)
         confirm = self.player.forms[-1]
-        self.assertEqual(type(confirm).__name__, "MessageForm")
-        confirm.kwargs["on_submit"](self.player, 1)
+        self.assertEqual(type(confirm).__name__, "ActionForm")
+        self.assertIn("Alice", confirm.kwargs["content"])
+        {text: c for _, text, c in confirm.items}["Cancel"](self.player)
         self.assertEqual(self.submitted, [])
-        confirm.kwargs["on_submit"](self.player, 0)
+        {text: c for _, text, c in confirm.items}["Despawn"](self.player)
         self.assertEqual(self.submitted, [["Alice", "despawn"]])
 
     def test_list_view_renders_bot_buttons(self):

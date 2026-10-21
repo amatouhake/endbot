@@ -6,12 +6,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from test_command_service import FakeWorld
-from test_forms import FakeFormModule, FakePlayer
+from test_forms import FakeFormModule, FakePlayer, buttons
 from test_groups import GroupControl, messages
 
+from endstone_endbot import forms
 from endstone_endbot.commands import strip_colors
 from endstone_endbot.control import RuntimeControlError
 from endstone_endbot.form_adapter import FormPresenter
+from endstone_endbot.forms import BotView
 from endstone_endbot.group_forms import GroupListView, GroupView, ResultView
 from endstone_endbot.group_results import CACHE_SIZE, HISTORY_SIZE, GroupResult, MemberResult, ResultStore
 from endstone_endbot.groups import Group, GroupCommandService, GroupStore
@@ -51,7 +53,7 @@ class GroupUiResultTests(unittest.TestCase):
         next(callback for kind, label, callback in form.items if kind == "button" and label == text)(self.player)
 
     def open_group(self):
-        result = self.service.execute(["#miners", "menu"], self.source)
+        result = self.manage("menu", "#miners")
         self.assertIsInstance(result.view, GroupView)
         self.presenter.show_view(self.player, result.view)
         return result.view
@@ -147,9 +149,8 @@ class GroupUiResultTests(unittest.TestCase):
         self.click("Older result")
         self.assertIn("no longer retained", messages(self.submissions[-1][2]))
 
-    def test_bot_list_group_entry_and_creation_use_botgroup_and_echo_its_actual_command(self):
-        self.presenter.show_view(self.player, self.service.execute(["menu"], self.source).view)
-        self.click("Groups...")
+    def test_group_management_creation_uses_botgroup_and_echoes_its_actual_command(self):
+        self.presenter.show_view(self.player, self.manage("menu").view)
         self.click("+ New group...")
         modal = self.player.forms[-1]
         modal.kwargs["on_submit"](self.player, json.dumps(["#builders"]))
@@ -158,9 +159,104 @@ class GroupUiResultTests(unittest.TestCase):
         self.assertIn("/botgroup create #builders", strip_colors(self.player.messages[-1]))
         self.assertEqual(self.store.get("builders").members, ())
 
+    def test_bot_list_opens_group_operations_directly_with_the_shared_bot_layout(self):
+        self.presenter.show_view(self.player, self.service.execute(["menu"], self.source).view)
+        self.click("#miners (2)")
+        argv, options, result = self.submissions[-1]
+        self.assertEqual(argv, ["#miners", "menu"])
+        self.assertNotIn("command", options)
+        self.assertIsInstance(result.view, BotView)
+        group = forms.bot_screen(result.view, "Steve")
+        bot = forms.bot_screen(self.service.execute(["Alice", "menu"], self.source).view, "Steve")
+        common = ["Stop everything", "Movement...", "Look...", "Teleport...", "Gameplay...", "Inventory...", "Bot..."]
+        self.assertEqual([item.text for item in group.items[:7]], common)
+        self.assertEqual([item.text for item in bot.items[:7]], common)
+        self.assertNotIn("Group operations...", buttons(group, 0))
+        self.assertNotIn("Delete group...", buttons(group, 0))
+        self.assertNotIn("Profile...", buttons(group))
+        self.click("Back to Bot list")
+        self.assertIn("#miners (2)", [label for kind, label, _ in self.player.forms[-1].items if kind == "button"])
+
+    def test_management_operations_and_member_menus_return_to_management(self):
+        self.open_group()
+        self.assertNotEqual(self.player.forms[-1].items[0][1], "Group operations...")
+        self.click("Group operations...")
+        self.click("Movement...")
+        self.click("Back to group operations")
+        self.click("Back to group management")
+        self.assertIsInstance(self.submissions[-1][2].view, GroupView)
+        self.click("1: Alice [online]")
+        self.click("Movement...")
+        self.click("Back to Bot")
+        self.click("Back to group management")
+        self.assertIsInstance(self.submissions[-1][2].view, GroupView)
+
+    def test_operation_result_navigation_returns_to_its_operation_entry(self):
+        for management in (False, True):
+            with self.subTest(management=management):
+                if management:
+                    self.open_group()
+                    self.click("Group operations...")
+                else:
+                    self.presenter.show_view(self.player, self.service.execute(["#miners", "menu"], self.source).view)
+                self.click("Stop everything")
+                self.click("Recent operation result...")
+                self.click("Back to group operations")
+                view = self.submissions[-1][2].view
+                self.assertIsInstance(view, BotView)
+                self.assertEqual(view.guard.return_to_management, management)
+
+    def test_group_teleport_modal_uses_the_typed_command_and_pins_each_bot(self):
+        teleports = []
+        def teleport(identity, parameters, source):
+            teleports.append((identity, parameters, source))
+            return "Overworld 10 64 20"
+        self.service.world.teleport = teleport
+        self.presenter.show_view(self.player, self.service.execute(["#miners", "menu"], self.source).view)
+        self.click("Teleport...")
+        self.click("Teleport...")
+        # No player list in this fixture: index zero selects explicit coordinates.
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([0, "~1 64 ~2"]))
+        self.assertEqual(self.submissions[-1][0], ["#miners", "tp", "~1", "64", "~2"])
+        self.assertEqual([entry[0] for entry in teleports], list(self.store.get("miners").members))
+        self.assertTrue(all(entry[1]["coordinates"] == [("relative", 1.0), 64.0, ("relative", 2.0)]
+                            for entry in teleports))
+        self.assertTrue(all(entry[2].player_id == self.source.player_id for entry in teleports))
+        self.assertIn("accepted 2", messages(self.submissions[-1][2]))
+
+    def test_mixed_and_empty_groups_keep_controls_and_stale_modals_do_not_act(self):
+        self.control.bots["Bob"]["connectionState"] = "offline"
+        self.presenter.show_view(self.player, self.service.execute(["#miners", "menu"], self.source).view)
+        self.assertIn("Members 2, online 1", self.player.forms[-1].kwargs["content"])
+        self.click("Bot...")
+        self.click("Chunk radius...")
+        self.assertIn("per Bot", self.player.forms[-1].kwargs["controls"][1].args[0])
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([False, 12]))
+        for name in ("Alice", "Bob"):
+            self.assertEqual(self.control.bots[name]["chunkRadius"], 12)
+        self.presenter.show_view(self.player, self.service.execute(["#miners", "menu"], self.source).view)
+        self.click("Movement...")
+        self.click("Move...")
+        self.store.remove("miners", self.control.bots["Bob"]["identityId"])
+        self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([0, "20"]))
+        self.assertIn("Group changed", messages(self.submissions[-1][2]))
+        self.assertFalse(any(method == "groupInputBatch" for method, _ in self.control.calls))
+        self.manage("create", "#empty")
+        view = self.service.execute(["#empty", "menu"], self.source).view
+        self.assertIsInstance(view, BotView)
+        self.assertIn("Members 0, online 0", view.summary)
+
+    def test_old_bot_list_group_target_cannot_open_a_replacement_group(self):
+        self.presenter.show_view(self.player, self.service.execute(["menu"], self.source).view)
+        self.store.delete("miners")
+        self.store.create("miners")
+        self.click("#miners (2)")
+        self.assertIn("Group changed", messages(self.submissions[-1][2]))
+
     def test_group_forms_submit_the_same_bulk_command_with_identity_guard(self):
         self.open_group()
         self.click("Group operations...")
+        self.click("Movement...")
         self.click("Jump...")
         self.click("once")
         argv, options, result = self.submissions[-1]

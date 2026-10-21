@@ -70,21 +70,12 @@ class FormPresenter:
                     action_form.add_button(item.text, on_click=self._on_click(item.action, screen, guard))
             return action_form
         if isinstance(screen, forms.ConfirmScreen):
-
-            def confirmed(player, selection: int) -> None:
-                if selection == 0:  # Endstone maps button1 to 0.
-                    self._act(player, screen.action, guard=guard)
-                else:
-                    back(player)
-
-            return form.MessageForm(
-                title=screen.title,
-                content=screen.content,
-                button1=screen.confirm,
-                button2=screen.cancel,
-                on_submit=confirmed,
-                on_close=back,
-            )
+            # The locked client's MessageForm can hide title/content. Use the
+            # same visible action-form confirmation as group deletion.
+            confirmation = form.ActionForm(title=screen.title, content=screen.content, on_close=back)
+            confirmation.add_button(screen.confirm, on_click=self._on_click(screen.action, guard=guard))
+            confirmation.add_button(screen.cancel, on_click=back)
+            return confirmation
         return form.ModalForm(
             title=screen.title,
             controls=[self._control(control) for control in screen.controls],

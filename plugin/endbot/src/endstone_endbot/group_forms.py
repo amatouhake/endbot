@@ -1,6 +1,6 @@
 """Group screens share command execution and result data with typed commands."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from endstone_endbot import forms as f
 from endstone_endbot.group_results import PAGE_SIZE, GroupResult
@@ -16,6 +16,8 @@ class GroupGuard:
     bot_identity: str | None = None
     bot_name: str | None = None
     candidates: tuple[tuple[str, str], ...] = ()
+    return_to_management: bool = False
+    operation_menu: bool = False
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,8 @@ class ResultView:
     result: GroupResult
     history: int
     records: tuple[GroupResult, ...]
+    return_to_operations: bool = False
+    return_to_management: bool = False
 
 
 def run(*arguments, guard=None):
@@ -62,23 +66,10 @@ def create_modal(lang="en"):
 def group_screen(view, lang="en"):
     name = f"#{view.name}"
     guard = GroupGuard(view.identity, view.name, tuple(row["identityId"] for row in view.members),
-                       candidates=tuple((row["name"], row["identityId"]) for row in view.available))
-    back = f.Button(tr(lang, "Back to group"), f.run((name, "menu")))
-    operations = f.ActionScreen(name, tr(lang, "Operations apply to every current member. Limits apply per Bot."), (
-        f.Button(tr(lang, "Stop everything"), f.run((name, "stop"))),
-        f.Button(tr(lang, "Move..."), f.Show(f.move_modal(name, lang))),
-        f.Button(tr(lang, "Jump..."), f.Show(f.action_screen(name, "jump", lang))),
-        f.Button(tr(lang, "Sprint / sneak..."), f.Show(f.flags_modal(name, lang))),
-        f.Button(tr(lang, "Look..."), f.Show(f.look_modal(name, None, lang))),
-        f.Button(tr(lang, "Attack..."), f.Show(f.action_screen(name, "attack", lang))),
-        f.Button(tr(lang, "Use item..."), f.Show(f.action_screen(name, "use", lang))),
-        f.Button(tr(lang, "Destroy blocks..."), f.Show(f.destroy_screen(name, lang))),
-        f.Button(tr(lang, "Hotbar slot..."), f.Show(f.hotbar_modal(name, lang=lang))),
-        f.Button(tr(lang, "Drop item..."), f.Show(f.drop_modal(name, lang))), back,
-    ))
+                       candidates=tuple((row["name"], row["identityId"]) for row in view.available),
+                       return_to_management=True)
     pages = max(1, (len(view.members) + PAGE_SIZE - 1) // PAGE_SIZE)
-    items = [f.Button(tr(lang, "Group operations..."), f.Show(operations)),
-             f.Button(tr(lang, "Recent operation result..."), run("menu", name, "result"))]
+    items = []
     for row in view.members[(view.page - 1) * PAGE_SIZE:view.page * PAGE_SIZE]:
         label = f"{row['index']}: {row['name']} [{tr(lang, row['connectionState'])}]"
         if row["connectionState"] == "missing":
@@ -111,8 +102,11 @@ def group_screen(view, lang="en"):
                                 f.Button(tr(lang, "Cancel"), run("menu", name)),
                             ))
     items.extend((f.Button(tr(lang, "Delete group..."), f.Show(delete)),
+                  f.Button(tr(lang, "Group operations..."), f.Run((f.menu_argv(name),),
+                           guard=replace(guard, operation_menu=True))),
+                  f.Button(tr(lang, "Recent operation result..."), run("menu", name, "result")),
                   f.Button(tr(lang, "Back to groups"), run("menu"))))
-    content = tr(lang, "Members {count} - page {page}/{pages}. Open a member for teleport and individual operations.",
+    content = tr(lang, "Members {count} - page {page}/{pages}. Open a member for individual operations.",
                  count=len(view.members), page=view.page, pages=pages)
     return f.ActionScreen(name, content, tuple(items), guard=guard)
 
@@ -125,10 +119,13 @@ def result_screen(view, lang="en"):
         index = history - 1 + offset
         if 0 <= index < len(view.records):
             target = view.records[index]
-            guard = GroupGuard(result.group_id, result.group_name, result_id=target.identity)
+            guard = GroupGuard(result.group_id, result.group_name, result_id=target.identity,
+                               return_to_management=view.return_to_management, operation_menu=view.return_to_operations)
             items.append(f.Button(tr(lang, label), run("menu", name, "result", str(index + 1), guard=guard)))
-    items.append(f.Button(tr(lang, "Back to group"), run("menu", name,
-                          guard=GroupGuard(result.group_id, result.group_name))))
+    back_guard = GroupGuard(result.group_id, result.group_name, return_to_management=view.return_to_management)
+    back = (f.Run((f.menu_argv(name),), guard=back_guard) if view.return_to_operations
+            else run("menu", name, guard=back_guard))
+    items.append(f.Button(tr(lang, "Back to group operations" if view.return_to_operations else "Back to group"), back))
     items.append(f.Button(tr(lang, "Back to groups"), run("menu")))
     return f.ActionScreen(tr(lang, "Recent operation result..."),
                           "\n".join(result.lines(history, len(view.records), lang)), tuple(items),

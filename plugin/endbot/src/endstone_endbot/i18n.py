@@ -71,6 +71,29 @@ def _format(text: str, params: dict[str, object], language: str) -> str:
 
 
 JA: dict[str, str] = {
+    "Groups": "グループ",
+    "Pick a Bot or group. (/bot help lists commands)": "Bot またはグループを選んでください。(/bot help でコマンド一覧)",
+    "Back to group operations": "グループの操作へ戻る",
+    "Back to group management": "グループの管理へ戻る",
+    "Members {count}, online {online}": "メンバー {count} 体、オンライン {online} 体",
+    "Members {count} - page {page}/{pages}. Open a member for individual operations.":
+        "メンバー {count} 体 - {page}/{pages} ページ。各メンバーを開くと単体操作ができます。",
+    "Spawn at coordinates...": "座標を指定してスポーン...",
+    "Status": "状態を表示",
+    "Profile...": "プロファイル...",
+    "profile": "プロファイル",
+    "Rename...": "名前を変更...",
+    "Rename": "名前を変更",
+    "New Bot name": "新しい Bot の名前",
+    "Forget...": "登録を削除...",
+    "Forget": "登録を削除",
+    "Forget {name}? Requires an offline Bot. Its world player data stays intact.":
+        "{name} の登録を削除しますか? オフラインの Bot が対象です。ワールド内のプレイヤーデータは残ります。",
+    "Interact with block...": "ブロックを操作...",
+    "Interact": "操作",
+    "Chunk radius (per Bot)": "チャンク半径 (各 Bot に適用)",
+    "Bot and Group operation menus share the same controls; Group management uses /botgroup.":
+        "Bot とグループの操作メニューは共通です。グループの管理は /botgroup を使います。",
     # Shared groups and bounded operation results.
     "+ New group...": "+ グループを作成...",
     ", other {count}": ", ほか {count} 件",

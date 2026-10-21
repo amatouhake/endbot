@@ -21,7 +21,7 @@ from endstone_endbot.commands import (
     strip_colors,
 )
 from endstone_endbot.control import RuntimeControlError
-from endstone_endbot.forms import BotListView
+from endstone_endbot.forms import BotListView, BotView, GroupTarget, Run, menu_argv
 from endstone_endbot.group_forms import GroupGuard, GroupListView, GroupView, ResultView
 from endstone_endbot.group_results import PAGE_SIZE, MemberResult, ResultStore
 from endstone_endbot.i18n import LocalizedError, localize_error, tr
@@ -243,6 +243,34 @@ class GroupCommandService(BotCommandService):
                                  key=lambda bot: bot["name"].casefold()))
         return CommandResult(True, view=GroupView(group.identity, group.name, members, available, page))
 
+    @staticmethod
+    def _group_view_back(view, group, guard):
+        """Keep menu origin separate from the UUID/membership checks on actions."""
+        back_guard = GroupGuard(group.identity, group.name)
+        management = guard.return_to_management
+        if management:
+            back = Run((("menu", f"#{group.name}"),), command="botgroup", guard=back_guard)
+        elif guard.bot_identity is not None:
+            back = Run((menu_argv(f"#{group.name}"),), guard=back_guard)
+        else:
+            back = Run((menu_argv(),))
+        label = "Back to group management" if management else (
+            "Back to group operations" if guard.bot_identity is not None else "Back to Bot list")
+        return replace(view, guard=guard, back=back, back_label=label)
+
+    def _operation_menu(self, sender, group):
+        if getattr(sender, "player_id", None) is None:
+            return self._menu(sender)
+        self._form_group(sender, group)
+        profiles = self._profiles(sender)
+        incoming = getattr(sender, "group_guard", None)
+        guard = GroupGuard(group.identity, group.name, group.members, operation_menu=True,
+                           return_to_management=bool(incoming and incoming.return_to_management))
+        online = sum(profiles.get(identity, {}).get("connectionState") == "online" for identity in group.members)
+        summary = tr(_language(sender), "Members {count}, online {online}", count=len(group.members), online=online)
+        view = BotView(f"#{group.name}", summary, {})
+        return CommandResult(True, view=self._group_view_back(view, group, guard))
+
     def _result(self, sender, group, history, *, menu=False):
         self._form_group(sender, group)
         guard = getattr(sender, "group_guard", None)
@@ -254,7 +282,9 @@ class GroupCommandService(BotCommandService):
         if menu:
             if getattr(sender, "player_id", None) is None:
                 raise ValueError("Use /botgroup result #group [history] from the console")
-            return CommandResult(True, view=ResultView(result, history, records))
+            return CommandResult(True, view=ResultView(result, history, records,
+                                 return_to_operations=bool(guard and guard.operation_menu),
+                                 return_to_management=bool(guard and guard.return_to_management)))
         return CommandResult(True, tuple(reply(line) for line in lines))
 
     def _profiles(self, sender, *, batch=False) -> dict[str, dict]:
@@ -444,18 +474,22 @@ class GroupCommandService(BotCommandService):
                         result = self._execute(command, sender, _language(sender), control=_MemberControl(
                             self.control, guard.bot_identity, lambda: self._check(sender)))
                         if result.view is not None:
-                            result = replace(result, view=replace(result.view, guard=guard))
+                            result = replace(result, view=self._group_view_back(
+                                result.view, self.groups.get(guard.name), guard))
                         return result
                 result = super().execute(arguments, sender)
                 if isinstance(result.view, BotListView):
-                    result = replace(result, view=replace(result.view, groups=True))
+                    self._check(sender)
+                    targets = tuple(GroupTarget(group.name, len(group.members), GroupGuard(group.identity, group.name))
+                                    for group in self.groups.groups)
+                    result = replace(result, view=replace(result.view, groups=targets))
                 return result
             command = parse_command(arguments)
             group, members, indexed = self.groups.select(tokens[0])
             self._check(sender)
             self._form_group(sender, group)
             if not indexed and command.operation == "menu":
-                return self._menu(sender, group)
+                return self._operation_menu(sender, group)
             if not indexed and command.operation in {"rename", "forget"}:
                 raise ValueError(f"{command.operation} requires one Bot; use #group[1] or a Bot name")
             if not members:
@@ -482,8 +516,11 @@ class GroupCommandService(BotCommandService):
                     )
                     if command.operation == "menu":
                         if result.view is not None:
-                            result = replace(result, view=replace(result.view, guard=GroupGuard(
-                                group.identity, group.name, group.members, bot_identity=identity, bot_name=name)))
+                            incoming = getattr(sender, "group_guard", None)
+                            guard = GroupGuard(group.identity, group.name, group.members, bot_identity=identity,
+                                               bot_name=name, return_to_management=bool(
+                                                   incoming and incoming.return_to_management))
+                            result = replace(result, view=self._group_view_back(result.view, group, guard))
                         return result
                     rows.append(self._row(index, identity, name, result=result))
                 except (RuntimeError, ValueError) as error:

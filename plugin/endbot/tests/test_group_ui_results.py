@@ -113,6 +113,65 @@ class GroupUiResultTests(unittest.TestCase):
         self.assertIn("permission was revoked", messages(self.manage("result", "#miners")))
         self.assertIsNone(self.service.execute(["#miners", "menu"], self.source).view)
 
+    def test_queries_print_member_data_without_audit_or_changing_operation_history(self):
+        self.service.execute(["#miners", "jump"], self.source)
+        self.service.execute(["#miners", "stop"], self.source)
+        group = self.store.get("miners")
+        history = self.service.results.history(self.source, group)
+        self.control.bots["Alice"].update(chunkRadius=12, chunkRadiusSource="bot")
+        self.control.bots["Bob"].update(chunkRadius=20, chunkRadiusSource="bot")
+        for target, names in (("#miners", ("Alice", "Bob")), ("#miners[2]", ("Bob",))):
+            for operation, data in (("status", "online | desired=online"), ("hotbar", "hotbar slot 1"),
+                                    ("radius", "chunk radius")):
+                with self.subTest(target=target, operation=operation):
+                    result = self.service.execute([target, operation], self.source)
+                    self.assertEqual(len(result.messages), len(names))
+                    for name, line in zip(names, result.messages):
+                        self.assertIn(f"#miners[{1 if name == 'Alice' else 2}] {name}:", strip_colors(line))
+                        self.assertIn(data, strip_colors(line))
+                        if operation == "radius":
+                            self.assertIn(f"chunk radius {12 if name == 'Alice' else 20}", strip_colors(line))
+                        self.assertNotIn("accepted", strip_colors(line))
+                    self.assertIsNone(result.log_level)
+                    self.assertIsNone(result.log_messages)
+                    self.assertEqual(self.service.results.history(self.source, group), history)
+        self.assertIn("stop - history 1/2", messages(self.manage("result", "#miners")))
+        self.assertIn("jump - history 2/2", messages(self.manage("result", "#miners", "2")))
+
+    def test_hotbar_and_radius_setters_still_record_and_audit_the_operation(self):
+        for arguments in (("hotbar", "3"), ("radius", "12"), ("radius", "default")):
+            with self.subTest(arguments=arguments):
+                result = self.service.execute(["#miners", *arguments], self.source)
+                self.assertIn("accepted 2", messages(result))
+                self.assertEqual(result.log_level, "info")
+                record = self.service.results.get(self.source, self.store.get("miners"))
+                self.assertEqual(record.operation, " ".join(arguments))
+
+    def test_queries_do_not_create_history_and_keep_full_data_after_member_failure(self):
+        for operation in ("status", "hotbar", "radius"):
+            self.service.execute(["#miners", operation], self.source)
+            self.assertIn("No recent", messages(self.manage("result", "#miners")))
+        del self.control.bots["Alice"]
+        self.control.bots["Bob"]["lastError"] = "x" * 700 + " tail-marker"
+        result = self.service.execute(["#miners", "status"], self.source)
+        self.assertEqual(len(result.messages), 2)
+        self.assertIn("#miners[1] ?: missing Bot profile", strip_colors(result.messages[0]))
+        self.assertIn("#miners[2] Bob:", strip_colors(result.messages[1]))
+        self.assertIn("tail-marker", result.messages[1])
+        self.assertIsNone(result.log_messages)
+        self.assertIn("No recent", messages(self.manage("result", "#miners")))
+
+    def test_explicit_query_prints_all_one_hundred_members_without_aggregation(self):
+        group = self.store.get("miners")
+        self.store._replace(replace(group, members=tuple(f"00000000-0000-4000-8000-{i:012d}"
+                                                       for i in range(1000, 1100))))
+        result = self.service.execute(["#miners", "status"], self.source)
+        self.assertEqual(len(result.messages), 100)
+        self.assertIn("#miners[1] ?: missing Bot profile", strip_colors(result.messages[0]))
+        self.assertIn("#miners[100] ?: missing Bot profile", strip_colors(result.messages[-1]))
+        self.assertIsNone(result.log_level)
+        self.assertEqual(len(self.service.results.records), 0)
+
     def test_lost_batch_response_is_unknown_not_failed_or_not_run(self):
         original = self.control.request
         def request(method, **params):

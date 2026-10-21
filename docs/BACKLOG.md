@@ -431,7 +431,7 @@ The user then agreed to and requested implementation of these rules:
   `/bot #group menu` uses the shared Bot operation screen. `/botgroup menu #group` opens ordered member browsing
   and management, with a nested link to that operation screen. Members open the ordinary Bot menu.
   Group deletion asks for confirmation and retains Bot registrations. Forms run/echo the same typed commands.
-- Every whole-group acknowledgement and its normal audit entry is at most two lines, with accepted/failed/not-run
+- Every whole-group mutating-command acknowledgement and its normal audit entry is at most two lines, with accepted/failed/not-run
   counts plus up to three aggregated reason categories and an "other" count. No per-failure automatic line. Counts
   describe acceptance; a lost batch response has a separate unknown count. Logs include actor/target/operation in
   English; player summaries use their language. Read-only/menu/result requests do not add audit entries.
@@ -454,6 +454,11 @@ Back navigation preserves the entry context. Its 231 plugin tests pass; the shar
 Client feedback on source `278fe78` identified the oversized Group heading in `/bot` and requested the reverse link
 from group operations to group management. The follow-up removes that heading and adds the specific-group link,
 reusing the existing management-back button when appropriate. The link refreshes membership and pins the group UUID.
+The user confirmed both checks passed for source `794882b`, with no issues in that scope. The subsequent agreed
+revision distinguishes queries from mutation acknowledgements: `status`, argument-free `hotbar` and argument-free
+`radius` display every member's actual data/error immediately, with index and name, and neither add audit entries nor
+create/replace operation history. Setters retain the bounded summary/audit/history behavior. Its 236 plugin tests pass;
+query presentation remains a client check.
 Live mid-batch revocation remains a manual gate.
 No actual Xbox achievement unlock was reported. See the
 [Group evidence and follow-up](GROUPS.md) for scope and limits.

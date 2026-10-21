@@ -66,7 +66,7 @@ deleting/recreating a group requires reopening old forms. A member's single-Bot 
 navigation, so a replacement using the old name is not accidentally controlled. Closing/canceling management forms
 does not perform the operation; deleting a group leaves its Bots registered.
 
-Whole-group operation acknowledgements are at most **two lines**, regardless of failure count: accepted/failed/not-run
+Whole-group mutating-command acknowledgements are at most **two lines**, regardless of failure count: accepted/failed/not-run
 counts and, if needed, failure reasons aggregated by category. At most three categories are shown, with excess entries
 counted under "other". They confirm acceptance, not successful world outcomes. Missing responses after sending a batch
 are counted as **acceptance unknown**, never silently described as not executed and never automatically retried.
@@ -77,11 +77,18 @@ Player replies follow their language. Menus, result inspection and read-only que
 The bound applies to immediate command acknowledgements; BDS join/quit events and existing asynchronous mining notices
 are separate events. Per-member details do not get dumped into the normal acknowledgement or audit log.
 
+Read-only `/bot #miners status`, `/bot #miners hotbar` and `/bot #miners radius` print every member's actual query
+result immediately, including `#group[index]`, the Bot name and any per-member error. Indexed queries use the same
+format. Explicit queries have no ten-row page or two-line summary limit; query data is not truncated to the saved
+operation-detail length. They add no audit entry and do not create, replace or advance operation history. For example,
+after `jump`, checking `status` still leaves that `jump` result as history 1. Supplying a hotbar slot or radius value
+(including `default`) is a mutation and retains the bounded acknowledgement/history/audit behavior.
+
 `/botgroup result #miners [history]` prints **all member rows** of one saved operation, including its target/operation,
 counts and per-member outcomes/reasons. Omit the number (or use `1`) for the latest operation; `2` selects the previous
 operation, `3` the one before that. It is an inspection of saved request results, not a replay or fresh status query.
 The menu uses the same snapshots (`/botgroup menu #miners result [history]`) and offers older/newer result buttons.
-Snapshots describe group-targeted `/bot` requests; management confirmations and menu navigation do not replace them.
+Snapshots describe mutating group-targeted `/bot` requests; queries, management confirmations and menu navigation do not replace them.
 Each controller/group retains up to 20 results, subject to a global cap of 128 snapshots, evicting oldest first. These are in memory and cleared
 on restart. Console/CLI share the console result slot. Another controller's operation cannot overwrite your result.
 Details retain their request-time language. Editing membership/renaming a Bot does not change historical result rows;
@@ -239,6 +246,14 @@ The user's screenshot of source `278fe78` showed an oversized native Group headi
 removes that heading and adds the requested reverse link from group operations to that specific group's management.
 Navigation refreshes the current membership but pins the group UUID, rejecting deletion/recreation under the same name.
 All 232 plugin tests, lint and repository portability checks passed for this follow-up.
+The user confirmed both client checks for source `794882b` passed (heading removal and the reverse management link),
+with no issues found in that scope. They then requested data-oriented query replies: status/hotbar/radius queries now
+print all member results immediately, without adding audit entries or changing operation history. The revision passes
+236 plugin tests covering whole/indexed query payloads, retained history, empty history, member failures, full long
+query data, 100-member output and preserved setter behavior. Query presentation needs a client recheck.
+Lint, portability and the plugin-wheel build passed. The fresh Windows RakNet BDS probe passed all three query
+payloads, absence of query audit entries and preserved latest/previous operation results, plus the existing group,
+controller/movement/authentication checks and clean shutdown on the unchanged locked pair.
 Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
 No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
 Endstone/BDS pair.

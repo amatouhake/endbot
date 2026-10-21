@@ -458,7 +458,7 @@ Individual members open their normal Bot screen. Group deletion is confirmed
 and keeps the Bots. Forms echo and submit the same `/bot`
 or `/botgroup` commands and authorization checks, with UUID/membership checks to reject stale forms.
 
-Whole-group operation acknowledgements and their normal audit entries are capped at two lines: counts plus grouped
+Whole-group mutating-command acknowledgements and their normal audit entries are capped at two lines: counts plus grouped
 failure categories, independent of group/failure size. They confirm acceptance, not completed world actions. Details
 are available without menus via `/botgroup result #miners [history]`. This prints every member's result for one
 operation: omit the number or use `1` for the latest, `2` for the previous operation, and so on. The menu reads the
@@ -466,6 +466,12 @@ same saved results through `/botgroup menu #miners result [history]`, with older
 20 operations per caller/group and 128 globally, evicting oldest first. Results are private per caller/group, in memory, and reset on
 restart. An unavailable response after sending inputs is reported as unknown acceptance. See
 [Group scope, evidence and client checks](GROUPS.md) for the full behavior and remaining gates.
+
+Queries return data directly: `/bot #miners status`, `/bot #miners hotbar` and `/bot #miners radius` print every
+member's query result, labeled with `#group[index]` and Bot name. Failures occupy that member's result line; the
+remaining members are still queried. Indexed queries work the same way. Queries create no audit entry and do not
+change `result` history, so a state check after an action still leaves that action as the latest operation result.
+`hotbar <slot>` and `radius <value|default>` remain modifying operations with bounded summaries and saved history.
 
 ## Live parser smoke (real BDS required)
 

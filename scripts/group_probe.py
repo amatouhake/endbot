@@ -29,6 +29,13 @@ def exercise_groups(bot, console, request, wait, log, report):
     command("botgroup result #miners", "No recent group result")
     command("bot #miners stop", "#miners: console: stop: accepted 2, failed 0, not run 0")
     command("bot #miners jump", "#miners: console: jump: accepted 2, failed 0, not run 0")
+    for operation, data in (("status", "online"), ("hotbar", "hotbar slot"), ("radius", "chunk radius")):
+        output = command(f"bot #miners {operation}", f"#miners[1] {bot}:", f"#miners[2] {buddy}:")
+        rows = [line for line in output.splitlines() if "Endbot: #miners[" in line]
+        if len(rows) != 2 or any(data not in line for line in rows):
+            raise ConsumerError(f"Group {operation} query did not show both member results")
+        if "Endbot: #miners: console:" in output:
+            raise ConsumerError(f"Group {operation} query added an audit entry")
     command("botgroup result #miners 1", "#miners[1]", "#miners[2]", "jump once requested")
     command("botgroup result #miners 2", "#miners stop - history 2/2", "#miners[1]", "#miners[2]")
     command("bot #miners[1] look 45 0", f"#miners[1]: console {bot}: look 45 0: accepted 1")
@@ -53,5 +60,6 @@ def exercise_groups(bot, console, request, wait, log, report):
         "delete_preserves_bots": True,
         "bounded_summary_and_result_command": True,
         "operation_history_selection": True,
+        "queries_show_data_and_preserve_history": True,
         "human_client_forms_completion_and_revocation": "not validated by this console smoke",
     }

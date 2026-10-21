@@ -395,7 +395,7 @@ class GroupCommandService(BotCommandService):
         else:
             detail = " ".join(result.messages or ())
         detail = strip_colors(detail).replace("\n", " ").replace("\r", " ")
-        detail = detail.removeprefix("Endbot: ").removeprefix(f"{name}: ")[:512]
+        detail = detail.removeprefix("Endbot: ").removeprefix(f"{name}: ")
         return MemberResult(index, identity, name, outcome or ("failed" if error else "accepted"), reason, detail)
 
     def _execute_inputs(self, command, sender, members):
@@ -447,7 +447,14 @@ class GroupCommandService(BotCommandService):
                 rows.append(self._row(index, identity, member.name, error=error, lang=lang))
         return rows
 
-    def _finish(self, sender, group, target, operation, rows, *, indexed=False, audit=True):
+    def _finish(self, sender, group, target, operation, rows, *, indexed=False, query=False):
+        if query:
+            # A query's payload is its result, not an acknowledgement. Do not
+            # replace operation history or apply its saved-detail truncation.
+            return CommandResult(True, tuple(
+                reply(row.detail, f"#{group.name}[{row.index}] {row.name}",
+                      ERROR if row.outcome != "accepted" else "") for row in rows))
+        rows = [replace(row, detail=row.detail[:512]) for row in rows]
         record = self.results.save(sender, group, target, operation, rows)
         if indexed:
             row = rows[0]
@@ -459,7 +466,7 @@ class GroupCommandService(BotCommandService):
         if indexed:
             actor += f" {rows[0].name}"
         logs = tuple(reply(f"{actor}: {line}", target) for line in record.summary("en"))
-        return CommandResult(True, messages, log_level="info" if audit else None, log_messages=logs)
+        return CommandResult(True, messages, log_level="info", log_messages=logs)
 
     def execute(self, arguments, sender=None):
         try:
@@ -496,10 +503,12 @@ class GroupCommandService(BotCommandService):
                 raise ValueError(f"{command.operation} requires one Bot; use #group[1] or a Bot name")
             if not members:
                 raise ValueError("Group has no members")
+            query = command.operation == "status" or (
+                command.operation in {"hotbar", "radius"} and not command.parameters)
             if not indexed and command.operation in GROUP_INPUT_OPERATIONS:
                 rows = self._execute_inputs(command, sender, members)
                 return self._finish(sender, group, tokens[0], " ".join(tokens[1:])[:128], rows,
-                                    audit=command.operation != "hotbar" or bool(command.parameters))
+                                    query=query)
             rows, canceled = [], None
             for index, identity in members:
                 name = "?"
@@ -533,9 +542,7 @@ class GroupCommandService(BotCommandService):
                         self._check(sender)
                     except _GroupCanceled as error:
                         canceled = error
-            audit = command.operation not in {"status", "menu"} and not (
-                command.operation in {"hotbar", "radius"} and not command.parameters)
             return self._finish(sender, group, tokens[0], " ".join(tokens[1:])[:128], rows,
-                                indexed=indexed, audit=audit)
+                                indexed=indexed, query=query)
         except (RuntimeError, ValueError) as error:
             return self._error(error, arguments[0] if arguments else None, _language(sender))

@@ -206,13 +206,15 @@ class PluginAdapterTests(unittest.TestCase):
         )
         self.assertEqual(plugin.commands["botgroup"]["permissions"], ["endbot.command.control"])
         usages = plugin.commands["botgroup"]["usages"]
-        for action in ("list", "help", "create", "delete", "members", "add", "remove"):
+        for action in ("list", "help", "create", "delete", "add", "remove"):
             self.assertTrue(any(usage.startswith(f"/botgroup ({action})<action: EndbotGroup") for usage in usages))
         self.assertIn("/botgroup <action: string> <arguments: message>", usages)
-        self.assertTrue(plugin.on_command(FakeConsole(), FakeCommand("botgroup"), ["create", "miners"]))
-        self.assertEqual(submissions, [(["create", "miners"], {"command": "botgroup"})])
+        self.assertFalse(any("EndbotGroupMembers" in usage for usage in usages))
+        self.assertIn("/botgroup (list)<action: EndbotGroupList> [group: message]", usages)
+        self.assertTrue(plugin.on_command(FakeConsole(), FakeCommand("botgroup"), ["create", "#miners"]))
+        self.assertEqual(submissions, [(["create", "#miners"], {"command": "botgroup"})])
         unauthorized = types.SimpleNamespace(messages=[], send_message=lambda message: None)
-        plugin.on_command(unauthorized, FakeCommand("botgroup"), ["delete", "miners"])
+        plugin.on_command(unauthorized, FakeCommand("botgroup"), ["delete", "#miners"])
         self.assertEqual(len(submissions), 1)
 
     def test_join_binds_pending_controller_and_grants_only_control(self) -> None:

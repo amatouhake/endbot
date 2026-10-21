@@ -85,9 +85,9 @@ class GroupServiceTests(unittest.TestCase):
         self.service = GroupCommandService(self.control, self.world, self.store, lambda _: self.allowed)
         for name in ("Alice", "Bob", "Carol"):
             self.service.execute([name, "spawn"])
-        self.manage("create", "miners")
-        self.manage("add", "miners", "Alice")
-        self.manage("add", "miners", "Bob")
+        self.manage("create", "#miners")
+        self.manage("add", "#miners", "Alice")
+        self.manage("add", "#miners", "Bob")
         self.control.calls.clear()
 
     def manage(self, *arguments):
@@ -110,7 +110,7 @@ class GroupServiceTests(unittest.TestCase):
         self.assertIn("Bob", messages(result))
         self.assertNotIn("Alice", self.control.bots)
         self.assertEqual(len(self.store.get("miners").members), 2)
-        removed = self.manage("remove", "miners", "#miners[1]")
+        removed = self.manage("remove", "#miners", "#miners[1]")
         self.assertIn("remove", messages(removed))
         self.assertEqual(len(self.store.get("miners").members), 1)
 
@@ -156,7 +156,7 @@ class GroupServiceTests(unittest.TestCase):
                 self.allowed = False
             return result
         self.control.request = request
-        result = self.manage("add", "miners", "Carol")
+        result = self.manage("add", "#miners", "Carol")
         self.assertIn("permission was revoked", messages(result))
         self.assertEqual(len(self.store.get("miners").members), 2)
 
@@ -217,10 +217,10 @@ class GroupServiceTests(unittest.TestCase):
         self.assertIn("Bob: jump once を要求しました", messages(result))
 
     def test_delete_only_removes_the_group_and_shutdown_prevents_further_work(self):
-        self.manage("delete", "miners")
+        self.manage("delete", "#miners")
         self.assertEqual(set(self.control.bots), {"Alice", "Bob", "Carol"})
         self.service.cancel_groups()
-        result = self.manage("create", "miners")
+        result = self.manage("create", "#miners")
         self.assertIn("command canceled", messages(result))
         self.assertEqual(self.store.groups, ())
 
@@ -229,6 +229,40 @@ class GroupServiceTests(unittest.TestCase):
         result = self.service.execute(["#miners", "stop"])
         self.assertIn("matching updated Endbot runtime", messages(result))
         self.assertEqual(self.control.calls, [])
+
+    def test_list_scopes_to_members_and_existing_saved_groups_need_no_migration(self):
+        self.service.groups = GroupStore(self.store.path)
+        self.assertEqual(messages(self.manage("list")), "Endbot: #miners (2)")
+        result = messages(self.manage("list", "#MINERS"))
+        self.assertIn("#miners[1]: Alice", result)
+        self.assertIn("#miners[2]: Bob", result)
+        self.assertEqual([row["name"] for row in json.loads(self.store.path.read_text())["groups"]], ["miners"])
+        self.manage("create", "#empty")
+        self.assertIn("#empty: no members", messages(self.manage("list", "#empty")))
+
+    def test_unprefixed_or_indexed_group_arguments_and_members_are_rejected_without_effects(self):
+        before = self.store.path.read_bytes()
+        for command in (["create", "new"], ["delete", "miners"], ["list", "miners"],
+                        ["add", "miners", "Carol"], ["remove", "miners", "Alice"],
+                        ["list", "#miners[1]"], ["create", "##new"], ["create", "#"],
+                        ["list", "#miners", "extra"]):
+            with self.subTest(command=command):
+                text = messages(self.manage(*command))
+                self.assertTrue("Group syntax" in text or "Invalid group command" in text, text)
+                self.assertEqual(self.store.path.read_bytes(), before)
+        self.assertIn("Invalid group command", messages(self.manage("members", "#miners")))
+        self.assertEqual(self.control.calls, [])
+
+    def test_help_and_mutation_flow_use_the_same_prefixed_group_references(self):
+        help_text = messages(self.manage("help"))
+        self.assertIn("list [#group]", help_text)
+        self.assertNotIn("members <", help_text)
+        self.assertIn("remove: Alice", messages(self.manage("remove", "#miners", "Alice")))
+        self.assertIn("add: Carol", messages(self.manage("add", "#miners", "Carol")))
+        self.assertEqual([identity for _, identity in self.store.select("#miners")[1]],
+                         [self.control.bots[name]["identityId"] for name in ("Bob", "Carol")])
+        self.assertIn("group deleted; Bots retained", messages(self.manage("delete", "#miners")))
+        self.assertIn("no groups", messages(self.manage("list")))
 
 
 if __name__ == "__main__":

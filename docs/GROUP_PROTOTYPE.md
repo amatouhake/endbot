@@ -11,10 +11,11 @@ From an authorized controller or the server console (omit the leading slash at t
 ```text
 /bot Alice spawn
 /bot Bob spawn
-/botgroup create miners
-/botgroup add miners Alice
-/botgroup add miners Bob
-/botgroup members miners
+/botgroup create #miners
+/botgroup add #miners Alice
+/botgroup add #miners Bob
+/botgroup list
+/botgroup list #miners
 /bot #miners stop
 /bot #miners[1] look 0 90
 /bot #miners destroy count 64
@@ -25,9 +26,12 @@ Wait for the Bots to be online and prepare their tools/targets normally before g
 operation acceptance, not successful world outcomes. `destroy count 64` sets the existing completion limit for each Bot
 individually; it does not distribute a shared total across the group.
 
-`/botgroup list` lists shared groups. `/botgroup help` shows management syntax. Remove a member with
-`/botgroup remove miners Alice`, or use `/botgroup remove miners #miners[1]` to remove a missing profile's entry.
-`/botgroup delete miners` deletes the group registration and leaves Bot profiles intact.
+`/botgroup list` lists shared groups; append `#miners` to show that group's members. `/botgroup help` shows management
+syntax. Group references always use `#`, including creation. The former `members` subcommand is merged into `list`;
+`members` and bare group arguments are no longer accepted. The stored names/UUIDs are unchanged, so existing groups
+require no migration. Remove a member with `/botgroup remove #miners Alice`, or use
+`/botgroup remove #miners #miners[1]` to remove a missing profile's entry.
+`/botgroup delete #miners` deletes the group registration and leaves Bot profiles intact.
 When using the OS CLI, quote the whole command, for example `endbot console "bot #miners stop"`.
 
 ## What the prototype implements
@@ -53,10 +57,10 @@ When using the OS CLI, quote the whole command, for example `endbot console "bot
   supplements the plugin's UUID lookup; it does not change the Microsoft/Xbox or local-bot login paths.
 - Whole-group rename/forget and menus are rejected. Use one member or a Bot name for those operations. Indexed
   `menu` opens the existing single-Bot menu; there is no Group menu yet.
-- `/botgroup` now advertises separate native operation hints for `list`, `help`, `create`, `delete`, `members`, `add`
-  and `remove`, with group/Bot/member argument hints. It uses the same generic-parseability plus typed-enum approach
-  as `/bot`. Generic branches remain for the locked native parser (including indexed removal); dynamic group/Bot name
-  suggestions are unavailable on this baseline. Native client filtering can still be weak.
+- `/botgroup` now advertises separate native operation hints for `list`, `help`, `create`, `delete`, `add` and `remove`,
+  with optional group scope for `list` and group/Bot/member argument hints. It uses the same generic-parseability plus
+  typed-enum approach as `/bot`. Generic branches remain for the locked native parser (including indexed removal);
+  dynamic group/Bot name suggestions are unavailable on this baseline. Native client filtering can still be weak.
 
 ## Provisional choices to review while trying it
 
@@ -112,7 +116,7 @@ Two limitations were observed in that initial build:
 - `/botgroup` shows generic `<action: string>` / `<arguments: message>` usage instead of useful management-operation
   suggestions. Command acceptance passed; completion usability did not. The locked baseline's generic-overload and
   dynamic-name completion limits also apply (see BOT-008 in [the backlog](BACKLOG.md)).
-- `/bot #miners jump` starts the Bots visibly one after another. This matches the sequential implementation above;
+- `/bot #miners jump` starts the Bots visibly one after another. This matched the original sequential implementation;
   it does not validate synchronized group actions. Ordered chat replies alone are not timing evidence; the user's
   observation of the Bot actions establishes the visible skew. No timing measurement was taken.
 
@@ -126,6 +130,17 @@ The follow-up Windows RakNet console probe passed through real BDS with the same
 group jump, timed movement and offline-member jump failure. The 204 plugin tests, 135 runtime tests, lint, syntax,
 portability and plugin-wheel build passed. Client-rendered completion and visible timing remain separate checks.
 
-Remaining gates include human-client completion/help usability with the new hints, Group menus, live revocation and
-observed action-start timing with the new batch. No Xbox achievement unlock was reported. These checks do not establish
-other transports/platforms or support for another Endstone/BDS pair.
+The user subsequently confirmed that management completion was comparable to `/bot` and simultaneous group execution
+worked on the real client (source `8a8f875`). The next agreed syntax revision merged `members` into `list [#group]` and
+required `#` in every management group argument, while retaining operation-first management grammar. Tests cover scoped
+listing, unchanged persisted identities/order, bare/indexed whole-group rejection without mutation, and removal/addition.
+The syntax revision passed all 207 plugin tests, lint, portability and the wheel build. Real-BDS Group checks passed
+for prefixed create/add/delete, unscoped/scoped `list`, indexed removal/re-addition, help, and rejection of bare names
+and the retired `members` command. The first full probe subsequently failed the older timed-movement check (zero
+observed distance); a fresh-world rerun passed the full probe, including movement and clean shutdown. The syntax checks
+passed in both worlds.
+
+Remaining gates include human-client input/completion for the revised prefixed management grammar, Group menus and live
+revocation. Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
+No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
+Endstone/BDS pair.

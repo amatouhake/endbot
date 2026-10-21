@@ -34,6 +34,13 @@ def group_name(value: str) -> str:
     return value
 
 
+def group_reference(value: str) -> str:
+    """Parse a whole-group command reference; persistence keeps the bare name."""
+    if not value.startswith("#") or not GROUP_NAME.fullmatch(value[1:]):
+        raise ValueError("Group syntax: #group (for example #miners)")
+    return value[1:]
+
+
 @dataclass(frozen=True)
 class Group:
     identity: str
@@ -212,18 +219,19 @@ class GroupCommandService(BotCommandService):
         try:
             self._check(sender)
             tokens = _tokens(arguments)
-            if not tokens or tokens == ["help"]:
+            operation = tokens[0].lower() if tokens else "help"
+            tail = tokens[1:]
+            if operation == "help" and not tail:
                 return CommandResult(True, tuple(reply(line) for line in (
-                    "/botgroup list | create <group> | delete <group> | members <group>",
-                    "/botgroup add <group> <bot> | remove <group> <bot-or-#group[index]>",
+                    "/botgroup list [#group] | create #group | delete #group",
+                    "/botgroup add #group <bot> | remove #group <bot-or-#group[index]>",
                     "/bot #group <operation> | /bot #group[1] <operation> (one-based)",
                 )))
-            operation, tail = tokens[0].lower(), tokens[1:]
             if operation == "list" and not tail:
                 names = ", ".join(f"#{group.name} ({len(group.members)})" for group in self.groups.groups)
                 return CommandResult(True, (reply(names or "no groups"),))
-            if operation in {"create", "delete", "members"} and len(tail) == 1:
-                name = tail[0]
+            if operation in {"create", "delete", "list"} and len(tail) == 1:
+                name = group_reference(tail[0])
                 if operation == "create":
                     group = self.groups.create(name)
                     return CommandResult(True, (reply("group created", f"#{group.name}"),))
@@ -239,7 +247,7 @@ class GroupCommandService(BotCommandService):
                     rows.append(reply(label, f"#{group.name}[{index}]"))
                 return CommandResult(True, tuple(rows) or (reply("no members", f"#{group.name}"),))
             if operation in {"add", "remove"} and len(tail) == 2:
-                name, target = tail
+                name, target = group_reference(tail[0]), tail[1]
                 group = self.groups.get(name)
                 if operation == "remove" and target.startswith("#"):
                     selected_group, selected, indexed = self.groups.select(target)

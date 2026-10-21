@@ -13,10 +13,16 @@ def exercise_groups(bot, console, request, wait, log, report):
 
     command(f"bot {buddy} spawn", f"{buddy}: created and connecting")
     wait("GroupBuddy online", lambda: request("status", name=buddy)["connectionState"] == "online", 60)
-    command("botgroup create miners", "#miners: group created")
-    command(f"botgroup add miners {bot}", f"#miners: add: {bot}")
-    command(f"botgroup add miners {buddy}", f"#miners: add: {buddy}")
-    command("botgroup members miners", f"#miners[1]: {bot}", f"#miners[2]: {buddy}")
+    command("botgroup help", "/botgroup list [#group]")
+    command("botgroup create #miners", "#miners: group created")
+    command(f"botgroup add #miners {bot}", f"#miners: add: {bot}")
+    command(f"botgroup add #miners {buddy}", f"#miners: add: {buddy}")
+    command("botgroup list", "#miners (2)")
+    command("botgroup list #miners", f"#miners[1]: {bot}", f"#miners[2]: {buddy}")
+    command("botgroup list miners", "Group syntax: #group")
+    command("botgroup members #miners", "Invalid group command")
+    command("botgroup remove #miners #miners[2]", "#miners: remove: #miners[2]")
+    command(f"botgroup add #miners {buddy}", f"#miners: add: {buddy}")
     command("bot #miners stop", f"{bot}: movement and actions stopped", f"{buddy}: movement and actions stopped")
     command("bot #miners jump", f"{bot}: jump once requested", f"{buddy}: jump once requested")
     command("bot #miners[1] look 45 0", f"{bot}: look set to yaw=45.0 pitch=0.0")
@@ -25,12 +31,13 @@ def exercise_groups(bot, console, request, wait, log, report):
     command("bot #miners[0] stop", "Group target syntax")
     command(f"bot {buddy} despawn", f"{buddy}: despawn requested")
     command("bot #miners jump", f"{bot}: jump once requested", "#miners[2]: Bot GroupBuddy is not online")
-    command("botgroup delete miners", "group deleted; Bots retained")
+    command("botgroup delete #miners", "group deleted; Bots retained")
     names = {profile["name"] for profile in request("list")}
     if not {bot, buddy} <= names:
         raise ConsumerError("Deleting a group removed a Bot profile")
     report["groups"] = {
         "console_native_parser": True,
+        "prefixed_management_and_scoped_list": True,
         "one_based_selection": True,
         "bulk_and_tailed_commands": True,
         "offline_member_partial_failure": True,

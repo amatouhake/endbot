@@ -348,7 +348,7 @@ promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Initial human smoke passed; input batching/completion hints implemented — client recheck and Group menus open**
+Status: **Batching/completion confirmed on client; unified list/# syntax implemented — syntax recheck and Group menus open**
 (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -373,19 +373,24 @@ Shared scope and chosen command design:
 - Keep `/bot <target> <operation>` for execution. A plain Bot name selects one Bot; `#<group>` selects the whole group;
   `#<group>[<index>]` selects one member using a one-based index. The `#` prefix distinguishes a group from a Bot name;
   offer one canonical prefix, without aliases, ranges or expression evaluation in the initial design.
-- Use `/botgroup` for group management, with the proposed forms below. Commands and menus must resolve the same targets
+- Use `/botgroup` for group management, with the forms below. Commands and menus must resolve the same targets
   and operations. Per-Bot identity management such as rename/forget requires a single-Bot target rather than broadcast.
+- Management references always use `#group`, including creation. `/botgroup list` shows groups and `/botgroup list #group`
+  shows that group's members, supporting recall-and-append from command history. The former `members` subcommand is
+  merged into `list`; bare management group names are rejected. Persisted bare names and membership UUIDs are unchanged.
+  Keep operation-first management grammar; matching `/bot`'s target-first word order is not required.
 
 ```text
 /bot Alice stop
 /bot #miners stop
 /bot #miners destroy count 64
 /bot #miners[1] tp me
-/botgroup create miners
-/botgroup add miners Alice
-/botgroup members miners
-/botgroup remove miners Alice
-/botgroup delete miners
+/botgroup list
+/botgroup create #miners
+/botgroup add #miners Alice
+/botgroup list #miners
+/botgroup remove #miners Alice
+/botgroup delete #miners
 ```
 
 These are chosen design forms, now implemented in the command-first source prototype; see
@@ -413,8 +418,10 @@ preparation precede dispatch, with authorization rechecked immediately before su
 preparation blocks the batch; once accepted it has no inter-member waits/callbacks, and later revocation does not undo
 those inputs. Lifecycle/teleport/mining retain sequential paths and checks. This is not a same-BDS-tick guarantee.
 `/botgroup` now includes one native enum hint per management operation with argument hints, matching `/bot`'s approach;
-generic parseability branches and the baseline's dynamic-name/filtering limitations remain. Recheck actual Windows
-client suggestions and visible jump skew after deploying both the plugin and runtime improvements.
+generic parseability branches and the baseline's dynamic-name/filtering limitations remain. The user confirmed that
+completion was comparable to `/bot` and simultaneous execution worked on the real client (source `8a8f875`). The next
+agreed revision unifies `list [#group]` and prefixed management references as above; recheck that revised syntax and
+completion on the client. Earlier generic `members`/bare-name examples are superseded.
 Group menus and live mid-batch revocation remain open. No actual Xbox achievement unlock was reported. See the
 [prototype evidence and follow-up](GROUP_PROTOTYPE.md) for scope and limits.
 

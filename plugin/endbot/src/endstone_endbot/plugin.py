@@ -149,11 +149,10 @@ class EndbotPlugin(Plugin):
                 # Keep the generic parseability layer above, then advertise each
                 # operation separately, like /bot. A multi-value enum is shown
                 # as a type name by the locked Windows client.
-                "/botgroup (list)<action: EndbotGroupList>",
+                "/botgroup (list)<action: EndbotGroupList> [group: message]",
                 "/botgroup (help)<action: EndbotGroupHelp>",
-                "/botgroup (create)<action: EndbotGroupCreate> <group: string>",
-                "/botgroup (delete)<action: EndbotGroupDelete> <group: string>",
-                "/botgroup (members)<action: EndbotGroupMembers> <group: string>",
+                "/botgroup (create)<action: EndbotGroupCreate> <group: message>",
+                "/botgroup (delete)<action: EndbotGroupDelete> <group: message>",
                 "/botgroup (add)<action: EndbotGroupAdd> <group: string> <bot: string>",
                 "/botgroup (remove)<action: EndbotGroupRemove> <group: string> <member: message>",
             ],

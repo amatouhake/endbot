@@ -348,7 +348,7 @@ promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Group feature implemented on `feat/groups` — shared operation menus need human-client recheck**
+Status: **Group feature implemented on `feat/groups` — client smoke confirmed; ready for PR review**
 (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -458,7 +458,7 @@ The user confirmed both checks passed for source `794882b`, with no issues in th
 revision distinguishes queries from mutation acknowledgements: `status`, argument-free `hotbar` and argument-free
 `radius` display every member's actual data/error immediately, with index and name, and neither add audit entries nor
 create/replace operation history. Setters retain the bounded summary/audit/history behavior. Its 236 plugin tests pass;
-query presentation remains a client check.
+the user subsequently confirmed the latest query behavior worked with source `07f661e`.
 Live mid-batch revocation remains a manual gate.
 No actual Xbox achievement unlock was reported. See the
 [Group evidence and follow-up](GROUPS.md) for scope and limits.

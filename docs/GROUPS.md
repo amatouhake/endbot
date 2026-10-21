@@ -241,7 +241,7 @@ form API payloads, not client appearance. Lint, portability and the plugin-wheel
 RakNet BDS probe passed all group/history checks, the broader controller/movement/authentication checks and clean
 shutdown with the unchanged locked pair.
 
-Remaining gates include the shared operation screens/return paths on the real client and live revocation.
+At that revision, shared operation screens/return paths on the real client and live revocation remained manual gates.
 The user's screenshot of source `278fe78` showed an oversized native Group heading in the target list. The follow-up
 removes that heading and adds the requested reverse link from group operations to that specific group's management.
 Navigation refreshes the current membership but pins the group UUID, rejecting deletion/recreation under the same name.
@@ -250,10 +250,17 @@ The user confirmed both client checks for source `794882b` passed (heading remov
 with no issues found in that scope. They then requested data-oriented query replies: status/hotbar/radius queries now
 print all member results immediately, without adding audit entries or changing operation history. The revision passes
 236 plugin tests covering whole/indexed query payloads, retained history, empty history, member failures, full long
-query data, 100-member output and preserved setter behavior. Query presentation needs a client recheck.
+query data, 100-member output and preserved setter behavior. The user subsequently confirmed the latest query behavior
+worked on the game client with source `07f661e`.
+PR-readiness verification reran the current branch: all 47 repository tests, 236 plugin tests, 135 runtime tests and
+291 CLI tests (2 skipped) passed, alongside runtime syntax, Python lint and repository portability. Windows runtime
+startup/UDP-owner tests needed ordinary OS access outside the restricted test sandbox; they passed there. This is
+local verification, not a GitHub Actions result. Remote `main` still matched the branch base `99ba05e` at this check.
 Lint, portability and the plugin-wheel build passed. The fresh Windows RakNet BDS probe passed all three query
 payloads, absence of query audit entries and preserved latest/previous operation results, plus the existing group,
 controller/movement/authentication checks and clean shutdown on the unchanged locked pair.
 Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
 No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
 Endstone/BDS pair.
+Live controller revocation during an in-flight group operation and actual Xbox achievement unlocks remain explicit
+manual/E2E gates for merge/release assessment; passing unit builds or world-history flags does not satisfy them.

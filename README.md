@@ -8,7 +8,8 @@ Endbot is pre-alpha. It provides persistent multi-bot profiles, real NetherNet/R
 server-API teleport, rename, movement/actions, hotbar selection, block interaction, and item drop behind the validated
 `/bot` authorization surface. [Shared Groups](docs/GROUPS.md) are implemented on the `feat/groups` feature branch;
 immediate group inputs use one runtime batch. They include menus, bounded operation summaries and per-controller
-operation history with full result inspection. The latest UI changes await a human-client recheck before release.
+operation history with full result inspection. The exercised menu/query flows have passed reported Windows client checks;
+see the Group guide for remaining manual validation gates.
 Macros, work tasks, Discord, blueprints,
 web UI and AI behavior are not implemented.
 

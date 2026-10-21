@@ -43,6 +43,9 @@ When using the OS CLI, quote the whole command, for example `endbot console "bot
 `/bot #miners menu`, which uses the same operation screen builder and categories as an individual Bot: stop, movement,
 look, teleport, gameplay, inventory and Bot settings. It also offers the caller's operation history. Group controls remain
 available for mixed online/offline and empty groups; execution reports operation-specific failures normally.
+Group targets use ordinary buttons with the `#` prefix and member count; there is no oversized group heading.
+**Group management...** opens the selected group's `/botgroup menu #group` screen. When entered from management,
+the existing **Back to group management** button serves the same purpose without a duplicate link.
 
 `/botgroup` alone (or `/botgroup menu`) opens the group list/create screen. `/botgroup menu #miners` opens management:
 ordered members with connection state, add/remove membership and group deletion with confirmation. **Group operations...**
@@ -232,6 +235,10 @@ RakNet BDS probe passed all group/history checks, the broader controller/movemen
 shutdown with the unchanged locked pair.
 
 Remaining gates include the shared operation screens/return paths on the real client and live revocation.
+The user's screenshot of source `278fe78` showed an oversized native Group heading in the target list. The follow-up
+removes that heading and adds the requested reverse link from group operations to that specific group's management.
+Navigation refreshes the current membership but pins the group UUID, rejecting deletion/recreation under the same name.
+All 232 plugin tests, lint and repository portability checks passed for this follow-up.
 Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
 No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
 Endstone/BDS pair.

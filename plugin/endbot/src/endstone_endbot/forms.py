@@ -54,6 +54,7 @@ class BotView:
     guard: object | None = None
     back: Run | None = None
     back_label: str = "Back to Bot list"
+    management: Run | None = None
 
 
 # Controls. Field order mirrors the endstone.form constructors.
@@ -184,7 +185,6 @@ def bot_list_screen(view: BotListView, lang: str = "en") -> ActionScreen:
         items.append(Button(tr(lang, "Offline ({count})...", count=len(offline)), Show(offline_screen)))
     items.append(Button(tr(lang, "+ New Bot here"), Show(spawn_modal(lang))))
     if view.groups:
-        items.append(Header(tr(lang, "Groups")))
         items.extend(Button(f"#{group.name} ({group.count})",
                             Run((menu_argv(f"#{group.name}"),), guard=group.guard)) for group in view.groups)
     content = tr(lang, "Pick a Bot or group. (/bot help lists commands)" if view.groups else
@@ -291,6 +291,8 @@ def bot_screen(
         items.append(Button(label("Bot..."), category("bot", *lifecycle, content=view.summary)))
     if group:
         items.append(Button(label("Recent operation result..."), Run((("menu", name, "result"),), command="botgroup")))
+        if view.management is not None:
+            items.append(Button(label("Group management..."), view.management))
     items.append(Button(label(view.back_label), view.back or run(menu_argv())))
     if group:
         content = view.summary + "\n" + label("Operations apply to every current member. Limits apply per Bot.")

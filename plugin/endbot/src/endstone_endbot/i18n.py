@@ -75,6 +75,7 @@ JA: dict[str, str] = {
     "Pick a Bot or group. (/bot help lists commands)": "Bot またはグループを選んでください。(/bot help でコマンド一覧)",
     "Back to group operations": "グループの操作へ戻る",
     "Back to group management": "グループの管理へ戻る",
+    "Group management...": "グループ管理...",
     "Members {count}, online {online}": "メンバー {count} 体、オンライン {online} 体",
     "Members {count} - page {page}/{pages}. Open a member for individual operations.":
         "メンバー {count} 体 - {page}/{pages} ページ。各メンバーを開くと単体操作ができます。",

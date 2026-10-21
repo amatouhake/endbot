@@ -452,7 +452,9 @@ The Group feature adds direct group operation targets to `/bot menu`. `/botgroup
 group browsing/creation; `/botgroup menu #miners` opens member browsing and membership management, with a nested
 **Group operations...** entry. `/bot #miners menu` opens the shared Bot operation screen directly, including teleport,
 lifecycle and chunk radius. Returning from a nested operation screen goes back to management when entered there, or
-to the Bot/target list when entered directly. Individual members open their normal Bot screen. Group deletion is confirmed
+to the Bot/target list when entered directly. **Group management...** links back to the selected group's management
+screen; an existing **Back to group management** button is used instead when entered from management.
+Individual members open their normal Bot screen. Group deletion is confirmed
 and keeps the Bots. Forms echo and submit the same `/bot`
 or `/botgroup` commands and authorization checks, with UUID/membership checks to reject stale forms.
 

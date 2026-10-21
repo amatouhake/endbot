@@ -191,6 +191,24 @@ class GroupUiResultTests(unittest.TestCase):
         self.click("Back to group management")
         self.assertIsInstance(self.submissions[-1][2].view, GroupView)
 
+    def test_operation_menu_links_to_current_group_management_and_rejects_a_replacement(self):
+        self.presenter.show_view(self.player, self.service.execute(["#miners", "menu"], self.source).view)
+        self.store.add("miners", self.control.bots["Carol"]["identityId"])
+        self.click("Group management...")
+        argv, options, result = self.submissions[-1]
+        self.assertEqual(argv, ["menu", "#miners"])
+        self.assertEqual(options["command"], "botgroup")
+        self.assertIsInstance(result.view, GroupView)
+        self.assertEqual(len(result.view.members), 3)
+        self.click("Group operations...")
+        self.assertNotIn("Group management...", [label for _, label, _ in self.player.forms[-1].items])
+        self.click("Back to group management")
+        self.presenter.show_view(self.player, self.service.execute(["#miners", "menu"], self.source).view)
+        self.store.delete("miners")
+        self.store.create("miners")
+        self.click("Group management...")
+        self.assertIn("Group changed", messages(self.submissions[-1][2]))
+
     def test_operation_result_navigation_returns_to_its_operation_entry(self):
         for management in (False, True):
             with self.subTest(management=management):

@@ -451,6 +451,9 @@ forms/history checks passed with source `f419241`. They next requested clearer s
 The shared-screen revision preserves management-first `/botgroup` menus and operation categories, adds direct Group
 targets to `/bot`, and exposes missing command-backed controls including teleport, lifecycle, radius and interaction.
 Back navigation preserves the entry context. Its 231 plugin tests pass; the shared-screen UI needs a client check.
+Client feedback on source `278fe78` identified the oversized Group heading in `/bot` and requested the reverse link
+from group operations to group management. The follow-up removes that heading and adds the specific-group link,
+reusing the existing management-back button when appropriate. The link refreshes membership and pins the group UUID.
 Live mid-batch revocation remains a manual gate.
 No actual Xbox achievement unlock was reported. See the
 [Group evidence and follow-up](GROUPS.md) for scope and limits.

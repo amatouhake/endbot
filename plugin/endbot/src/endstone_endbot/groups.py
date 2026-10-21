@@ -247,16 +247,18 @@ class GroupCommandService(BotCommandService):
     def _group_view_back(view, group, guard):
         """Keep menu origin separate from the UUID/membership checks on actions."""
         back_guard = GroupGuard(group.identity, group.name)
+        manage = Run((("menu", f"#{group.name}"),), command="botgroup", guard=back_guard)
         management = guard.return_to_management
         if management:
-            back = Run((("menu", f"#{group.name}"),), command="botgroup", guard=back_guard)
+            back = manage
         elif guard.bot_identity is not None:
             back = Run((menu_argv(f"#{group.name}"),), guard=back_guard)
         else:
             back = Run((menu_argv(),))
         label = "Back to group management" if management else (
             "Back to group operations" if guard.bot_identity is not None else "Back to Bot list")
-        return replace(view, guard=guard, back=back, back_label=label)
+        return replace(view, guard=guard, back=back, back_label=label,
+                       management=manage if view.name.startswith("#") and not management else None)
 
     def _operation_menu(self, sender, group):
         if getattr(sender, "player_id", None) is None:

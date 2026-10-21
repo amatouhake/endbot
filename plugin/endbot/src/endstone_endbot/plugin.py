@@ -26,7 +26,7 @@ COMMAND_USAGES = [
     # Bedrock Id/string rejects a leading '#'. A first-position message
     # accepts the full group target and tail; _tokens splits it without
     # treating '#' as a comment. Native permission and service checks apply.
-    # Human-client completion/rendering for this prototype remains a live gate.
+    # Native completion/rendering still needs real-client validation.
     "/bot <arguments: message>",
     # Each usage becomes one native BDS overload, matched before Python runs.
     # Live oracle batteries on the pinned BDS build proved three rules that
@@ -141,7 +141,7 @@ class EndbotPlugin(Plugin):
             "permissions": ["endbot.command.controllers"],
         },
         "botgroup": {
-            "description": "Manage shared Endbot groups (prototype).",
+            "description": "Manage shared Endbot groups.",
             "usages": [
                 "/botgroup",
                 "/botgroup <action: string>",
@@ -152,7 +152,7 @@ class EndbotPlugin(Plugin):
                 "/botgroup (list)<action: EndbotGroupList> [group: message]",
                 "/botgroup (help)<action: EndbotGroupHelp>",
                 "/botgroup (menu)<action: EndbotGroupMenu> [arguments: message]",
-                "/botgroup (result)<action: EndbotGroupResult> <group: string> [page: int]",
+                "/botgroup (result)<action: EndbotGroupResult> <group: string> [history: int]",
                 "/botgroup (create)<action: EndbotGroupCreate> <group: message>",
                 "/botgroup (delete)<action: EndbotGroupDelete> <group: message>",
                 "/botgroup (add)<action: EndbotGroupAdd> <group: string> <bot: string>",

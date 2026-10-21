@@ -851,7 +851,7 @@ def main() -> int:
     parser.add_argument("--mining", action="store_true", help="prepare disposable blocks/tools and validate Survival mining")
     parser.add_argument("--inventory", action="store_true", help="validate natural pickups and hotbar/drop without reconnect")
     parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
-    parser.add_argument("--groups", action="store_true", help="validate the shared Group command prototype through real BDS")
+    parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
     parser.add_argument(
         "--transport",
         choices=("raknet", "nethernet"),

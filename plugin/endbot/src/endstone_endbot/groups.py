@@ -1,4 +1,4 @@
-"""Small shared-group prototype; no world state or runtime credentials are stored."""
+"""Shared Bot groups; no world state or runtime credentials are stored."""
 
 from __future__ import annotations
 
@@ -185,7 +185,7 @@ class _BatchReplyControl:
 
 
 class GroupCommandService(BotCommandService):
-    """Command-first prototype. Existing Bot actions remain the implementation of each operation."""
+    """Shared groups reuse existing Bot actions for each operation."""
 
     def __init__(self, control, world, groups: GroupStore, authorize):
         super().__init__(control, world)
@@ -211,14 +211,19 @@ class GroupCommandService(BotCommandService):
             or (guard.members is not None and guard.members != group.members)
         ):
             raise LocalizedError("Group changed while the menu was open; reopen the menu")
-        if (guard is not None and guard.result_id is not None
-                and self.results.get(sender, group).identity != guard.result_id):
-            raise LocalizedError("Recent result changed; reopen the result")
+        if guard is not None and guard.result_id is not None:
+            self.results.find(sender, group, guard.result_id)
 
     @staticmethod
     def _page(value):
         if not str(value).isascii() or not str(value).isdecimal() or int(value) < 1:
             raise LocalizedError("Page must be a positive integer")
+        return int(value)
+
+    @staticmethod
+    def _history(value):
+        if not str(value).isascii() or not str(value).isdecimal() or int(value) < 1:
+            raise LocalizedError("Result history must be a positive integer (1 = latest)")
         return int(value)
 
     def _menu(self, sender, group=None, page=1):
@@ -238,14 +243,18 @@ class GroupCommandService(BotCommandService):
                                  key=lambda bot: bot["name"].casefold()))
         return CommandResult(True, view=GroupView(group.identity, group.name, members, available, page))
 
-    def _result(self, sender, group, page, *, menu=False):
+    def _result(self, sender, group, history, *, menu=False):
         self._form_group(sender, group)
-        result = self.results.get(sender, group)
-        lines = result.page(page, _language(sender))
+        guard = getattr(sender, "group_guard", None)
+        result = (self.results.find(sender, group, guard.result_id)
+                  if guard is not None and guard.result_id is not None else self.results.get(sender, group, history))
+        records = self.results.history(sender, group)
+        history = records.index(result) + 1
+        lines = result.lines(history, len(records), _language(sender))
         if menu:
             if getattr(sender, "player_id", None) is None:
-                raise ValueError("Use /botgroup result #group [page] from the console")
-            return CommandResult(True, view=ResultView(result, page))
+                raise ValueError("Use /botgroup result #group [history] from the console")
+            return CommandResult(True, view=ResultView(result, history, records))
         return CommandResult(True, tuple(reply(line) for line in lines))
 
     def _profiles(self, sender, *, batch=False) -> dict[str, dict]:
@@ -255,10 +264,10 @@ class GroupCommandService(BotCommandService):
         except RuntimeControlError as error:
             if error.code != "unknown_method":
                 raise
-            raise RuntimeError("Group prototype requires the matching updated Endbot runtime") from error
+            raise RuntimeError("Groups require the matching updated Endbot runtime") from error
         if (capabilities.get("identityPinnedRequests") is not True
                 or (batch and capabilities.get("groupInputBatch") is not True)):
-            raise RuntimeError("Group prototype requires the matching updated Endbot runtime")
+            raise RuntimeError("Groups require the matching updated Endbot runtime")
         self._check(sender)
         profiles = {bot["identityId"]: bot for bot in self.control.request("list")}
         self._check(sender)
@@ -273,13 +282,13 @@ class GroupCommandService(BotCommandService):
         try:
             self._check(sender)
             tokens = _tokens(arguments)
-            operation = tokens[0].lower() if tokens else "help"
+            operation = tokens[0].lower() if tokens else "menu"
             tail = tokens[1:]
             if operation == "help" and not tail:
                 return CommandResult(True, tuple(reply(line) for line in (
                     "/botgroup list [#group] | create #group | delete #group",
                     "/botgroup add #group <bot> | remove #group <bot-or-#group[index]>",
-                    "/botgroup result #group [page] | menu [#group [page|result [page]]]",
+                    "/botgroup result #group [history] | menu [#group [page|result [history]]]",
                     "/bot #group <operation> | /bot #group[1] <operation> (one-based)",
                 )))
             if operation == "menu" and not tail:
@@ -287,10 +296,10 @@ class GroupCommandService(BotCommandService):
             if operation in {"result", "menu"} and tail:
                 group = self.groups.get(group_reference(tail[0]))
                 if operation == "result" and len(tail) in {1, 2}:
-                    return self._result(sender, group, self._page(tail[1]) if len(tail) == 2 else 1)
+                    return self._result(sender, group, self._history(tail[1]) if len(tail) == 2 else 1)
                 if operation == "menu":
                     if len(tail) in {2, 3} and tail[1] == "result":
-                        return self._result(sender, group, self._page(tail[2]) if len(tail) == 3 else 1, menu=True)
+                        return self._result(sender, group, self._history(tail[2]) if len(tail) == 3 else 1, menu=True)
                     if len(tail) in {1, 2}:
                         return self._menu(sender, group, self._page(tail[1]) if len(tail) == 2 else 1)
             if operation == "list" and not tail:

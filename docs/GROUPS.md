@@ -1,7 +1,7 @@
-# Shared Group command prototype
+# Shared Bot groups
 
-This source-tree prototype exercises the Group design before the Luau API. It is not a published release; Group menus
-and result presentation still need a human-client check. Use the plugin and runtime from the same checkout; an older
+The Group feature is implemented on `feat/groups`, independently of the future Luau API. It is awaiting review and a
+release assignment. Use the plugin and runtime from the same checkout; an older
 runtime without the required UUID pinning/input-batch capabilities is rejected. No Luau runner, script editor, web
 service or Endstone core change is involved.
 
@@ -39,7 +39,8 @@ When using the OS CLI, quote the whole command, for example `endbot console "bot
 
 ## Menus and operation results
 
-`/bot menu` now includes **Groups...**. `/botgroup menu` opens the group list/create screen; `/bot #miners menu` (also
+`/bot menu` now includes **Groups...**. `/botgroup` alone (or `/botgroup menu`) opens the group list/create screen;
+`/bot #miners menu` (also
 `/botgroup menu #miners`) opens the group screen. It offers ordered members with connection state, group operations,
 add/remove membership, group deletion with confirmation, and the initiating controller's recent operation result.
 Members are paginated ten at a time (`/botgroup menu #miners 2`). Selecting an existing member opens its ordinary Bot
@@ -63,17 +64,22 @@ Player replies follow their language. Menus, result inspection and read-only que
 The bound applies to immediate command acknowledgements; BDS join/quit events and existing asynchronous mining notices
 are separate events. Per-member details do not get dumped into the normal acknowledgement or audit log.
 
-`/botgroup result #miners [page]` retrieves the caller's latest result for that group, with ten member rows per page,
-operation/target, counts, and per-member outcomes/reasons. It is an inspection of saved request results, not a replay or
-fresh status query. The menu's recent-result screen uses the same snapshot (`/botgroup menu #miners result [page]`).
+`/botgroup result #miners [history]` prints **all member rows** of one saved operation, including its target/operation,
+counts and per-member outcomes/reasons. Omit the number (or use `1`) for the latest operation; `2` selects the previous
+operation, `3` the one before that. It is an inspection of saved request results, not a replay or fresh status query.
+The menu uses the same snapshots (`/botgroup menu #miners result [history]`) and offers older/newer result buttons.
 Snapshots describe group-targeted `/bot` requests; management confirmations and menu navigation do not replace them.
-Each controller/group keeps only its latest result, with a global cap of 128 snapshots; these are in memory and cleared
+Each controller/group retains up to 20 results, subject to a global cap of 128 snapshots, evicting oldest first. These are in memory and cleared
 on restart. Console/CLI share the console result slot. Another controller's operation cannot overwrite your result.
 Details retain their request-time language. Editing membership/renaming a Bot does not change historical result rows;
-deleting/recreating a group does not expose the previous group's result. An open result page detects replacement of
-its snapshot before navigating to another page.
+deleting/recreating a group does not expose the previous group's result. Menu navigation pins result UUIDs so a new
+operation cannot shift the intended older/newer destination; evicted results require reopening history.
 
-## What the prototype implements
+Add/remove forms name the target group and use **Add**/**Remove** submit labels. Group deletion uses an action form
+with the group name in its title, explanation and confirmation button; the registered Bots remain. The action-form
+layout replaces the message-form layout whose title/content appeared blank in the user's client.
+
+## Implemented behavior
 
 - Shared groups use the existing controller permission. `/botgroup` and `/bot` go through the same authorization,
   grant-revision check and ordered worker. Sequential operations recheck authority before requests/between members;
@@ -101,7 +107,7 @@ its snapshot before navigating to another page.
   typed-enum approach as `/bot`. Generic branches remain for the locked native parser (including indexed removal);
   dynamic group/Bot name suggestions are unavailable on this baseline. Native client filtering can still be weak.
 
-## Provisional choices to review while trying it
+## Scope and follow-up choices
 
 - Group names are case-insensitive, start with an ASCII letter/underscore, and contain at most 16 ASCII letters,
   digits or underscores. The stored spelling is retained for display.
@@ -121,14 +127,14 @@ revocation, shutdown and rejection of an older runtime. Runtime control tests ch
 The opt-in real-BDS probe uses a fresh ignored directory, normal Endstone acquisition and the unchanged locked pair:
 
 ```text
-python scripts/raknet_spike.py --groups --output build/group-prototype-live
+python scripts/raknet_spike.py --groups --output build/group-feature-live
 ```
 
 Use a dedicated Python environment containing the locked patched Endstone plus this plugin/CLI, and the repository's
 pinned runtime dependencies. See [Windows development](WINDOWS_DEV.md) for the existing setup. Raw logs, keys, profiles
 and world files stay under the ignored output directory; never add them to Git.
 
-The first live probe established that Bedrock's `string`/Id target parameter rejects a leading `#`. The prototype adds a
+The first live probe established that Bedrock's `string`/Id target parameter rejects a leading `#`. The feature uses a
 first-position `message` overload to accept the full target and command tail through public Endstone declarations.
 Human-client smoke confirmed that execution works, while native completion remains weak as described below.
 
@@ -181,7 +187,7 @@ passed in both worlds.
 
 The user confirmed the six revised management forms (list all, list one group, create, add, remove and delete) worked
 on the real client with source `905c924`. Group-menu coverage and the chat/server-log presentation of group-targeted
-operations were raised as the next design topics; their behavior is not settled or implemented by this validation.
+operations were raised as the next design topics; that smoke did not cover the subsequent menu implementation.
 
 Follow-up implementation added the menu/result behavior above. All 221 plugin tests passed, including 100 failed
 members producing only two acknowledgement/audit lines, controller-private result retrieval, pagination, lost-response
@@ -190,7 +196,19 @@ and old-name reuse protection for member controls/addition choices. Python lint,
 passed. The updated real-BDS probe passed native menu/result declarations, bounded partial-failure logs and paged result retrieval, the
 broader existing checks, and clean shutdown. Native form rendering itself requires the human client.
 
-Remaining gates include completion rendering for the new hints, group forms/result presentation and live revocation.
+Human-client follow-up (source `616f3e6`): the user reported the group menus/results looked good overall. Two screenshots
+identified a deletion confirmation with blank title/content and membership forms with a default Run submit label. The
+user requested bare `/botgroup` as the menu shortcut, named deletion/add/remove forms, and result numbers selecting
+previous operations with all member rows displayed. Those changes are implemented on `feat/groups`; the earlier
+prototype commits remain in its history. The former `codex/group-prototype` branch is retained, without a merge or release.
+The revised implementation passes 224 plugin tests, including full 100-row inspection, operation-history selection,
+bounded retention, private ownership, eviction and UUID-pinned navigation while new operations arrive.
+Lint, repository portability and the plugin-wheel build passed. A fresh Windows RakNet real-BDS run with the unchanged
+locked pair passed native bare-command handling, latest/previous operation selection, all group smoke checks, the
+broader movement/controller/authentication checks and clean shutdown. This console run does not validate client form
+appearance or actual Xbox achievement unlocks.
+
+Remaining gates include the revised group forms/history presentation and live revocation.
 Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
 No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
 Endstone/BDS pair.

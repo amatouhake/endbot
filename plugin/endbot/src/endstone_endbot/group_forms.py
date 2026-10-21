@@ -35,7 +35,8 @@ class GroupView:
 @dataclass(frozen=True)
 class ResultView:
     result: GroupResult
-    page: int
+    history: int
+    records: tuple[GroupResult, ...]
 
 
 def run(*arguments, guard=None):
@@ -90,19 +91,25 @@ def group_screen(view, lang="en"):
         items.append(f.Button(tr(lang, "Next page"), run("menu", name, str(view.page + 1))))
     if view.available:
         choices = tuple(row["name"] for row in view.available)
-        add = f.ModalScreen(tr(lang, "Add a group member"), (f.Dropdown(tr(lang, "Bot"), choices),),
+        add = f.ModalScreen(tr(lang, "Add a member to {name}", name=name), (f.Dropdown(tr(lang, "Bot"), choices),),
                             lambda values, choices=choices: (("add", name, f._option(choices, values[0])),),
-                            command="botgroup")
+                            tr(lang, "Add"), command="botgroup")
         items.append(f.Button(tr(lang, "Add member..."), f.Show(add)))
     if view.members:
         choices = tuple(f"{row['index']}: {row['name']}" for row in view.members)
-        remove = f.ModalScreen(tr(lang, "Remove a group member"), (f.Dropdown(tr(lang, "Member"), choices),),
+        remove = f.ModalScreen(tr(lang, "Remove a member from {name}", name=name),
+                               (f.Dropdown(tr(lang, "Member"), choices),),
                                lambda values: (("remove", name,
                                                 f"{name}[{choices.index(f._option(choices, values[0])) + 1}]"),),
-                               command="botgroup")
+                               tr(lang, "Remove"), command="botgroup")
         items.append(f.Button(tr(lang, "Remove member..."), f.Show(remove)))
-    delete = f.ConfirmScreen(name, tr(lang, "Delete {name}? Its Bots stay registered.", name=name),
-                             tr(lang, "Delete group"), tr(lang, "Cancel"), run("delete", name))
+    # Use the same ActionForm presentation as group browsing: this client's
+    # MessageForm leaves the title/content blank. Keep the target in the button too.
+    delete = f.ActionScreen(tr(lang, "Delete {name}", name=name),
+                            tr(lang, "Delete {name}? Its Bots stay registered.", name=name), (
+                                f.Button(tr(lang, "Delete {name}", name=name), run("delete", name)),
+                                f.Button(tr(lang, "Cancel"), run("menu", name)),
+                            ))
     items.extend((f.Button(tr(lang, "Delete group..."), f.Show(delete)),
                   f.Button(tr(lang, "Back to groups"), run("menu"))))
     content = tr(lang, "Members {count} - page {page}/{pages}. Open a member for teleport and individual operations.",
@@ -111,14 +118,18 @@ def group_screen(view, lang="en"):
 
 
 def result_screen(view, lang="en"):
-    result, page = view.result, view.page
+    result, history = view.result, view.history
     name = f"#{result.group_name}"
-    pages = max(1, (len(result.rows) + PAGE_SIZE - 1) // PAGE_SIZE)
     items = []
-    if page > 1:
-        items.append(f.Button(tr(lang, "Previous page"), run("menu", name, "result", str(page - 1))))
-    if page < pages:
-        items.append(f.Button(tr(lang, "Next page"), run("menu", name, "result", str(page + 1))))
+    for offset, label in ((-1, "Newer result"), (1, "Older result")):
+        index = history - 1 + offset
+        if 0 <= index < len(view.records):
+            target = view.records[index]
+            guard = GroupGuard(result.group_id, result.group_name, result_id=target.identity)
+            items.append(f.Button(tr(lang, label), run("menu", name, "result", str(index + 1), guard=guard)))
+    items.append(f.Button(tr(lang, "Back to group"), run("menu", name,
+                          guard=GroupGuard(result.group_id, result.group_name))))
     items.append(f.Button(tr(lang, "Back to groups"), run("menu")))
-    return f.ActionScreen(tr(lang, "Recent operation result..."), "\n".join(result.page(page, lang)), tuple(items),
+    return f.ActionScreen(tr(lang, "Recent operation result..."),
+                          "\n".join(result.lines(history, len(view.records), lang)), tuple(items),
                           guard=GroupGuard(result.group_id, result.group_name, result_id=result.identity))

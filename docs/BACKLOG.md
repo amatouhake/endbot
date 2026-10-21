@@ -281,7 +281,7 @@ use cases; keep expression evaluation and control flow in Luau rather than addin
 
 Design order: settle Group targeting and bulk-operation semantics (BOT-010) before the Luau operation API. Groups
 remain a separate feature available when scripting is disabled. Luau remains at the design stage; BOT-010 now has a
-command-first source prototype. Neither feature has a release assignment.
+feature implementation on `feat/groups`. Neither feature has a release assignment.
 
 Initial authoring surface:
 
@@ -342,13 +342,13 @@ optional Cloudflare R2 tile mirroring/Worker delivery. That is a deployment refe
 controller-authentication implementation to adopt. No Cloudflare service is required by this design.
 
 This records the agreed scripting direction only. Scripts, a Luau API and editing/import behavior are not yet available;
-the independent Group command prototype is tracked under BOT-010. Implementation and real-client editing, permission,
+the independent Group feature implementation is tracked under BOT-010. Implementation and real-client editing, permission,
 cancellation, Bot behavior and achievement validation must be recorded separately; no release version or completion is
 promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Group menus and bounded result presentation implemented — human-client forms/results check remains open**
+Status: **Group feature implemented on `feat/groups` — revised forms/history need human-client recheck**
 (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -393,8 +393,8 @@ Shared scope and chosen command design:
 /botgroup delete #miners
 ```
 
-These are chosen design forms, now implemented in the command-first source prototype; see
-[prototype instructions and limits](GROUP_PROTOTYPE.md). `destroy count 64` applies its limit separately to each Bot.
+These are chosen design forms, now implemented as the Group feature; see
+[Group instructions and limits](GROUPS.md). `destroy count 64` applies its limit separately to each Bot.
 The locked BDS/Endstone console parser and human-client target input have been checked as described below.
 Completion/help usability remains unresolved; Bot-name validation excluding `#` alone was not parser evidence.
 
@@ -427,37 +427,41 @@ and the result/log presentation of group-targeted `/bot` commands became the nex
 
 The user then agreed to and requested implementation of these rules:
 
-- `/bot menu` links to Groups; `/botgroup menu` lists/creates groups; `/bot #group menu` opens ordered member browsing,
+- `/bot menu` links to Groups; `/botgroup` or `/botgroup menu` lists/creates groups; `/bot #group menu` opens ordered member browsing,
   bulk controls and membership management. Members open the ordinary Bot menu for teleport/individual operations.
   Group deletion asks for confirmation and retains Bot registrations. Forms run/echo the same typed commands.
 - Every whole-group acknowledgement and its normal audit entry is at most two lines, with accepted/failed/not-run
   counts plus up to three aggregated reason categories and an "other" count. No per-failure automatic line. Counts
   describe acceptance; a lost batch response has a separate unknown count. Logs include actor/target/operation in
   English; player summaries use their language. Read-only/menu/result requests do not add audit entries.
-- `/botgroup result #group [page]` shows the caller's latest result with ten member rows per page. The menu reads the
-  same snapshot through `/botgroup menu #group result [page]`; result inspection is available without forms. Results
-  are private per controller/group, bounded to 128 in-memory snapshots globally, and reset on restart. No replay.
-- Old forms validate group/Bot UUIDs and membership order; paged result navigation detects when the latest snapshot
-  changed. Recreating a group or reusing a Bot name must not retarget an old form.
+- `/botgroup result #group [history]` prints every member row for one operation: `1`/omitted selects latest, `2` the
+  previous operation. The menu uses the same snapshots with older/newer navigation. Results are private per
+  controller/group, capped at 20 per caller/group and 128 globally, evicting oldest first, and reset on restart. No replay.
+- Old forms validate group/Bot UUIDs and membership order. History navigation pins result UUIDs so newly executed
+  operations cannot shift a chosen destination. Recreating a group or reusing a Bot name must not retarget an old form.
 
 These are implemented and covered by 221 plugin tests, including bounded 100-member failures and command/form routing
 and stale-identity cases. The updated real-BDS probe passed summary/result commands and clean shutdown. Actual group
-form rendering/input, new completion hints and live mid-batch revocation remain manual gates.
+form rendering/input was subsequently reported as working, with two screenshots identifying blank deletion-confirmation
+text and default Run buttons for membership edits. The revised UI names the group in deletion/add/remove forms,
+uses Add/Remove labels and an action form for deletion. Bare `/botgroup` opens the menu. The user's chosen result-history
+semantics replace member-row pagination; member-list browsing remains paginated. These revisions need a client recheck.
+Live mid-batch revocation remains a manual gate.
 No actual Xbox achievement unlock was reported. See the
-[prototype evidence and follow-up](GROUP_PROTOTYPE.md) for scope and limits.
+[Group evidence and follow-up](GROUPS.md) for scope and limits.
 
-Questions to resolve first:
+Remaining scope choices:
 
-- Group naming rules, stable internal identity and persistence format, and group rename behavior.
-- Behavior on Bot forget and group removal/re-addition, including whether those edits change later member indexes.
-- The equivalent menu flow for bulk operations, individual members and management; avoid hidden selected-target state.
-- Recheck controller authority before applying actions, and define the operation-specific result for an offline/missing
-  member, including spawn versus actions that require an already connected Bot.
-- Define what group teleport means, including shared versus offset positions, before assigning command syntax.
-  Automatic formations and complete mining tasks are not assumed to be Group features.
+- Current names use 1-16 ASCII letters/digits/underscores, beginning with a letter/underscore. Groups have immutable
+  UUIDs and atomic versioned persistence; group rename and creator metadata are deferred.
+- Explicit removal compacts later indexes; re-addition appends. Offline/forgotten entries remain until removed.
+  Reordering and stable numbered slots can be considered after use.
+- Commands/menus use explicit targets and recheck authority. Offline/missing behavior follows each existing operation.
+- Bulk teleport currently applies the single-Bot teleport independently; the menu exposes individual teleport only.
+  Offset formations, collision-safe placement and a frozen moving-player destination remain separate design work.
 
-The open questions are not settled defaults or available commands. The later Luau API should reuse the chosen
-target-resolution/operation model; script-specific execution lifetime remains under BOT-009.
+The later Luau API should reuse the chosen target-resolution/operation model; script-specific execution lifetime
+remains under BOT-009. Automatic formations and complete mining tasks are not assumed to be Group features.
 
 ## Deferred priorities
 

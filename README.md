@@ -6,9 +6,10 @@ authentication path for people while adding a narrow, server-owner-controlled ES
 
 Endbot is pre-alpha. It provides persistent multi-bot profiles, real NetherNet/RakNet client sessions, lifecycle/reconnect,
 server-API teleport, rename, movement/actions, hotbar selection, block interaction, and item drop behind the validated
-`/bot` authorization surface. Shared Groups have a [command-first prototype](docs/GROUP_PROTOTYPE.md) in this source
-tree; immediate group inputs use one runtime batch. Group menus, bounded operation summaries and paginated result
-inspection are implemented in the prototype and await human-client validation. Macros, work tasks, Discord, blueprints,
+`/bot` authorization surface. [Shared Groups](docs/GROUPS.md) are implemented on the `feat/groups` feature branch;
+immediate group inputs use one runtime batch. They include menus, bounded operation summaries and per-controller
+operation history with full result inspection. The latest UI changes await a human-client recheck before release.
+Macros, work tasks, Discord, blueprints,
 web UI and AI behavior are not implemented.
 
 ## Quick start (server operators)

@@ -75,7 +75,8 @@ JA: dict[str, str] = {
     "+ New group...": "+ グループを作成...",
     ", other {count}": ", ほか {count} 件",
     ", unknown {count}": ", 受付不明 {count}",
-    "Add a group member": "グループに Bot を追加",
+    "Add": "追加",
+    "Add a member to {name}": "{name} に Bot を追加",
     "Add member...": "メンバーを追加...",
     "Back to group": "グループへ戻る",
     "Back to groups": "グループ一覧へ戻る",
@@ -83,7 +84,7 @@ JA: dict[str, str] = {
     "Bot identity changed": "Bot の識別情報が変更された",
     "Create": "作成",
     "Create a group": "グループを作成",
-    "Delete group": "グループを削除",
+    "Delete {name}": "{name} を削除",
     "Delete group...": "グループを削除...",
     "Delete {name}? Its Bots stay registered.": "{name} を削除しますか? Bot 自体の登録は残ります。",
     "Endbot: groups": "Endbot: グループ",
@@ -100,7 +101,10 @@ JA: dict[str, str] = {
     "Pick a group.": "グループを選んでください。",
     "Reasons: {reasons}": "理由: {reasons}",
     "Recent operation result...": "直近の操作結果...",
-    "Remove a group member": "グループから Bot を外す",
+    "Remove": "外す",
+    "Remove a member from {name}": "{name} から Bot を外す",
+    "Newer result": "新しい結果",
+    "Older result": "一つ前の結果",
     "Remove member...": "メンバーを外す...",
     "acceptance unknown": "受付不明",
     "accepted": "受付",
@@ -114,15 +118,19 @@ JA: dict[str, str] = {
     "{operation}: accepted {accepted}, failed {failed}, not run {skipped}":
         "{operation}: 受付 {accepted}, 失敗 {failed}, 未実行 {skipped}",
     "{reason} {count}": "{reason} {count}",
-    "{target} {operation} - page {page}/{pages}": "{target} {operation} - {page}/{pages} ページ",
-    "Result page must be between 1 and {pages}": "結果のページは 1 から {pages} の範囲で指定してください",
+    "{target} {operation} - history {history}/{total} (1 = latest)":
+        "{target} {operation} - 履歴 {history}/{total} (1 = 最新)",
+    "Result history must be between 1 and {count} (1 = latest)":
+        "結果の履歴は 1 から {count} の範囲で指定してください (1 = 最新)",
+    "Result history must be a positive integer (1 = latest)":
+        "結果の履歴は 1 以上の整数で指定してください (1 = 最新)",
     "No recent group result for this controller (results reset on restart)":
         "この実行者の直近のグループ操作結果はありません (再起動すると結果は消去されます)",
     "Group changed while the menu was open; reopen the menu":
         "メニュー表示中にグループが変更されました。メニューを開き直してください",
     "Bot changed while the menu was open; reopen the menu":
         "メニュー表示中に Bot が変更されました。メニューを開き直してください",
-    "Recent result changed; reopen the result": "直近の結果が更新されました。結果を開き直してください",
+    "Result is no longer retained; reopen the result history": "結果の保持期限が切れました。履歴を開き直してください",
     "Page must be a positive integer": "ページは 1 以上の整数で指定してください",
     "Group member page is out of range": "メンバー一覧のページが範囲外です",
     "Group syntax: #group (for example #miners)": "グループは #group の形式で指定してください (例: #miners)",

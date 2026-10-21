@@ -8,6 +8,7 @@ from endstone_endbot.i18n import LocalizedError, Text, tr
 
 PAGE_SIZE = 10
 CACHE_SIZE = 128
+HISTORY_SIZE = 20
 REASONS = {
     "not_online": Text("offline"), "offline": Text("offline"),
     "not_found": Text("missing Bot profile"), "missing_profile": Text("missing Bot profile"),
@@ -56,14 +57,11 @@ class GroupResult:
             detail += tr(lang, ", other {count}", count=remaining)
         return line, tr(lang, "Reasons: {reasons}", reasons=detail)
 
-    def page(self, page: int, lang="en") -> tuple[str, ...]:
-        pages = max(1, (len(self.rows) + PAGE_SIZE - 1) // PAGE_SIZE)
-        if not 1 <= page <= pages:
-            raise LocalizedError("Result page must be between 1 and {pages}", pages=pages)
-        heading = tr(lang, "{target} {operation} - page {page}/{pages}", target=self.target,
-                     operation=self.operation, page=page, pages=pages)
+    def lines(self, history: int, total: int, lang="en") -> tuple[str, ...]:
+        heading = tr(lang, "{target} {operation} - history {history}/{total} (1 = latest)", target=self.target,
+                     operation=self.operation, history=history, total=total)
         rows = []
-        for row in self.rows[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]:
+        for row in self.rows:
             status = tr(lang, {"accepted": "accepted", "failed": "failed", "skipped": "not run",
                                "unknown": "acceptance unknown"}[row.outcome])
             rows.append(f"#{self.group_name}[{row.index}] {row.name}: {status} - {row.detail}")
@@ -71,7 +69,7 @@ class GroupResult:
 
 
 class ResultStore:
-    """One latest result per controller/group, globally capped; never persisted."""
+    """Controller-private history, capped per group and globally; never persisted."""
 
     def __init__(self):
         self.records = OrderedDict()
@@ -83,15 +81,30 @@ class ResultStore:
     def save(self, sender, group, target, operation, rows):
         operation = operation.replace("\n", " ").replace("\r", " ")[:128]
         result = GroupResult(str(uuid4()), group.identity, group.name, target, operation, tuple(rows))
-        key = self.owner(sender), group.identity
+        key = self.owner(sender), group.identity, result.identity
         self.records[key] = result
-        self.records.move_to_end(key)
+        matching = [key for key in self.records if key[:2] == (self.owner(sender), group.identity)]
+        for old in matching[:-HISTORY_SIZE]:
+            del self.records[old]
         while len(self.records) > CACHE_SIZE:
             self.records.popitem(last=False)
         return result
 
-    def get(self, sender, group):
-        result = self.records.get((self.owner(sender), group.identity))
-        if result is None:
+    def history(self, sender, group):
+        records = tuple(result for key, result in reversed(self.records.items())
+                        if key[:2] == (self.owner(sender), group.identity))
+        if not records:
             raise LocalizedError("No recent group result for this controller (results reset on restart)")
-        return result
+        return records
+
+    def get(self, sender, group, history=1):
+        records = self.history(sender, group)
+        if not 1 <= history <= len(records):
+            raise LocalizedError("Result history must be between 1 and {count} (1 = latest)", count=len(records))
+        return records[history - 1]
+
+    def find(self, sender, group, identity):
+        for result in self.history(sender, group):
+            if result.identity == identity:
+                return result
+        raise LocalizedError("Result is no longer retained; reopen the result history")

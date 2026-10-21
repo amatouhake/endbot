@@ -12,8 +12,8 @@ from test_groups import GroupControl, messages
 from endstone_endbot.commands import strip_colors
 from endstone_endbot.control import RuntimeControlError
 from endstone_endbot.form_adapter import FormPresenter
-from endstone_endbot.group_forms import GroupGuard, GroupView, ResultView
-from endstone_endbot.group_results import CACHE_SIZE, GroupResult, MemberResult, ResultStore
+from endstone_endbot.group_forms import GroupListView, GroupView, ResultView
+from endstone_endbot.group_results import CACHE_SIZE, HISTORY_SIZE, GroupResult, MemberResult, ResultStore
 from endstone_endbot.groups import Group, GroupCommandService, GroupStore
 
 
@@ -66,14 +66,31 @@ class GroupUiResultTests(unittest.TestCase):
         self.assertIn("failed 100", messages(result))
         self.assertIn("missing Bot profile 100", messages(result))
         self.assertIn("Tester:", " ".join(result.log_messages))
-        page = self.manage("result", "#miners", "2")
-        entries = [line for line in page.messages if "?: failed" in line]
-        self.assertEqual(len(entries), 10)
-        self.assertIn("#miners[11]", strip_colors(entries[0]))
-        self.assertIn("#miners[20]", strip_colors(entries[-1]))
-        self.assertIsNone(page.log_level)
-        for number in ("0", "-1", "11", "1.5"):
+        detail = self.manage("result", "#miners")
+        entries = [line for line in detail.messages if "?: failed" in line]
+        self.assertEqual(len(entries), 100)
+        self.assertIn("#miners[1]", strip_colors(entries[0]))
+        self.assertIn("#miners[100]", strip_colors(entries[-1]))
+        self.assertIsNone(detail.log_level)
+        for number in ("0", "-1", "2", "1.5", "１"):
             self.assertEqual(len(self.manage("result", "#miners", number).messages), 1)
+
+    def test_result_number_selects_an_operation_instead_of_a_member_page(self):
+        self.service.execute(["#miners", "jump"], self.source)
+        self.service.execute(["#miners", "stop"], self.source)
+        latest = messages(self.manage("result", "#miners"))
+        previous = messages(self.manage("result", "#miners", "2"))
+        self.assertIn("stop - history 1/2", latest)
+        self.assertIn("jump - history 2/2", previous)
+        self.assertIn("#miners[1] Alice: accepted - jump once requested", previous)
+        self.assertIn("#miners[2] Bob: accepted - jump once requested", previous)
+
+    def test_bare_botgroup_opens_the_same_menu_as_menu(self):
+        bare, explicit = self.manage(), self.manage("menu")
+        self.assertIsInstance(bare.view, GroupListView)
+        self.assertEqual(bare, explicit)
+        self.assertIn("menu is available only to players", messages(
+            self.service.execute_group([], None)))
 
     def test_results_are_private_frozen_and_not_overwritten_by_menu_or_other_controller(self):
         self.service.execute(["#miners", "jump"], self.source)
@@ -106,18 +123,29 @@ class GroupUiResultTests(unittest.TestCase):
         self.assertIn("unknown 2", messages(result))
         self.assertIn("failed 0, not run 0", messages(result))
 
-    def test_result_menu_and_text_command_use_identical_snapshot_and_reject_stale_pages(self):
+    def test_result_menu_and_text_command_use_identical_snapshot_and_pin_history_navigation(self):
         self.service.execute(["#miners", "jump"], self.source)
+        self.service.execute(["#miners", "stop"], self.source)
         view = self.manage("menu", "#miners", "result").view
         self.assertIsInstance(view, ResultView)
         self.presenter.show_view(self.player, view)
         content = self.player.forms[-1].kwargs["content"]
         self.assertEqual(content, "\n".join(strip_colors(line).removeprefix("Endbot: ")
                                             for line in self.manage("result", "#miners").messages))
-        source = SimpleNamespace(**{**vars(self.source), "group_guard": GroupGuard(
-            view.result.group_id, view.result.group_name, result_id=view.result.identity)})
+        self.service.execute(["#miners", "look", "45", "0"], self.source)
+        self.click("Older result")
+        self.assertIn("jump - history 3/3", self.player.forms[-1].kwargs["content"])
+        self.click("Newer result")
+        self.assertIn("stop - history 2/3", self.player.forms[-1].kwargs["content"])
+
+    def test_evicted_result_form_does_not_silently_open_another_operation(self):
+        self.service.execute(["#miners", "jump"], self.source)
         self.service.execute(["#miners", "stop"], self.source)
-        self.assertIn("Recent result changed", messages(self.manage("menu", "#miners", "result", source=source)))
+        self.presenter.show_view(self.player, self.manage("menu", "#miners", "result").view)
+        for _ in range(HISTORY_SIZE):
+            self.service.execute(["#miners", "stop"], self.source)
+        self.click("Older result")
+        self.assertIn("no longer retained", messages(self.submissions[-1][2]))
 
     def test_bot_list_group_entry_and_creation_use_botgroup_and_echo_its_actual_command(self):
         self.presenter.show_view(self.player, self.service.execute(["menu"], self.source).view)
@@ -144,19 +172,25 @@ class GroupUiResultTests(unittest.TestCase):
     def test_management_modals_and_delete_confirmation_preserve_bots(self):
         self.open_group()
         self.click("Add member...")
+        self.assertEqual(self.player.forms[-1].kwargs["title"], "Add a member to #miners")
+        self.assertEqual(self.player.forms[-1].kwargs["submit_button"], "Add")
         self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([0]))
         self.assertEqual(self.submissions[-1][0], ["add", "#miners", "Carol"])
         self.open_group()
         self.click("Remove member...")
+        self.assertEqual(self.player.forms[-1].kwargs["title"], "Remove a member from #miners")
+        self.assertEqual(self.player.forms[-1].kwargs["submit_button"], "Remove")
         self.player.forms[-1].kwargs["on_submit"](self.player, json.dumps([1]))
         self.assertEqual(self.submissions[-1][0], ["remove", "#miners", "#miners[2]"])
         self.open_group()
         self.click("Delete group...")
         confirm = self.player.forms[-1]
-        confirm.kwargs["on_submit"](self.player, 1)
+        self.assertEqual(confirm.kwargs["title"], "Delete #miners")
+        self.assertIn("Delete #miners? Its Bots stay registered.", confirm.kwargs["content"])
+        self.click("Cancel")
         self.assertEqual(len(self.store.groups), 1)
         self.click("Delete group...")
-        self.player.forms[-1].kwargs["on_submit"](self.player, 0)
+        self.click("Delete #miners")
         self.assertEqual(self.store.groups, ())
         self.assertEqual(set(self.control.bots), {"Alice", "Bob", "Carol"})
 
@@ -173,7 +207,7 @@ class GroupUiResultTests(unittest.TestCase):
         confirm = self.player.forms[-1]
         self.store.delete("miners")
         replacement = self.store.create("miners")
-        confirm.kwargs["on_submit"](self.player, 0)
+        next(callback for kind, label, callback in confirm.items if label == "Delete #miners")(self.player)
         self.assertIn("Group changed", messages(self.submissions[-1][2]))
         self.assertEqual(self.store.get("miners").identity, replacement.identity)
 
@@ -209,14 +243,24 @@ class ResultBoundsTests(unittest.TestCase):
         self.assertIn("offline 2", result.summary()[1])
         self.assertIn("other 3", result.summary()[1])
 
-    def test_result_cache_retains_only_latest_per_owner_group_and_has_global_bound(self):
+    def test_result_cache_retains_history_per_owner_group_and_has_global_bound(self):
         store = ResultStore()
         for index in range(CACHE_SIZE + 1):
             store.save(None, Group(str(index), "miners"), "#miners", "jump", [])
         self.assertEqual(len(store.records), CACHE_SIZE)
-        self.assertNotIn(("console", "0"), store.records)
+        with self.assertRaisesRegex(ValueError, "No recent"):
+            store.get(None, Group("0", "miners"))
         group = Group("last", "miners")
         first = store.save(None, group, "#miners", "jump", [])
         second = store.save(None, group, "#miners", "stop", [])
         self.assertNotEqual(first.identity, second.identity)
         self.assertIs(store.get(None, group), second)
+        self.assertIs(store.get(None, group, 2), first)
+        for _ in range(HISTORY_SIZE):
+            store.save(None, group, "#miners", "jump", [])
+        self.assertEqual(len(store.history(None, group)), HISTORY_SIZE)
+        with self.assertRaisesRegex(ValueError, "no longer retained"):
+            store.find(None, group, first.identity)
+        other = SimpleNamespace(player_id="other")
+        with self.assertRaisesRegex(ValueError, "No recent"):
+            store.find(other, group, second.identity)

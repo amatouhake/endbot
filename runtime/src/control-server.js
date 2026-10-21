@@ -6,6 +6,7 @@ import net from 'node:net'
 
 const MAX_REQUEST_BYTES = 64 * 1024
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
+const GROUP_INPUT_METHODS = new Set(['move', 'look', 'action', 'flag', 'stop', 'hotbar', 'drop'])
 
 function tokensEqual (left, right) {
   if (typeof left !== 'string' || typeof right !== 'string') return false
@@ -102,7 +103,8 @@ export class ControlServer {
     }
     switch (method) {
       case 'ping': return { runtime: 'endbot', protocolVersion: 1 }
-      case 'capabilities': return { identityPinnedRequests: true }
+      case 'capabilities': return { identityPinnedRequests: true, groupInputBatch: true }
+      case 'groupInputBatch': return this.#groupInputBatch(params)
       case 'shutdown': return { stopping: true }
       case 'list': return this.lifecycle.list()
       case 'status': return this.lifecycle.status(params.name)
@@ -124,6 +126,31 @@ export class ControlServer {
       case 'drop': return this.lifecycle.drop(params.name, params.stack)
       case 'stop': return this.lifecycle.stop(params.name)
       default: throw Object.assign(new Error(`Unknown control method: ${method}`), { code: 'unknown_method' })
+    }
+  }
+
+  #groupInputBatch ({ requests } = {}) {
+    // Only synchronous input operations are allowed. No await or timer can
+    // interleave another command between members of this dispatch turn.
+    // Validate the envelope before any effect; individual Bot errors remain partial.
+    if (!Array.isArray(requests) || requests.length === 0 || requests.some(entry =>
+      !entry || !GROUP_INPUT_METHODS.has(entry.method) ||
+      typeof entry.params?.name !== 'string' ||
+      typeof entry.params?.expectedIdentityId !== 'string' || !entry.params.expectedIdentityId)) {
+      throw new Error('Invalid group input batch')
+    }
+    return {
+      results: requests.map(({ method, params }) => {
+        try {
+          const result = this.#dispatch(method, params)
+          // Batch replies only need the fields used by immediate-input replies;
+          // avoid multiplying full inventories/mining status by the group size.
+          return { ok: true, result: { name: result.name, connectionState: result.connectionState,
+            ...(method === 'hotbar' ? { selectedHotbarSlot: result.selectedHotbarSlot } : {}) } }
+        } catch (error) {
+          return { ok: false, error: { code: error.code ?? 'invalid_request', message: String(error.message ?? error) } }
+        }
+      })
     }
   }
 }

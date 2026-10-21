@@ -1,8 +1,8 @@
 # Shared Group command prototype
 
 This source-tree prototype exercises the Group design before the Luau API. It is not a published release or a completed
-in-game menu feature. Use the plugin and runtime from the same checkout; an older runtime without UUID-pinned request
-support is rejected for Group operations. No Luau runner, script editor, web service or Endstone core change is involved.
+in-game menu feature. Use the plugin and runtime from the same checkout; an older runtime without the required UUID
+pinning/input-batch capabilities is rejected. No Luau runner, script editor, web service or Endstone core change is involved.
 
 ## Try the command flow
 
@@ -33,20 +33,30 @@ When using the OS CLI, quote the whole command, for example `endbot console "bot
 ## What the prototype implements
 
 - Shared groups use the existing controller permission. `/botgroup` and `/bot` go through the same authorization,
-  grant-revision check and ordered worker. Bulk actions recheck authority before runtime requests and between members.
+  grant-revision check and ordered worker. Sequential operations recheck authority before requests/between members;
+  batched inputs recheck throughout preparation and immediately before submitting the batch.
 - Membership persists as immutable Bot UUIDs in the plugin data directory's `groups.json`, written atomically.
   Rename keeps membership; a replacement Bot with the old name is not automatically a member.
 - The member list is fixed when a bulk operation starts. Member order stays stable while members go offline. A missing
   profile keeps its entry and produces an individual failure; `spawn` does not create a replacement for that entry.
-- Members execute sequentially, including authorization/profile lookups and request/response waits per member. This
-  fixes membership and reporting order, but does not synchronize action starts: whole-group `jump` has visible skew
-  on the human client. Registration order should not be interpreted as a requirement for staggered action starts.
-- A failed member does not skip the remaining Bots. Revocation/plugin shutdown cancels the remaining requests; an
-  already applied operation is not rolled back. Existing continuous-mining revocation/lease behavior still applies.
+- Whole-group `move`, `look` (including `look at`), `jump`/`attack`/`use`, `sprint`/`sneak`, `stop`, `hotbar` and `drop`
+  take one profile snapshot and send one UUID-pinned input batch. The runtime applies them in one synchronous dispatch
+  turn, with individual Bot errors and replies in membership order. Per-Bot coordinates for `look at` are resolved
+  before dispatch. Membership/report order does not require staggered starts. Independent network/input ticks still
+  mean this is not a guarantee of the same BDS tick or simultaneous observed motion.
+- Lifecycle operations, teleport, mining and other operations retain their existing sequential execution paths.
+- A failed member does not skip the remaining Bots. Revocation/plugin shutdown during batch preparation prevents the
+  whole input batch; during sequential work it cancels remaining requests. A submitted immediate-input batch runs to
+  completion in one runtime turn, without a per-member permission callback. Revocation after its acceptance does not
+  undo those inputs. Existing continuous-mining revocation/lease behavior still applies.
 - Runtime requests carry the expected UUID and reject a stale/reused Bot name before applying an operation. This
   supplements the plugin's UUID lookup; it does not change the Microsoft/Xbox or local-bot login paths.
 - Whole-group rename/forget and menus are rejected. Use one member or a Bot name for those operations. Indexed
   `menu` opens the existing single-Bot menu; there is no Group menu yet.
+- `/botgroup` now advertises separate native operation hints for `list`, `help`, `create`, `delete`, `members`, `add`
+  and `remove`, with group/Bot/member argument hints. It uses the same generic-parseability plus typed-enum approach
+  as `/bot`. Generic branches remain for the locked native parser (including indexed removal); dynamic group/Bot name
+  suggestions are unavailable on this baseline. Native client filtering can still be weak.
 
 ## Provisional choices to review while trying it
 
@@ -97,7 +107,7 @@ indexed teleport, whole-group stop/jump requests, and Bob retaining index 2 whil
 offline Bob individually while Alice's request succeeded. The retained offline Bob session accepted `stop`; offline
 failure is operation-specific, so the earlier manual instruction expecting every offline `stop` to fail was too broad.
 
-Two limitations were observed:
+Two limitations were observed in that initial build:
 
 - `/botgroup` shows generic `<action: string>` / `<arguments: message>` usage instead of useful management-operation
   suggestions. Command acceptance passed; completion usability did not. The locked baseline's generic-overload and
@@ -106,12 +116,16 @@ Two limitations were observed:
   it does not validate synchronized group actions. Ordered chat replies alone are not timing evidence; the user's
   observation of the Bot actions establishes the visible skew. No timing measurement was taken.
 
-Recommended next experiment, not implemented: send one frozen, UUID-pinned group input batch to the runtime and apply
-the immediate inputs in one dispatch turn, rather than awaiting each member's round trip in Python. Preserve per-member
-errors, authorization/revocation behavior and stale-identity rejection. Test actual action-start skew; one dispatch turn
-does not guarantee the same BDS tick across independent Bot sessions. Do not make lifecycle/teleport operations or
-long-running work wait for every other member to complete merely to obtain coordinated input starts.
+Follow-up implementation (2026-10-21 JST): immediate inputs now use the synchronous batch above and `/botgroup` has
+operation-specific enum hints like `/bot`. An older runtime without the `groupInputBatch` capability is rejected rather
+than silently reverting to staggered inputs. Runtime tests demonstrate that a queued microtask cannot interleave
+between members, an offline/replaced member does not prevent later members, invalid batch envelopes cause no effects,
+and response size does not grow with unnecessary full Bot status. Plugin tests cover one lookup/batch, UUIDs/order,
+localized ordinary reply rendering, pre-dispatch revocation/shutdown and preserved sequential cancellation semantics.
+The follow-up Windows RakNet console probe passed through real BDS with the same locked pair, including both-online
+group jump, timed movement and offline-member jump failure. The 204 plugin tests, 135 runtime tests, lint, syntax,
+portability and plugin-wheel build passed. Client-rendered completion and visible timing remain separate checks.
 
-Remaining gates include completion/help usability, Group menus, live revocation during a batch and measured action-start
-timing after a batching change. No Xbox achievement unlock was reported. These checks do not establish other
-transports/platforms or support for another Endstone/BDS pair.
+Remaining gates include human-client completion/help usability with the new hints, Group menus, live revocation and
+observed action-start timing with the new batch. No Xbox achievement unlock was reported. These checks do not establish
+other transports/platforms or support for another Endstone/BDS pair.

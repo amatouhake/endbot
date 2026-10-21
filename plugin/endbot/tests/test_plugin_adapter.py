@@ -205,6 +205,10 @@ class PluginAdapterTests(unittest.TestCase):
             submit=lambda args, sender, **options: submissions.append((args, options)) or True,
         )
         self.assertEqual(plugin.commands["botgroup"]["permissions"], ["endbot.command.control"])
+        usages = plugin.commands["botgroup"]["usages"]
+        for action in ("list", "help", "create", "delete", "members", "add", "remove"):
+            self.assertTrue(any(usage.startswith(f"/botgroup ({action})<action: EndbotGroup") for usage in usages))
+        self.assertIn("/botgroup <action: string> <arguments: message>", usages)
         self.assertTrue(plugin.on_command(FakeConsole(), FakeCommand("botgroup"), ["create", "miners"]))
         self.assertEqual(submissions, [(["create", "miners"], {"command": "botgroup"})])
         unauthorized = types.SimpleNamespace(messages=[], send_message=lambda message: None)

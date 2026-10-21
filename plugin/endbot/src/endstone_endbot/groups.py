@@ -23,6 +23,7 @@ from endstone_endbot.control import RuntimeControlError
 
 GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}\Z")
 GROUP_TARGET = re.compile(r"#([A-Za-z_][A-Za-z0-9_]{0,15})(?:\[([1-9][0-9]*)\])?\Z")
+GROUP_INPUT_OPERATIONS = frozenset({"move", "look", "action", "flag", "stop", "hotbar", "drop"})
 
 
 def group_name(value: str) -> str:
@@ -152,6 +153,21 @@ class _MemberControl:
         return self.control.request(operation, **parameters, expectedIdentityId=self.identity)
 
 
+class _BatchReplyControl:
+    """Render a completed batch member through the ordinary command reply path."""
+
+    def __init__(self, method, response):
+        self.method, self.response = method, response
+
+    def request(self, operation, **parameters):
+        if operation != self.method:
+            raise RuntimeError("Unexpected request while rendering group input result")
+        if not self.response.get("ok"):
+            error = self.response["error"]
+            raise RuntimeControlError(error["code"], error["message"])
+        return self.response["result"]
+
+
 class GroupCommandService(BotCommandService):
     """Command-first prototype. Existing Bot actions remain the implementation of each operation."""
 
@@ -171,7 +187,7 @@ class GroupCommandService(BotCommandService):
         if not self._groups_open or not self.authorize(sender):
             raise ValueError("Bot control permission was revoked; command canceled")
 
-    def _profiles(self, sender) -> dict[str, dict]:
+    def _profiles(self, sender, *, batch=False) -> dict[str, dict]:
         self._check(sender)
         try:
             capabilities = self.control.request("capabilities")
@@ -179,7 +195,8 @@ class GroupCommandService(BotCommandService):
             if error.code != "unknown_method":
                 raise
             raise RuntimeError("Group prototype requires the matching updated Endbot runtime") from error
-        if capabilities.get("identityPinnedRequests") is not True:
+        if (capabilities.get("identityPinnedRequests") is not True
+                or (batch and capabilities.get("groupInputBatch") is not True)):
             raise RuntimeError("Group prototype requires the matching updated Endbot runtime")
         self._check(sender)
         profiles = {bot["identityId"]: bot for bot in self.control.request("list")}
@@ -242,6 +259,48 @@ class GroupCommandService(BotCommandService):
         except (RuntimeError, ValueError, OSError) as error:
             return self._error(error)
 
+    def _execute_inputs(self, command, sender, group, members):
+        profiles = self._profiles(sender, batch=True)
+        prepared, requests = [], []
+        for index, identity in members:
+            self._check(sender)
+            target = f"#{group.name}[{index}]"
+            try:
+                bot = profiles.get(identity)
+                if bot is None:
+                    raise ValueError("missing Bot profile; membership retained")
+                member = replace(command, name=bot["name"])
+                if command.operation == "look" and "targetCoordinates" in command.parameters:
+                    yaw, pitch = self.world.look_at(identity, command.parameters["targetCoordinates"])
+                    member = replace(member, parameters={"yaw": yaw, "pitch": pitch})
+                requests.append({"method": member.operation, "params": {
+                    **member.parameters, "name": member.name, "expectedIdentityId": identity,
+                }})
+                prepared.append((target, member, None))
+            except (RuntimeError, ValueError) as error:
+                prepared.append((target, None, error))
+        # One authorization boundary immediately before the synchronous runtime
+        # batch starts. Revocation during preparation prevents the entire batch.
+        # Once accepted, immediate inputs are applied without per-member waits;
+        # later revocation does not roll back already accepted inputs.
+        self._check(sender)
+        responses = self.control.request("groupInputBatch", requests=requests)["results"] if requests else []
+        if len(responses) != len(requests):
+            raise RuntimeError("Invalid group input batch response")
+        responses = iter(responses)
+        messages = []
+        for target, member, error in prepared:
+            if error is not None:
+                messages.append(reply(str(error), target, ERROR))
+                continue
+            try:
+                result = self._execute(member, sender, _language(sender),
+                                       control=_BatchReplyControl(member.operation, next(responses)))
+                messages.extend(result.messages)
+            except (RuntimeError, ValueError) as error:
+                messages.append(reply(str(error), target, ERROR))
+        return CommandResult(True, tuple(messages))
+
     def execute(self, arguments, sender=None):
         try:
             tokens = _tokens(arguments)
@@ -253,6 +312,8 @@ class GroupCommandService(BotCommandService):
                 raise ValueError(f"{command.operation} requires one Bot; use #group[1] or a Bot name")
             if not members:
                 raise ValueError("Group has no members")
+            if not indexed and command.operation in GROUP_INPUT_OPERATIONS:
+                return self._execute_inputs(command, sender, group, members)
             messages, logs, log_level, view = [], [], None, None
             for index, identity in members:
                 target = f"#{group.name}[{index}]"

@@ -348,7 +348,7 @@ promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Human-client command smoke passed — completion, coordinated starts and Group menus remain open**
+Status: **Initial human smoke passed; input batching/completion hints implemented — client recheck and Group menus open**
 (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -402,11 +402,19 @@ deletion. This console run did not include an authenticated-human Xbox achieveme
 Human-client smoke (2026-10-21 JST, user report/screenshots, source `048e0aa`): the requested basic command, indexed
 target, ordinary/indexed Bot-menu and offline-member checks behaved as expected. Alice/Bob membership order stayed
 stable after Bob went offline; Alice's jump request succeeded while offline Bob's jump failed individually. Offline
-`stop` can still succeed for a retained session; failure semantics depend on the operation. Two usability issues remain:
-`/botgroup` advertises generic string/message parameters rather than helpful operation suggestions, and whole-group
-`jump` visibly starts sequentially. The current implementation waits for each member's authorization/profile lookup
-and operation before advancing. Group input batching is a recommended next experiment, not implemented or a same-BDS-
-tick guarantee. Preserve snapshot membership, UUID checks, per-member errors and revocation behavior when changing it.
+`stop` can still succeed for a retained session; failure semantics depend on the operation. The user reported two issues
+in that build: `/botgroup` advertised generic string/message parameters rather than helpful operation suggestions, and
+whole-group `jump` visibly started sequentially. That initial implementation waited for each member's authorization/profile lookup
+and operation before advancing.
+
+Follow-up: whole-group immediate inputs (`move`, `look`, actions/flags, `stop`, `hotbar`, `drop`) now use one UUID-pinned
+runtime batch, applied in one synchronous dispatch turn with per-member errors. A single profile snapshot and complete
+preparation precede dispatch, with authorization rechecked immediately before submission. Revocation/shutdown during
+preparation blocks the batch; once accepted it has no inter-member waits/callbacks, and later revocation does not undo
+those inputs. Lifecycle/teleport/mining retain sequential paths and checks. This is not a same-BDS-tick guarantee.
+`/botgroup` now includes one native enum hint per management operation with argument hints, matching `/bot`'s approach;
+generic parseability branches and the baseline's dynamic-name/filtering limitations remain. Recheck actual Windows
+client suggestions and visible jump skew after deploying both the plugin and runtime improvements.
 Group menus and live mid-batch revocation remain open. No actual Xbox achievement unlock was reported. See the
 [prototype evidence and follow-up](GROUP_PROTOTYPE.md) for scope and limits.
 

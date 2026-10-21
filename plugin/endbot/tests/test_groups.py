@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from test_command_service import FakeControl, FakeWorld
@@ -18,7 +19,16 @@ def messages(result):
 class GroupControl(FakeControl):
     def request(self, operation, **parameters):
         if operation == "capabilities":
-            return {"identityPinnedRequests": True}
+            return {"identityPinnedRequests": True, "groupInputBatch": True}
+        if operation == "groupInputBatch":
+            self.calls.append((operation, parameters))
+            results = []
+            for request in parameters["requests"]:
+                try:
+                    results.append({"ok": True, "result": self.request(request["method"], **request["params"])})
+                except RuntimeControlError as error:
+                    results.append({"ok": False, "error": {"code": error.code, "message": str(error)}})
+            return {"results": results}
         return super().request(operation, **parameters)
 
 
@@ -129,13 +139,13 @@ class GroupServiceTests(unittest.TestCase):
         original = self.control.request
         def request(operation, **parameters):
             result = original(operation, **parameters)
-            if operation == "stop":
+            if operation == "despawn":
                 self.allowed = False
             return result
         self.control.request = request
-        result = self.service.execute(["#miners", "stop"])
-        self.assertEqual([params["name"] for op, params in self.control.calls if op == "stop"], ["Alice"])
-        self.assertIn("Alice: movement and actions stopped", messages(result))
+        result = self.service.execute(["#miners", "despawn"])
+        self.assertEqual([params["name"] for op, params in self.control.calls if op == "despawn"], ["Alice"])
+        self.assertIn("Alice: despawn requested", messages(result))
         self.assertIn("permission was revoked", messages(result))
 
     def test_revocation_during_lookup_prevents_persistent_membership_change(self):
@@ -155,6 +165,56 @@ class GroupServiceTests(unittest.TestCase):
             result = self.service.execute(arguments)
             self.assertIn("requires one Bot", messages(result))
         self.assertEqual(self.control.calls, [])
+
+    def test_group_inputs_use_one_snapshot_and_one_pinned_batch_with_ordinary_replies(self):
+        for arguments in (["jump"], ["move", "forward", "for", "20"], ["hotbar", "2"],
+                          ["look", "at", "1", "64", "2"], ["sprint", "on"], ["drop"]):
+            self.control.calls.clear()
+            result = self.service.execute(["#miners", *arguments])
+            self.assertNotIn("failed", messages(result))
+            self.assertIn("Alice:", messages(result))
+            self.assertIn("Bob:", messages(result))
+            batches = [p for op, p in self.control.calls if op == "groupInputBatch"]
+            self.assertEqual(len(batches), 1)
+            self.assertEqual(sum(op == "list" for op, _ in self.control.calls), 1)
+            entries = batches[0]["requests"]
+            self.assertEqual([entry["params"]["expectedIdentityId"] for entry in entries],
+                             list(self.store.get("miners").members))
+        self.assertEqual(len(self.world.look_targets), 2)
+
+    def test_revocation_or_shutdown_during_preparation_prevents_all_inputs(self):
+        original = self.world.look_at
+        for cancel in (lambda: setattr(self, "allowed", False), self.service.cancel_groups):
+            self.allowed, self.service._groups_open = True, True
+            self.control.calls.clear()
+            def look_at(*args, cancel=cancel):
+                cancel()
+                return original(*args)
+            self.world.look_at = look_at
+            result = self.service.execute(["#miners", "look", "at", "1", "64", "2"])
+            self.assertIn("command canceled", messages(result))
+            self.assertFalse(any(op == "groupInputBatch" for op, _ in self.control.calls))
+
+    def test_missing_member_is_reported_in_order_and_does_not_retarget_by_name(self):
+        del self.control.bots["Alice"]
+        result = self.service.execute(["#miners", "jump"])
+        self.assertIn("#miners[1]: missing Bot profile", messages(result))
+        self.assertIn("Bob: jump once requested", messages(result))
+        batch = next(p for op, p in self.control.calls if op == "groupInputBatch")
+        self.assertEqual(len(batch["requests"]), 1)
+
+    def test_old_group_runtime_cannot_fall_back_to_staggered_inputs(self):
+        original = self.control.request
+        self.control.request = lambda op, **p: ({"identityPinnedRequests": True} if op == "capabilities"
+                                                 else original(op, **p))
+        result = self.service.execute(["#miners", "jump"])
+        self.assertIn("matching updated Endbot runtime", messages(result))
+        self.assertEqual(self.control.calls, [])
+
+    def test_batched_inputs_keep_the_controllers_reply_language(self):
+        result = self.service.execute(["#miners", "jump"], SimpleNamespace(language="ja"))
+        self.assertIn("Alice: jump once を要求しました", messages(result))
+        self.assertIn("Bob: jump once を要求しました", messages(result))
 
     def test_delete_only_removes_the_group_and_shutdown_prevents_further_work(self):
         self.manage("delete", "miners")

@@ -18,6 +18,7 @@ def exercise_groups(bot, console, request, wait, log, report):
     command(f"botgroup add miners {buddy}", f"#miners: add: {buddy}")
     command("botgroup members miners", f"#miners[1]: {bot}", f"#miners[2]: {buddy}")
     command("bot #miners stop", f"{bot}: movement and actions stopped", f"{buddy}: movement and actions stopped")
+    command("bot #miners jump", f"{bot}: jump once requested", f"{buddy}: jump once requested")
     command("bot #miners[1] look 45 0", f"{bot}: look set to yaw=45.0 pitch=0.0")
     command("bot #miners[2] look 90 0", f"{buddy}: look set to yaw=90.0 pitch=0.0")
     command("bot #miners move forward for 1", f"{bot}: movement set to forward", f"{buddy}: movement set to forward")

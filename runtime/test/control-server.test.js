@@ -87,6 +87,43 @@ test('mining requests require the control token for both start and stop', async 
   assert.equal(calls.length, 2)
 })
 
+test('group inputs apply in one dispatch turn, preserving partial failures and UUID checks', async t => {
+  const calls = []
+  let interleaved = false
+  const token = 'b'.repeat(43)
+  const server = new ControlServer({ token, port: 0, lifecycle: {
+    status: name => ({ name, identityId: name }),
+    action: name => {
+      assert.equal(interleaved, false, 'members must not wait on separate IPC or event-loop turns')
+      calls.push(name)
+      queueMicrotask(() => { interleaved = true })
+      if (name === 'Offline') throw Object.assign(new Error('Bot is not online'), { code: 'not_online' })
+      return { name, connectionState: 'online', unnecessaryLargeStatus: 'x'.repeat(65_000) }
+    }
+  } })
+  await server.listen()
+  t.after(() => server.close())
+  const entries = ['Alice', 'Offline', 'Replaced', 'Bob'].map(name => ({ method: 'action', params: {
+    name, expectedIdentityId: name === 'Replaced' ? 'old-uuid' : name, action: 'jump', mode: 'once'
+  } }))
+  const envelope = { version: 1, id: 'batch', token, method: 'groupInputBatch', params: { requests: entries } }
+  const denied = await request(server.port, { ...envelope, token: 'wrong' })
+  assert.equal(denied.error.code, 'unauthorized')
+  assert.deepEqual(calls, [])
+  for (const invalid of [[], [...entries, { method: 'spawn', params: { name: 'New', expectedIdentityId: 'new' } }],
+    [{ method: 'action', params: { name: 'Alice' } }]]) {
+    assert.equal((await request(server.port, { ...envelope, params: { requests: invalid } })).ok, false)
+    assert.deepEqual(calls, [])
+  }
+  const response = await request(server.port, envelope)
+  assert.equal(response.ok, true)
+  assert.deepEqual(calls, ['Alice', 'Offline', 'Bob'])
+  assert.deepEqual(response.result.results.map(row => row.ok), [true, false, false, true])
+  assert.equal(response.result.results[1].error.code, 'not_online')
+  assert.equal(response.result.results[2].error.code, 'identity_changed')
+  assert.deepEqual(response.result.results[0].result, { name: 'Alice', connectionState: 'online' })
+})
+
 test('radius query, override and reset use the authenticated control surface', async t => {
   const calls = []
   const token = 'a'.repeat(43)

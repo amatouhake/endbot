@@ -326,7 +326,7 @@ class GroupCommandService(BotCommandService):
 
     @staticmethod
     def _error(error, target=None, lang="en"):
-        return CommandResult(True, (reply(localize_error(error, lang), target, ERROR),))
+        return CommandResult(True, (reply(localize_error(error, lang), target, ERROR),), accepted=False)
 
     def execute_group(self, arguments, sender=None):
         """Arguments following /botgroup. Runs on the same authorized, ordered worker as /bot."""
@@ -475,7 +475,8 @@ class GroupCommandService(BotCommandService):
             # replace operation history or apply its saved-detail truncation.
             return CommandResult(True, tuple(
                 reply(row.detail, f"#{group.name}[{row.index}] {row.name}",
-                      ERROR if row.outcome != "accepted" else "") for row in rows))
+                        ERROR if row.outcome != "accepted" else "") for row in rows),
+                                 accepted=all(row.outcome == "accepted" for row in rows))
         rows = [replace(row, detail=row.detail[:512]) for row in rows]
         record = self.results.save(sender, group, target, operation, rows)
         if indexed:
@@ -488,7 +489,12 @@ class GroupCommandService(BotCommandService):
         if indexed:
             actor += f" {rows[0].name}"
         logs = tuple(reply(f"{actor}: {line}", target) for line in record.summary("en"))
-        return CommandResult(True, messages, log_level="info", log_messages=logs)
+        return CommandResult(True, messages, log_level="info", log_messages=logs,
+                             accepted=all(row.outcome == "accepted" for row in rows),
+                             data={"accepted": sum(row.outcome == "accepted" for row in rows),
+                                   "failed": sum(row.outcome == "failed" for row in rows),
+                                   "notRun": sum(row.outcome == "skipped" for row in rows),
+                                   "unknown": sum(row.outcome == "unknown" for row in rows)})
 
     def execute(self, arguments, sender=None):
         try:

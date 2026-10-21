@@ -1,0 +1,584 @@
+{
+  "status": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "inventory": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "resume": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "reconnect": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "despawn": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "forget": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "stop": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "menu": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "spawn": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "x",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "y",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "z",
+          {
+            "type": "coordinate"
+          }
+        ]
+      ],
+      "options": {
+        "yaw": {
+          "type": "number",
+          "clause": "facing"
+        },
+        "pitch": {
+          "type": "number"
+        },
+        "dimension": {
+          "type": "string",
+          "clause": "in"
+        }
+      },
+      "prefix": [
+        "at"
+      ]
+    }
+  ],
+  "rename": [
+    {
+      "positional": [
+        [
+          "name",
+          {
+            "type": "string"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "tp": [
+    {
+      "positional": [
+        [
+          "target",
+          {
+            "type": "string"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "x",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "y",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "z",
+          {
+            "type": "coordinate"
+          }
+        ]
+      ],
+      "options": {
+        "yaw": {
+          "type": "number"
+        },
+        "pitch": {
+          "type": "number"
+        },
+        "dimension": {
+          "type": "string",
+          "clause": "in"
+        },
+        "facing": {
+          "type": "string",
+          "clause": "facing"
+        },
+        "facingX": {
+          "type": "coordinate",
+          "clause": "facing"
+        },
+        "facingY": {
+          "type": "coordinate"
+        },
+        "facingZ": {
+          "type": "coordinate"
+        }
+      },
+      "prefix": []
+    }
+  ],
+  "move": [
+    {
+      "positional": [
+        [
+          "direction",
+          {
+            "type": "string",
+            "choices": [
+              "forward",
+              "backward",
+              "left",
+              "right",
+              "stop"
+            ]
+          }
+        ]
+      ],
+      "options": {
+        "ticks": {
+          "type": "integer",
+          "clause": "for"
+        }
+      },
+      "prefix": []
+    }
+  ],
+  "look": [
+    {
+      "positional": [
+        [
+          "yaw",
+          {
+            "type": "number"
+          }
+        ],
+        [
+          "pitch",
+          {
+            "type": "number"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "x",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "y",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "z",
+          {
+            "type": "coordinate"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": [
+        "at"
+      ]
+    }
+  ],
+  "swap": [
+    {
+      "positional": [
+        [
+          "a",
+          {
+            "type": "integer"
+          }
+        ],
+        [
+          "b",
+          {
+            "type": "integer"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "hold": [
+    {
+      "positional": [
+        [
+          "item",
+          {
+            "type": "string"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "hotbar": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "slot",
+          {
+            "type": "integer"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "radius": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "value",
+          {
+            "type": "integerOrDefault"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "interact": [
+    {
+      "positional": [
+        [
+          "x",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "y",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "z",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "face",
+          {
+            "type": "string",
+            "choices": [
+              "down",
+              "up",
+              "north",
+              "south",
+              "west",
+              "east"
+            ]
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "destroy": [
+    {
+      "positional": [],
+      "options": {
+        "mode": {
+          "type": "string",
+          "choices": [
+            "once",
+            "continuous",
+            "stop"
+          ]
+        },
+        "ticks": {
+          "type": "integer",
+          "clause": "for"
+        },
+        "count": {
+          "type": "integer",
+          "clause": "count"
+        }
+      },
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "x",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "y",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "z",
+          {
+            "type": "coordinate"
+          }
+        ]
+      ],
+      "options": {
+        "face": {
+          "type": "string",
+          "choices": [
+            "down",
+            "up",
+            "north",
+            "south",
+            "west",
+            "east"
+          ]
+        }
+      },
+      "prefix": []
+    }
+  ],
+  "drop": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "selector",
+          {
+            "type": "stringOrInteger"
+          }
+        ]
+      ],
+      "options": {
+        "count": {
+          "type": "integer"
+        }
+      },
+      "prefix": []
+    }
+  ],
+  "jump": [
+    {
+      "positional": [],
+      "options": {
+        "mode": {
+          "type": "string",
+          "choices": [
+            "once",
+            "continuous",
+            "stop"
+          ]
+        },
+        "interval": {
+          "type": "integer",
+          "clause": "interval"
+        },
+        "ticks": {
+          "type": "integer",
+          "clause": "for"
+        }
+      },
+      "prefix": []
+    }
+  ],
+  "attack": [
+    {
+      "positional": [],
+      "options": {
+        "mode": {
+          "type": "string",
+          "choices": [
+            "once",
+            "continuous",
+            "stop"
+          ]
+        },
+        "interval": {
+          "type": "integer",
+          "clause": "interval"
+        },
+        "ticks": {
+          "type": "integer",
+          "clause": "for"
+        }
+      },
+      "prefix": []
+    }
+  ],
+  "use": [
+    {
+      "positional": [],
+      "options": {
+        "mode": {
+          "type": "string",
+          "choices": [
+            "once",
+            "continuous",
+            "stop"
+          ]
+        },
+        "interval": {
+          "type": "integer",
+          "clause": "interval"
+        },
+        "hold": {
+          "type": "integer",
+          "clause": "hold"
+        },
+        "ticks": {
+          "type": "integer",
+          "clause": "for"
+        }
+      },
+      "prefix": []
+    }
+  ],
+  "sprint": [
+    {
+      "positional": [
+        [
+          "value",
+          {
+            "type": "boolean"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "sneak": [
+    {
+      "positional": [
+        [
+          "value",
+          {
+            "type": "boolean"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "list": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "ping": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "help": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "topic",
+          {
+            "type": "stringOrInteger"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ]
+}

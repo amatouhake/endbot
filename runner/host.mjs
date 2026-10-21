@@ -6,6 +6,8 @@ import path from 'node:path';
 const root = fileURLToPath(new URL('.', import.meta.url));
 export const executable = path.join(root, '.build', 'native', 'bin', `endbot-luau-spike${process.platform === 'win32' ? '.exe' : ''}`);
 const bootstrap = readFileSync(path.join(root, 'api.luau'), 'utf8');
+// Exercise the production grammar; this standalone host still never controls BDS.
+export const mockOperations = JSON.parse(readFileSync(new URL('../plugin/endbot/src/endstone_endbot/operations.json', import.meta.url), 'utf8'));
 const defaults = Object.freeze({ sliceMs: 100, interruptBudget: 100000, memoryBytes: 32 * 1024 * 1024,
   wallMs: 5000, requestMs: 1000, maxMessages: 1000, maxTicks: 2000, tickMs: 50 });
 
@@ -14,9 +16,14 @@ function parameters(schema, args) {
   const result = {};
   for (const key of Object.keys(args)) if (!Object.hasOwn(schema, key)) throw new Error(`unknown argument: ${key}`);
   for (const [key, descriptor] of Object.entries(schema)) {
-    if (!descriptor || !['string', 'number', 'boolean'].includes(descriptor.type)) throw new Error(`invalid parameter: ${key}`);
-    const value = Object.hasOwn(args, key) ? args[key] : descriptor.default;
-    if (typeof value !== descriptor.type || (typeof value === 'number' && !Number.isFinite(value))) throw new Error(`invalid argument: ${key}`);
+    if (!descriptor || !['string', 'number', 'boolean', 'bot', 'group', 'pos'].includes(descriptor.type)) throw new Error(`invalid parameter: ${key}`);
+    let value = Object.hasOwn(args, key) ? args[key] : descriptor.default;
+    if (descriptor.type === 'pos') {
+      const coordinates = typeof value === 'string' ? value.split(/\s+/).map(Number) : [];
+      if (coordinates.length !== 3 || coordinates.some(v => !Number.isFinite(v))) throw new Error(`invalid argument: ${key}`);
+      value = Object.fromEntries(['x', 'y', 'z'].map((axis, i) => [axis, coordinates[i]]));
+    } else if (typeof value !== (['bot', 'group'].includes(descriptor.type) ? 'string' : descriptor.type)
+      || (typeof value === 'number' && !Number.isFinite(value))) throw new Error(`invalid argument: ${key}`);
     Object.defineProperty(result, key, { value, enumerable: true });
   }
   return result;
@@ -30,7 +37,7 @@ export function startRun(source, args = {}, options = {}) {
   }
   if (typeof source !== 'string' || Buffer.byteLength(source) > 65536) throw new Error('source too large or not text');
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be a JSON object');
-  const load = JSON.stringify({ type: 'load', source, bootstrap, limits });
+  const load = JSON.stringify({ type: 'load', source, bootstrap, limits, operations: options.operations ?? mockOperations });
   if (Buffer.byteLength(load) > 256 * 1024) throw new Error('load frame too large');
   const child = spawn(executable, [], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   const events = [];
@@ -106,16 +113,21 @@ export function startRun(source, args = {}, options = {}) {
         if (options.onWait) await options.onWait(event);
         else await new Promise(resolve => timer(resolve, event.ticks * limits.tickMs));
       } else if (event.type === 'operation') {
-        if (typeof event.bot !== 'string' || !event.bot.length || event.bot.length > 64) throw new Error('invalid bot');
-        if (event.operation === 'move') {
-          if (!['forward', 'back', 'left', 'right'].includes(event.direction) || !Number.isSafeInteger(event.ticks) || event.ticks < 1 || event.ticks > limits.maxTicks) throw new Error('invalid move');
-        } else if (event.operation === 'look') {
-          if (!Number.isFinite(event.yaw) || !Number.isFinite(event.pitch) || event.pitch < -90 || event.pitch > 90) throw new Error('invalid look');
-        } else throw new Error('unsupported operation');
+        if (typeof event.target !== 'string' || !event.target.length || event.target.length > 64) throw new Error('invalid target');
+        if (!Object.hasOwn(options.operations ?? mockOperations, event.operation)) throw new Error('unsupported operation');
+        if (!event.params || typeof event.params !== 'object' || Array.isArray(event.params)) throw new Error('invalid params');
         // Re-evaluate authority on every operation, including those after a wait.
         if (options.authorize && !await options.authorize(event)) throw new Error('authorization revoked');
         if (terminal || stopping) return;
-        await options.onOperation?.(event);
+        const result = await options.onOperation?.(event) ?? { ok: true };
+        send({ type: 'reply', id: event.id, accepted: true, result });
+        return;
+      } else if (event.type === 'members') {
+        send({ type: 'reply', id: event.id, accepted: true, count: await options.onMembers?.(event) ?? 0 });
+        return;
+      } else if (event.type === 'waitOnline') {
+        send({ type: 'reply', id: event.id, accepted: true, result: await options.onWaitOnline?.(event) ?? { ok: true } });
+        return;
       } else throw new Error('unknown request');
       send({ type: 'reply', id: event.id, accepted: true });
     } catch (error) {

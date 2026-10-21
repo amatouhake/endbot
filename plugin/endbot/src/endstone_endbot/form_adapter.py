@@ -37,7 +37,9 @@ class FormPresenter:
 
     def show_view(self, player, view) -> None:
         lang = self._language(player)
-        if isinstance(view, forms.BotListView):
+        if isinstance(view, (forms.ActionScreen, forms.ModalScreen, forms.ConfirmScreen)):
+            screen = view
+        elif isinstance(view, forms.BotListView):
             screen = forms.bot_list_screen(view, lang)
         elif isinstance(view, group_forms.GroupListView):
             screen = group_forms.group_list_screen(view, lang)
@@ -105,7 +107,9 @@ class FormPresenter:
             return
         for command in action.commands:
             # Menu navigation is not echoed: /bot ends with "menu", /botgroup starts with it.
-            if (command[:1] if action.command == "botgroup" else command[-1:]) != ("menu",):
+            if (command[:1] if action.command in {"botgroup", "botscript"} else command[-1:]) != ("menu",) and not (
+                action.command == "botscript" and command[:1] == ("save",)
+            ):
                 # Show the typed equivalent, so forms also teach the command. ASCII only:
                 # the Bedrock chat font lacks symbols such as arrows.
                 player.send_message(f"{DIM}/{action.command} {' '.join(command)}{RESET}")

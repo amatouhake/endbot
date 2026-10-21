@@ -30,6 +30,9 @@ class CommandSource:
     # Reply language, resolved on the server thread when the command arrives.
     language: str = "en"
     group_guard: object | None = None
+    grant_revision: int | None = None
+    script_run_id: str | None = None
+    script_origin: dict | None = None
 
     @classmethod
     def capture(cls, sender, language: str = "en") -> CommandSource:
@@ -124,12 +127,20 @@ class ServerThreadWorld:
 
     def _sender(self, source: CommandSource):
         sender = self._resolve_sender(source)
-        if source.player_id is not None and sender is None:
+        if source.player_id is not None and sender is None and source.script_run_id is None:
             raise ValueError("Command player is no longer online")
         return sender
 
     def default_spawn(self, sender):
-        return self._bridge.call(lambda: self._world.default_spawn(self._sender(sender)))
+        def resolve():
+            player = self._sender(sender)
+            origin = sender.script_origin
+            if player is None and sender.script_run_id is not None and origin is not None:
+                return {"coordinates": [origin[axis] for axis in ("x", "y", "z")],
+                        "rotation": [origin[axis] for axis in ("yaw", "pitch")], "dimension": origin["dimension"]}
+            return self._world.default_spawn(player)
+
+        return self._bridge.call(resolve)
 
     def resolve_spawn_placement(self, placement, sender):
         return self._bridge.call(lambda: self._world.resolve_spawn_placement(placement, self._sender(sender)))
@@ -192,6 +203,9 @@ class AsyncCommandRunner:
         log: Callable[[str, str], None] | None = None,
         show_view: Callable[[object, object], None] | None = None,
         language: Callable[[object], str] | None = None,
+        scripts=None,
+        grant_revision=None,
+        origin=None,
     ) -> None:
         self._service = service
         self._bridge = bridge
@@ -205,6 +219,9 @@ class AsyncCommandRunner:
         self._show_view = show_view
         # Resolves a player's reply language on the server thread.
         self._language = language
+        self._scripts = scripts
+        self._grant_revision = grant_revision
+        self._origin = origin
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
@@ -214,6 +231,9 @@ class AsyncCommandRunner:
         self._lock = threading.Lock()
         self._open = True
         self._poll_future = None
+        if scripts is not None:
+            scripts.ordered = lambda callback: self._executor.submit(callback).result()
+            scripts.notify = self._deliver
 
     def poll(self) -> None:
         """Queue at most one poll, independent of the command worker."""
@@ -244,13 +264,20 @@ class AsyncCommandRunner:
         self._bridge.post(deliver)
 
     def submit(self, arguments: list[str], sender, *, command: str = "bot", group_guard=None) -> bool:
-        if command not in {"bot", "botgroup"}:
+        if command not in {"bot", "botgroup", "botscript"}:
             raise ValueError("Unknown Endbot command root")
         source = CommandSource.capture(sender, self._language(sender) if self._language else "en")
         if group_guard is not None:
+            if getattr(group_guard, "values", None) is not None:
+                group_guard = replace(group_guard, values=dict(group_guard.values),
+                                      targets=dict(group_guard.targets or {}))
             source = replace(source, group_guard=group_guard)
         if self._revision is not None:
             source = replace(source, authorization_revision=self._revision(sender))
+        if self._grant_revision is not None:
+            source = replace(source, grant_revision=self._grant_revision(sender))
+        if command == "botscript" and self._origin is not None:
+            source = replace(source, script_origin=self._origin(sender))
         with self._lock:
             if not self._open:
                 return False
@@ -265,6 +292,9 @@ class AsyncCommandRunner:
             if not self._open:
                 return
             self._open = False
+            if self._scripts is not None:
+                self._scripts.cancel()
+                self._executor.submit(self._scripts.close)
             if hasattr(self._service, "cancel_groups"):
                 self._service.cancel_groups()
             if hasattr(self._service, "close"):
@@ -282,11 +312,19 @@ class AsyncCommandRunner:
                 revoked = tr(source.language, "Bot control permission was revoked; command canceled")
                 result = CommandResult(True, (reply(revoked, color=WARNING),))
             else:
-                execute = self._service.execute_group if command == "botgroup" else self._service.execute
+                execute = (self._scripts.execute if command == "botscript" and self._scripts is not None else
+                           self._service.execute_group if command == "botgroup" else self._service.execute)
                 result = execute(arguments, source)
+                if self._scripts is not None:
+                    from endstone_endbot.forms import BotListView
+                    if isinstance(result.view, BotListView):
+                        result = replace(result, view=replace(result.view, scripting=self._scripts.config.enabled))
         except Exception:  # noqa: BLE001 - never strand command delivery on an unexpected service failure
             result = CommandResult(True, (reply(tr(source.language, "internal command failure"), color=ERROR),))
 
+        self._deliver(source, result)
+
+    def _deliver(self, source, result) -> None:
         def deliver() -> None:
             if result.log_level is not None and self._log is not None:
                 for message in result.messages if result.log_messages is None else result.log_messages:

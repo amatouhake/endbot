@@ -387,6 +387,29 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertFalse(plugin._authorize_loop(source))
             self.assertTrue(plugin._authorize_loop(CommandSource(sender=console)))
 
+    def test_script_grant_revision_survives_logout_but_revoke_regrant_never_revives_it(self):
+        from dataclasses import replace
+
+        from endstone_endbot.dispatch import CommandSource
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
+            source = replace(CommandSource.capture(player), script_run_id="run1", grant_revision=0)
+            self.assertTrue(plugin._authorize_script(source))
+            plugin.on_player_quit(types.SimpleNamespace(player=player))
+            plugin.server.online_players = []
+            self.assertTrue(plugin._authorize_script(source))
+            self.assertTrue(plugin._controller_operation(["remove", f"xuid:{player.xuid}"])["ok"])
+            self.assertFalse(plugin._authorize_script(source))
+            self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
+            self.assertTrue(plugin._allows_control(player))
+            self.assertFalse(plugin._authorize_script(source))
+            new_source = replace(source, grant_revision=plugin._grant_versions[str(player.unique_id)])
+            self.assertTrue(plugin._authorize_script(new_source))
+
     def test_controller_cannot_manage_access_even_with_external_permission(self):
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)

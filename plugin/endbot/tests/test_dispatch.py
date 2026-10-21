@@ -18,6 +18,55 @@ class ScheduledCallbacks:
 
 
 class DispatchTests(unittest.TestCase):
+    def test_script_world_uses_captured_spawn_after_logoff_and_rejects_revoked_world_calls(self):
+        from types import SimpleNamespace
+
+        from endstone_endbot.i18n import LocalizedError
+
+        origin = {"x": 1., "y": 64., "z": 2., "yaw": 90., "pitch": 0., "dimension": "Overworld"}
+        source = CommandSource(player_id="controller", script_run_id="run1", script_origin=origin)
+        bridge = SimpleNamespace(call=lambda callback: callback())
+        world = ServerThreadWorld(object(), bridge, lambda source: None)
+        self.assertEqual(world.default_spawn(source), {"coordinates": [1., 64., 2.],
+                         "rotation": [90., 0.], "dimension": "Overworld"})
+        def revoked(source):
+            raise LocalizedError("Script authority was revoked")
+        class World:
+            def teleport(self, *args):
+                raise AssertionError("A revoked script must not reach world mutation")
+        world = ServerThreadWorld(World(), bridge, revoked)
+        with self.assertRaises(LocalizedError):
+            world.teleport("bot-id", {"coordinates": [1., 64., 2.]}, source)
+
+    def test_script_routing_captures_grant_origin_and_copies_form_values(self):
+        from types import SimpleNamespace
+
+        from endstone_endbot.script_config import ScriptConfig
+        from endstone_endbot.script_forms import ScriptGuard
+
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        captured, closed = [], threading.Event()
+        scripts = SimpleNamespace(config=ScriptConfig(enabled=True), cancel=lambda: None, close=closed.set)
+        scripts.execute = lambda argv, source: captured.append((argv, source)) or CommandResult(True)
+        player = SimpleNamespace(unique_id="controller", location=object(), name="Caller", xuid="123")
+        origin = {"x": 1, "y": 64, "z": 2}
+        guard = ScriptGuard("r1", "test", values={"name": "Alice"})
+        runner = AsyncCommandRunner(object(), bridge, lambda source: player, authorize=lambda source: True,
+                                    scripts=scripts, grant_revision=lambda sender: 7, origin=lambda sender: origin)
+        self.addCleanup(runner.close)
+        self.assertTrue(runner.submit(["run", "test"], player, command="botscript", group_guard=guard))
+        guard.values["name"] = "Changed"
+        scheduled.run_next()
+        scheduled.run_next()
+        self.assertEqual(captured[0][0], ["run", "test"])
+        self.assertEqual(captured[0][1].grant_revision, 7)
+        self.assertEqual(captured[0][1].script_origin, origin)
+        self.assertEqual(captured[0][1].group_guard.values, {"name": "Alice"})
+        runner.close()
+        self.assertTrue(closed.wait(1))
+
     def test_form_group_guard_survives_authorized_worker_capture_and_root_dispatch(self):
         from types import SimpleNamespace
 

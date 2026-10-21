@@ -19,6 +19,7 @@ from endstone_endbot.commands import (
 )
 from endstone_endbot.i18n import JA, Text, language_setting, localize_error, resolve_language, tr
 from endstone_endbot.inventory_sync import EQUIPMENT_SLOTS
+from endstone_endbot.script_forms import TEMPLATES
 
 SOURCE = Path(__file__).resolve().parents[1] / "src" / "endstone_endbot"
 
@@ -38,6 +39,7 @@ TEMPLATE_ARGUMENTS = {
 PLAYER_ERROR_FILES = ("commands.py", "dispatch.py", "world.py", "groups.py")
 # Templates reached through variables rather than literals.
 INDIRECT_TEMPLATES = (
+    *TEMPLATES,
     *(label for label, _ in EQUIPMENT_SLOTS),
     "online",
     "offline",

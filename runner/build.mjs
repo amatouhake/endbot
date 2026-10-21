@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -40,3 +40,5 @@ command(cmake, ['-S', '.', '-B', '.build/native', ...process.argv.slice(2), '-DC
   '-DLUAU_BUILD_CLI=OFF', '-DLUAU_BUILD_TESTS=OFF', '-DLUAU_STATIC_CRT=ON',
   `-DLUAU_SOURCE_DIR=${source}`]);
 command(cmake, ['--build', '.build/native', '--config', 'Release', '--target', 'endbot-luau-spike', '--parallel', '2']);
+// Install the trusted sidecar beside the binary; plugin bundles use this layout too.
+await copyFile(path.join(root, 'api.luau'), path.join(root, '.build/native/bin/api.luau'));

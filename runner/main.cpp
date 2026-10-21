@@ -96,7 +96,11 @@ static void toLua(lua_State* L, const Json& value, int depth = 0)
         for (auto it = value.begin(); it != value.end(); ++it) {
             toLua(L, it.value(), depth + 1); lua_setfield(L, -2, it.key().c_str());
         }
-    } else throw std::runtime_error("only JSON objects and scalar arguments are supported");
+    } else if (value.is_array()) {
+        lua_newtable(L);
+        int i = 1;
+        for (const auto& entry : value) { toLua(L, entry, depth + 1); lua_rawseti(L, -2, i++); }
+    } else throw std::runtime_error("unsupported JSON argument");
 }
 static int exchange(lua_State* L)
 {
@@ -132,11 +136,12 @@ int main()
         run.budget = limits.value("interruptBudget", 100000);
         run.remaining = run.budget;
         run.memoryLimit = limits.value("memoryBytes", 32 * 1024 * 1024);
-        if (run.limitMs < 1 || run.limitMs > 60000 || run.budget < 1 || run.budget > 100000000 ||
-            run.memoryLimit < 1024 * 1024 || run.memoryLimit > 256 * 1024 * 1024)
+        if (run.limitMs < 1 || run.budget < 1 || run.memoryLimit < 1024 * 1024)
             throw std::runtime_error("invalid limits");
         std::string source = input.at("source"), bootstrap = input.at("bootstrap");
-        if (source.size() > 65536 || bootstrap.size() > 16384) throw std::runtime_error("source too large");
+        size_t sourceLimit = limits.value("maxSourceBytes", size_t(65536));
+        if (sourceLimit > 65536 || source.size() > sourceLimit || bootstrap.size() > 16384)
+            throw std::runtime_error("source too large");
         std::unique_ptr<lua_State, decltype(&lua_close)> state(lua_newstate(allocate, &run), lua_close);
         if (!state) throw std::runtime_error("cannot allocate VM");
         lua_State* L = state.get();
@@ -149,6 +154,7 @@ int main()
         }
         lua_pushcfunction(L, exchange, "exchange"); lua_setglobal(L, "_exchange");
         lua_pushcfunction(L, logText, "log"); lua_setglobal(L, "_log");
+        toLua(L, input.value("operations", Json::object())); lua_setglobal(L, "_operations");
         if (load(L, bootstrap, "=api") || lua_pcall(L, 0, 0, 0))
             throw std::runtime_error(lua_tostring(L, -1));
         luaL_sandbox(L);

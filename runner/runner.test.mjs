@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { startRun, executable } from './host.mjs';
+import { startRun, executable, mockOperations } from './host.mjs';
+import { reference } from './api-reference.mjs';
 
 test('declares parameters before body, interleaves two bots, waits explicitly', { timeout: 10000 }, async () => {
   const source = await readFile(new URL('./examples/interleaved.luau', import.meta.url), 'utf8');
   const accepted = [];
   const run = startRun(source, { first: 'One', second: 'Two', ticks: 3 }, {
     pauseBeforeStart: true, limits: { tickMs: 1 },
-    onOperation: async event => accepted.push([event.bot, event.operation]),
+    onOperation: async event => accepted.push([event.target, event.operation]),
   });
   const declaration = await run.ready;
   assert.equal(declaration.type, 'params');
@@ -172,4 +173,93 @@ test('native protocol rejects stale reply ids and host EOF', async () => {
     assert.match(events.at(-1).message, mode === 'stale' ? /stale reply/ : /host EOF/);
     assert.equal(events.some(e => e.type === 'log'), false);
   }
+});
+
+test('all production operations and positional overloads are generated from the shared table', async () => {
+  const received = [];
+  const sample = spec => spec.choices?.[0] ?? ({ number: 1, integer: 1, boolean: true,
+    coordinate: 1, stringOrInteger: 'all', integerOrDefault: 'default' }[spec.type] ?? 'Alice');
+  const calls = [];
+  for (const [operation, variants] of Object.entries(mockOperations)) {
+    for (const shape of variants) {
+      const args = shape.positional.map(([, spec]) => JSON.stringify(sample(spec)));
+      calls.push(`assert(bot("Alice"):${operation}(${args.join(',')}).ok)`);
+    }
+  }
+  const run = startRun(`params{}\n${calls.join('\n')}`, {}, { onOperation: e => { received.push(e); } });
+  assert.equal((await run.done).type, 'done');
+  assert.equal(received.length, calls.length);
+  assert.deepEqual(new Set(received.map(e => e.operation)), new Set(Object.keys(mockOperations)));
+  assert.equal(received.every(e => e.target === 'Alice' && typeof e.params === 'object'), true);
+});
+
+test('param constructors, typed args, group members, acceptance failures and waitOnline', async () => {
+  const events = [];
+  const source = `local a=params {group=param.group(),origin=param.pos("1 64 2"),spacing=param.number(2),
+    name=param.bot(),flag=param.bool(false),text=param.string("x")}
+assert(a.origin.x==1 and a.origin.y==64 and a.flag==false and a.text=="x")
+waitOnline(bot(a.name))
+for i, member in group(a.group):members() do
+    local result=member:tp(a.origin.x+(i-1)*a.spacing,a.origin.y,a.origin.z)
+    assert(result.ok == false and result.reason == "rejected")
+end
+bot(a.name):drop("all")
+group(a.group):destroy{mode="continuous",count=64}`;
+  const run = startRun(source, { group: '#miners', name: 'Alice' }, {
+    onMembers: () => 2,
+    onWaitOnline: () => ({ ok: true }),
+    onOperation: e => { events.push(e); return {ok:false,reason:'rejected'}; },
+  });
+  assert.equal((await run.done).type, 'done');
+  assert.deepEqual(events.map(e => e.target), ['#miners[1]', '#miners[2]', 'Alice', '#miners']);
+  assert.deepEqual(events[0].params, {x:1,y:64,z:2});
+  assert.deepEqual(events[1].params, {x:3,y:64,z:2});
+  assert.deepEqual(events[3].params, {mode:'continuous',count:64});
+});
+
+test('typed API rejects surplus options, bad types and command-string escape attempts before IPC', async () => {
+  for (const call of ['bot("A"):move("forward",{raw="stop"})', 'bot("A"):look(true,0)',
+    'bot("A"):tp("Player",{raw="stop"})', 'bot("A"):command("stop")']) {
+    let invoked = false;
+    const run = startRun(`params{}\n${call}`, {}, { onOperation: () => { invoked = true; } });
+    assert.equal((await run.done).type, 'error');
+    assert.equal(invoked, false);
+  }
+});
+
+test('declarations cannot perform host work, and run interrupt budgets are cumulative across yields', async () => {
+  for (const source of ['bot("A"):look(0,0)\nparams{}', 'wait(1)\nparams{}', 'log("early")\nparams{}']) {
+    const run = startRun(source);
+    assert.equal((await run.done).type, 'error');
+    assert.equal(run.events.some(e => e.type === 'operation'), false);
+  }
+  const run = startRun('params{}\nfor i=1,100 do for j=1,1000 do local x=j*j end wait(0) end', {}, {
+    limits: { interruptBudget: 2000, sliceMs: 1000, tickMs: 0 },
+  });
+  assert.match((await run.done).message, /execution budget exceeded/);
+});
+
+test('operator API reference matches the operation table shipped in the plugin', async () => {
+  const guide = await readFile(new URL('../docs/SCRIPTING.md', import.meta.url), 'utf8');
+  const section = guide.split('<!-- BEGIN GENERATED OPERATIONS -->\n')[1].split('<!-- END GENERATED OPERATIONS -->')[0];
+  assert.equal(section, reference(mockOperations));
+});
+
+test('both menu templates compile and execute with the real generated API', async () => {
+  const forms = await readFile(new URL('../plugin/endbot/src/endstone_endbot/script_forms.py', import.meta.url), 'utf8');
+  for (const [title, args] of [['Group row', {group:'#miners',origin:'1 64 2'}], ['Simple patrol', {name:'Alice',ticks:1}]]) {
+    const source = new RegExp(`"${title}": """([\\s\\S]*?)"""`).exec(forms)?.[1];
+    assert.ok(source, `missing menu template ${title}`);
+    const events = [];
+    const run = startRun(source, args, { limits:{tickMs:1}, onMembers:()=>2, onOperation:e=>{events.push(e);} });
+    assert.equal((await run.done).type, 'done');
+    assert.equal(events.length, title === 'Group row' ? 2 : 8);
+  }
+});
+
+test('native source limit is supplied by the host', async () => {
+  const run = startRun('params{}\nlog("oversize")', {}, { limits:{maxSourceBytes:8} });
+  const result = await run.done;
+  assert.equal(result.type, 'error');
+  assert.match(result.message, /source too large/);
 });

@@ -439,6 +439,22 @@ class FakePlayer:
 
 
 class PresenterTests(unittest.TestCase):
+    def test_script_paste_view_routes_save_with_capability_and_does_not_echo_source(self):
+        from endstone_endbot.script_forms import edit_screen
+        from endstone_endbot.script_store import Script
+
+        submitted = []
+        presenter = FormPresenter(lambda player, argv, **kwargs: submitted.append((argv, kwargs)),
+                                  form_module=FakeFormModule())
+        player = FakePlayer()
+        screen = edit_screen(Script("example", "params {}\n", "r1"))
+        presenter.show_view(player, screen)
+        player.forms[-1].kwargs["on_submit"](player, json.dumps(["params {}\nlog('test')"]))
+        self.assertEqual(submitted[0][0], ["save", "example", "params {}\nlog('test')"])
+        self.assertEqual(submitted[0][1]["command"], "botscript")
+        self.assertTrue(submitted[0][1]["group_guard"].edit)
+        self.assertEqual(player.messages, [])
+
     def setUp(self):
         self.submitted = []
         self.presenter = FormPresenter(

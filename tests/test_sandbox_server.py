@@ -1,9 +1,12 @@
-import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from scripts.sandbox_server import SandboxError, reusable_server
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class SandboxServerTests(unittest.TestCase):
@@ -64,22 +67,30 @@ class SandboxServerTests(unittest.TestCase):
             pass
         self.assertTrue((self.server / "worlds").is_dir())
 
-    def test_refuses_a_sandbox_held_by_a_live_run(self) -> None:
+    def test_a_held_sandbox_is_refused_before_any_reset(self) -> None:
+        with self.use() as server:
+            (server / "worlds").mkdir()
+            with self.assertRaises(SandboxError), self.use():
+                pass
+            self.assertTrue((server / "worlds").is_dir())
         with self.use():
-            pass
-        # The parent of this test process stands in for another live run.
-        (self.server / ".endbot-sandbox" / "run.lock").write_text(str(os.getppid()), encoding="utf-8")
-        with self.assertRaises(SandboxError), self.use():
-            pass
+            self.assertEqual(self.installs, [self.version])
 
-    def test_a_stale_lock_is_taken_over_and_released(self) -> None:
+    def test_a_concurrent_process_cannot_take_a_held_sandbox(self) -> None:
         with self.use():
             pass
-        lock = self.server / ".endbot-sandbox" / "run.lock"
-        lock.write_text("999999999", encoding="utf-8")
+        script = (
+            "import sys; from pathlib import Path; from scripts.sandbox_server import SandboxError, reusable_server\n"
+            "try:\n"
+            "    with reusable_server(Path(sys.argv[1]), install=lambda s: None, version=lambda: sys.argv[2]): pass\n"
+            "except SandboxError: sys.exit(3)\n"
+        )
+        command = [sys.executable, "-c", script, str(self.server), self.version]
         with self.use():
-            self.assertEqual(lock.read_text(encoding="utf-8"), str(os.getpid()))
-        self.assertFalse(lock.exists())
+            held = subprocess.run(command, cwd=ROOT, check=False)
+        self.assertEqual(held.returncode, 3)
+        # The OS released the lock with its holder; nothing stale remains.
+        self.assertEqual(subprocess.run(command, cwd=ROOT, check=False).returncode, 0)
 
 
 if __name__ == "__main__":

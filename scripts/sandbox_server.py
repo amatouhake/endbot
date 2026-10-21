@@ -9,7 +9,7 @@ through Endstone only on first use or when the lock moves to another version.
 A sandbox is a directory this module created: it carries a ``.endbot-sandbox``
 marker with the installed version, the distribution's top-level entries and
 pristine copies of the files BDS edits. Any other non-empty directory, such as an
-operator instance, is refused. One run may hold a sandbox at a time.
+operator instance, is refused. An OS file lock lets one run hold a sandbox at a time.
 
 Prepare or reset one for a manual run with::
 
@@ -31,7 +31,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "cli" / "endbot" / "src"))
 
 from endbot_cli.bds import install_locked_bds
-from endbot_cli.processes import process_alive
 
 MARKER = ".endbot-sandbox"
 MANIFEST = "manifest.json"
@@ -87,16 +86,28 @@ def _reset(server: Path, marker: Path, manifest: dict) -> None:
             (server / name).unlink(missing_ok=True)
 
 
-def _acquire(marker: Path) -> Path:
-    lock = marker / LOCK
-    try:
-        holder = int(lock.read_text(encoding="utf-8").strip())
-    except (FileNotFoundError, ValueError):
-        holder = None
-    if holder is not None and holder != os.getpid() and process_alive(holder):
-        raise SandboxError(f"{marker.parent} is in use by process {holder}; wait for that run or stop it")
-    lock.write_text(str(os.getpid()), encoding="utf-8")
-    return lock
+@contextmanager
+def _exclusive(marker: Path) -> Iterator[None]:
+    """Hold an OS lock on the sandbox; the OS drops it when the holder exits, so no stale lock remains."""
+    with (marker / LOCK).open("a+b") as handle:
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise SandboxError(f"{marker.parent} is in use by another run; wait for it or stop it") from error
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 @contextmanager
@@ -115,8 +126,7 @@ def reusable_server(
     if server.is_dir() and any(server.iterdir()) and not marker.is_dir():
         raise SandboxError(f"{server} is not an Endbot sandbox; refusing to reset it (use an empty directory)")
     marker.mkdir(parents=True, exist_ok=True)
-    lock = _acquire(marker)
-    try:
+    with _exclusive(marker):
         expected = version()
         try:
             manifest = json.loads((marker / MANIFEST).read_text(encoding="utf-8"))
@@ -127,8 +137,6 @@ def reusable_server(
         else:
             _reset(server, marker, manifest)
         yield server
-    finally:
-        lock.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:

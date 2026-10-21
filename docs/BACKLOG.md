@@ -309,6 +309,11 @@ Decisions for the 0.4.0 MVP (2026-10-23 JST):
   for the web/embedding at a pinned version, managed like `endstone.lock`) against community packages, by
   provenance, maintenance, license, embeddability (yielding for `wait` and host calls, interrupting runaway code),
   Windows/Linux bundling and sandboxing; then prototype the strongest option.
+- **Runner chosen (2026-10-23):** a small C++ host process built from official Luau source at a pinned version and
+  checksum (`runner/luau.lock.json`), started per run, talking NDJSON over stdio. It yields for `wait` and host calls,
+  interrupts runaway code and removes io/os/require. Chosen over official CLI/web artifacts (no resumable host calls
+  or interrupts) and community npm packages (forked or inconsistent provenance); see
+  [the runner spike](LUAU_RUNNER_SPIKE.md). Linux build/bundling and OS-level resource limits are still to verify.
 
 Initial authoring surface:
 

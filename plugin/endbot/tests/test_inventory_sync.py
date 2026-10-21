@@ -1,12 +1,19 @@
+import base64
 import json
 import unittest
 from types import SimpleNamespace
 
 from endstone_endbot.inventory_sync import (
+    CHUNK_BYTES,
+    EQUIPMENT_SLOTS,
     EVENT_NAME,
+    MAX_INVENTORY_BYTES,
+    MAX_PAYLOAD,
     PACKET_ID,
     HotbarPublisher,
+    full_inventory_snapshot,
     hotbar_snapshot,
+    observation_payloads,
     publish_hotbar,
     sync_settings,
     typed_nbt,
@@ -42,13 +49,52 @@ def string_at(payload, offset=0):
 
 
 class InventorySyncTests(unittest.TestCase):
+    def test_full_observation_has_exact_main_and_equipment_item_data(self):
+        item = SimpleNamespace(type=SimpleNamespace(id="minecraft:stone"), amount=5, data=3,
+                               nbt=CompoundTag({"id": tag("LongTag", 9223372036854775807)}))
+        inventory = SimpleNamespace(get_item=lambda slot: item if slot == 35 else None,
+                                    **{attribute: item for _, attribute in EQUIPMENT_SLOTS})
+        player = SimpleNamespace(unique_id="bot", inventory=inventory)
+        server = SimpleNamespace(create_block_data=lambda name: SimpleNamespace(runtime_id=1))
+        snapshot = full_inventory_snapshot(player, server)
+        self.assertEqual(len(snapshot["slots"]), 36)
+        self.assertEqual(snapshot["slots"][:35], [None] * 35)
+        self.assertEqual(len(snapshot["equipment"]), 5)
+        self.assertEqual(snapshot["equipment"], [snapshot["slots"][35]] * 5)
+        self.assertEqual(snapshot["equipment"][1]["nbt"]["value"]["id"]["value"], "9223372036854775807")
+        self.assertEqual(item.amount, 5)
+
+    def test_large_nbt_fragments_stay_bounded_and_oversize_fails_before_any_send(self):
+        item = {"name": "minecraft:stone", "count": 5, "metadata": 0, "blockRuntimeId": 1,
+                "nbt": {"type": "compound", "value": {"text": {"type": "string", "value": "x" * 32768}}}}
+        snapshot = {"identityId": "bot", "slots": [item] * 36, "equipment": [item] * 5}
+        packets = observation_payloads(snapshot, 7)
+        decoded = []
+        for index, packet in enumerate(packets):
+            self.assertLessEqual(len(packet), MAX_PAYLOAD)
+            event, offset = string_at(packet)
+            data, end = string_at(packet, offset)
+            part = json.loads(data)
+            self.assertEqual(event, "endbot:inventory-v2")
+            self.assertEqual(end, len(packet))
+            self.assertEqual((part["sequence"], part["part"], part["parts"]), (7, index, len(packets)))
+            chunk = base64.b64decode(part["data"])
+            self.assertLessEqual(len(chunk), CHUNK_BYTES)
+            decoded.append(chunk)
+        self.assertEqual(json.loads(b"".join(decoded)), snapshot)
+        self.assertGreater(len(packets), 1)
+        item["nbt"]["value"]["text"]["value"] = "x" * (MAX_INVENTORY_BYTES // 41 + 1)
+        with self.assertRaisesRegex(ValueError, "total size bound"):
+            observation_payloads(snapshot, 8)
+
     def test_changes_send_immediately_and_unchanged_state_is_resent_for_rejected_actions(self):
         from unittest.mock import Mock
 
         item = SimpleNamespace(type=SimpleNamespace(id="minecraft:apple"), amount=5, data=0, nbt=CompoundTag())
         player = SimpleNamespace(
             unique_id="bot",
-            inventory=SimpleNamespace(get_item=lambda slot: item if slot == 0 else None),
+            inventory=SimpleNamespace(get_item=lambda slot: item if slot == 0 else None,
+                                      **{attribute: None for _, attribute in EQUIPMENT_SLOTS}),
             send_packet=Mock(),
         )
         server = SimpleNamespace(create_block_data=Mock(side_effect=ValueError("not a block")))
@@ -84,7 +130,7 @@ class InventorySyncTests(unittest.TestCase):
             }
         )
         item = SimpleNamespace(type=SimpleNamespace(id="minecraft:diamond_sword"), amount=1, data=4, nbt=nbt)
-        slots = [None, item, *([None] * 7)]
+        slots = [None, item, *([None] * 34)]
         packets = []
 
         def non_block(name):
@@ -92,7 +138,8 @@ class InventorySyncTests(unittest.TestCase):
 
         player = SimpleNamespace(
             unique_id="bot-id",
-            inventory=SimpleNamespace(get_item=lambda slot: slots[slot]),
+            inventory=SimpleNamespace(get_item=lambda slot: slots[slot],
+                                      **{attribute: None for _, attribute in EQUIPMENT_SLOTS}),
             send_packet=lambda *packet: packets.append(packet),
         )
         server = SimpleNamespace(create_block_data=non_block)
@@ -101,7 +148,7 @@ class InventorySyncTests(unittest.TestCase):
         name, offset = string_at(payload)
         data, end = string_at(payload, offset)
         self.assertEqual((packet_id, name, end), (PACKET_ID, EVENT_NAME, len(payload)))
-        snapshot = json.loads(data)
+        snapshot = json.loads(base64.b64decode(json.loads(data)["data"]))
         self.assertEqual(snapshot["identityId"], "bot-id")
         self.assertEqual(snapshot["slots"][1]["nbt"]["value"]["map_uuid"]["value"], "123456789123456789")
         self.assertEqual(snapshot["slots"][1]["nbt"]["value"]["bytes"]["value"], [1, -1])

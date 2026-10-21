@@ -231,6 +231,21 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ("hotbar [1-9]",),
         ("Slots use human-facing 1-9 numbering through Bedrock equipment.",),
     ),
+    "swap": HelpTopic(
+        "swap", "exchange two inventory stacks", ("swap <a> <b>",),
+        ("Slots are 1-36. An empty side is a move; equipment is excluded. BDS validates the request.",),
+    ),
+    "hold": HelpTopic(
+        "hold", "select an item by exact identifier", ("hold <item>",),
+        ("Selects the lowest matching hotbar slot, or swaps the lowest main stack into the selected hotbar slot.",
+         "Item IDs accept minecraft: or no prefix. Replies describe the request; BDS validates it.",),
+    ),
+    "inventory": HelpTopic(
+        "inventory",
+        "show non-empty inventory and equipment slots",
+        ("inventory",),
+        ("Slots are hotbar 1-9, main 10-36, offhand, head, chest, legs and feet.",),
+    ),
     "radius": HelpTopic(
         "radius",
         "show or set the Bot chunk radius",
@@ -266,9 +281,14 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     ),
     "drop": HelpTopic(
         "drop",
-        "drop the selected item",
-        ("drop [stack]",),
-        ("drop drops one item; drop stack drops the selected stack.",),
+        "request drops from inventory and equipment",
+        ("drop [stack|all|<slot>|<item> [count]]",),
+        (
+            "drop drops one selected item; stack drops the selected stack; a slot drops its whole stack.",
+            "Slots: 1-36, offhand, head, chest, legs, feet. Item IDs accept minecraft: or no prefix.",
+            "An item without count drops every matching stack; count takes up to that many, lowest slots first.",
+            "drop all immediately requests every inventory and equipment stack. BDS validates every request.",
+        ),
     ),
     "stop": HelpTopic(
         "stop",
@@ -315,7 +335,7 @@ HELP_TOPIC_ALIASES = {"tp": "teleport"}
 HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
     ("move", "look", "jump", "attack", "use", "sprint", "sneak", "stop"),
-    ("hotbar", "interact", "destroy", "drop", "radius", "rename", "forget"),
+    ("inventory", "hotbar", "swap", "hold", "interact", "destroy", "drop", "radius", "rename", "forget"),
 )
 
 HELP_PAGE_TITLES = (
@@ -599,7 +619,9 @@ def parse_command(arguments: list[str]) -> BotCommand:
     if len(tokens) < 2:
         raise CommandSyntaxError("Expected /bot <name> <action>")
     name, operation, remaining = tokens[0], tokens[1].lower(), tokens[2:]
-    if operation in {"status", "resume", "reconnect", "despawn", "forget", "stop", "menu"} and not remaining:
+    if operation in {
+        "status", "inventory", "resume", "reconnect", "despawn", "forget", "stop", "menu"
+    } and not remaining:
         return BotCommand(operation, name)
     if operation == "spawn":
         if not remaining:
@@ -627,6 +649,22 @@ def parse_command(arguments: list[str]) -> BotCommand:
         )
     if operation == "look" and len(remaining) == 4 and remaining[0].lower() == "at":
         return BotCommand(operation, name, {"targetCoordinates": [_coordinate(value) for value in remaining[1:]]})
+    if operation == "swap":
+        if len(remaining) != 2:
+            raise CommandSyntaxError("Use swap <a> <b>")
+        if any(not re.fullmatch(r"[1-9]|[12][0-9]|3[0-6]", value) for value in remaining):
+            raise CommandSyntaxError("Inventory slots must be from 1 to 36")
+        a, b = map(int, remaining)
+        if a == b:
+            raise CommandSyntaxError("Swap requires two different slots")
+        return BotCommand(operation, name, {"a": a, "b": b})
+    if operation == "hold":
+        if len(remaining) != 1:
+            raise CommandSyntaxError("Use hold <item>")
+        item = remaining[0]
+        if not re.fullmatch(r"(?:minecraft:)?[a-z0-9_./-]+", item):
+            raise CommandSyntaxError("Invalid hold item identifier")
+        return BotCommand(operation, name, {"item": item})
     if operation == "hotbar" and not remaining:
         return BotCommand(operation, name)
     if operation == "hotbar" and len(remaining) == 1:
@@ -697,8 +735,29 @@ def parse_command(arguments: list[str]) -> BotCommand:
         if any(value.lower() in DESTROY_CLAUSES for value in tokens):
             raise CommandSyntaxError(DESTROY_SINGLE_BLOCK)
         raise CommandSyntaxError(DESTROY_USAGE)
-    if operation == "drop" and (not remaining or remaining == ["stack"]):
-        return BotCommand(operation, name, {"stack": bool(remaining)})
+    if operation == "drop":
+        if not remaining or remaining == ["stack"]:
+            return BotCommand(operation, name, {"stack": bool(remaining)})
+        if len(remaining) > 2:
+            raise CommandSyntaxError("Use drop [stack|all|<slot>|<item> [count]]")
+        selector = remaining[0]
+        slots = {str(slot) for slot in range(1, 37)} | {"offhand", "head", "chest", "legs", "feet"}
+        if selector in slots or selector == "all":
+            if len(remaining) != 1:
+                raise CommandSyntaxError("A slot or all does not accept a count")
+            return BotCommand(operation, name, {"selector": selector})
+        if selector == "stack":
+            raise CommandSyntaxError("A slot or all does not accept a count")
+        item = selector if ":" in selector else f"minecraft:{selector}"
+        if not re.fullmatch(r"minecraft:[a-z0-9_./-]+", item):
+            raise CommandSyntaxError("Invalid drop item identifier")
+        parameters = {"selector": item}
+        if len(remaining) == 2:
+            token = remaining[1]
+            if not token.isascii() or not token.isdecimal() or len(token) > 5 or not 1 <= int(token) <= 10455:
+                raise CommandSyntaxError("Drop count must be an integer from 1 to 10455")
+            parameters["count"] = int(token)
+        return BotCommand(operation, name, parameters)
     if operation in {"jump", "attack", "use"}:
         return _action(name, operation, remaining)
     if operation in {"sprint", "sneak"} and len(remaining) == 1 and remaining[0].lower() in {"on", "off"}:
@@ -896,6 +955,21 @@ class BotCommandService:
             if command.parameters.get("default"):
                 return CommandResult(True, help_page(1, lang))
             return say("menu is available only to players; use /bot help")
+        if command.operation == "inventory":
+            if self.world is None:
+                raise ValueError("Bot is not present in the world")
+            identity = command.parameters.get("identityId")
+            if identity is None and control is not None:
+                # Pin the Bot profile's UUID, as other commands do, rather than any player with that name.
+                identity = control.request("status", name=command.name)["identityId"]
+            snapshot = self.world.inventory(command.name, identity)
+            entries = [
+                f"{tr(lang, slot['slot'])}: {slot['name'].removeprefix('minecraft:')} x{slot['count']}"
+                for slot in snapshot["slots"]
+            ]
+            return say("inventory: {items}", snapshot["name"], items=", ".join(entries)) if entries else say(
+                "inventory is empty", snapshot["name"]
+            )
         if self.control is None:
             raise RuntimeError("runtime control is not configured")
         if command.operation == "menu":
@@ -1015,8 +1089,39 @@ class BotCommandService:
                 result["name"],
                 slot=result["selectedHotbarSlot"],
             )
+        elif command.operation == "swap":
+            result = control.request("swap", name=command.name, **command.parameters)
+            return say("swap {a} {b} requested", result["name"], **command.parameters)
+        elif command.operation == "hold":
+            result = control.request("hold", name=command.name, **command.parameters)
+            item = command.parameters["item"]
+            if not result["found"]:
+                raise LocalizedError("Item {item} was not found", item=item)
+            if result["sourceSlot"] <= 9:
+                return say("hold {item}: selected hotbar {slot} requested", result["name"],
+                           item=item, slot=result["selectedHotbarSlot"])
+            return say("hold {item}: moved slot {source} to hotbar {slot} requested", result["name"],
+                       item=item, source=result["sourceSlot"], slot=result["selectedHotbarSlot"])
         elif command.operation == "drop":
             result = control.request("drop", name=command.name, **command.parameters)
+            selector = command.parameters.get("selector", "selected")
+            if selector == "all":
+                return say("drop all requested for {slots} slots", result["name"], slots=result["droppedSlots"])
+            if selector.startswith("minecraft:"):
+                if "count" in command.parameters:
+                    return say("drop {item} x{count} requested (asked for {asked})", result["name"],
+                               item=selector.removeprefix("minecraft:"), count=result["droppedCount"],
+                               asked=command.parameters["count"])
+                return say("drop {item} x{count} requested from {slots} slots", result["name"],
+                           item=selector.removeprefix("minecraft:"), count=result["droppedCount"],
+                           slots=result["droppedSlots"])
+            if selector != "selected":
+                drops = result.get("drops", [])
+                if not drops:
+                    return say("drop slot {slot} requested; slot is empty", result["name"], slot=Text(selector))
+                drop = drops[0]
+                return say("drop slot {slot} {item} x{count} requested", result["name"], slot=Text(selector),
+                           item=drop["item"].removeprefix("minecraft:"), count=drop["count"])
             return say(
                 "drop stack requested" if command.parameters["stack"] else "drop one item requested", result["name"]
             )

@@ -74,7 +74,7 @@ Players can run the common operations from native Bedrock forms instead of typin
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
 Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy, interact),
-Inventory (hotbar, drop) and Bot (resume/spawn, reconnect, confirmed despawn, radius and status).
+Inventory (list inventory, hotbar, hold, swap, drop) and Bot (resume/spawn, reconnect, confirmed despawn, radius and status).
 Category names follow Minecraft's control settings. An offline Bot offers resume/spawn, radius and the Bot settings
 category. Individual Bot profile controls offer rename and confirmed forget; forget still requires an offline profile.
 The target list also shows `#group (count)` entries that open this same operation screen directly. Group-wide controls
@@ -315,11 +315,17 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice use hold <ticks> [interval <ticks>] [for <ticks>]
 /bot Alice sprint on|off
 /bot Alice sneak on|off
+/bot Alice inventory
 /bot Alice hotbar
 /bot Alice hotbar <1-9>
+/bot Alice swap <a> <b>
+/bot Alice hold <item>
 /bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
 /bot Alice drop
 /bot Alice drop stack
+/bot Alice drop <1-36|offhand|head|chest|legs|feet>
+/bot Alice drop <item> [count]
+/bot Alice drop all
 /bot Alice stop
 ```
 
@@ -330,13 +336,21 @@ interaction; with an empty hand it is a safe no-op. Endbot does not invent an it
 Sprint and sneak emit Bedrock's one-tick start/stop transitions as well as steady held-state flags; reconnect input reset
 does not replay transitions from the previous transport.
 
+`inventory` reads the authoritative inventory through Endstone on the server thread. It shows only non-empty slots,
+with identifiers stripped of `minecraft:` and counts, for example `3: diamond_pickaxe x1, 10: stone x64`.
+Slots follow the game screen: hotbar 1–9, main inventory 10–36, then `offhand`, `head`, `chest`, `legs`, `feet`.
+An empty inventory reports `inventory is empty`; equipment-only inventories still list their equipment.
+This query changes no items and needs no runtime inventory cache or request for a named online Bot. Offline Bots
+report that they are not present in the world. In forms, **Inventory... → List inventory** runs the same command.
+The server rejects ordinary Xbox players as Bot inventory targets.
+
 `hotbar` reports or changes the selected slot using human-facing 1–9 numbering. Selection is sent through the normal
 Bedrock equipment path and inventory updates continue to come from BDS; Endbot does not keep a second inventory.
-BDS does not push every pickup's inventory delta to the picker. The Endbot plugin therefore reads the nine actual BDS
-hotbar slots at a configurable interval (four server ticks by default) and sends changed read-only observations over
+BDS does not push every pickup's inventory delta to the picker. The Endbot plugin therefore reads all 36 actual BDS
+inventory slots plus offhand and armor at a configurable interval (four server ticks by default) and sends changed read-only observations over
 that Bot's existing connection, plus periodic unchanged corrections (20 server ticks by default). The runtime
 updates its transient cache, including counts and typed NBT, and re-announces a changed held item through normal Bedrock
-equipment packets. This makes same-session pickups usable by `hotbar`, `drop` and held-item actions without reconnecting,
+equipment packets, including offhand changes. This makes same-session pickups usable by `hotbar`, `drop` and held-item actions without reconnecting,
 normally within four server ticks (about 0.2 seconds at 20 TPS). No item is added, removed or reassigned by the observer.
 `drop` still uses a normal BDS-validated transaction; the reply says requested, not completed. Fresh observations also
 correct an optimistic drop if BDS rejected it; an unchanged correction can take about one second with default settings.
@@ -344,6 +358,44 @@ Native inventory updates also announce changed held equipment, independent of pe
 Unknown/invalid observations are ignored as a whole; an unknown or empty
 selected slot still fails with `Selected hotbar slot is empty`. Without the matching plugin, reconnect remains the
 recovery for missing native deltas. See [pickup validation](INVENTORY_VALIDATION.md).
+
+`swap <a> <b>` requests an exchange of the two whole stacks, with the same hotbar 1-9 and main 10-36 labels as
+`inventory`. One empty side makes it a move. Equal slots and two empty slots are errors. Offhand and armor are
+excluded; equip is deferred. For example `/bot Alice swap 10 2` requests a main/hotbar exchange and
+`/bot Alice swap 1 36` can move a hotbar stack into an empty main slot.
+
+`hold <item>` matches an exact identifier (`diamond_pickaxe` or `minecraft:diamond_pickaxe`). A hotbar match wins:
+it selects the lowest matching hotbar slot just like `hotbar <n>`. Otherwise it swaps the lowest matching main slot
+into the currently selected hotbar slot, sending that slot's previous stack back to the main slot. A missing item
+reports its requested identifier. Replies describe requests, such as `hold diamond_pickaxe: selected hotbar 3 requested`
+or `hold diamond_pickaxe: moved slot 14 to hotbar 1 requested`; they do not establish BDS completion.
+
+Both mutations use a legacy normal transaction with two window-0 container actions, carrying exact item data without
+stack IDs. The runtime predicts both slots until the next authoritative observation corrects them, and announces
+selected equipment after a changed selection or held stack. **Inventory... / Hold item...** accepts an item ID and
+**Swap slots...** offers two 1-36 dropdowns. These forms echo the equivalent typed command, including any item prefix.
+Group swap/hold use the existing UUID-pinned batch input path with bounded request replies, audit and saved history.
+Live acceptance of these new operations is **pending**; see [the validation record](INVENTORY_VALIDATION.md).
+The native `EndbotSwap`/`EndbotHold` typed overloads provide hints; enum-free required message tails continue to carry
+execution under the pinned BDS declaration rules. Native client hints and form rendering still require live checks.
+
+`drop` requests one selected item; `drop stack` requests the selected stack. `drop <slot>` requests that slot's whole
+stack using the same labels as `inventory`: hotbar 1-9, main 10-36, then offhand/head/chest/legs/feet.
+`drop <item> [count]` matches an exact item identifier, accepting either `stone` or `minecraft:stone`. Without a count,
+it requests every matching stack. With a count (integer 1-10455), it takes up to that number, in increasing slot order,
+then offhand/head/chest/legs/feet. A shortfall reports the number requested and the number asked for.
+Numbers 1-36 and the equipment names select slots; `all` and `stack` are keywords. Other tokens are item identifiers;
+use the `minecraft:` prefix to disambiguate an identifier equal to a keyword or slot name. Counts apply only to items.
+
+`drop all` immediately requests one transaction per non-empty slot, including offhand and every armor slot (helmet too).
+Replies describe requests, for example `drop slot 12 stone x5 requested` or `drop all requested for 41 slots`; BDS
+validates each transaction. **Inventory... / Drop item...** offers selected one/stack, a slot, an item and optional count,
+and drop all. The form asks for confirmation before drop all and echoes the command it submits. Typed commands run
+immediately. Group selectors use the same grammar; drops remain mutations with bounded summaries, audit and history.
+
+The versioned `endbot:inventory-v2` observation carries exact typed item/NBT data in bounded fragments, applied only
+after a full valid snapshot arrives. Existing `hotbar-sync-interval-ticks` and `hotbar-sync-resend-ticks` settings now
+cover the entire inventory. Size bounds and pending live product validation are described in the validation record.
 
 `use continuous` holds right-click: its first input tick sends the initial air-use interaction, and later ticks send
 simulation-tick interactions in the same authoritative input stream. `use stop` or global `stop` releases it, for example
@@ -413,8 +465,8 @@ Destroy blocks form adds `count` for its continuous mode) (see
 right-click on the named block face. It sends the protocol-2193 press, server-authoritative item-interaction tick, and
 release sequence; BDS decides reach, legality, collision, placement, and inventory decrement. A placeable selected
 item can therefore place a block in Survival without the plugin editing the world. `drop` drops one selected item and
-`drop stack` drops the selected stack through normal inventory transactions, operating on the runtime-known selected
-slot (see the `hotbar` pickup-sync note above).
+`drop stack` requests the selected stack through normal inventory transactions; wider selectors use the same legacy
+container-to-world path with exact observed item data (see the inventory/drop grammar above).
 
 The command declaration separates parseability from completion because live BDS overload matching proved three
 rules (verified with a probe plugin dispatching 42 documented forms through the real `compileCommand` path):
@@ -467,7 +519,7 @@ same saved results through `/botgroup menu #miners result [history]`, with older
 restart. An unavailable response after sending inputs is reported as unknown acceptance. See
 [Group scope, evidence and client checks](GROUPS.md) for the full behavior and remaining gates.
 
-Queries return data directly: `/bot #miners status`, `/bot #miners hotbar` and `/bot #miners radius` print every
+Queries return data directly: `/bot #miners status`, `/bot #miners inventory`, `/bot #miners hotbar` and `/bot #miners radius` print every
 member's query result, labeled with `#group[index]` and Bot name. Failures occupy that member's result line; the
 remaining members are still queried. Indexed queries work the same way. Queries create no audit entry and do not
 change `result` history, so a state check after an action still leaves that action as the latest operation result.
@@ -506,6 +558,9 @@ Bedrock syntax error):
 /bot Alice destroy count 64
 /bot Alice interact 1 64 2 up
 /bot Alice hotbar 9
+/bot Alice inventory
+/bot #miners inventory
+/bot #miners[1] inventory
 /bot Alice radius
 /bot Alice radius 12
 /bot Alice radius default

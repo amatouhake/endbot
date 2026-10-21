@@ -20,6 +20,14 @@ const deserializer = createDeserializer('1.26.51')
 const item = { network_id: 882, count: 3, metadata: 0, has_stack_id: true, stack_id: 34, block_runtime_id: 0,
   extra: { has_nbt: 0, can_place_on: [], can_destroy: [] } }
 
+
+function observationEvent (session, snapshot) {
+  const identityId = session.profile.identityId
+  const data = Buffer.from(JSON.stringify({ equipment: Array(5).fill(null), ...snapshot })).toString('base64')
+  session.testObservationSequence = (session.testObservationSequence ?? 0) + 1
+  return { event_name: 'endbot:inventory-v2', event_data: JSON.stringify({ identityId, sequence: session.testObservationSequence, part: 0, parts: 1, data }) }
+}
+
 async function fixture (t, options = {}, profile = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-regression-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -61,6 +69,51 @@ async function fixture (t, options = {}, profile = {}) {
 
 const miningTarget = { blockPosition: [0, 64, 2], blockRuntimeId: 42, blockName: 'minecraft:stone', face: 2, dimension: 'Overworld' }
 
+test('swap and main hold predict both exact stacks, announce selected equipment and accept corrections', async t => {
+  const { client, session, queued } = await fixture(t)
+  session.itemPalette.set('minecraft:stone', 1)
+  session.itemPalette.set('minecraft:dirt', 2)
+  const slots = Array(36).fill(null)
+  const encoded = (name, count) => ({ name, count, metadata: 7, blockRuntimeId: 2,
+    nbt: { type: 'compound', value: { custom: { type: 'string', value: 'keep exact' } } } })
+  slots[0] = encoded('minecraft:dirt', 3)
+  slots[13] = encoded('minecraft:stone', 5)
+  const observe = () => client.emit('script_custom_event', observationEvent(session, { identityId: session.profile.identityId, slots }))
+  observe()
+  queued.length = 0
+  session.hold('stone')
+  assert.equal(session.inventory[0].network_id, 1)
+  assert.equal(session.inventory[13].network_id, 2)
+  assert.equal(session.inventory[13].count, 3)
+  assert.equal(session.heldItem.extra.nbt.nbt.value.custom.value, 'keep exact')
+  assert.equal(queued.find(p => p.name === 'inventory_transaction').params.transaction.actions.length, 2)
+  assert.equal(queued.find(p => p.name === 'mob_equipment').params.item.network_id, 1)
+  // BDS rejection/periodic correction restores both source and selected hand.
+  observe()
+  assert.equal(session.inventory[0].network_id, 2)
+  assert.equal(session.inventory[13].network_id, 1)
+  assert.equal(queued.at(-1).params.item.network_id, 2)
+  queued.length = 0
+  session.swap(1, 36)
+  assert.equal(session.inventory[0].network_id, 0)
+  assert.equal(session.inventory[35].network_id, 2)
+  assert.equal(queued.at(-1).params.item.network_id, 0)
+  observe()
+  queued.length = 0
+  assert.throws(() => session.swap(2, 3), /Both inventory slots/)
+  assert.throws(() => session.swap(1, 1), /different/)
+  assert.deepEqual(queued, [])
+  // A hotbar match follows hotbar selection, without an inventory transaction.
+  slots[2] = encoded('minecraft:stone', 2)
+  slots[4] = encoded('minecraft:stone', 4)
+  observe()
+  queued.length = 0
+  assert.equal(session.hold('minecraft:stone').sourceSlot, 3)
+  assert.equal(session.selectedHotbarSlot(), 2)
+  assert.equal(queued.some(p => p.name === 'inventory_transaction'), false)
+  assert.equal(queued.at(-1).params.selected_slot, 2)
+})
+
 test('offhand equipment cannot overwrite or reannounce the main hand during use', async t => {
   const { client, session, inputs, queued, tick } = await fixture(t)
   inputs.setAction('use', 'continuous', undefined, 10)
@@ -79,6 +132,7 @@ test('offhand equipment cannot overwrite or reannounce the main hand during use'
   assert.equal(queued.length, 0)
   client.emit('mob_equipment', { runtime_entity_id: 7n, window_id: 'inventory', selected_slot: 0, item: { ...item, count: 2 } })
   assert.equal(session.heldItem.count, 2)
+  assert.equal(session.inventory[0].count, 2)
   assert.equal(queued.length, 1)
   assert.equal(queued[0].params.window_id, 'inventory')
 })
@@ -207,7 +261,7 @@ test('timed use stop releases and dimension/death discard the old deadline', asy
 test('native selected-slot changes announce equipment before identical plugin observations', async t => {
   const { client, session, queued } = await fixture(t)
   const publishEmpty = () => client.emit('script_custom_event', {
-    event_name: 'endbot:hotbar-v1', event_data: JSON.stringify({ identityId: session.profile.identityId, slots: Array(9).fill(null) })
+    ...observationEvent(session, { identityId: session.profile.identityId, slots: Array(36).fill(null) })
   })
   queued.length = 0
   client.emit('inventory_slot', { window_id: 'inventory', slot: 1, item: EMPTY_ITEM })
@@ -234,14 +288,14 @@ test('native selected-slot changes announce equipment before identical plugin ob
   assert.equal(queued.length, 2)
   assert.equal(queued.at(-1).params.item.count, 2)
   session.selectHotbar(0)
-  assert.equal(queued.length, 3) // Explicit reselection still forces an announcement.
+  assert.equal(queued.filter(packet => packet.params.window_id === 'inventory').length, 3) // Explicit reselection still forces an announcement.
 })
 
 test('BDS hotbar observations make same-session pickups usable and correct rejected drops', async t => {
   const { client, session, queued } = await fixture(t)
   client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })
   client.emit('inventory_content', { window_id: 'inventory', input: [] })
-  const slots = Array(9).fill(null)
+  const slots = Array(36).fill(null)
   slots[0] = { name: 'minecraft:diamond_sword', count: 3, metadata: 0, blockRuntimeId: 0,
     nbt: { type: 'compound', value: { Damage: { type: 'int', value: 7 },
       bytes: { type: 'byteArray', value: [-1, 0, 127] },
@@ -249,7 +303,7 @@ test('BDS hotbar observations make same-session pickups usable and correct rejec
       map_uuid: { type: 'long', value: '123456789123456789' },
       ench: { type: 'list', value: { type: 'compound', value: [{ id: { type: 'short', value: 9 }, lvl: { type: 'short', value: 2 } }] } } } } }
   const publish = (overrides = {}) => {
-    const params = { event_name: 'endbot:hotbar-v1', event_data: JSON.stringify({ identityId: session.profile.identityId, slots, ...overrides }) }
+    const params = observationEvent(session, { identityId: session.profile.identityId, slots, ...overrides })
     const wire = deserializer.parsePacketBuffer(serializer.createPacketBuffer({ name: 'script_custom_event', params })).data
     client.emit(wire.name, wire.params)
   }
@@ -275,18 +329,50 @@ test('BDS hotbar observations make same-session pickups usable and correct rejec
   assert.equal(queued.length, unchanged)
 })
 
+test('full inventory drops predict every window, announce offhand, and accept authoritative corrections', async t => {
+  const { client, session, queued } = await fixture(t)
+  client.emit('item_registry', { itemstates: [{ name: 'minecraft:stone', runtime_id: 882 }] })
+  const slots = Array(36).fill(null)
+  const encoded = { name: 'minecraft:stone', count: 5, metadata: 0, blockRuntimeId: 0, nbt: { type: 'compound', value: {} } }
+  slots[0] = slots[11] = encoded
+  const equipment = Array(5).fill(encoded)
+  const publish = () => client.emit('script_custom_event', observationEvent(session, { identityId: session.profile.identityId, slots, equipment }))
+  publish()
+  queued.length = 0
+  const result = session.drop({ selector: 'minecraft:stone', count: 7 })
+  assert.deepEqual(result.drops, [{ slot: '1', item: 'minecraft:stone', count: 5 }, { slot: '12', item: 'minecraft:stone', count: 2 }])
+  assert.equal(session.inventory[0].count, 0)
+  assert.equal(session.inventory[11].count, 3)
+  assert.equal(session.heldItem.count, 0)
+  assert.equal(queued.filter(packet => packet.name === 'inventory_transaction').length, 2)
+  publish() // BDS canceled/rejected either request: restore both exact stacks.
+  assert.equal(session.inventory[11].count, 5)
+  assert.equal(session.heldItem.count, 5)
+  queued.length = 0
+  const all = session.drop({ selector: 'all' })
+  assert.equal(all.droppedSlots, 7)
+  assert.equal(all.droppedCount, 35)
+  assert.ok(session.equipment.every(item => item.count === 0))
+  const transactions = queued.filter(packet => packet.name === 'inventory_transaction')
+  assert.deepEqual(transactions.map(packet => packet.params.transaction.actions[0].window_id), [0, 0, 119, 120, 120, 120, 120])
+  assert.ok(queued.some(packet => packet.name === 'mob_equipment' && packet.params.window_id === 'offhand' && packet.params.item.count === 0))
+  assert.equal(session.drop({ selector: 'all' }).droppedSlots, 0)
+  publish()
+  assert.equal(session.equipment[1].count, 5) // Helmet receives the same correction.
+})
+
 test('an unchanged hotbar observation keeps native stack IDs and an active use', async t => {
   const { client, session, inputs, queued, tick } = await fixture(t)
   client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })
   const original = session.inventory[0]
   inputs.setAction('use', 'continuous')
   tick()
-  const slots = Array(9).fill(null)
+  const slots = Array(36).fill(null)
   // Native packets carry has_nbt as 0; the observation decodes to false.
   slots[0] = { name: 'minecraft:diamond_sword', count: 3, metadata: 0, blockRuntimeId: 0, nbt: { type: 'compound', value: {} } }
   queued.length = 0
   const publish = () => client.emit('script_custom_event', {
-    event_name: 'endbot:hotbar-v1', event_data: JSON.stringify({ identityId: session.profile.identityId, slots })
+    ...observationEvent(session, { identityId: session.profile.identityId, slots })
   })
   publish()
   assert.equal(session.inventory[0], original)
@@ -305,18 +391,18 @@ test('unknown, partial and wrong-Bot inventory observations leave the good cache
   const { client, session } = await fixture(t)
   client.emit('item_registry', { itemstates: [{ name: 'minecraft:diamond_sword', runtime_id: 882 }] })
   const original = session.inventory[0]
-  const invalidSlots = Array(9).fill(null)
+  const invalidSlots = Array(36).fill(null)
   // Even a valid earlier slot must not be cleared if a later slot is bad.
   invalidSlots[1] = { name: 'minecraft:diamond_sword', count: 1, metadata: 0, blockRuntimeId: 0,
     nbt: { type: 'compound', value: { Damage: { type: 'int', value: 'invalid' } } } }
-  for (const snapshot of [{ identityId: 'other', slots: Array(9).fill(null) },
+  for (const snapshot of [{ identityId: 'other', slots: Array(36).fill(null) },
     { identityId: session.profile.identityId, slots: [null] },
     { identityId: session.profile.identityId, slots: invalidSlots },
-    { identityId: session.profile.identityId, slots: Array(9).fill({ name: 'unknown' }) }]) {
-    client.emit('script_custom_event', { event_name: 'endbot:hotbar-v1', event_data: JSON.stringify(snapshot) })
+    { identityId: session.profile.identityId, slots: Array(36).fill({ name: 'unknown' }) }]) {
+    client.emit('script_custom_event', observationEvent(session, snapshot))
     assert.equal(session.inventory[0], original)
   }
-  client.emit('script_custom_event', { event_name: 'endbot:hotbar-v1', event_data: '{' })
+  client.emit('script_custom_event', { event_name: 'endbot:inventory-v2', event_data: '{' })
   assert.equal(session.inventory[0], original)
 })
 

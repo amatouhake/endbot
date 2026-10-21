@@ -124,7 +124,8 @@ def check_locked_endstone() -> dict:
 
 
 def exercise(
-    output: Path, node: str, report: dict, *, mining=False, inventory=False, item_use=False, groups=False,
+    output: Path, node: str, report: dict, *, mining=False, inventory=False, inventory_stack=False,
+    item_use=False, groups=False,
     transport="raknet", server: Path | None = None,
 ) -> None:
     lock = check_locked_endstone()
@@ -283,12 +284,16 @@ def exercise(
         [str(ROOT / "plugin/endbot/src"), str(ROOT / "cli/endbot/src")]
     )
     environment["PYTHONIOENCODING"] = "utf-8"
-    if mining or inventory or item_use:
+    if mining or inventory or item_use or inventory_stack:
         from mining_probe import configure_fixture
         configure_fixture(ROOT, output, environment)
     if item_use:
         from item_use_probe import configure_fixture as configure_item_use
         configure_item_use(ROOT, output, environment)
+    if inventory_stack:
+        from inventory_stack_probe import configure_fixture as configure_stack
+
+        configure_stack(ROOT, output, environment)
     runtime = bds = None
     token = None
     with (
@@ -298,7 +303,9 @@ def exercise(
         try:
             report["stage"] = "runtime initialization"
             runtime = subprocess.Popen(
-                [node, str(ROOT / "runtime/src/cli.js"), "--config", str(configfile)],
+                [node, *(["--import", (ROOT / "runtime/scripts/inventory-stack-probe.js").as_uri()]
+                         if inventory_stack else []),
+                 str(ROOT / "runtime/src/cli.js"), "--config", str(configfile)],
                 env=environment,
                 stdout=runtime_log,
                 stderr=subprocess.STDOUT,
@@ -526,6 +533,17 @@ def exercise(
                     output, lambda line: console(bds, line),
                     lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
                     lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
+                )
+            if inventory_stack:
+                from inventory_stack_probe import exercise_inventory_stack
+
+                # Gather spike evidence even when provisional product operations fail.
+                # The spike deactivates its observer before the product fixture runs.
+                report["stage"] = "inventory stack requests"
+                exercise_inventory_stack(
+                    output, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report,
                 )
             if inventory:
                 from mining_probe import exercise_inventory
@@ -862,6 +880,7 @@ def main() -> int:
     )
     parser.add_argument("--mining", action="store_true", help="prepare disposable blocks/tools and validate Survival mining")
     parser.add_argument("--inventory", action="store_true", help="validate natural pickups and hotbar/drop without reconnect")
+    parser.add_argument("--inventory-stack", action="store_true", help="record stack requests/responses and authoritative inventory in disposable fixtures")
     parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
     parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
     parser.add_argument(
@@ -897,7 +916,8 @@ def main() -> int:
         "xbox_achievement_observed": False,
     }
     try:
-        options = {"mining": args.mining, "inventory": args.inventory, "item_use": args.item_use,
+        options = {"mining": args.mining, "inventory": args.inventory, "inventory_stack": args.inventory_stack,
+                   "item_use": args.item_use,
                    "groups": args.groups, "transport": args.transport}
         if args.server_dir is None:
             exercise(output, args.node, report, **options)

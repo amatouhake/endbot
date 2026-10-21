@@ -6,7 +6,7 @@ import net from 'node:net'
 
 const MAX_REQUEST_BYTES = 64 * 1024
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
-const GROUP_INPUT_METHODS = new Set(['move', 'look', 'action', 'flag', 'stop', 'hotbar', 'drop'])
+const GROUP_INPUT_METHODS = new Set(['move', 'look', 'action', 'flag', 'stop', 'hotbar', 'drop', 'swap', 'hold'])
 
 function tokensEqual (left, right) {
   if (typeof left !== 'string' || typeof right !== 'string') return false
@@ -120,10 +120,12 @@ export class ControlServer {
         params.holdTicks)
       case 'flag': return this.lifecycle.flag(params.name, params.flag, params.value)
       case 'hotbar': return this.lifecycle.hotbar(params.name, params.slot)
+      case 'swap': return this.lifecycle.swap(params.name, params.a, params.b)
+      case 'hold': return this.lifecycle.hold(params.name, params.item)
       case 'radius': return this.lifecycle.radius(params.name, params.value)
       case 'interact': return this.lifecycle.interact(params.name, params)
       case 'mine': return this.lifecycle.mine(params.name, params)
-      case 'drop': return this.lifecycle.drop(params.name, params.stack)
+      case 'drop': return this.lifecycle.drop(params.name, { selector: params.selector, count: params.count, stack: params.stack })
       case 'stop': return this.lifecycle.stop(params.name)
       default: throw Object.assign(new Error(`Unknown control method: ${method}`), { code: 'unknown_method' })
     }
@@ -146,7 +148,10 @@ export class ControlServer {
           // Batch replies only need the fields used by immediate-input replies;
           // avoid multiplying full inventories/mining status by the group size.
           return { ok: true, result: { name: result.name, connectionState: result.connectionState,
-            ...(method === 'hotbar' ? { selectedHotbarSlot: result.selectedHotbarSlot } : {}) } }
+            ...(method === 'hotbar' ? { selectedHotbarSlot: result.selectedHotbarSlot } : {}),
+            ...(method === 'hold' ? { found: result.found, sourceSlot: result.sourceSlot, selectedHotbarSlot: result.selectedHotbarSlot } : {}),
+            ...(method === 'drop' ? { droppedCount: result.droppedCount, droppedSlots: result.droppedSlots,
+              ...(params.selector !== 'all' && result.drops?.length <= 1 ? { drops: result.drops } : {}) } : {}) } }
         } catch (error) {
           return { ok: false, error: { code: error.code ?? 'invalid_request', message: String(error.message ?? error) } }
         }

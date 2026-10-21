@@ -23,7 +23,8 @@ port = 19142
 # Covers the bounded 5-second session close plus the default 1-second
 # replacement delay. Keep this above the runtime's controlRequestTimeoutMs.
 timeout-seconds = 10.0
-# Read all nine Bot hotbar slots at this server-tick interval (1..1200).
+# Read all 36 Bot inventory slots plus offhand/armor at this interval (1..1200).
+# Keep the hotbar-sync-* names for existing installations.
 hotbar-sync-interval-ticks = 4
 # Resend unchanged state for rejected/predicted actions (1..72000).
 # Resends occur at a read; effective spacing rounds up to a read interval.

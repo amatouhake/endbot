@@ -123,9 +123,33 @@ function withCount (item, count) {
   return count === 0 ? EMPTY_ITEM : { ...item, count }
 }
 
-export function createDropTransaction ({ hotbarSlot, heldItem, stack }) {
+export function createSwapTransaction ({ a, b, itemA = EMPTY_ITEM, itemB = EMPTY_ITEM }) {
+  if (![a, b].every(slot => Number.isSafeInteger(slot) && slot >= 0 && slot < 36)) throw new Error('Inventory slots must be from 1 to 36')
+  if (a === b) throw new Error('Swap requires two different slots')
+  if (!hasUsableHeldItem(itemA) && !hasUsableHeldItem(itemB)) throw new Error('Both inventory slots are empty')
+  const legacy = item => {
+    if (!hasUsableHeldItem(item)) return EMPTY_ITEM
+    const copy = { ...item, has_stack_id: false }
+    delete copy.stack_id
+    return copy
+  }
+  const first = legacy(itemA); const second = legacy(itemB)
+  return { transaction: { legacy: { legacy_request_id: 0 }, transaction_type: 'normal',
+    actions: [
+      { source_type: 'container', window_id: 0, slot: a, old_item: first, new_item: second },
+      { source_type: 'container', window_id: 0, slot: b, old_item: second, new_item: first }
+    ], transaction_data: undefined } }
+}
+
+export function createDropTransaction ({ hotbarSlot, heldItem, stack, windowId = 0, slot = hotbarSlot, count = stack ? Number(heldItem?.count) : 1 }) {
   if (!hasUsableHeldItem(heldItem)) throw new Error('Selected hotbar slot is empty')
-  const count = stack ? Number(heldItem.count) : 1
+  if (![0, 119, 120].includes(windowId)) throw new Error('Invalid drop window')
+  const maximum = { 0: 35, 119: 0, 120: 3 }[windowId]
+  if (maximum === undefined || !Number.isInteger(slot) || slot < 0 || slot > maximum) throw new Error('Invalid drop slot')
+  if (!Number.isInteger(count) || count < 1 || count > Number(heldItem.count) || count > 255) throw new Error('Invalid drop count')
+  // Legacy transactions never carry stack network IDs, even from native caches.
+  heldItem = { ...heldItem, has_stack_id: false }
+  delete heldItem.stack_id
   const remaining = Number(heldItem.count) - count
   return {
     transaction: {
@@ -134,9 +158,9 @@ export function createDropTransaction ({ hotbarSlot, heldItem, stack }) {
       actions: [
         {
           source_type: 'container',
-          window_id: 0,
+          window_id: windowId,
           flags: undefined,
-          slot: hotbarSlot,
+          slot,
           old_item: heldItem,
           new_item: withCount(heldItem, remaining)
         },

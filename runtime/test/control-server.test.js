@@ -37,6 +37,37 @@ test('control server refuses non-loopback binds', () => {
   assert.throws(() => new ControlServer({ host: '0.0.0.0', token: 'a'.repeat(43), lifecycle: {} }), /loopback/)
 })
 
+test('drop control forwards selectors and batch replies project bounded request details', async t => {
+  const calls = []
+  const token = 'd'.repeat(43)
+  const server = new ControlServer({ token, port: 0, lifecycle: {
+    identityOf: name => name,
+    drop: (name, options) => {
+      calls.push(options)
+      const drops = options.selector === 'all' ? Array(41).fill({ slot: 'head', item: 'minecraft:stone', count: 5 })
+        : [{ slot: '12', item: 'minecraft:stone', count: 5 }]
+      return { name, connectionState: 'online', droppedSlots: drops.length, droppedCount: drops.length * 5,
+        drops, inventory: 'x'.repeat(65000) }
+    }
+  } })
+  await server.listen(); t.after(() => server.close())
+  const send = (method, params) => request(server.port, { version: 1, id: 'drop', token, method, params })
+  const direct = await send('drop', { name: 'Alice', selector: 'minecraft:stone', count: 7 })
+  assert.equal(direct.ok, true)
+  assert.deepEqual(calls[0], { selector: 'minecraft:stone', count: 7, stack: undefined })
+  const response = await send('groupInputBatch', { requests: ['12', 'all', 'minecraft:stone'].map(selector => ({
+    method: 'drop', params: { name: 'Alice', expectedIdentityId: 'Alice', selector }
+  })) })
+  assert.equal(response.ok, true)
+  const results = response.result.results.map(row => row.result)
+  assert.deepEqual(results[0].drops, [{ slot: '12', item: 'minecraft:stone', count: 5 }])
+  assert.equal(results[1].drops, undefined)
+  assert.equal(results[1].droppedSlots, 41)
+  assert.equal(results[2].droppedCount, 5)
+  assert.ok(JSON.stringify(response).length < 1000)
+  assert.equal(results.some(result => 'inventory' in result), false)
+})
+
 test('UUID-pinned group requests cannot mutate a replacement profile or create a missing one', async t => {
   const calls = []
   const lifecycle = {
@@ -122,6 +153,31 @@ test('group inputs apply in one dispatch turn, preserving partial failures and U
   assert.equal(response.result.results[1].error.code, 'not_online')
   assert.equal(response.result.results[2].error.code, 'identity_changed')
   assert.deepEqual(response.result.results[0].result, { name: 'Alice', connectionState: 'online' })
+})
+
+test('swap and hold use authenticated control and project bounded batch replies', async t => {
+  const calls = []
+  const token = 'a'.repeat(43)
+  const server = new ControlServer({ token, port: 0, lifecycle: {
+    identityOf: name => name,
+    swap: (name, a, b) => { calls.push({ name, a, b }); return { name, connectionState: 'online', slotA: a, slotB: b, inventory: 'omit' } },
+    hold: (name, item) => { calls.push({ name, item }); return { name, connectionState: 'online', found: true, sourceSlot: 14, selectedHotbarSlot: 1, inventory: 'omit' } }
+  } })
+  await server.listen()
+  t.after(() => server.close())
+  const entries = [{ method: 'swap', params: { name: 'Alice', expectedIdentityId: 'Alice', a: 10, b: 2 } },
+    { method: 'hold', params: { name: 'Alice', expectedIdentityId: 'Alice', item: 'stone' } }]
+  for (const entry of entries) {
+    assert.equal((await request(server.port, { version: 1, id: 'denied', token: 'wrong', ...entry })).ok, false)
+  }
+  assert.deepEqual(calls, [])
+  for (const entry of entries) assert.equal((await request(server.port, { version: 1, id: 'single', token, ...entry })).ok, true)
+  const response = await request(server.port, { version: 1, id: 'batch', token, method: 'groupInputBatch', params: { requests: entries } })
+  assert.deepEqual(response.result.results.map(row => row.result), [
+    { name: 'Alice', connectionState: 'online' },
+    { name: 'Alice', connectionState: 'online', found: true, sourceSlot: 14, selectedHotbarSlot: 1 }
+  ])
+  assert.deepEqual(calls.slice(-2), [{ name: 'Alice', a: 10, b: 2 }, { name: 'Alice', item: 'stone' }])
 })
 
 test('radius query, override and reset use the authenticated control surface', async t => {

@@ -50,7 +50,8 @@ COMMAND_USAGES = [
     "/bot <command: string> <page: int>",
     (
         "/bot (help)<command: EndbotHelpTopic> (status|spawn|resume|reconnect|despawn|forget|rename|tp|move|look|"
-        "jump|attack|use|sprint|sneak|hotbar|interact|destroy|drop|radius|stop|menu)<topic: EndbotHelpTopicName>"
+        "jump|attack|use|sprint|sneak|inventory|hotbar|swap|hold|interact|destroy|drop|radius|stop|menu)"
+        "<topic: EndbotHelpTopicName>"
     ),
     "/bot <name: string> <operation: string>",
     "/bot <name: string> <operation: string> <arguments: message>",
@@ -58,6 +59,7 @@ COMMAND_USAGES = [
     # a multi-value enum here only as its type name (<operation: EndbotNoArgs>),
     # which hid status/resume/reconnect/despawn/forget/stop from suggestions.
     "/bot <name: string> (status)<operation: EndbotStatus>",
+    "/bot <name: string> (inventory)<operation: EndbotInventory>",
     "/bot <name: string> (resume)<operation: EndbotResume>",
     "/bot <name: string> (reconnect)<operation: EndbotReconnect>",
     "/bot <name: string> (despawn)<operation: EndbotDespawn>",
@@ -95,6 +97,8 @@ COMMAND_USAGES = [
     "/bot <name: string> (sprint|sneak)<flag: EndbotFlag> (on|off)<state: EndbotOnOff>",
     "/bot <name: string> (hotbar)<operation: EndbotHotbarQuery>",
     "/bot <name: string> (hotbar)<operation: EndbotHotbarSet> <slot: int>",
+    "/bot <name: string> (swap)<operation: EndbotSwap> <a: int> <b: int>",
+    "/bot <name: string> (hold)<operation: EndbotHold> <item: string>",
     "/bot <name: string> (destroy)<operation: EndbotDestroy>",
     "/bot <name: string> (destroy)<operation: EndbotDestroyMode> (once|continuous|stop)<mode: EndbotDestroyModeName>",
     "/bot <name: string> (destroy)<operation: EndbotDestroyPosition> <block: block_pos>",
@@ -110,7 +114,15 @@ COMMAND_USAGES = [
         "(down|up|north|south|west|east)<face: EndbotBlockFace>"
     ),
     "/bot <name: string> (drop)<operation: EndbotDropOne>",
+    # These are hints ending at enums; the enum-free message overload above
+    # carries numeric slots and item/count tails under the pinned BDS rules.
     "/bot <name: string> (drop)<operation: EndbotDropStack> (stack)<mode: EndbotDropMode>",
+    "/bot <name: string> (drop)<operation: EndbotDropAll> (all)<mode: EndbotDropAllMode>",
+    "/bot <name: string> (drop)<operation: EndbotDropOffhand> (offhand)<slot: EndbotDropOffhandSlot>",
+    "/bot <name: string> (drop)<operation: EndbotDropHead> (head)<slot: EndbotDropHeadSlot>",
+    "/bot <name: string> (drop)<operation: EndbotDropChest> (chest)<slot: EndbotDropChestSlot>",
+    "/bot <name: string> (drop)<operation: EndbotDropLegs> (legs)<slot: EndbotDropLegsSlot>",
+    "/bot <name: string> (drop)<operation: EndbotDropFeet> (feet)<slot: EndbotDropFeetSlot>",
     # Group targets. Bedrock Id/string rejects a leading '#', so only a
     # first-position message carries "#group[1] <operation> ...". It natively
     # matches any input, which leaves syntax rejection to the Python parser.

@@ -118,6 +118,9 @@ class PluginAdapterTests(unittest.TestCase):
             advertised_operations,
             {
                 "status",
+                "inventory",
+                "hold",
+                "swap",
                 "spawn",
                 "resume",
                 "reconnect",
@@ -150,7 +153,7 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertTrue(any("EndbotHotbarSet" in usage and "<slot: int>" in usage for usage in usages))
         self.assertIn("/bot <name: string> (drop)<operation: EndbotDropOne>", usages)
         # Each no-argument operation is its own literal so the client lists it by name.
-        for operation in ("status", "resume", "reconnect", "despawn", "forget", "stop"):
+        for operation in ("status", "inventory", "resume", "reconnect", "despawn", "forget", "stop"):
             self.assertIn(f"/bot <name: string> ({operation})<operation: Endbot{operation.capitalize()}>", usages)
         self.assertFalse(any("EndbotNoArgs" in usage for usage in usages))
         self.assertTrue(any("EndbotDirection" in usage for usage in usages))

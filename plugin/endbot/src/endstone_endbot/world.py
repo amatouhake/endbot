@@ -8,6 +8,7 @@ from uuid import UUID
 from endstone.level import Location
 
 from endstone_endbot.i18n import LocalizedError
+from endstone_endbot.inventory_sync import inventory_snapshot
 
 DIMENSIONS = {
     "overworld": "Overworld",
@@ -108,6 +109,15 @@ class EndstoneWorld:
             "yaw": float(location.yaw),
             "pitch": float(location.pitch),
         }
+
+    def inventory(self, name: str, identity_id: str | None = None) -> dict:
+        """Read a live local-auth Bot without contacting the runtime."""
+        player = self.server.get_player(UUID(identity_id) if identity_id else name)
+        # With online-mode=true ordinary players have Xbox identities, as in
+        # the hotbar publisher. Do not expose a human inventory via /bot.
+        if player is None or str(player.xuid) or player.name.casefold() != name.casefold():
+            raise ValueError("Bot is not present in the world")
+        return {"name": player.name, "slots": inventory_snapshot(player)}
 
     def teleport(self, identity_id: str, parameters: dict[str, object], sender) -> str:
         bot = self.server.get_player(UUID(identity_id))

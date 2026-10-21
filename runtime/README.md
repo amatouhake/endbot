@@ -61,13 +61,16 @@ Private keys, tokens, and UUID artifacts use complete-before-publish creation an
 files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux
 filesystems support the same-volume hard-link publication used for initial artifacts.
 
-The matching plugin reads BDS hotbar state every four server ticks by default and publishes changed observations, plus
+The matching plugin reads all 36 BDS inventory slots plus offhand and armor every four server ticks by default and publishes changed observations, plus
 unchanged corrections every 20 ticks, over each local Bot's existing
-Bedrock connection. The bounded, UUID-scoped `endbot:hotbar-v1` envelope uses protocol 2193's `script_custom_event` packet
+Bedrock connection. The bounded, UUID-scoped `endbot:inventory-v2` envelope uses protocol 2193's `script_custom_event` packet
 through Endstone's public `send_packet`; it does not run a script engine or require experiments/Beta APIs. Item IDs come
 from the connection's item registry; NBT types and 64-bit integers are preserved. Native inventory updates still work,
 and invalid/unknown observations are rejected without replacing good state. This transient cache is not persisted and
-never writes BDS inventory; normal transactions perform item actions. See [validation](../docs/INVENTORY_VALIDATION.md).
+never writes BDS inventory; normal transactions perform item actions. Full snapshots use 40 KiB fragments under the
+60 KiB packet bound, with a 2 MiB total bound and atomic decoding. `drop` accepts selected one/stack, slot, item/count,
+and all selectors through legacy container-to-world transactions without stack IDs. BDS validates every request;
+predicted cache changes are corrected by the next authoritative observation. See [validation](../docs/INVENTORY_VALIDATION.md).
 
 `use for <ticks>` schedules a bounded hold followed by one release; existing once/continuous/interval modes remain.
 Native selected-slot updates and plugin observations share a deduplicated equipment announcer whose state is separate

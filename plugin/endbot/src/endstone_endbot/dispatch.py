@@ -143,6 +143,9 @@ class ServerThreadWorld:
     def observe(self, identity_id):
         return self._bridge.call(lambda: self._world.observe(identity_id))
 
+    def inventory(self, name, identity_id=None):
+        return self._bridge.call(lambda: self._world.inventory(name, identity_id))
+
     def teleport(self, identity_id, parameters, sender):
         return self._bridge.call(lambda: self._world.teleport(identity_id, parameters, self._sender(sender)))
 

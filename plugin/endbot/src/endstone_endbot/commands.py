@@ -873,7 +873,9 @@ class BotCommandService:
                     name = tokens[0]
             return CommandResult(True, (reply(detail, name, ERROR),))
 
-    def _execute(self, command: BotCommand, sender, lang: str = "en") -> CommandResult:
+    def _execute(self, command: BotCommand, sender, lang: str = "en", *, control=None) -> CommandResult:
+        control = self.control if control is None else control
+
         def say(template: str, bot: str | None = None, /, **params) -> CommandResult:
             return CommandResult(True, (reply(tr(lang, template, **params), bot),))
 
@@ -898,26 +900,26 @@ class BotCommandService:
             raise RuntimeError("runtime control is not configured")
         if command.operation == "menu":
             if command.name is None:
-                return CommandResult(True, view=BotListView(tuple(self.control.request("list"))))
-            status = self.control.request("status", name=command.name)
+                return CommandResult(True, view=BotListView(tuple(control.request("list"))))
+            status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
             return CommandResult(
                 True, view=BotView(status["name"], self._status_reply(status, observed, lang), status, observed)
             )
         if command.operation == "list":
-            bots = self.control.request("list")
+            bots = control.request("list")
             if not bots:
                 return say("no Bot profiles")
             summary = ", ".join(f"{bot['name']} {DIM}[{tr(lang, bot['connectionState'])}]{RESET}" for bot in bots)
             return CommandResult(True, (reply(summary),))
         if command.operation == "status":
-            status = self.control.request("status", name=command.name)
+            status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
             return CommandResult(True, (self._status_reply(status, observed, lang),))
         if command.operation == "spawn":
             existing = None
             try:
-                existing = self.control.request("status", name=command.name)
+                existing = control.request("status", name=command.name)
             except RuntimeControlError as error:
                 if error.code != "not_found":
                     raise
@@ -925,7 +927,7 @@ class BotCommandService:
             if placement is not None:
                 placement = self.world.resolve_spawn_placement(placement, sender)
             self.world.assert_name_available(command.name, existing.get("identityId") if existing else None)
-            result = self.control.request("spawn", name=command.name)
+            result = control.request("spawn", name=command.name)
             if result.get("alreadyOnline"):
                 state = result.get("connectionState")
                 if state == "connecting":
@@ -945,11 +947,11 @@ class BotCommandService:
             self.world.queue_spawn_placement(result["identityId"], placement)
             return say(verb, result["name"])
         if command.operation == "teleport":
-            status = self.control.request("status", name=command.name)
+            status = control.request("status", name=command.name)
             location = self.world.teleport(status["identityId"], command.parameters, sender)
             return say("teleported to {location}", status["name"], location=location)
         if command.operation == "radius":
-            result = self.control.request("radius", name=command.name, **command.parameters)
+            result = control.request("radius", name=command.name, **command.parameters)
             return CommandResult(True, (reply(self._radius_summary(result, lang), result["name"]),))
         if command.operation == "destroy":
             mode = command.parameters.get("mode")
@@ -961,9 +963,9 @@ class BotCommandService:
             elif mode == "stop":
                 target = {"mode": "stop"}
             else:
-                status = self.control.request("status", name=command.name)
+                status = control.request("status", name=command.name)
                 target = self.world.resolve_mining(status["identityId"], command.parameters, sender)
-            result = self.control.request("mine", name=command.name, **target)
+            result = control.request("mine", name=command.name, **target)
             key = command.name.casefold()
             with self._mining_lock:
                 self._mining_loops.pop(key, None)
@@ -1003,36 +1005,36 @@ class BotCommandService:
                 position=position,
             )
         if command.operation == "interact":
-            status = self.control.request("status", name=command.name)
+            status = control.request("status", name=command.name)
             interaction = self.world.resolve_interaction(status["identityId"], command.parameters, sender)
-            result = self.control.request("interact", name=command.name, **interaction)
+            result = control.request("interact", name=command.name, **interaction)
         elif command.operation == "hotbar":
-            result = self.control.request("hotbar", name=command.name, **command.parameters)
+            result = control.request("hotbar", name=command.name, **command.parameters)
             return say(
                 "hotbar slot {slot} selected" if command.parameters else "hotbar slot {slot}",
                 result["name"],
                 slot=result["selectedHotbarSlot"],
             )
         elif command.operation == "drop":
-            result = self.control.request("drop", name=command.name, **command.parameters)
+            result = control.request("drop", name=command.name, **command.parameters)
             return say(
                 "drop stack requested" if command.parameters["stack"] else "drop one item requested", result["name"]
             )
         elif command.operation == "look" and "targetCoordinates" in command.parameters:
-            status = self.control.request("status", name=command.name)
+            status = control.request("status", name=command.name)
             yaw, pitch = self.world.look_at(status["identityId"], command.parameters["targetCoordinates"])
-            result = self.control.request("look", name=command.name, yaw=yaw, pitch=pitch)
+            result = control.request("look", name=command.name, yaw=yaw, pitch=pitch)
         elif command.operation == "rename":
-            status = self.control.request("status", name=command.name)
+            status = control.request("status", name=command.name)
             self.world.assert_name_available(command.parameters["newName"], status["identityId"])
             self.world.clear_pending_placement(status["identityId"])
-            result = self.control.request("rename", name=command.name, **command.parameters)
+            result = control.request("rename", name=command.name, **command.parameters)
         elif command.operation in {"resume", "reconnect", "despawn", "forget"}:
-            status = self.control.request("status", name=command.name)
+            status = control.request("status", name=command.name)
             self.world.clear_pending_placement(status["identityId"])
-            result = self.control.request(command.operation, name=command.name, **command.parameters)
+            result = control.request(command.operation, name=command.name, **command.parameters)
         else:
-            result = self.control.request(command.operation, name=command.name, **command.parameters)
+            result = control.request(command.operation, name=command.name, **command.parameters)
         name = result.get("name", command.name)
         state = Text(result.get("connectionState", command.operation))
         parameters = command.parameters

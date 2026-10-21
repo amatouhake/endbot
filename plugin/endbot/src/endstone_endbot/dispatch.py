@@ -239,7 +239,9 @@ class AsyncCommandRunner:
 
         self._bridge.post(deliver)
 
-    def submit(self, arguments: list[str], sender) -> bool:
+    def submit(self, arguments: list[str], sender, *, command: str = "bot") -> bool:
+        if command not in {"bot", "botgroup"}:
+            raise ValueError("Unknown Endbot command root")
         source = CommandSource.capture(sender, self._language(sender) if self._language else "en")
         if self._revision is not None:
             source = replace(source, authorization_revision=self._revision(sender))
@@ -247,7 +249,7 @@ class AsyncCommandRunner:
             if not self._open:
                 return False
             try:
-                self._executor.submit(self._execute, list(arguments), source)
+                self._executor.submit(self._execute, list(arguments), source, command)
             except RuntimeError:
                 return False
         return True
@@ -257,13 +259,15 @@ class AsyncCommandRunner:
             if not self._open:
                 return
             self._open = False
+            if hasattr(self._service, "cancel_groups"):
+                self._service.cancel_groups()
             if hasattr(self._service, "close"):
                 self._executor.submit(self._service.close)
         # Queued commands check _open; cleanup follows any in-flight request.
         self._executor.shutdown(wait=False)
         self._poll_executor.shutdown(wait=False)
 
-    def _execute(self, arguments: list[str], source: CommandSource) -> None:
+    def _execute(self, arguments: list[str], source: CommandSource, command: str = "bot") -> None:
         with self._lock:
             if not self._open:
                 return
@@ -272,7 +276,8 @@ class AsyncCommandRunner:
                 revoked = tr(source.language, "Bot control permission was revoked; command canceled")
                 result = CommandResult(True, (reply(revoked, color=WARNING),))
             else:
-                result = self._service.execute(arguments, source)
+                execute = self._service.execute_group if command == "botgroup" else self._service.execute
+                result = execute(arguments, source)
         except Exception:  # noqa: BLE001 - never strand command delivery on an unexpected service failure
             result = CommandResult(True, (reply(tr(source.language, "internal command failure"), color=ERROR),))
 

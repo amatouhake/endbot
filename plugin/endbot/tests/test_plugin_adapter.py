@@ -198,6 +198,19 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertEqual(sender.messages, [])
         self.assertEqual(submissions, [(["ping"], sender)])
 
+    def test_group_management_uses_the_authorized_worker_and_control_permission(self) -> None:
+        plugin = self.module.EndbotPlugin()
+        submissions = []
+        plugin._command_runner = types.SimpleNamespace(
+            submit=lambda args, sender, **options: submissions.append((args, options)) or True,
+        )
+        self.assertEqual(plugin.commands["botgroup"]["permissions"], ["endbot.command.control"])
+        self.assertTrue(plugin.on_command(FakeConsole(), FakeCommand("botgroup"), ["create", "miners"]))
+        self.assertEqual(submissions, [(["create", "miners"], {"command": "botgroup"})])
+        unauthorized = types.SimpleNamespace(messages=[], send_message=lambda message: None)
+        plugin.on_command(unauthorized, FakeCommand("botgroup"), ["delete", "miners"])
+        self.assertEqual(len(submissions), 1)
+
     def test_join_binds_pending_controller_and_grants_only_control(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.module.EndbotPlugin()

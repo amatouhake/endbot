@@ -270,6 +270,150 @@ Selection alone saves typing the name, but the menu already provides a practical
 only when an upstream command-tree/soft-enum API (see the PR #509 note above) is available in a locked, validated pair;
 reuse the event-intercept approach and the one-overload-per-first-token finding then.
 
+## BOT-009: Controller-authored Luau scripts and a small in-game editor
+
+Status: **Design direction agreed — not implemented; release assignment undecided** (2026-10-21 JST).
+
+Controllers should be able to write and run their own Bot scripts without server-filesystem access. Use **Luau** as
+the language baseline. Required use cases include loops, conditions, coordinate arithmetic, and placing multiple Bots
+at offsets from a chosen origin before starting their actions. A plain command-list format is insufficient for these
+use cases; keep expression evaluation and control flow in Luau rather than adding them to `/bot` command strings.
+
+Design order: settle Group targeting and bulk-operation semantics (BOT-010) before the Luau operation API. Groups
+remain a separate feature available when scripting is disabled. Luau remains at the design stage; BOT-010 now has a
+command-first source prototype. Neither feature has a release assignment.
+
+Initial authoring surface:
+
+- Provide an in-game script list, creation, saving, syntax checking, execution and stopping.
+- Prototype a small source editor: display numbered lines and allow selecting a line to edit, insert or delete.
+  Offer ordinary Luau examples/templates, including placing a group in a row, which controllers can copy and modify.
+- Support writing the same Luau source in an external editor. Copy/paste import is an initial candidate, subject to
+  actual client/form behavior; automatic synchronization and a dedicated editor extension are deferred. The delivery
+  path for a controller's externally edited source remains to be designed, without requiring server-file access.
+- Keep script source distinct from run arguments such as the target group, origin, spacing and action limits, so
+  controllers can reuse a script without rewriting coordinates or Bot names. Exact APIs and argument forms are open.
+
+Runner and feature availability:
+
+- Prefer a dedicated Luau runner process, separate from the existing Node.js Bedrock runtime. The concrete runner,
+  process granularity and IPC are still subject to prototyping. Plan to bundle the runner so controllers do not need
+  to install Luau separately.
+- Make scripting an optional, operator-configured feature with an explicit on/off switch. Proposed initial behavior:
+  read the setting at startup and apply changes on restart; default off is a proposal, not a settled default. Exact
+  configuration naming and any future live-toggle behavior remain open.
+- When disabled, do not start the runner, hide scripting menu entries, and reject direct scripting requests at the
+  service boundary. Ordinary `/bot` operations remain available under their existing authorization. Preserve saved
+  scripts when disabling the feature so they can be used after re-enabling it.
+- Feature enablement does not grant controller access by itself; existing controller authorization and per-action
+  checks still apply. Runner failure should fail/report the affected script runs without taking down Bot transport or
+  ordinary control; define cleanup of inputs started by those runs. Process separation alone is not a sandbox.
+
+Agreed script-run lifetime:
+
+- Keep a script run active while its continuing Bot inputs/jobs are active; scripts should wait for work they need to
+  keep running. Normal completion, explicit stop and failure stop the continuing inputs started by that run. Cleanup
+  must not cancel a later operation issued by another controller. Completed placement and world changes remain; this
+  is input cleanup, not rollback. A detached/background job API is not part of this initial model.
+- A run continues when its initiating controller logs out. Permission revocation and server shutdown end the run and
+  clean up its continuing inputs. Server restart does not automatically resume or replay script runs. Authority remains
+  bound to the authenticated controller and its grant revision after logout.
+
+Implementation decisions still open:
+
+- Measure editing usability with roughly 10–20 lines on actual Bedrock clients, including multiline paste, text limits,
+  closing/canceling forms, draft retention and error-line display. Multiline editing/paste support is not established.
+- Reuse the Group membership/order and immutable Bot UUID model in BOT-010. The chosen command member selector is
+  one-based, matching normal Luau sequence indexing; earlier zero-based selector sketches are superseded.
+- Bind execution to the authenticated controller and recheck effective authorization after waits and before actions,
+  consistent with the existing grant-revision model. Define source ownership/sharing separately from execution rights;
+  scripts must not acquire console privileges or controller-administration access.
+- Specify accepted versus completed operations, sequential versus parallel actions, connection/completion waits,
+  timeouts and partial failures. Define run/job identifiers, stale-request rejection and bounded cleanup on runner loss
+  to enforce the agreed lifetime. Bot disconnect/reconnect behavior and manual-operation conflict policy remain open.
+- Select the concrete runner, isolation/resource limits and plugin/runtime bridge after a small prototype. The existing
+  Node.js runtime is retained for Bedrock protocol/client behavior. No
+  runtime rewrite, additional Endstone core behavior patch or new compatibility claim is implied.
+
+Web editing remains a future extension to reconsider when the in-game/external-editor workflow demonstrates a need;
+it is not part of the initial scripting scope. Reuse the same source and operation model if it is added. A reference is
+[endstone-live-map](https://github.com/wingxia/endstone-live-map#readme): its documented local Node map service has
+optional Cloudflare R2 tile mirroring/Worker delivery. That is a deployment reference, not a scripting-editor or
+controller-authentication implementation to adopt. No Cloudflare service is required by this design.
+
+This records the agreed scripting direction only. Scripts, a Luau API and editing/import behavior are not yet available;
+the independent Group command prototype is tracked under BOT-010. Implementation and real-client editing, permission,
+cancellation, Bot behavior and achievement validation must be recorded separately; no release version or completion is
+promised here.
+
+## BOT-010: Define Groups before the Luau operation API
+
+Status: **Command-first prototype implemented — client/menu and broader live validation pending**
+(2026-10-21 JST).
+
+Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
+them. Group operations must also work with scripting disabled; iteration, coordinate calculations and orchestration
+remain Luau concerns. This is a design dependency, not a promise that Group implementation must be released before
+every scripting experiment.
+
+Agreed basic behavior:
+
+- Store membership by immutable Bot UUID so Bot rename preserves membership; a Bot may belong to multiple groups.
+- Preserve registration order. Offline members retain their positions in the list and do not compact member indexes.
+- Fix the member list when a bulk operation starts; later membership edits affect later operations.
+- Continue applying an operation to other members when an individual member fails, and report per-Bot success/failure.
+- Apply existing Bot operations through commands and equivalent menus. Coordinate calculations and multi-step
+  orchestration belong in Luau; Groups do not require scripting to be enabled.
+
+Shared scope and chosen command design:
+
+- Groups are shared server-wide. Initially, all authorized controllers may create, edit, delete and use them. Creator
+  information does not make a group private. Deleting a group removes its registration, not its Bots. Per-controller
+  namespaces and finer group access rules are future extensions if needed.
+- Keep `/bot <target> <operation>` for execution. A plain Bot name selects one Bot; `#<group>` selects the whole group;
+  `#<group>[<index>]` selects one member using a one-based index. The `#` prefix distinguishes a group from a Bot name;
+  offer one canonical prefix, without aliases, ranges or expression evaluation in the initial design.
+- Use `/botgroup` for group management, with the proposed forms below. Commands and menus must resolve the same targets
+  and operations. Per-Bot identity management such as rename/forget requires a single-Bot target rather than broadcast.
+
+```text
+/bot Alice stop
+/bot #miners stop
+/bot #miners destroy count 64
+/bot #miners[1] tp me
+/botgroup create miners
+/botgroup add miners Alice
+/botgroup members miners
+/botgroup remove miners Alice
+/botgroup delete miners
+```
+
+These are chosen design forms, now implemented in the command-first source prototype; see
+[prototype instructions and limits](GROUP_PROTOTYPE.md). `destroy count 64` applies its limit separately to each Bot.
+The locked BDS/Endstone console parser has been checked as described below. Actual client input and help/completion
+paths still require validation. Current Bot-name validation excludes `#`; this alone does not establish client support
+for the new target forms.
+
+Windows RakNet console smoke (2026-10-21 JST, locked Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, build `51798905`):
+the existing `string`/Id overload rejected `#`. A first-position `message` fallback accepted the full Group command
+without a core patch. Create/add/members/delete, whole-group and one-based indexed actions, tailed commands, invalid
+index diagnostics and offline-member partial failure passed. The fixture retained both Bot profiles after Group
+deletion. Human-client command visibility/input/completion, Group menus and live mid-batch revocation remain open;
+there was no authenticated-human Xbox achievement check. See the prototype document for reproducible scope and limits.
+
+Questions to resolve first:
+
+- Group naming rules, stable internal identity and persistence format, and group rename behavior.
+- Behavior on Bot forget and group removal/re-addition, including whether those edits change later member indexes.
+- The equivalent menu flow for bulk operations, individual members and management; avoid hidden selected-target state.
+- Recheck controller authority before applying actions, and define the operation-specific result for an offline/missing
+  member, including spawn versus actions that require an already connected Bot.
+- Define what group teleport means, including shared versus offset positions, before assigning command syntax.
+  Automatic formations and complete mining tasks are not assumed to be Group features.
+
+The open questions are not settled defaults or available commands. The later Luau API should reuse the chosen
+target-resolution/operation model; script-specific execution lifetime remains under BOT-009.
+
 ## Deferred priorities
 
 - Inspecting a Bot's inventory and hotbar contents from commands and the menu, and a wider range of operations, are

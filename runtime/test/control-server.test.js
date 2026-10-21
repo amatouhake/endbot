@@ -37,6 +37,37 @@ test('control server refuses non-loopback binds', () => {
   assert.throws(() => new ControlServer({ host: '0.0.0.0', token: 'a'.repeat(43), lifecycle: {} }), /loopback/)
 })
 
+test('UUID-pinned group requests cannot mutate a replacement profile or create a missing one', async t => {
+  const calls = []
+  const lifecycle = {
+    status: name => {
+      if (name === 'Missing') throw Object.assign(new Error('Bot does not exist'), { code: 'not_found' })
+      return { name, identityId: 'current-uuid' }
+    },
+    spawn: name => { calls.push(['spawn', name]); return { name } },
+    stop: name => { calls.push(['stop', name]); return { name } }
+  }
+  const token = 'g'.repeat(43)
+  const server = new ControlServer({ token, port: 0, lifecycle })
+  await server.listen()
+  t.after(() => server.close())
+  const capabilities = await request(server.port, { version: 1, id: 'caps', token, method: 'capabilities' })
+  assert.equal(capabilities.result.identityPinnedRequests, true)
+  for (const method of ['stop', 'spawn']) {
+    const response = await request(server.port, { version: 1, id: method, token, method,
+      params: { name: 'Alice', expectedIdentityId: 'old-uuid' } })
+    assert.equal(response.error.code, 'identity_changed')
+  }
+  const missing = await request(server.port, { version: 1, id: 'missing', token, method: 'spawn',
+    params: { name: 'Missing', expectedIdentityId: 'old-uuid' } })
+  assert.equal(missing.error.code, 'not_found')
+  assert.deepEqual(calls, [])
+  const accepted = await request(server.port, { version: 1, id: 'valid', token, method: 'stop',
+    params: { name: 'Alice', expectedIdentityId: 'current-uuid' } })
+  assert.equal(accepted.ok, true)
+  assert.deepEqual(calls, [['stop', 'Alice']])
+})
+
 test('mining requests require the control token for both start and stop', async t => {
   const calls = []
   const token = 'a'.repeat(43)

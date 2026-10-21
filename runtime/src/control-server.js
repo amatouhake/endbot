@@ -92,8 +92,17 @@ export class ControlServer {
   }
 
   #dispatch (method, params) {
+    // Group membership is UUID-based. A stale name must never retarget an
+    // operation to a replacement profile, including implicit spawn creation.
+    if (params.expectedIdentityId !== undefined) {
+      if (typeof params.expectedIdentityId !== 'string' || typeof params.name !== 'string' ||
+          this.lifecycle.status(params.name).identityId !== params.expectedIdentityId) {
+        throw Object.assign(new Error('Bot identity changed; group operation canceled'), { code: 'identity_changed' })
+      }
+    }
     switch (method) {
       case 'ping': return { runtime: 'endbot', protocolVersion: 1 }
+      case 'capabilities': return { identityPinnedRequests: true }
       case 'shutdown': return { stopping: true }
       case 'list': return this.lifecycle.list()
       case 'status': return this.lifecycle.status(params.name)

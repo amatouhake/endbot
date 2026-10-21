@@ -478,6 +478,7 @@ JA: dict[str, str] = {
     "the form response was not understood": "フォームの応答を読み取れませんでした",
     "enter exactly three coordinates: x y z": "座標は x y z の 3 つを入力してください",
     "nothing to change": "変更はありません",
+    "Unknown Endbot command root": "Endbotコマンドの種類が不明です",
 }
 
 CATALOGS: dict[str, dict[str, str]] = {"ja": JA}

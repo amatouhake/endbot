@@ -104,17 +104,12 @@ class FormPresenter:
             self.show(player, action.screen, origin, guard)
             return
         for command in action.commands:
-            if "menu" not in command:
+            # Menu navigation is not echoed: /bot ends with "menu", /botgroup starts with it.
+            if (command[:1] if action.command == "botgroup" else command[-1:]) != ("menu",):
                 # Show the typed equivalent, so forms also teach the command. ASCII only:
                 # the Bedrock chat font lacks symbols such as arrows.
                 player.send_message(f"{DIM}/{action.command} {' '.join(command)}{RESET}")
-            context = action.guard or guard
-            options = {}
-            if action.command != "bot":
-                options["command"] = action.command
-            if context is not None:
-                options["group_guard"] = context
-            self._submit(player, list(command), **options)
+            self._submit(player, list(command), command=action.command, group_guard=action.guard or guard)
 
     def _on_modal(self, player, screen, response, guard=None) -> None:
         try:

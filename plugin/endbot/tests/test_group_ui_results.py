@@ -214,7 +214,7 @@ class GroupUiResultTests(unittest.TestCase):
         modal = self.player.forms[-1]
         modal.kwargs["on_submit"](self.player, json.dumps(["#builders"]))
         self.assertEqual(self.submissions[-1][0], ["create", "#builders"])
-        self.assertEqual(self.submissions[-1][1], {"command": "botgroup"})
+        self.assertEqual(self.submissions[-1][1], {"command": "botgroup", "group_guard": None})
         self.assertIn("/botgroup create #builders", strip_colors(self.player.messages[-1]))
         self.assertEqual(self.store.get("builders").members, ())
 
@@ -223,7 +223,7 @@ class GroupUiResultTests(unittest.TestCase):
         self.click("#miners (2)")
         argv, options, result = self.submissions[-1]
         self.assertEqual(argv, ["#miners", "menu"])
-        self.assertNotIn("command", options)
+        self.assertEqual(options["command"], "bot")
         self.assertIsInstance(result.view, BotView)
         group = forms.bot_screen(result.view, "Steve")
         bot = forms.bot_screen(self.service.execute(["Alice", "menu"], self.source).view, "Steve")

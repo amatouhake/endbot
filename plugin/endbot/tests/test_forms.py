@@ -430,7 +430,7 @@ class PresenterTests(unittest.TestCase):
     def setUp(self):
         self.submitted = []
         self.presenter = FormPresenter(
-            lambda player, argv: self.submitted.append(argv), lambda: ("Steve", "Alice"), FakeFormModule()
+            lambda player, argv, **_: self.submitted.append(argv), lambda: ("Steve", "Alice"), FakeFormModule()
         )
         self.player = FakePlayer()
 
@@ -543,7 +543,7 @@ class PresenterTests(unittest.TestCase):
 
     def test_japanese_viewer_gets_japanese_screens_and_errors_but_english_commands(self):
         presenter = FormPresenter(
-            lambda player, argv: self.submitted.append(argv),
+            lambda player, argv, **_: self.submitted.append(argv),
             lambda: ("Steve", "Alice"),
             FakeFormModule(),
             language=lambda player: "ja",

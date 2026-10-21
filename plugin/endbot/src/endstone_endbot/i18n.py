@@ -71,7 +71,6 @@ def _format(text: str, params: dict[str, object], language: str) -> str:
 
 
 JA: dict[str, str] = {
-    "Groups": "グループ",
     "Pick a Bot or group. (/bot help lists commands)": "Bot またはグループを選んでください。(/bot help でコマンド一覧)",
     "Back to group operations": "グループの操作へ戻る",
     "Back to group management": "グループの管理へ戻る",
@@ -114,10 +113,7 @@ JA: dict[str, str] = {
     "Endbot: groups": "Endbot: グループ",
     "Group operations...": "グループを一括操作...",
     "Group reference (#name)": "グループ指定 (#名前)",
-    "Groups...": "グループ...",
     "Member": "メンバー",
-    "Members {count} - page {page}/{pages}. Open a member for teleport and individual operations.":
-        "メンバー {count} 体 - {page}/{pages} ページ。各メンバーを開くとテレポートや単体操作ができます。",
     "Next page": "次のページ",
     "Previous page": "前のページ",
     "Operations apply to every current member. Limits apply per Bot.":
@@ -158,6 +154,46 @@ JA: dict[str, str] = {
     "Page must be a positive integer": "ページは 1 以上の整数で指定してください",
     "Group member page is out of range": "メンバー一覧のページが範囲外です",
     "Group syntax: #group (for example #miners)": "グループは #group の形式で指定してください (例: #miners)",
+    "Group names must start with a letter/underscore and contain 1-16 letters, digits or underscores":
+        "グループ名は英字かアンダースコアで始まる 1-16 文字の英数字・アンダースコアにしてください",
+    "Group {name} does not exist": "グループ {name} はありません",
+    "Group {name} already exists": "グループ {name} はすでにあります",
+    "Bot is already a group member": "この Bot はすでにグループのメンバーです",
+    "Bot is not a group member": "この Bot はグループのメンバーではありません",
+    "Group target syntax: #group or #group[1] (one-based)":
+        "グループは #group または #group[1] (1 から数える) の形式で指定してください",
+    "{target}: member index is out of range": "{target}: メンバー番号が範囲外です",
+    "Bot {name} does not exist; add an existing profile": "Bot {name} はありません。登録済みの Bot を追加してください",
+    "{operation} requires one Bot; use #group[1] or a Bot name":
+        "{operation} は 1 体の Bot が対象です。#group[1] か Bot 名を指定してください",
+    "Groups require the matching updated Endbot runtime":
+        "グループ機能には対応する更新済みの Endbot runtime が必要です",
+    "missing Bot profile; membership retained": "Bot プロファイルなし (メンバー登録は残しています)",
+    "Use /botgroup result #group [history] from the console":
+        "コンソールでは /botgroup result #group [history] を使ってください",
+    "Remove requires a Bot name or one indexed member of this group":
+        "外すには Bot 名か、このグループの番号付きメンバーを 1 体指定してください",
+    "Invalid group command; use /botgroup help":
+        "グループコマンドが正しくありません。/botgroup help を参照してください",
+    "Menu Bot changed; reopen the menu": "メニューの Bot が変更されました。メニューを開き直してください",
+    "Group has no members": "グループにメンバーがいません",
+    "Groups are unavailable because the groups file could not be loaded; see the server log":
+        "グループのファイルを読み込めないため、グループ機能は使えません。サーバーのログを確認してください",
+    "Groups must be stored in a regular file": "グループは通常のファイルに保存する必要があります",
+    "Groups file must not be a symlink": "グループのファイルにシンボリックリンクは使えません",
+    "Invalid groups file": "グループのファイルが正しくありません",
+    "Invalid group entry": "グループの項目が正しくありません",
+    "Duplicate group member": "グループのメンバーが重複しています",
+    "Duplicate group name": "グループ名が重複しています",
+    "Duplicate group identity": "グループの識別情報が重複しています",
+    "Unexpected request while rendering group input result": "グループ操作の結果を表示中に想定外の要求がありました",
+    "Invalid group input batch response": "グループ一括操作の応答が正しくありません",
+    "no groups": "グループはありません",
+    "group created": "グループを作成しました",
+    "group deleted; Bots retained": "グループを削除しました。Bot の登録は残っています",
+    "no members": "メンバーはいません",
+    "add: {target}": "追加: {target}",
+    "remove: {target}": "外しました: {target}",
     # Connection states shown in list/status/forms.
     "online": "オンライン",
     "offline": "オフライン",

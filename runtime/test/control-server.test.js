@@ -40,9 +40,9 @@ test('control server refuses non-loopback binds', () => {
 test('UUID-pinned group requests cannot mutate a replacement profile or create a missing one', async t => {
   const calls = []
   const lifecycle = {
-    status: name => {
+    identityOf: name => {
       if (name === 'Missing') throw Object.assign(new Error('Bot does not exist'), { code: 'not_found' })
-      return { name, identityId: 'current-uuid' }
+      return 'current-uuid'
     },
     spawn: name => { calls.push(['spawn', name]); return { name } },
     stop: name => { calls.push(['stop', name]); return { name } }
@@ -92,7 +92,7 @@ test('group inputs apply in one dispatch turn, preserving partial failures and U
   let interleaved = false
   const token = 'b'.repeat(43)
   const server = new ControlServer({ token, port: 0, lifecycle: {
-    status: name => ({ name, identityId: name }),
+    identityOf: name => name,
     action: name => {
       assert.equal(interleaved, false, 'members must not wait on separate IPC or event-loop turns')
       calls.push(name)

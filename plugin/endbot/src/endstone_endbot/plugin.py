@@ -23,11 +23,6 @@ from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
-    # Bedrock Id/string rejects a leading '#'. A first-position message
-    # accepts the full group target and tail; _tokens splits it without
-    # treating '#' as a comment. Native permission and service checks apply.
-    # Native completion/rendering still needs real-client validation.
-    "/bot <arguments: message>",
     # Each usage becomes one native BDS overload, matched before Python runs.
     # Live oracle batteries on the pinned BDS build proved three rules that
     # shape this list (see docs/COMMANDS.md): trailing OPTIONAL params never
@@ -116,6 +111,12 @@ COMMAND_USAGES = [
     ),
     "/bot <name: string> (drop)<operation: EndbotDropOne>",
     "/bot <name: string> (drop)<operation: EndbotDropStack> (stack)<mode: EndbotDropMode>",
+    # Group targets. Bedrock Id/string rejects a leading '#', so only a
+    # first-position message carries "#group[1] <operation> ...". It natively
+    # matches any input, which leaves syntax rejection to the Python parser.
+    # Kept last so the typed overloads above lead native completion; that
+    # ordering effect still needs real-client validation.
+    "/bot <arguments: message>",
 ]
 
 
@@ -244,8 +245,14 @@ class EndbotPlugin(Plugin):
             lambda: tuple(str(player.name) for player in self.server.online_players),
             language=self._language,
         )
+        try:
+            groups = GroupStore(self.data_folder / "groups.json")
+        except (ValueError, OSError) as error:
+            # A broken groups file must not take /bot down with it.
+            self.logger.error(f"Groups disabled: groups.json could not be loaded ({error}); fix or move it and reload")
+            groups = None
         self._bot_commands = GroupCommandService(
-            control, command_world, GroupStore(self.data_folder / "groups.json"),
+            control, command_world, groups,
             authorize=lambda source: self._server_thread.call(lambda: self._authorize_source(source)),
         )
         self._command_runner = AsyncCommandRunner(
@@ -578,11 +585,8 @@ class EndbotPlugin(Plugin):
         ):
             sender.send_message(f"Endbot: {tr(self._language(sender), 'you do not have Bot control permission')}")
             return
-        options = {}
-        if command != "bot":
-            options["command"] = command
-        if group_guard is not None:
-            options["group_guard"] = group_guard
-        submitted = self._command_runner is not None and self._command_runner.submit(args, sender, **options)
+        submitted = self._command_runner is not None and self._command_runner.submit(
+            args, sender, command=command, group_guard=group_guard
+        )
         if not submitted:
             sender.send_message(f"Endbot: {tr(self._language(sender), 'command service is unavailable')}")

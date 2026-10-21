@@ -77,6 +77,10 @@ class GroupStoreTests(unittest.TestCase):
         self.path.write_text(json.dumps({"version": 2, "groups": []}), encoding="utf-8")
         with self.assertRaises(ValueError):
             GroupStore(self.path)
+        for entry in ({"name": "miners", "members": []}, {"identityId": 7, "name": "miners", "members": []}):
+            self.path.write_text(json.dumps({"version": 1, "groups": [entry]}), encoding="utf-8")
+            with self.subTest(entry=entry), self.assertRaises(ValueError):
+                GroupStore(self.path)
 
 
 class GroupServiceTests(unittest.TestCase):
@@ -117,6 +121,36 @@ class GroupServiceTests(unittest.TestCase):
         removed = self.manage("remove", "#miners", "#miners[1]")
         self.assertIn("remove", messages(removed))
         self.assertEqual(len(self.store.get("miners").members), 1)
+
+    def test_unexpected_member_failure_keeps_earlier_results(self):
+        original = self.control.request
+        def request(operation, **parameters):
+            if operation == "spawn" and parameters["name"] == "Bob":
+                raise KeyError("connectionState")
+            return original(operation, **parameters)
+        self.control.request = request
+        text = messages(self.service.execute(["#miners", "spawn"]))
+        self.assertIn("accepted 1", text)
+        self.assertIn("unknown 1", text)
+        history = messages(self.manage("result", "#miners"))
+        self.assertIn("Alice: accepted", history)
+        self.assertIn("Bob: acceptance unknown", history)
+
+    def test_profiles_are_read_once_per_group_operation(self):
+        self.service.execute(["#miners", "spawn"])
+        self.assertEqual(sum(op == "list" for op, _ in self.control.calls), 1)
+
+    def test_management_replies_are_localized(self):
+        source = SimpleNamespace(language="ja")
+        missing = self.service.execute_group(["delete", "#absent"], source)
+        self.assertIn("グループ absent はありません", messages(missing))
+        self.assertIn("グループを作成しました", messages(self.service.execute_group(["create", "#ja"], source)))
+
+    def test_unloadable_store_disables_groups_but_not_bots(self):
+        service = GroupCommandService(self.control, self.world, None, lambda _: True)
+        self.assertIn("groups file could not be loaded", messages(service.execute_group(["list"])))
+        self.assertIn("groups file could not be loaded", messages(service.execute(["#miners", "stop"])))
+        self.assertIn("Alice", messages(service.execute(["Alice", "stop"])))
 
     def test_batch_snapshot_excludes_members_added_during_execution(self):
         original = self.control.request

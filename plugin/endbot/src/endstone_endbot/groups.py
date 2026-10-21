@@ -29,10 +29,21 @@ from endstone_endbot.i18n import LocalizedError, localize_error, tr
 GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}\Z")
 GROUP_TARGET = re.compile(r"#([A-Za-z_][A-Za-z0-9_]{0,15})(?:\[([1-9][0-9]*)\])?\Z")
 GROUP_INPUT_OPERATIONS = frozenset({"move", "look", "action", "flag", "stop", "hotbar", "drop"})
+HISTORY_ERROR = "Result history must be a positive integer (1 = latest)"
+PAGE_ERROR = "Page must be a positive integer"
 
 
 class _GroupCanceled(ValueError):
     pass
+
+
+class _MissingProfile(ValueError):
+    """A member UUID with no runtime profile; the membership is kept."""
+
+    code = "missing_profile"
+
+    def __init__(self):
+        super().__init__("missing Bot profile; membership retained")
 
 
 def group_name(value: str) -> str:
@@ -76,9 +87,12 @@ class GroupStore:
         for row in document["groups"]:
             if not isinstance(row, dict) or not isinstance(row.get("members"), list):
                 raise ValueError("Invalid group entry")  # noqa: TRY004 - persisted JSON schema validation
-            identity = str(UUID(row["identityId"]))
-            name = group_name(row["name"])
-            members = tuple(str(UUID(member)) for member in row["members"])
+            try:
+                identity = str(UUID(row["identityId"]))
+                name = group_name(row["name"])
+                members = tuple(str(UUID(member)) for member in row["members"])
+            except (KeyError, TypeError, AttributeError) as error:
+                raise ValueError("Invalid group entry") from error
             if len(set(members)) != len(members):
                 raise ValueError("Duplicate group member")
             groups.append(Group(identity, name, members))
@@ -93,7 +107,7 @@ class GroupStore:
         for group in self.groups:
             if group.name.casefold() == name.casefold():
                 return group
-        raise ValueError(f"Group {name} does not exist")
+        raise LocalizedError("Group {name} does not exist", name=name)
 
     def _save(self, groups: tuple[Group, ...]) -> None:
         if self.path.is_symlink():
@@ -117,7 +131,7 @@ class GroupStore:
     def create(self, name: str) -> Group:
         group_name(name)
         if any(group.name.casefold() == name.casefold() for group in self.groups):
-            raise ValueError(f"Group {name} already exists")
+            raise LocalizedError("Group {name} already exists", name=name)
         group = Group(str(uuid4()), name)
         self._save((*self.groups, group))
         return group
@@ -151,7 +165,7 @@ class GroupStore:
         if indexed:
             index = int(match[2])
             if index > len(group.members):
-                raise ValueError(f"{target}: member index is out of range")
+                raise LocalizedError("{target}: member index is out of range", target=target)
             members = ((index, group.members[index - 1]),)
         else:
             members = tuple(enumerate(group.members, start=1))
@@ -187,7 +201,7 @@ class _BatchReplyControl:
 class GroupCommandService(BotCommandService):
     """Shared groups reuse existing Bot actions for each operation."""
 
-    def __init__(self, control, world, groups: GroupStore, authorize):
+    def __init__(self, control, world, groups: GroupStore | None, authorize):
         super().__init__(control, world)
         self.groups, self.authorize = groups, authorize
         self._groups_open = True
@@ -199,6 +213,13 @@ class GroupCommandService(BotCommandService):
 
     def cancel_groups(self):
         self._groups_open = False
+
+    def _store(self) -> GroupStore:
+        if self.groups is None:
+            raise LocalizedError(
+                "Groups are unavailable because the groups file could not be loaded; see the server log"
+            )
+        return self.groups
 
     def _check(self, sender):
         if not self._groups_open or not self.authorize(sender):
@@ -215,15 +236,13 @@ class GroupCommandService(BotCommandService):
             self.results.find(sender, group, guard.result_id)
 
     @staticmethod
-    def _page(value):
-        if not str(value).isascii() or not str(value).isdecimal() or int(value) < 1:
-            raise LocalizedError("Page must be a positive integer")
-        return int(value)
-
-    @staticmethod
-    def _history(value):
-        if not str(value).isascii() or not str(value).isdecimal() or int(value) < 1:
-            raise LocalizedError("Result history must be a positive integer (1 = latest)")
+    def _positive(tail, index, message):
+        """``tail[index]`` as a positive integer; 1 when omitted."""
+        if len(tail) <= index:
+            return 1
+        value = tail[index]
+        if not value.isascii() or not value.isdecimal() or int(value) < 1:
+            raise LocalizedError(message)
         return int(value)
 
     def _menu(self, sender, group=None, page=1):
@@ -231,7 +250,7 @@ class GroupCommandService(BotCommandService):
             detail = tr(_language(sender), "menu is available only to players; use /bot help")
             return CommandResult(True, (reply(detail),))
         if group is None:
-            return CommandResult(True, view=GroupListView(self.groups.groups))
+            return CommandResult(True, view=GroupListView(self._store().groups))
         self._form_group(sender, group)
         if page > max(1, (len(group.members) + PAGE_SIZE - 1) // PAGE_SIZE):
             raise LocalizedError("Group member page is out of range")
@@ -296,10 +315,10 @@ class GroupCommandService(BotCommandService):
         except RuntimeControlError as error:
             if error.code != "unknown_method":
                 raise
-            raise RuntimeError("Groups require the matching updated Endbot runtime") from error
+            raise LocalizedError("Groups require the matching updated Endbot runtime") from error
         if (capabilities.get("identityPinnedRequests") is not True
                 or (batch and capabilities.get("groupInputBatch") is not True)):
-            raise RuntimeError("Groups require the matching updated Endbot runtime")
+            raise LocalizedError("Groups require the matching updated Endbot runtime")
         self._check(sender)
         profiles = {bot["identityId"]: bot for bot in self.control.request("list")}
         self._check(sender)
@@ -311,6 +330,7 @@ class GroupCommandService(BotCommandService):
 
     def execute_group(self, arguments, sender=None):
         """Arguments following /botgroup. Runs on the same authorized, ordered worker as /bot."""
+        lang = _language(sender)
         try:
             self._check(sender)
             tokens = _tokens(arguments)
@@ -326,41 +346,42 @@ class GroupCommandService(BotCommandService):
             if operation == "menu" and not tail:
                 return self._menu(sender)
             if operation in {"result", "menu"} and tail:
-                group = self.groups.get(group_reference(tail[0]))
+                group = self._store().get(group_reference(tail[0]))
                 if operation == "result" and len(tail) in {1, 2}:
-                    return self._result(sender, group, self._history(tail[1]) if len(tail) == 2 else 1)
+                    return self._result(sender, group, self._positive(tail, 1, HISTORY_ERROR))
                 if operation == "menu":
                     if len(tail) in {2, 3} and tail[1] == "result":
-                        return self._result(sender, group, self._history(tail[2]) if len(tail) == 3 else 1, menu=True)
+                        return self._result(sender, group, self._positive(tail, 2, HISTORY_ERROR), menu=True)
                     if len(tail) in {1, 2}:
-                        return self._menu(sender, group, self._page(tail[1]) if len(tail) == 2 else 1)
+                        return self._menu(sender, group, self._positive(tail, 1, PAGE_ERROR))
             if operation == "list" and not tail:
-                names = ", ".join(f"#{group.name} ({len(group.members)})" for group in self.groups.groups)
-                return CommandResult(True, (reply(names or "no groups"),))
+                names = ", ".join(f"#{group.name} ({len(group.members)})" for group in self._store().groups)
+                return CommandResult(True, (reply(names or tr(lang, "no groups")),))
             if operation in {"create", "delete", "list"} and len(tail) == 1:
                 name = group_reference(tail[0])
                 if operation == "create":
-                    group = self.groups.create(name)
-                    return CommandResult(True, (reply("group created", f"#{group.name}"),))
+                    group = self._store().create(name)
+                    return CommandResult(True, (reply(tr(lang, "group created"), f"#{group.name}"),))
                 if operation == "delete":
-                    self._form_group(sender, self.groups.get(name))
-                    self.groups.delete(name)
-                    return CommandResult(True, (reply("group deleted; Bots retained", f"#{name}"),))
-                group = self.groups.get(name)
+                    self._form_group(sender, self._store().get(name))
+                    self._store().delete(name)
+                    return CommandResult(True, (reply(tr(lang, "group deleted; Bots retained"), f"#{name}"),))
+                group = self._store().get(name)
                 self._form_group(sender, group)
                 profiles = self._profiles(sender)
                 rows = []
                 for index, identity in enumerate(group.members, start=1):
                     bot = profiles.get(identity)
-                    label = f"{bot['name']} [{bot['connectionState']}]" if bot else "missing Bot profile"
+                    label = (f"{bot['name']} [{tr(lang, bot['connectionState'])}]" if bot
+                             else tr(lang, "missing Bot profile"))
                     rows.append(reply(label, f"#{group.name}[{index}]"))
-                return CommandResult(True, tuple(rows) or (reply("no members", f"#{group.name}"),))
+                return CommandResult(True, tuple(rows) or (reply(tr(lang, "no members"), f"#{group.name}"),))
             if operation in {"add", "remove"} and len(tail) == 2:
                 name, target = group_reference(tail[0]), tail[1]
-                group = self.groups.get(name)
+                group = self._store().get(name)
                 self._form_group(sender, group)
                 if operation == "remove" and target.startswith("#"):
-                    selected_group, selected, indexed = self.groups.select(target)
+                    selected_group, selected, indexed = self._store().select(target)
                     if not indexed or selected_group.identity != group.identity:
                         raise ValueError("Remove requires a Bot name or one indexed member of this group")
                     identity = selected[0][1]
@@ -368,7 +389,7 @@ class GroupCommandService(BotCommandService):
                     profiles = self._profiles(sender)
                     bot = next((bot for bot in profiles.values() if bot["name"].casefold() == target.casefold()), None)
                     if bot is None:
-                        raise ValueError(f"Bot {target} does not exist; add an existing profile")
+                        raise LocalizedError("Bot {name} does not exist; add an existing profile", name=target)
                     identity = bot["identityId"]
                     guard = getattr(sender, "group_guard", None)
                     if operation == "add" and guard is not None and guard.candidates:
@@ -376,11 +397,12 @@ class GroupCommandService(BotCommandService):
                         if candidates.get(target.casefold()) != identity:
                             raise LocalizedError("Bot changed while the menu was open; reopen the menu")
                 self._check(sender)
-                getattr(self.groups, operation)(name, identity)
-                return CommandResult(True, (reply(f"{operation}: {target}", f"#{group.name}"),))
+                getattr(self._store(), operation)(name, identity)
+                template = "add: {target}" if operation == "add" else "remove: {target}"
+                return CommandResult(True, (reply(tr(lang, template, target=target), f"#{group.name}"),))
             raise ValueError("Invalid group command; use /botgroup help")
         except (RuntimeError, ValueError, OSError) as error:
-            return self._error(error, lang=_language(sender))
+            return self._error(error, lang=lang)
 
     @staticmethod
     def _row(index, identity, name, *, result=None, error=None, outcome=None, lang="en"):
@@ -389,8 +411,6 @@ class GroupCommandService(BotCommandService):
             reason = getattr(error, "code", "other")
             if isinstance(error, _GroupCanceled):
                 reason, outcome = "canceled", "skipped"
-            if "missing Bot profile" in str(error):
-                reason = "missing_profile"
             detail = localize_error(error, lang)
         else:
             detail = " ".join(result.messages or ())
@@ -407,7 +427,7 @@ class GroupCommandService(BotCommandService):
                 self._check(sender)
                 bot = profiles.get(identity)
                 if bot is None:
-                    error = ValueError("missing Bot profile; membership retained")
+                    error = _MissingProfile()
                     prepared.append(self._row(index, identity, "?", error=error, lang=lang))
                     continue
                 member = replace(command, name=bot["name"])
@@ -445,6 +465,8 @@ class GroupCommandService(BotCommandService):
                 rows.append(self._row(index, identity, member.name, result=result))
             except (RuntimeError, ValueError) as error:
                 rows.append(self._row(index, identity, member.name, error=error, lang=lang))
+            except Exception as error:  # noqa: BLE001 - the batch already ran; keep every member's row
+                rows.append(self._row(index, identity, member.name, error=error, outcome="unknown", lang=lang))
         return rows
 
     def _finish(self, sender, group, target, operation, rows, *, indexed=False, query=False):
@@ -476,7 +498,7 @@ class GroupCommandService(BotCommandService):
                 command = parse_command(arguments)
                 if guard is not None and command.name:
                     self._check(sender)
-                    self._form_group(sender, self.groups.get(guard.name))
+                    self._form_group(sender, self._store().get(guard.name))
                     if guard.bot_identity is not None:
                         if command.name.casefold() != guard.bot_name.casefold():
                             raise ValueError("Menu Bot changed; reopen the menu")
@@ -484,45 +506,54 @@ class GroupCommandService(BotCommandService):
                             self.control, guard.bot_identity, lambda: self._check(sender)))
                         if result.view is not None:
                             result = replace(result, view=self._group_view_back(
-                                result.view, self.groups.get(guard.name), guard))
+                                result.view, self._store().get(guard.name), guard))
                         return result
                 result = super().execute(arguments, sender)
                 if isinstance(result.view, BotListView):
                     self._check(sender)
+                    # A store that failed to load disables groups, never the Bot list.
+                    groups = self.groups.groups if self.groups is not None else ()
                     targets = tuple(GroupTarget(group.name, len(group.members), GroupGuard(group.identity, group.name))
-                                    for group in self.groups.groups)
+                                    for group in groups)
                     result = replace(result, view=replace(result.view, groups=targets))
                 return result
             command = parse_command(arguments)
-            group, members, indexed = self.groups.select(tokens[0])
+            group, members, indexed = self._store().select(tokens[0])
             self._check(sender)
             self._form_group(sender, group)
             if not indexed and command.operation == "menu":
                 return self._operation_menu(sender, group)
             if not indexed and command.operation in {"rename", "forget"}:
-                raise ValueError(f"{command.operation} requires one Bot; use #group[1] or a Bot name")
+                raise LocalizedError("{operation} requires one Bot; use #group[1] or a Bot name",
+                                     operation=command.operation)
             if not members:
                 raise ValueError("Group has no members")
             query = command.operation == "status" or (
                 command.operation in {"hotbar", "radius"} and not command.parameters)
             if not indexed and command.operation in GROUP_INPUT_OPERATIONS:
                 rows = self._execute_inputs(command, sender, members)
-                return self._finish(sender, group, tokens[0], " ".join(tokens[1:])[:128], rows,
-                                    query=query)
+                return self._finish(sender, group, tokens[0], " ".join(tokens[1:])[:128], rows, query=query)
+            lang = _language(sender)
+            target, operation = tokens[0], " ".join(tokens[1:])[:128]
+            try:
+                profiles = self._profiles(sender)
+            except (RuntimeError, ValueError) as error:
+                rows = [self._row(index, identity, "?", error=error, outcome="skipped", lang=lang)
+                        for index, identity in members]
+                return self._finish(sender, group, target, operation, rows, indexed=indexed, query=query)
             rows, canceled = [], None
             for index, identity in members:
                 name = "?"
                 if canceled is not None:
-                    rows.append(self._row(index, identity, name, error=canceled, lang=_language(sender)))
+                    rows.append(self._row(index, identity, name, error=canceled, lang=lang))
                     continue
                 try:
-                    profiles = self._profiles(sender)
                     bot = profiles.get(identity)
                     if bot is None:
-                        raise ValueError("missing Bot profile; membership retained")
+                        raise _MissingProfile()
                     name = bot["name"]
                     result = self._execute(
-                        replace(command, name=bot["name"]), sender, _language(sender),
+                        replace(command, name=bot["name"]), sender, lang,
                         control=_MemberControl(self.control, identity, lambda: self._check(sender)),
                     )
                     if command.operation == "menu":
@@ -537,12 +568,14 @@ class GroupCommandService(BotCommandService):
                 except (RuntimeError, ValueError) as error:
                     uncertain = isinstance(error, RuntimeControlError) and error.code == "unavailable"
                     outcome = "unknown" if uncertain else None
-                    rows.append(self._row(index, identity, name, error=error, outcome=outcome, lang=_language(sender)))
+                    rows.append(self._row(index, identity, name, error=error, outcome=outcome, lang=lang))
                     try:
                         self._check(sender)
                     except _GroupCanceled as error:
                         canceled = error
-            return self._finish(sender, group, tokens[0], " ".join(tokens[1:])[:128], rows,
-                                indexed=indexed, query=query)
+                except Exception as error:  # noqa: BLE001 - keep earlier members' results and audit entry
+                    # The request may already have run before the failure.
+                    rows.append(self._row(index, identity, name, error=error, outcome="unknown", lang=lang))
+            return self._finish(sender, group, target, operation, rows, indexed=indexed, query=query)
         except (RuntimeError, ValueError) as error:
             return self._error(error, arguments[0] if arguments else None, _language(sender))

@@ -97,7 +97,7 @@ export class ControlServer {
     // operation to a replacement profile, including implicit spawn creation.
     if (params.expectedIdentityId !== undefined) {
       if (typeof params.expectedIdentityId !== 'string' || typeof params.name !== 'string' ||
-          this.lifecycle.status(params.name).identityId !== params.expectedIdentityId) {
+          this.lifecycle.identityOf(params.name) !== params.expectedIdentityId) {
         throw Object.assign(new Error('Bot identity changed; group operation canceled'), { code: 'identity_changed' })
       }
     }

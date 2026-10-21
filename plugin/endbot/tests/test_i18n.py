@@ -34,7 +34,7 @@ TEMPLATE_ARGUMENTS = {
     "_mining_notice": 2,
 }
 # Plain errors raised with fixed English text that reaches players.
-PLAYER_ERROR_FILES = ("commands.py", "dispatch.py", "world.py")
+PLAYER_ERROR_FILES = ("commands.py", "dispatch.py", "world.py", "groups.py")
 # Templates reached through variables rather than literals.
 INDIRECT_TEMPLATES = (
     "online",

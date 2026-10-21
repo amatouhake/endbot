@@ -192,7 +192,7 @@ class PluginAdapterTests(unittest.TestCase):
         sender = FakeConsole()
         submissions = []
         plugin._command_runner = types.SimpleNamespace(
-            submit=lambda args, target: submissions.append((args, target)) or True,
+            submit=lambda args, target, **_: submissions.append((args, target)) or True,
         )
         self.assertTrue(plugin.on_command(sender, FakeCommand("bot"), ["ping"]))
         self.assertEqual(sender.messages, [])
@@ -212,7 +212,7 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertFalse(any("EndbotGroupMembers" in usage for usage in usages))
         self.assertIn("/botgroup (list)<action: EndbotGroupList> [group: message]", usages)
         self.assertTrue(plugin.on_command(FakeConsole(), FakeCommand("botgroup"), ["create", "#miners"]))
-        self.assertEqual(submissions, [(["create", "#miners"], {"command": "botgroup"})])
+        self.assertEqual(submissions, [(["create", "#miners"], {"command": "botgroup", "group_guard": None})])
         unauthorized = types.SimpleNamespace(messages=[], send_message=lambda message: None)
         plugin.on_command(unauthorized, FakeCommand("botgroup"), ["delete", "#miners"])
         self.assertEqual(len(submissions), 1)
@@ -326,7 +326,7 @@ class PluginAdapterTests(unittest.TestCase):
             plugin = self.controller_fixture(directory)
             submissions = []
             plugin._command_runner = types.SimpleNamespace(
-                submit=lambda args, target: submissions.append((args, target)) or True
+                submit=lambda args, target, **_: submissions.append((args, target)) or True
             )
             player = self.controller_player()
             plugin.server.online_players = [player]

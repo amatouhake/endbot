@@ -480,11 +480,19 @@ remains under BOT-009. Automatic formations and complete mining tasks are not as
 
 ## BOT-011: Inspect and rearrange a Bot's inventory, and drop everything
 
-Status: **Scope and command conventions agreed; `item_stack_request` spike and inspection in progress** (2026-10-22
-JST). Targeted for 0.4.0 together with Groups and Luau.
+Status: **Implemented on `main` (#74) — Windows RakNet live checks passed; human-client checks pending**
+(2026-10-22 JST). Targeted for 0.4.0 together with Groups and Luau.
 
-Today a Bot can only select a hotbar slot and drop from the selected slot, and the runtime caches only the nine hotbar
-slots. Emptying a Bot's inventory currently requires killing it. The operator chose this scope ahead of Luau (BOT-009)
+`inventory`, `drop <slot>`, `drop <item> [count]`, `drop all`, `swap <a> <b>` and `hold <item>` are implemented. The
+read-only observation now covers the full inventory, offhand and armor, and every change is sent as a legacy normal
+`inventory_transaction` without stack IDs: the spike showed `item_stack_request` is unusable for Bots on the locked
+pair (see [the spike](INVENTORY_STACK_SPIKE.md)). Live `raknet_spike.py --inventory` runs accepted every product case,
+including the helmet and a 41-slot `drop all` (see [inventory validation](INVENTORY_VALIDATION.md)). Remaining gates:
+human Windows-client forms, Japanese replies, held/armor rendering seen by others, group summaries and completion,
+and NetherNet; they are planned for the combined 0.4.0 client check.
+
+Before this item, a Bot could only select a hotbar slot and drop from the selected slot, and the runtime cached only the nine hotbar
+slots. Emptying a Bot's inventory required killing it. The operator chose this scope ahead of Luau (BOT-009)
 so that scripts can later wrap a stable set of inventory operations:
 
 - **Inspect (read-only):** `/bot <target> inventory` shows the 36 main/hotbar slots, offhand and armor, with counts.
@@ -508,8 +516,8 @@ Agreed conventions (2026-10-22 JST):
 - Through a Group target, `inventory` is a query (each member's data shown immediately, no audit entry or history),
   while `hold`, `swap` and `drop` are mutations with the existing bounded summary, audit and history behavior.
 
-Order of work: the `item_stack_request` spike first, then inspection; `hold`/`swap`/`drop` follow once the spike
-shows which request actions the locked BDS accepts.
+Order of work (done): the `item_stack_request` spike first, then inspection; `hold`/`swap`/`drop` followed once the
+spike showed which requests the locked BDS accepts (legacy transactions only).
 
 Out of scope for this item: equipping/unequipping offhand and armor, containers (chests, furnaces), crafting, and
 automatic refill or tool switching. Automation is to be decided with BOT-009.

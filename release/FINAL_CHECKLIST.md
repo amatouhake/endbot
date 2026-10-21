@@ -300,8 +300,11 @@ new Endstone/BDS compatibility changes in this release.
 - 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).
 - 0.3.0: gameplay controls, forms and Japanese text on the 0.2.1 baseline (above).
 - 0.3.1: `destroy count <blocks>` patch release on the same pinned Endstone/BDS pair.
-- 0.4.0: scope to be determined after the 0.3.1 release.
-- Runtime-download installer: version **TBD**, no longer a required 0.4.0 feature.
+- 0.4.0 (decided 2026-10-22): one release for operating many Bots — shared Groups (BOT-010, on `main`),
+  inventory inspection/rearrangement and `drop all` (BOT-011), and controller Luau scripts/macros (BOT-009).
+  No interim release of Groups alone; the human-client gate covers these together.
+- Runtime-download installer: version **TBD**, no longer a required 0.4.0 feature; whether it is built at all
+  is undecided.
   Keep the existing managed operator bundles and setup/update workflow until the
   alternative distribution is designed and validated. A future installer may
   download official CPython/Node.js/packages with pinned hashes, but this is not

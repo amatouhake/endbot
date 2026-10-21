@@ -480,7 +480,8 @@ remains under BOT-009. Automatic formations and complete mining tasks are not as
 
 ## BOT-011: Inspect and rearrange a Bot's inventory, and drop everything
 
-Status: **Scope agreed — not designed in detail or implemented** (2026-10-21 JST).
+Status: **Scope and command conventions agreed; `item_stack_request` spike and inspection in progress** (2026-10-22
+JST). Targeted for 0.4.0 together with Groups and Luau.
 
 Today a Bot can only select a hotbar slot and drop from the selected slot, and the runtime caches only the nine hotbar
 slots. Emptying a Bot's inventory currently requires killing it. The operator chose this scope ahead of Luau (BOT-009)
@@ -496,6 +497,19 @@ so that scripts can later wrap a stable set of inventory operations:
 - **Drop from anywhere:** `drop <slot>` and `drop <item> [count]` in addition to the existing selected-slot `drop`.
 - **Drop everything:** `drop all` empties the Bot without killing it. The operator wants offhand and armor included,
   matching what a death would drop, if BDS accepts dropping from those slots; otherwise main/hotbar slots suffice.
+
+Agreed conventions (2026-10-22 JST):
+
+- Slots follow the game screen: hotbar `1`-`9`, main inventory `10`-`36`. Offhand and armor are shown and addressed
+  by name (`offhand`, `head`, `chest`, `legs`, `feet`). The listing uses the same numbers and names.
+- Items are named by their identifier without `minecraft:` (`diamond_pickaxe`), exact match only; no partial or
+  display-name matching. When several slots match, the lowest slot number wins, so the hotbar is preferred.
+- `drop all` runs immediately as a command; its form asks for confirmation first.
+- Through a Group target, `inventory` is a query (each member's data shown immediately, no audit entry or history),
+  while `hold`, `swap` and `drop` are mutations with the existing bounded summary, audit and history behavior.
+
+Order of work: the `item_stack_request` spike first, then inspection; `hold`/`swap`/`drop` follow once the spike
+shows which request actions the locked BDS accepts.
 
 Out of scope for this item: equipping/unequipping offhand and armor, containers (chests, furnaces), crafting, and
 automatic refill or tool switching. Automation is to be decided with BOT-009.

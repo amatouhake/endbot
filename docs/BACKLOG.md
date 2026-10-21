@@ -492,8 +492,8 @@ so that scripts can later wrap a stable set of inventory operations:
 - **Swap slots:** `swap <from> <to>` exchanges two inventory slots. Slot numbering (one-based, hotbar first or main
   first) is an open design point; it must match the inventory listing.
 - **Drop from anywhere:** `drop <slot>` and `drop <item> [count]` in addition to the existing selected-slot `drop`.
-- **Drop everything:** `drop all` empties the Bot without killing it. Proposed: include offhand and armor, matching what
-  a death would drop; confirm before implementation.
+- **Drop everything:** `drop all` empties the Bot without killing it. The operator wants offhand and armor included,
+  matching what a death would drop, if BDS accepts dropping from those slots; otherwise main/hotbar slots suffice.
 
 Out of scope for this item: equipping/unequipping offhand and armor, containers (chests, furnaces), crafting, and
 automatic refill or tool switching. Automation is to be decided with BOT-009.

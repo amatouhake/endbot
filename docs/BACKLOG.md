@@ -348,7 +348,7 @@ promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Command-first prototype implemented — client/menu and broader live validation pending**
+Status: **Human-client command smoke passed — completion, coordinated starts and Group menus remain open**
 (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -390,16 +390,25 @@ Shared scope and chosen command design:
 
 These are chosen design forms, now implemented in the command-first source prototype; see
 [prototype instructions and limits](GROUP_PROTOTYPE.md). `destroy count 64` applies its limit separately to each Bot.
-The locked BDS/Endstone console parser has been checked as described below. Actual client input and help/completion
-paths still require validation. Current Bot-name validation excludes `#`; this alone does not establish client support
-for the new target forms.
+The locked BDS/Endstone console parser and human-client target input have been checked as described below.
+Completion/help usability remains unresolved; Bot-name validation excluding `#` alone was not parser evidence.
 
 Windows RakNet console smoke (2026-10-21 JST, locked Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, build `51798905`):
 the existing `string`/Id overload rejected `#`. A first-position `message` fallback accepted the full Group command
 without a core patch. Create/add/members/delete, whole-group and one-based indexed actions, tailed commands, invalid
 index diagnostics and offline-member partial failure passed. The fixture retained both Bot profiles after Group
-deletion. Human-client command visibility/input/completion, Group menus and live mid-batch revocation remain open;
-there was no authenticated-human Xbox achievement check. See the prototype document for reproducible scope and limits.
+deletion. This console run did not include an authenticated-human Xbox achievement check.
+
+Human-client smoke (2026-10-21 JST, user report/screenshots, source `048e0aa`): the requested basic command, indexed
+target, ordinary/indexed Bot-menu and offline-member checks behaved as expected. Alice/Bob membership order stayed
+stable after Bob went offline; Alice's jump request succeeded while offline Bob's jump failed individually. Offline
+`stop` can still succeed for a retained session; failure semantics depend on the operation. Two usability issues remain:
+`/botgroup` advertises generic string/message parameters rather than helpful operation suggestions, and whole-group
+`jump` visibly starts sequentially. The current implementation waits for each member's authorization/profile lookup
+and operation before advancing. Group input batching is a recommended next experiment, not implemented or a same-BDS-
+tick guarantee. Preserve snapshot membership, UUID checks, per-member errors and revocation behavior when changing it.
+Group menus and live mid-batch revocation remain open. No actual Xbox achievement unlock was reported. See the
+[prototype evidence and follow-up](GROUP_PROTOTYPE.md) for scope and limits.
 
 Questions to resolve first:
 

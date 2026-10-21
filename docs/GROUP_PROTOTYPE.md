@@ -38,6 +38,9 @@ When using the OS CLI, quote the whole command, for example `endbot console "bot
   Rename keeps membership; a replacement Bot with the old name is not automatically a member.
 - The member list is fixed when a bulk operation starts. Member order stays stable while members go offline. A missing
   profile keeps its entry and produces an individual failure; `spawn` does not create a replacement for that entry.
+- Members execute sequentially, including authorization/profile lookups and request/response waits per member. This
+  fixes membership and reporting order, but does not synchronize action starts: whole-group `jump` has visible skew
+  on the human client. Registration order should not be interpreted as a requirement for staggered action starts.
 - A failed member does not skip the remaining Bots. Revocation/plugin shutdown cancels the remaining requests; an
   already applied operation is not rolled back. Existing continuous-mining revocation/lease behavior still applies.
 - Runtime requests carry the expected UUID and reject a stale/reused Bot name before applying an operation. This
@@ -74,7 +77,7 @@ and world files stay under the ignored output directory; never add them to Git.
 
 The first live probe established that Bedrock's `string`/Id target parameter rejects a leading `#`. The prototype adds a
 first-position `message` overload to accept the full target and command tail through public Endstone declarations.
-This may affect native completion and needs a human-client check even if console execution passes.
+Human-client smoke confirmed that execution works, while native completion remains weak as described below.
 
 On 2026-10-21 JST, the Windows RakNet console probe passed with locked Endstone `0.11.13+endbot.1` and BDS `1.26.52.3`
 (observed Windows build `51798905`). It exercised group creation/membership/deletion, whole-group stop, one-based indexed
@@ -87,7 +90,28 @@ Automated checks passed: 199 plugin tests, 134 runtime tests, 47 repository test
 runtime syntax checks and repository portability. The final capabilities/UUID-guard addition was covered by the eight
 control-server tests plus the final real-BDS probe.
 
-Remaining manual gates include authenticated-human command visibility, typing/pasting `#group` and `#group[1]`, native
-completion/help rendering, ordinary Bot menus/commands after the new overload, and live revocation during a batch.
-Unit/console checks do not establish Xbox achievement unlocks, other transports/platforms or support for another
-Endstone/BDS pair.
+Human-client smoke (2026-10-21 JST, user report and three screenshots, source commit `048e0aa`): the user reported that
+all four requested checks behaved as expected: creation/addition/member listing, whole-group and indexed command
+input, ordinary/indexed single-Bot menus, and offline-member behavior. The screenshots show ordered Alice/Bob entries,
+indexed teleport, whole-group stop/jump requests, and Bob retaining index 2 while offline. An online-only jump rejected
+offline Bob individually while Alice's request succeeded. The retained offline Bob session accepted `stop`; offline
+failure is operation-specific, so the earlier manual instruction expecting every offline `stop` to fail was too broad.
+
+Two limitations were observed:
+
+- `/botgroup` shows generic `<action: string>` / `<arguments: message>` usage instead of useful management-operation
+  suggestions. Command acceptance passed; completion usability did not. The locked baseline's generic-overload and
+  dynamic-name completion limits also apply (see BOT-008 in [the backlog](BACKLOG.md)).
+- `/bot #miners jump` starts the Bots visibly one after another. This matches the sequential implementation above;
+  it does not validate synchronized group actions. Ordered chat replies alone are not timing evidence; the user's
+  observation of the Bot actions establishes the visible skew. No timing measurement was taken.
+
+Recommended next experiment, not implemented: send one frozen, UUID-pinned group input batch to the runtime and apply
+the immediate inputs in one dispatch turn, rather than awaiting each member's round trip in Python. Preserve per-member
+errors, authorization/revocation behavior and stale-identity rejection. Test actual action-start skew; one dispatch turn
+does not guarantee the same BDS tick across independent Bot sessions. Do not make lifecycle/teleport operations or
+long-running work wait for every other member to complete merely to obtain coordinated input starts.
+
+Remaining gates include completion/help usability, Group menus, live revocation during a batch and measured action-start
+timing after a batching change. No Xbox achievement unlock was reported. These checks do not establish other
+transports/platforms or support for another Endstone/BDS pair.

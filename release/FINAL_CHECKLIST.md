@@ -274,15 +274,26 @@ reports the finishing count. The caveat that this is not strict Bot-owned
 `BlockBreakEvent` attribution is documented. No Group, Macro, installer or
 new Endstone/BDS compatibility changes in this release.
 
-- [ ] Build `release-candidate.yml` for `0.3.1` from the release-prepared `main`
+- [x] Build `release-candidate.yml` for `0.3.1` from the release-prepared `main`
   commit; all Windows/Linux wheel, bundle and clean-consumer jobs must pass.
-- [ ] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.3.1`
+  (run 39031881779 from `99ba05e`: `linux`, `windows`, all four clean-consumer E2E
+  legs and `assemble` passed)
+- [x] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.3.1`
   release; verify attestations/checksums and the immutable source commit.
-- [ ] Carry forward the PR #66 RakNet/NetherNet Survival mining smoke evidence;
-  document explicitly that the human Windows-client check on the final release
-  artifact is a separate gate if not performed.
-- [ ] Publish the tested draft unchanged, then verify published asset checksums
+  (2026-10-17: all 10 checksums and all 10 build-provenance attestations verified;
+  the draft targets `99ba05e`, the revision recorded in its manifest)
+- [x] Carry forward the PR #66 RakNet/NetherNet Survival mining smoke evidence;
+  the human Windows-client check is **run on the 0.3.1 bytes** (2026-10-17): on the
+  draft's Windows bundle, an Xbox-authenticated Windows client bound as controller
+  and ran `destroy count 3`, `destroy count 20`, `destroy for 40 count 100`, a
+  form-driven `destroy count`, `destroy count 0` (range error), `status`,
+  `/bot help 1-3`, `/bot help destroy` and the Japanese replies/forms; all behaved
+  as expected. A published-0.3.0 instance updated to 0.3.1 kept BDS `1.26.52.3`
+  and `endbot.toml` byte-identical, and its Bot rejoined with the same identity.
+- [x] Publish the tested draft unchanged, then verify published asset checksums
   and provenance. Do not treat package version bump alone as publication.
+  (2026-10-17: tag `v0.3.1` = `99ba05e`; every published asset matches the candidate
+  `SHA256SUMS`; all 10 attestations verified)
 
 ### After 0.1.0 (direction)
 

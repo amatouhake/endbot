@@ -213,6 +213,25 @@ from `endstone_endbot.control`; the server log must then show `Accepted local bo
 Alice xuid:` with an empty XUID, and vanilla `list` counts the Bot. This bypasses only the command layer and spawn
 placement, not the login path.
 
+## Reusable sandbox BDS for repeated runs
+
+Windows Firewall records its allow/block decision per executable path. A fresh BDS directory per validation run
+therefore raises a new "Minecraft" firewall prompt every time (and a new loopback-exemption UAC prompt per download).
+Keep one sandbox directory instead, for example under `%USERPROFILE%\endbot-dev\sandbox\server`:
+
+```powershell
+python scripts\raknet_spike.py --server-dir $env:USERPROFILE\endbot-dev\sandbox\server --output build\raknet-spike-1
+```
+
+`--server-dir` acquires the locked BDS through Endstone on first use, or again in the same path when the lock moves to
+another version. Before every run it deletes what earlier runs created (worlds, plugin data, Endstone config, logs) and
+restores pristine `server.properties`, `allowlist.json` and `permissions.json`. Run artifacts, keys and the report
+still go to the fresh `--output`. Only a directory created this way (it carries `.endbot-sandbox`) is reset; any other
+non-empty directory is refused, and one run may hold a sandbox at a time. For a manual session, prepare or reset the
+same directory with `python scripts\sandbox_server.py <dir>`, then configure and start it as above. Never point it at
+an operator instance or a world that matters. RakNet Bots and a same-machine client use loopback, which Windows
+Firewall does not filter.
+
 ## Manual smoke
 
 Join from Minecraft for Windows through normal Microsoft/Xbox sign-in and run, in order:

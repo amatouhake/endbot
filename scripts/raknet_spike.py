@@ -57,6 +57,7 @@ from endbot_cli.properties import (
     edit_properties,
     verify_server_properties,
 )
+from sandbox_server import reusable_server
 
 BOT = "RakNetSpike"
 SERVER_NAME = "Endbot RakNet spike"
@@ -111,15 +112,22 @@ def observed_position(
     raise ConsumerError("timed out waiting for BDS position observation")
 
 
-def exercise(
-    output: Path, node: str, report: dict, *, mining=False, inventory=False, item_use=False, groups=False, transport="raknet"
-) -> None:
+def check_locked_endstone() -> dict:
+    """Fail before any BDS acquisition when this Python lacks the locked Endstone."""
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     installed = importlib.metadata.version("endstone")
     if installed != lock["endstone"]["package_version"]:
         raise ConsumerError(
             f"expected patched Endstone {lock['endstone']['package_version']}, found {installed}"
         )
+    return lock
+
+
+def exercise(
+    output: Path, node: str, report: dict, *, mining=False, inventory=False, item_use=False, groups=False,
+    transport="raknet", server: Path | None = None,
+) -> None:
+    lock = check_locked_endstone()
     plugin = importlib.metadata.version("endstone-endbot")
     entrypoints = list(importlib.metadata.entry_points(group="endstone"))
     if len(entrypoints) != 1 or entrypoints[0].name != "endbot":
@@ -143,7 +151,7 @@ def exercise(
         raise ConsumerError("Node.js 24+ is required")
     report.update(
         platform=platform.system(),
-        endstone=installed,
+        endstone=lock["endstone"]["package_version"],
         plugin=plugin,
         bedrock_protocol=protocol,
         locked_bds=lock["bds"],
@@ -191,10 +199,14 @@ def exercise(
     output.mkdir(parents=True, exist_ok=False)
     if os.name != "nt":
         output.chmod(0o700)
-    server = output / "server"
-    server.mkdir()
-    report["stage"] = "BDS acquisition"
-    install_locked_bds(server)
+    # A reused sandbox (see sandbox_server.py) arrives installed and reset.
+    reused = server is not None
+    report["sandbox_server_reused"] = reused
+    if not reused:
+        server = output / "server"
+        server.mkdir()
+        report["stage"] = "BDS acquisition"
+        install_locked_bds(server)
     server_port = free_port(socket.SOCK_DGRAM)
     ipv6_port = free_port(socket.SOCK_DGRAM)
     while ipv6_port == server_port:
@@ -231,7 +243,7 @@ def exercise(
         json.dumps({"session": controller_session}), encoding="utf-8"
     )
     (output / "endbot.toml").write_text(
-        f"[server]\npath='server'\ntransport='{transport}'\n[controllers]\ngamertags=[]\n"
+        f"[server]\npath='{server if reused else 'server'}'\ntransport='{transport}'\n[controllers]\ngamertags=[]\n"
         f"[runtime]\ncontrol-port={control_port}\n",
         encoding="utf-8",
     )
@@ -307,7 +319,7 @@ def exercise(
             wait_for("runtime ready", runtime_ready, 30, runtime)
             token = paths.control_token.read_text().strip()
             config = EndbotConfig(
-                ServerConfig("server", transport),
+                ServerConfig(str(server) if reused else "server", transport),
                 ControllersConfig(()),
                 RuntimeConfig(control_port),
             )
@@ -853,6 +865,11 @@ def main() -> int:
     parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
     parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
     parser.add_argument(
+        "--server-dir",
+        type=Path,
+        help="reusable sandbox BDS directory (reset before the run); keeps one Windows Firewall rule across runs",
+    )
+    parser.add_argument(
         "--transport",
         choices=("raknet", "nethernet"),
         default="raknet",
@@ -880,8 +897,16 @@ def main() -> int:
         "xbox_achievement_observed": False,
     }
     try:
-        exercise(output, args.node, report, mining=args.mining, inventory=args.inventory,
-                 item_use=args.item_use, groups=args.groups, transport=args.transport)
+        options = {"mining": args.mining, "inventory": args.inventory, "item_use": args.item_use,
+                   "groups": args.groups, "transport": args.transport}
+        if args.server_dir is None:
+            exercise(output, args.node, report, **options)
+        else:
+            # A wrong environment must not install its BDS into the shared sandbox.
+            check_locked_endstone()
+            report["stage"] = "sandbox BDS preparation"
+            with reusable_server(args.server_dir) as server:
+                exercise(output, args.node, report, server=server, **options)
     except (Exception, KeyboardInterrupt) as error:  # noqa: BLE001 - persist the failed layer for any upstream failure
         report["error"] = str(error)
         print(f"raknet-spike: FAIL at {report['stage']}: {error}", file=sys.stderr)

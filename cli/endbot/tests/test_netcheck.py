@@ -13,7 +13,7 @@ class LanDiscoveryPortTests(unittest.TestCase):
     def test_a_free_port_passes_and_a_held_port_is_explained(self) -> None:
         holder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.addCleanup(holder.close)
-        holder.bind(("0.0.0.0", 0))
+        holder.bind(("127.0.0.1", 0))
         port = holder.getsockname()[1]
         problem = lan_discovery_port_problem(port)
         self.assertIsNotNone(problem)
@@ -39,7 +39,7 @@ class LanDiscoveryPortTests(unittest.TestCase):
         holder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.addCleanup(holder.close)
         holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        holder.bind(("0.0.0.0", 0))
+        holder.bind(("127.0.0.1", 0))
         port = holder.getsockname()[1]
         self.assertIn(os.getpid(), windows_udp_port_owners(port))
         holder.close()
@@ -48,7 +48,7 @@ class LanDiscoveryPortTests(unittest.TestCase):
 
 def free_udp_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-        probe.bind(("0.0.0.0", 0))
+        probe.bind(("127.0.0.1", 0))
         return probe.getsockname()[1]
 
 

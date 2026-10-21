@@ -78,7 +78,9 @@ def lan_discovery_port_problem(
     try:
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        probe.bind(("0.0.0.0", port))
+        # Loopback still collides with a wildcard holder, and unlike 0.0.0.0 it
+        # does not raise a Windows Firewall prompt for each Python install.
+        probe.bind(("127.0.0.1", port))
     except OSError as error:
         return _problem(port, f"errno {error.errno}")
     finally:

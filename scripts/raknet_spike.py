@@ -534,6 +534,17 @@ def exercise(
                     lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
                     lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
                 )
+            if inventory_stack:
+                from inventory_stack_probe import exercise_inventory_stack
+
+                # Gather spike evidence even when provisional product operations fail.
+                # The spike deactivates its observer before the product fixture runs.
+                report["stage"] = "inventory stack requests"
+                exercise_inventory_stack(
+                    output, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report,
+                )
             if inventory:
                 from mining_probe import exercise_inventory
 
@@ -548,15 +559,6 @@ def exercise(
                         label, predicate, timeout, bds
                     ),
                     report,
-                )
-            if inventory_stack:
-                from inventory_stack_probe import exercise_inventory_stack
-
-                report["stage"] = "inventory stack requests"
-                exercise_inventory_stack(
-                    output, lambda line: console(bds, line),
-                    lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
-                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report,
                 )
             identity = control_request(control_port, token, "status", name=BOT)[
                 "identityId"

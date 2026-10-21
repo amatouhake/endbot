@@ -155,6 +155,31 @@ test('group inputs apply in one dispatch turn, preserving partial failures and U
   assert.deepEqual(response.result.results[0].result, { name: 'Alice', connectionState: 'online' })
 })
 
+test('swap and hold use authenticated control and project bounded batch replies', async t => {
+  const calls = []
+  const token = 'a'.repeat(43)
+  const server = new ControlServer({ token, port: 0, lifecycle: {
+    identityOf: name => name,
+    swap: (name, a, b) => { calls.push({ name, a, b }); return { name, connectionState: 'online', slotA: a, slotB: b, inventory: 'omit' } },
+    hold: (name, item) => { calls.push({ name, item }); return { name, connectionState: 'online', found: true, sourceSlot: 14, selectedHotbarSlot: 1, inventory: 'omit' } }
+  } })
+  await server.listen()
+  t.after(() => server.close())
+  const entries = [{ method: 'swap', params: { name: 'Alice', expectedIdentityId: 'Alice', a: 10, b: 2 } },
+    { method: 'hold', params: { name: 'Alice', expectedIdentityId: 'Alice', item: 'stone' } }]
+  for (const entry of entries) {
+    assert.equal((await request(server.port, { version: 1, id: 'denied', token: 'wrong', ...entry })).ok, false)
+  }
+  assert.deepEqual(calls, [])
+  for (const entry of entries) assert.equal((await request(server.port, { version: 1, id: 'single', token, ...entry })).ok, true)
+  const response = await request(server.port, { version: 1, id: 'batch', token, method: 'groupInputBatch', params: { requests: entries } })
+  assert.deepEqual(response.result.results.map(row => row.result), [
+    { name: 'Alice', connectionState: 'online' },
+    { name: 'Alice', connectionState: 'online', found: true, sourceSlot: 14, selectedHotbarSlot: 1 }
+  ])
+  assert.deepEqual(calls.slice(-2), [{ name: 'Alice', a: 10, b: 2 }, { name: 'Alice', item: 'stone' }])
+})
+
 test('radius query, override and reset use the authenticated control surface', async t => {
   const calls = []
   const token = 'a'.repeat(43)

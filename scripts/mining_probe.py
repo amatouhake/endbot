@@ -7,6 +7,7 @@ observer into its isolated plugin source; it prepares blocks/tools via the SDK.
 import json
 import math
 import os
+import time
 from pathlib import Path
 
 EQUIPMENT = {"offhand": "item_in_off_hand", "head": "helmet", "chest": "chestplate",
@@ -529,6 +530,60 @@ def exercise_product_drops(output, console, control, wait, report, request, stat
             (output / "product-drop-results.json").write_text(json.dumps(product_results, indent=2), encoding="utf-8")
 
 
+def product_inventory_cases():
+    """Slot pairs and selected index are explicit fixture expectations, not runtime replies."""
+    return [
+        ("swap-main-hotbar", "swap 10 2", [("10", "minecraft:stone", 5), ("2", "minecraft:dirt", 3)], (10, 2), 0),
+        ("move-hotbar-main", "swap 1 36", [("1", "minecraft:diamond_pickaxe", 1)], (1, 36), 0),
+        ("hold-hotbar", "hold apple", [("3", "minecraft:apple", 2), ("5", "minecraft:apple", 4),
+                                       ("10", "minecraft:apple", 6)], None, 2),
+        ("hold-main-occupied", "hold diamond_pickaxe", [("1", "minecraft:dirt", 3),
+                                                       ("14", "minecraft:diamond_pickaxe", 1),
+                                                       ("18", "minecraft:diamond_pickaxe", 1)], (14, 1), 0),
+    ]
+
+
+def expected_product_inventory(before, pair, selected):
+    expected = json.loads(json.dumps(before))
+    if pair:
+        a, b = (slot - 1 for slot in pair)
+        expected["slots"][a], expected["slots"][b] = expected["slots"][b], expected["slots"][a]
+    expected["hotbar"] = expected["slots"][:9]
+    expected["selected"] = selected
+    expected["dropped"] = []
+    return expected
+
+
+def exercise_product_inventory(output, console, control, wait, report, request, state):
+    results = report["product_inventory"] = {}
+    for label, arguments, items, pair, selected in product_inventory_cases():
+        control("stop")
+        fixture_id = f"product-inventory-{label}"
+        request({"id": fixture_id, "block": "minecraft:air", "inventory": "product", "product_items": items})
+        wait("product inventory fixture setup", lambda fixture_id=fixture_id: state().get("id") == fixture_id, 10)
+        console("bot RakNetSpike hotbar 1")
+        wait("product inventory initial selection", lambda: state().get("selected") == 0, 10)
+        time.sleep(1.2)
+        before = json.loads(json.dumps(state()))
+        expected = expected_product_inventory(before, pair, selected)
+        command = f"bot RakNetSpike {arguments}"
+        record = results[label] = {"command": command, "before": before, "expected": expected, "outcome": "pending"}
+        console(command)
+        try:
+            wait("product inventory authoritative state",
+                 lambda expected=expected: product_drop_matches(state(), expected, []), 10)
+            time.sleep(1.2)
+            if not product_drop_matches(state(), expected, []):
+                raise RuntimeError("Product inventory changed after authoritative correction")
+            record["outcome"] = "accepted"
+        except RuntimeError:
+            record["outcome"] = "inconclusive"
+            raise
+        finally:
+            record["after"] = json.loads(json.dumps(state()))
+            (output / "product-inventory-results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+
+
 def exercise_inventory(output: Path, console, control, wait, report):
     """Natural pickups and real BDS transactions, with no Bot reconnect."""
     import time
@@ -645,6 +700,7 @@ def exercise_inventory(output: Path, console, control, wait, report):
             "nbt_preserved": True,
         }
     exercise_product_drops(output, console, control, wait, report, request, state)
+    exercise_product_inventory(output, console, control, wait, report, request, state)
     request({"id": "inventory-cleanup", "block": "minecraft:air"})
     wait(
         "inventory fixture cleanup",

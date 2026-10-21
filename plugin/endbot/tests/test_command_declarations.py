@@ -105,6 +105,8 @@ DOCUMENTED_ROOT_FORMS = [
     ["help", "move"],
     ["help", "radius"],
     ["help", "inventory"],
+    ["help", "swap"],
+    ["help", "hold"],
     ["help", "menu"],
     ["help", "teleport"],
     ["help", "ping"],
@@ -114,6 +116,9 @@ DOCUMENTED_ROOT_FORMS = [
 ]
 
 DOCUMENTED_NAMED_FORMS = [
+    *[[target, *tail] for target in ("Alice", "#miners", "#miners[1]")
+      for tail in (("swap", "10", "2"), ("swap", "1", "36"), ("swap", "1", "1"),
+                   ("hold", "diamond_pickaxe"), ("hold", "minecraft:stone"), ("hold", "Stone"))],
     *[[target, "drop", *tail] for target in ("Alice", "#miners", "#miners[1]")
       for tail in (("1",), ("12",), ("36",), ("offhand",), ("head",), ("chest",), ("legs",), ("feet",),
                    ("all",), ("stone",), ("minecraft:stone", "7"), ("stone", "0"), ("head", "2"))],
@@ -350,6 +355,12 @@ def _matches_any(tokens, allow_enums=True):
 
 
 class DeclarationCoverageTests(unittest.TestCase):
+    def test_inventory_move_hints_keep_required_tails_and_distinct_enum_types(self):
+        self.assertIn("/bot <name: string> (swap)<operation: EndbotSwap> <a: int> <b: int>", COMMAND_USAGES)
+        self.assertIn("/bot <name: string> (hold)<operation: EndbotHold> <item: string>", COMMAND_USAGES)
+        for tail in (("swap", "10", "2"), ("hold", "minecraft:stone")):
+            self.assertTrue(_parse_usage_matchers(["Alice", *tail]))
+
     def test_usages_satisfy_endstone_registration_rules(self) -> None:
         for usage in COMMAND_USAGES:
             with self.subTest(usage=usage):

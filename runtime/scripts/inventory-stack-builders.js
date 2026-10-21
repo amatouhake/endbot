@@ -3,7 +3,7 @@
 
 // Probe-only protocol-2193 builders. No product operation imports this module.
 import { decodeInventory } from '../src/inventory-sync.js'
-import { createDropTransaction } from '../src/packets.js'
+import { createDropTransaction, createSwapTransaction } from '../src/packets.js'
 import { stackSlot } from '../src/stack-requests.js'
 
 export function createInventoryOpen (runtimeId) {
@@ -30,4 +30,12 @@ export function decodeProbeInventory (snapshot, identityId, palette) {
   if (!snapshot || !Array.isArray(snapshot.slots) || snapshot.slots.length !== 36 ||
       !Array.isArray(snapshot.equipment) || snapshot.equipment.length !== 5) throw new Error('Invalid probe inventory')
   return decodeInventory(JSON.stringify(snapshot), identityId, palette)
+}
+
+export function createLegacySwap ({ source, destination, item, destinationItem }) {
+  for (const reference of [source, destination]) {
+    stackSlot(reference?.container, reference?.slot, 0)
+    if (!['hotbar_and_inventory', 'inventory', 'hotbar'].includes(reference.container)) throw new Error('Unsupported legacy swap container')
+  }
+  return createSwapTransaction({ a: source.slot, b: destination.slot, itemA: item, itemB: destinationItem })
 }

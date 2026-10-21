@@ -18,6 +18,8 @@ class FakeSession extends EventEmitter {
   applyInputs (inputs) { this.inputSnapshots.push(inputs.snapshot()) }
   selectedHotbarSlot () { return this.slot }
   selectHotbar (slot) { this.slot = slot }
+  swap (a, b) { this.exchange = [a, b]; return { slotA: a, slotB: b } }
+  hold (item) { this.requestedItem = item; return { found: true, sourceSlot: 14, selectedHotbarSlot: 1 } }
   interactBlock (interaction) { this.interactions.push(interaction) }
   drop (options) { this.drops.push(options); return { droppedSlots: 1, droppedCount: 5, drops: [{ slot: '12', item: 'minecraft:stone', count: 5 }] } }
   setChunkRadius (radius) { this.radius = radius; this.serverChunkRadius = undefined }
@@ -53,6 +55,22 @@ function fixture (options = {}) {
 
 const turn = () => new Promise(resolve => setImmediate(resolve))
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+test('swap and hold require online sessions and validated control parameters', async () => {
+  const { lifecycle, sessions } = fixture()
+  await lifecycle.spawn('Alice')
+  await turn()
+  assert.equal(lifecycle.swap('Alice', 10, 2).slotA, 10)
+  assert.deepEqual(sessions[0].exchange, [10, 2])
+  assert.equal(lifecycle.hold('Alice', 'minecraft:stone').sourceSlot, 14)
+  assert.equal(sessions[0].requestedItem, 'minecraft:stone')
+  for (const slot of [0, 37, 1.5, '1', true, undefined]) assert.throws(() => lifecycle.swap('Alice', slot, 2))
+  for (const item of [undefined, 1, 'Stone', 'custom:stone']) assert.throws(() => lifecycle.hold('Alice', item))
+  await lifecycle.despawn('Alice')
+  assert.throws(() => lifecycle.swap('Alice', 1, 2))
+  assert.throws(() => lifecycle.hold('Alice', 'stone'))
+  await lifecycle.close()
+})
 
 test('continuous mining routes start/continue, survives movement and ignores a stale stop', async () => {
   const { lifecycle } = fixture()

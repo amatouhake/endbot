@@ -74,7 +74,7 @@ Players can run the common operations from native Bedrock forms instead of typin
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
 Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy, interact),
-Inventory (list inventory, hotbar, drop) and Bot (resume/spawn, reconnect, confirmed despawn, radius and status).
+Inventory (list inventory, hotbar, hold, swap, drop) and Bot (resume/spawn, reconnect, confirmed despawn, radius and status).
 Category names follow Minecraft's control settings. An offline Bot offers resume/spawn, radius and the Bot settings
 category. Individual Bot profile controls offer rename and confirmed forget; forget still requires an offline profile.
 The target list also shows `#group (count)` entries that open this same operation screen directly. Group-wide controls
@@ -318,6 +318,8 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice inventory
 /bot Alice hotbar
 /bot Alice hotbar <1-9>
+/bot Alice swap <a> <b>
+/bot Alice hold <item>
 /bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
 /bot Alice drop
 /bot Alice drop stack
@@ -356,6 +358,26 @@ Native inventory updates also announce changed held equipment, independent of pe
 Unknown/invalid observations are ignored as a whole; an unknown or empty
 selected slot still fails with `Selected hotbar slot is empty`. Without the matching plugin, reconnect remains the
 recovery for missing native deltas. See [pickup validation](INVENTORY_VALIDATION.md).
+
+`swap <a> <b>` requests an exchange of the two whole stacks, with the same hotbar 1-9 and main 10-36 labels as
+`inventory`. One empty side makes it a move. Equal slots and two empty slots are errors. Offhand and armor are
+excluded; equip is deferred. For example `/bot Alice swap 10 2` requests a main/hotbar exchange and
+`/bot Alice swap 1 36` can move a hotbar stack into an empty main slot.
+
+`hold <item>` matches an exact identifier (`diamond_pickaxe` or `minecraft:diamond_pickaxe`). A hotbar match wins:
+it selects the lowest matching hotbar slot just like `hotbar <n>`. Otherwise it swaps the lowest matching main slot
+into the currently selected hotbar slot, sending that slot's previous stack back to the main slot. A missing item
+reports its requested identifier. Replies describe requests, such as `hold diamond_pickaxe: selected hotbar 3 requested`
+or `hold diamond_pickaxe: moved slot 14 to hotbar 1 requested`; they do not establish BDS completion.
+
+Both mutations use a legacy normal transaction with two window-0 container actions, carrying exact item data without
+stack IDs. The runtime predicts both slots until the next authoritative observation corrects them, and announces
+selected equipment after a changed selection or held stack. **Inventory... / Hold item...** accepts an item ID and
+**Swap slots...** offers two 1-36 dropdowns. These forms echo the equivalent typed command, including any item prefix.
+Group swap/hold use the existing UUID-pinned batch input path with bounded request replies, audit and saved history.
+Live acceptance of these new operations is **pending**; see [the validation record](INVENTORY_VALIDATION.md).
+The native `EndbotSwap`/`EndbotHold` typed overloads provide hints; enum-free required message tails continue to carry
+execution under the pinned BDS declaration rules. Native client hints and form rendering still require live checks.
 
 `drop` requests one selected item; `drop stack` requests the selected stack. `drop <slot>` requests that slot's whole
 stack using the same labels as `inventory`: hotbar 1-9, main 10-36, then offhand/head/chest/legs/feet.

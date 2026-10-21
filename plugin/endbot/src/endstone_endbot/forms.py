@@ -274,6 +274,8 @@ def bot_screen(
                     "inventory",
                     Button(label("List inventory"), run((name, "inventory"))),
                     Button(label("Hotbar slot..."), Show(hotbar_modal(name, view.status, lang))),
+                    Button(label("Hold item..."), Show(hold_modal(name, lang))),
+                    Button(label("Swap slots..."), Show(swap_modal(name, lang))),
                     Button(label("Drop item..."), Show(drop_screen(name, lang))),
                 ),
             ),
@@ -554,6 +556,28 @@ def hotbar_modal(name: str, status: dict | None = None, lang: str = "en") -> Mod
     return ModalScreen(
         f"{name}: hotbar", (StepSlider(tr(lang, "Hotbar slot"), slots, default),), build, tr(lang, "Select")
     )
+
+
+def hold_modal(name: str, lang: str = "en") -> ModalScreen:
+    def build(values):
+        item = _text(values[0])
+        if not re.fullmatch(r"(?:minecraft:)?[a-z0-9_./-]+", item):
+            raise FormResponseError("Enter one item identifier")
+        return ((name, "hold", item),)
+
+    return ModalScreen(f"{name}: hold", (TextInput(tr(lang, "Item identifier"), "diamond_pickaxe"),),
+                       build, tr(lang, "Run"))
+
+
+def swap_modal(name: str, lang: str = "en") -> ModalScreen:
+    slots = tuple(str(slot) for slot in range(1, 37))
+
+    def build(values):
+        return ((name, "swap", _option(slots, values[0]), _option(slots, values[1])),)
+
+    return ModalScreen(f"{name}: swap", (Dropdown(tr(lang, "First slot (1-36)"), slots),
+                                        Dropdown(tr(lang, "Second slot (1-36)"), slots, 1)),
+                       build, tr(lang, "Run"))
 
 
 def drop_screen(name: str, lang: str = "en") -> ActionScreen:

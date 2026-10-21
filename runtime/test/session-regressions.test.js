@@ -69,6 +69,51 @@ async function fixture (t, options = {}, profile = {}) {
 
 const miningTarget = { blockPosition: [0, 64, 2], blockRuntimeId: 42, blockName: 'minecraft:stone', face: 2, dimension: 'Overworld' }
 
+test('swap and main hold predict both exact stacks, announce selected equipment and accept corrections', async t => {
+  const { client, session, queued } = await fixture(t)
+  session.itemPalette.set('minecraft:stone', 1)
+  session.itemPalette.set('minecraft:dirt', 2)
+  const slots = Array(36).fill(null)
+  const encoded = (name, count) => ({ name, count, metadata: 7, blockRuntimeId: 2,
+    nbt: { type: 'compound', value: { custom: { type: 'string', value: 'keep exact' } } } })
+  slots[0] = encoded('minecraft:dirt', 3)
+  slots[13] = encoded('minecraft:stone', 5)
+  const observe = () => client.emit('script_custom_event', observationEvent(session, { identityId: session.profile.identityId, slots }))
+  observe()
+  queued.length = 0
+  session.hold('stone')
+  assert.equal(session.inventory[0].network_id, 1)
+  assert.equal(session.inventory[13].network_id, 2)
+  assert.equal(session.inventory[13].count, 3)
+  assert.equal(session.heldItem.extra.nbt.nbt.value.custom.value, 'keep exact')
+  assert.equal(queued.find(p => p.name === 'inventory_transaction').params.transaction.actions.length, 2)
+  assert.equal(queued.find(p => p.name === 'mob_equipment').params.item.network_id, 1)
+  // BDS rejection/periodic correction restores both source and selected hand.
+  observe()
+  assert.equal(session.inventory[0].network_id, 2)
+  assert.equal(session.inventory[13].network_id, 1)
+  assert.equal(queued.at(-1).params.item.network_id, 2)
+  queued.length = 0
+  session.swap(1, 36)
+  assert.equal(session.inventory[0].network_id, 0)
+  assert.equal(session.inventory[35].network_id, 2)
+  assert.equal(queued.at(-1).params.item.network_id, 0)
+  observe()
+  queued.length = 0
+  assert.throws(() => session.swap(2, 3), /Both inventory slots/)
+  assert.throws(() => session.swap(1, 1), /different/)
+  assert.deepEqual(queued, [])
+  // A hotbar match follows hotbar selection, without an inventory transaction.
+  slots[2] = encoded('minecraft:stone', 2)
+  slots[4] = encoded('minecraft:stone', 4)
+  observe()
+  queued.length = 0
+  assert.equal(session.hold('minecraft:stone').sourceSlot, 3)
+  assert.equal(session.selectedHotbarSlot(), 2)
+  assert.equal(queued.some(p => p.name === 'inventory_transaction'), false)
+  assert.equal(queued.at(-1).params.selected_slot, 2)
+})
+
 test('offhand equipment cannot overwrite or reannounce the main hand during use', async t => {
   const { client, session, inputs, queued, tick } = await fixture(t)
   inputs.setAction('use', 'continuous', undefined, 10)

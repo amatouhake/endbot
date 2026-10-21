@@ -50,7 +50,7 @@ COMMAND_USAGES = [
     "/bot <command: string> <page: int>",
     (
         "/bot (help)<command: EndbotHelpTopic> (status|spawn|resume|reconnect|despawn|forget|rename|tp|move|look|"
-        "jump|attack|use|sprint|sneak|inventory|hotbar|interact|destroy|drop|radius|stop|menu)"
+        "jump|attack|use|sprint|sneak|inventory|hotbar|swap|hold|interact|destroy|drop|radius|stop|menu)"
         "<topic: EndbotHelpTopicName>"
     ),
     "/bot <name: string> <operation: string>",
@@ -97,6 +97,8 @@ COMMAND_USAGES = [
     "/bot <name: string> (sprint|sneak)<flag: EndbotFlag> (on|off)<state: EndbotOnOff>",
     "/bot <name: string> (hotbar)<operation: EndbotHotbarQuery>",
     "/bot <name: string> (hotbar)<operation: EndbotHotbarSet> <slot: int>",
+    "/bot <name: string> (swap)<operation: EndbotSwap> <a: int> <b: int>",
+    "/bot <name: string> (hold)<operation: EndbotHold> <item: string>",
     "/bot <name: string> (destroy)<operation: EndbotDestroy>",
     "/bot <name: string> (destroy)<operation: EndbotDestroyMode> (once|continuous|stop)<mode: EndbotDestroyModeName>",
     "/bot <name: string> (destroy)<operation: EndbotDestroyPosition> <block: block_pos>",

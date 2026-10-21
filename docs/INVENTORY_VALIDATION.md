@@ -148,3 +148,51 @@ Native declaration/client hints, forms (including drop-all cancel/confirm), Japa
 real-client equipment rendering and protection/cancellation for wider slots remain live reviewer checks. The earlier
 pickup results above are historical and do not validate these new selectors. World achievement history and actual
 Xbox achievement unlocks remain explicit manual/E2E gates. No new Endstone/BDS support claim is made.
+
+## Legacy slot exchanges and product swap/hold (Windows RakNet live runs, 2026-10-22 JST)
+
+Prepared for the same locked pair only. No Python suite or BDS run was performed in the preparation sandbox.
+Run both matrices in one disposable-world smoke with a fresh ignored output directory:
+
+```text
+python scripts/raknet_spike.py --inventory-stack --inventory --server-dir <sandbox> --output build/<fresh-directory>
+```
+
+The stack spike now has 31 independent cases. Four new `legacy-swap` cases send a normal `inventory_transaction`
+with exactly two window-0 container actions: source old->destination item and destination old->source item. They use
+the fixture's complete item observation, including metadata/NBT/restrictions, without stack network IDs. They never
+predict the product cache. Before/expected/after snapshots, both source items, responses, packet violations and
+disconnect evidence remain in `inventory-stack-results.json`. Acceptance requires matching authoritative full
+inventory, equipment, selected slot and absence of drops, with no disconnect or packet violation. Silence alone
+cannot imply acceptance; legacy exchanges have no correlated stack response.
+In a combined run the spike runs first, then deactivates its fixture observer so product item ejections are observed
+only by the product fixture. A product failure cannot prevent the spike evidence from being collected.
+
+Runs `build/inventory-moves-1` (`--inventory --inventory-stack`) and `build/inventory-moves-2` (`--inventory`) on the locked pair and reusable sandbox. Every case matched the authoritative BDS inventory and selected slot. The combined run then timed out in the later per-Bot radius step ("server confirmation pending"); the `--inventory` rerun passed that step and completed, so it was not reproduced.
+
+| Spike case | Fixture / operation | Live result |
+| --- | --- | --- |
+| `legacy-move-10-to-1` | Main 10 stone x5 to empty hotbar 1 | Accepted |
+| `legacy-swap-10-2` | Main 10 stone x5 / hotbar 2 dirt x3 | Accepted |
+| `legacy-move-1-to-36` | Hotbar 1 stone x5 to empty main 36 | Accepted |
+| `legacy-swap-identical-counts` | Main 10 stone x5 / hotbar 2 stone x3; counts exchange | Accepted |
+
+Product swap/hold are implemented provisionally on that path. Product observation remains read-only. The runtime
+predicts both slots after sending; the next complete BDS observation can restore a rejected swap. Selection and
+selected-stack changes re-announce normal held equipment. Equipment movement/equip is deferred.
+The `--inventory` matrix also issues the real product commands below and records exact item/NBT, all slots,
+equipment, selected slot and zero ejections in `product-inventory-results.json`, before and after a periodic correction.
+The main hold fixture has an occupied selected slot and duplicate main matches to verify lowest-slot selection.
+
+| Product case | Authoritative expectation | Live result |
+| --- | --- | --- |
+| `bot RakNetSpike swap 10 2` | Stone x5 and dirt x3 exchange; selected hotbar 1 unchanged | Accepted |
+| `bot RakNetSpike swap 1 36` | Named/enchanted/damaged tool moves to main 36; selected hotbar 1 becomes empty | Accepted |
+| `bot RakNetSpike hold apple` | Select hotbar 3, before hotbar 5 or main 10; inventory unchanged | Accepted |
+| `bot RakNetSpike hold diamond_pickaxe` | Lowest main match 14 exchanges with occupied hotbar 1; main 18 unchanged | Accepted |
+
+If the spike rejects these exchanges, discard the provisional product operation before committing. Automated
+serializer/prediction tests establish neither BDS acceptance nor achievement preservation. Japanese errors/replies,
+native command hints, forms and echoed commands, group partial failures, real-client equipment rendering and
+protection/cancellation remain live/manual gates. World achievement history and actual Xbox achievement unlocks
+remain explicit manual/E2E gates; no new compatibility claim is made.

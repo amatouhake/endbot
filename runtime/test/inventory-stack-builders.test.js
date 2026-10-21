@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import test from 'node:test'
-import { createInventoryClose, createInventoryOpen, createLegacyDrop, decodeProbeInventory } from '../scripts/inventory-stack-builders.js'
+import { createInventoryClose, createInventoryOpen, createLegacyDrop, createLegacySwap, decodeProbeInventory } from '../scripts/inventory-stack-builders.js'
 import { EMPTY_ITEM } from '../src/packets.js'
 
 const require = createRequire(import.meta.url)
@@ -23,6 +23,44 @@ const encodedItem = { name: 'minecraft:stone', count: 5, metadata: 7, blockRunti
     CanDestroy: { type: 'list', value: { type: 'string', value: ['minecraft:dirt'] } } } } }
 const observation = () => ({ identityId: 'bot', slots: Array(36).fill(null), equipment: Array(5).fill(null) })
 const palette = new Map([['minecraft:stone', 1], ['minecraft:shield', 2]])
+
+for (const [a, b, countA, countB] of [[9, 0, 5, 0], [9, 1, 5, 3], [0, 35, 5, 0], [9, 1, 5, 2]]) {
+  test(`legacy two-container exchange ${a}/${b} counts ${countA}/${countB} round-trips exact data`, () => {
+    const value = observation()
+    value.slots[a] = { ...encodedItem, count: countA }
+    value.slots[b] = countB ? { ...encodedItem, count: countB, name: countB === 3 ? 'minecraft:shield' : 'minecraft:stone' } : null
+    const { slots } = decodeProbeInventory(value, 'bot', palette)
+    const packet = createLegacySwap({ source: { container: 'inventory', slot: a },
+      destination: { container: 'inventory', slot: b }, item: slots[a], destinationItem: slots[b] })
+    const decoded = roundTrip('inventory_transaction', packet).transaction
+    assert.equal(decoded.transaction_type, 'normal')
+    assert.equal(decoded.actions.length, 2)
+    const [first, second] = decoded.actions
+    assert.deepEqual([first.slot, second.slot], [a, b])
+    for (const action of decoded.actions) {
+      assert.equal(action.source_type, 'container')
+      assert.equal(action.window_id, 0)
+      assert.equal(action.old_item.has_stack_id ?? false, false)
+      assert.equal(action.new_item.has_stack_id ?? false, false)
+    }
+    assert.deepEqual(first.old_item, second.new_item)
+    assert.deepEqual(first.new_item, second.old_item)
+    assert.equal(first.old_item.count, countA)
+    assert.equal(first.new_item.network_id, countB ? slots[b].network_id : 0)
+    if (countB) assert.equal(first.new_item.count, countB)
+    assert.equal(first.old_item.metadata, 7)
+    assert.deepEqual(first.old_item.extra.can_destroy, ['minecraft:dirt'])
+    assert.equal(slots[a].count, countA)
+    const long = first.old_item.extra.nbt.nbt.value.custom.value
+    assert.equal((BigInt(long[0]) << 32n) | BigInt(long[1] >>> 0), 123456789123456789n)
+  })
+}
+
+test('legacy swap refuses equipment and invalid references', () => {
+  for (const source of [{ container: 'armor', slot: 0 }, { container: 'inventory', slot: 36 }, {}]) {
+    assert.throws(() => createLegacySwap({ source, destination: { container: 'inventory', slot: 0 } }))
+  }
+})
 
 test('open inventory interact uses own runtime ID and protocol-2193 action 6', () => {
   const packet = createInventoryOpen(987n)

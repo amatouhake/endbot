@@ -71,6 +71,29 @@ def _format(text: str, params: dict[str, object], language: str) -> str:
 
 
 JA: dict[str, str] = {
+    "exchange two inventory stacks": "持ち物の二つのスタックを交換する",
+    "Slots are 1-36. An empty side is a move; equipment is excluded. BDS validates the request.":
+        "スロットは1-36です。片方が空なら移動します。装備は対象外です。BDS が要求を検証します。",
+    "select an item by exact identifier": "アイテムIDの完全一致で手に持つ",
+    "Selects the lowest matching hotbar slot, or swaps the lowest main stack into the selected hotbar slot.":
+        "一致する最小番号のホットバースロットを選びます。なければメインの最小番号から選択中のスロットへ交換します。",
+    "Item IDs accept minecraft: or no prefix. Replies describe the request; BDS validates it.":
+        "アイテムIDの minecraft: は省略できます。返答は要求内容です。BDS が検証します。",
+    "Use swap <a> <b>": "swap <a> <b> を使用してください",
+    "Use hold <item>": "hold <item> を使用してください",
+    "Inventory slots must be from 1 to 36": "持ち物のスロットは1から36で指定してください",
+    "Swap requires two different slots": "swap には異なる二つのスロットを指定してください",
+    "Both inventory slots are empty": "両方のスロットが空です",
+    "Invalid hold item identifier": "手に持つアイテムのIDが正しくありません",
+    "Item {item} was not found": "アイテム {item} が見つかりません",
+    "swap {a} {b} requested": "swap {a} {b} を要求しました",
+    "hold {item}: selected hotbar {slot} requested": "hold {item}: ホットバー {slot} の選択を要求しました",
+    "hold {item}: moved slot {source} to hotbar {slot} requested":
+        "hold {item}: スロット {source} からホットバー {slot} への移動を要求しました",
+    "Hold item...": "アイテムを手に持つ (hold)...",
+    "Swap slots...": "スロットを交換する (swap)...",
+    "First slot (1-36)": "一つ目のスロット (1-36)",
+    "Second slot (1-36)": "二つ目のスロット (1-36)",
     "request drops from inventory and equipment": "持ち物と装備を落とすよう要求する",
     "drop drops one selected item; stack drops the selected stack; a slot drops its whole stack.":
         "drop は選択中の1個、stack は選択中のスタック、スロット指定はそのスタック全体を落とすよう要求します。",

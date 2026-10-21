@@ -119,6 +119,8 @@ class PluginAdapterTests(unittest.TestCase):
             {
                 "status",
                 "inventory",
+                "hold",
+                "swap",
                 "spawn",
                 "resume",
                 "reconnect",

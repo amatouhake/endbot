@@ -52,6 +52,8 @@ def install_probe(plugin_class):
                 request = json.loads((base / "stack-fixture.json").read_text())
             except (OSError, ValueError):
                 return
+            if not request.get("active", True):
+                return  # A combined run must leave item actors to the product fixture.
             inventory = player.inventory
             if current != request["id"]:
                 location = player.location
@@ -128,6 +130,13 @@ def inventory_stack_cases():
                           slot(source), slot(destination), None, [(source, "minecraft:stone", 5)]))
     cases.append(("swap-10-2", "swap", slot(9), slot(1), None,
                   [(9, "minecraft:stone", 5), (1, "minecraft:dirt", 3)]))
+    for name, source, destination, items in (
+        ("legacy-move-10-to-1", 9, 0, [(9, "minecraft:stone", 5)]),
+        ("legacy-swap-10-2", 9, 1, [(9, "minecraft:stone", 5), (1, "minecraft:dirt", 3)]),
+        ("legacy-move-1-to-36", 0, 35, [(0, "minecraft:stone", 5)]),
+        ("legacy-swap-identical-counts", 9, 1, [(9, "minecraft:stone", 5), (1, "minecraft:stone", 3)]),
+    ):
+        cases.append((name, "legacy-swap", slot(source), slot(destination), None, items))
     for operation in ("drop", "legacy-drop"):
         for count in (None, 1):
             cases.append((f"{operation}-main-{'stack' if count is None else 'partial'}", operation,
@@ -165,7 +174,7 @@ def inventory_stack_cases():
 def expected_inventory(before, case):
     expected = json.loads(json.dumps(before))
     source, destination, count = case["source"], case["destination"], case["count"]
-    if case["operation"] in {"take", "place", "cursor-move", "swap"}:
+    if case["operation"] in {"take", "place", "cursor-move", "swap", "legacy-swap"}:
         a, b = source["slot"], destination["slot"]
         expected["slots"][a], expected["slots"][b] = expected["slots"][b], expected["slots"][a]
     else:
@@ -182,7 +191,7 @@ def expected_inventory(before, case):
         expected["drops"] = [{**original, "count": amount}]
     if "observation" in expected:
         observed = expected["observation"]
-        if case["operation"] in {"take", "place", "cursor-move", "swap"}:
+        if case["operation"] in {"take", "place", "cursor-move", "swap", "legacy-swap"}:
             a, b = source["slot"], destination["slot"]
             observed["slots"][a], observed["slots"][b] = observed["slots"][b], observed["slots"][a]
         else:
@@ -207,7 +216,10 @@ def classify_inventory_case(case, wire, after, expected):
     elif responses and all(response["status"] not in {"ok", 0} for response in responses):
         outcome = "rejected"
     elif (wire.get("sent") and not wire.get("disconnected") and matches
-          and (case["operation"] == "legacy-drop" or (responses and all(r["status"] in {"ok", 0} for r in responses)))):
+          and not any(event["name"] in {"packet_violation_warning", "disconnect", "kick", "close"}
+                      for event in wire.get("received", []))
+          and (case["operation"] in {"legacy-drop", "legacy-swap"}
+               or (responses and all(r["status"] in {"ok", 0} for r in responses)))):
         outcome = "accepted"
     else:
         outcome = "inconclusive"
@@ -273,3 +285,4 @@ def exercise_inventory_stack(output: Path, console, control, wait, report):
         write("inventory-stack-results.json", results)  # Preserve evidence before attempting recovery.
         result["reconnected"] = reconnect_inventory_bot(control, wait, disconnected=wire.get("disconnected", False))
         write("inventory-stack-results.json", results)
+    write("stack-fixture.json", {"active": False})

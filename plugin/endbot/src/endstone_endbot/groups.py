@@ -28,7 +28,7 @@ from endstone_endbot.i18n import LocalizedError, localize_error, tr
 
 GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}\Z")
 GROUP_TARGET = re.compile(r"#([A-Za-z_][A-Za-z0-9_]{0,15})(?:\[([1-9][0-9]*)\])?\Z")
-GROUP_INPUT_OPERATIONS = frozenset({"move", "look", "action", "flag", "stop", "hotbar", "drop"})
+GROUP_INPUT_OPERATIONS = frozenset({"move", "look", "action", "flag", "stop", "hotbar", "drop", "swap", "hold"})
 HISTORY_ERROR = "Result history must be a positive integer (1 = latest)"
 PAGE_ERROR = "Page must be a positive integer"
 

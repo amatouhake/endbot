@@ -150,6 +150,15 @@ packet as malformed (alternate requests in the same run got status 49), which su
 sequence, not the armor slot, is malformed; this was not investigated further because the legacy path works.
 Moving items between slots (`hold`/`swap`) has not been tried through a legacy transaction yet.
 
+## Legacy exchange follow-up (live run 2026-10-22 JST)
+
+Follow-up preparation: the matrix now includes four `legacy-swap` two-container transactions (main 10 to empty
+hotbar 1, main 10 stone x5 / hotbar 2 dirt x3, hotbar 1 to empty main 36, and stone x5 / stone x3). There are 31
+independent cases. All four were **accepted** live (`build/inventory-moves-1`), as was the legacy helmet drop that was inconclusive earlier; see [the combined swap/hold validation matrix](INVENTORY_VALIDATION.md#legacy-slot-exchanges-and-product-swaphold-windows-raknet-live-runs-2026-10-22-jst).
+The legacy exchanges carry exact observed items without stack IDs, never predict inventory, and require matching BDS
+state without a disconnect/packet violation for acceptance. Both source items and all before/expected/after evidence
+are preserved. `--inventory-stack --inventory` runs the spike first and deactivates its fixture before product tests.
+
 ## Status 49
 
 Mojang's protocol-2193 [ItemStackResponseInfo result enum](https://mojang.github.io/bedrock-protocol-docs/1.26.51/types/item-stack-response-info/)

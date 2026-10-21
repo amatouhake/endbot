@@ -45,7 +45,7 @@ class InventoryStackProbeTests(unittest.TestCase):
                         wire["error"] = error
                     else:
                         wire["sent"] = {"packet": {"requests": [{"request_id": -1}]}}
-                        if status is not None and request["operation"] != "legacy-drop":
+                        if status is not None and not request["operation"].startswith("legacy-"):
                             wire["received"] = [{"name": "item_stack_response", "packet": {
                                 "responses": [{"request_id": -1, "status": status}],
                             }}]
@@ -78,8 +78,9 @@ class InventoryStackProbeTests(unittest.TestCase):
             with patch("scripts.inventory_stack_probe.time.sleep"):
                 exercise_inventory_stack(output, lambda _: None, control, recovering_wait, report)
             persisted = json.loads((output / "inventory-stack-results.json").read_text())
+            self.assertEqual(json.loads((output / "stack-fixture.json").read_text()), {"active": False})
             self.assertEqual(persisted, json.loads(json.dumps(report["inventory_stack"])))
-            self.assertEqual(len(persisted), 27)
+            self.assertEqual(len(persisted), 31)
             self.assertEqual(len(reconnects), (4 if disconnect else 0) + int(disconnect_setup))
             return persisted
 
@@ -102,7 +103,7 @@ class InventoryStackProbeTests(unittest.TestCase):
 
     def test_disconnects_are_recorded_and_reconnected_before_all_remaining_cases(self):
         results = self.run_probe(disconnect=True)
-        self.assertEqual(len(results), 27)
+        self.assertEqual(len(results), 31)
         for result in list(results.values())[-4:]:
             self.assertEqual(result["outcome"], "inconclusive")
             self.assertTrue(result["wire"]["disconnected"])
@@ -115,11 +116,11 @@ class InventoryStackProbeTests(unittest.TestCase):
         self.assertEqual(first["expected"], {})
         self.assertTrue(first["reconnected"])
         self.assertIn("fixture setup", first["wire"]["runnerError"])
-        self.assertEqual(len(results), 27)
+        self.assertEqual(len(results), 31)
 
     def test_independent_open_and_legacy_cases_and_native_armor_last(self):
         cases = inventory_stack_cases()
-        self.assertEqual(len({case["id"] for case in cases}), 27)
+        self.assertEqual(len({case["id"] for case in cases}), 31)
         opened = [case for case in cases if case["openInventory"]]
         self.assertEqual({case["id"] for case in opened}, {
             "open-take-10-to-1", "open-place-10-to-1", "open-swap-10-2",
@@ -133,6 +134,24 @@ class InventoryStackProbeTests(unittest.TestCase):
         self.assertEqual(len(legacy), 7)
         self.assertEqual({case["source"]["slot"] for case in legacy if case["source"]["container"] == "armor"}, {0, 1, 2, 3})
         self.assertTrue(all(case["operation"] == "drop" and case["source"]["container"] == "armor" for case in cases[-4:]))
+
+    def test_four_legacy_exchanges_have_independent_exact_expectations(self):
+        cases = [case for case in inventory_stack_cases() if case["operation"] == "legacy-swap"]
+        self.assertEqual([(case["source"]["slot"], case["destination"]["slot"]) for case in cases],
+                         [(9, 0), (9, 1), (0, 35), (9, 1)])
+        self.assertEqual(cases[-1]["items"], [(9, "minecraft:stone", 5), (1, "minecraft:stone", 3)])
+        for case in cases:
+            before = {"id": case["id"], "slots": [None] * 36, "equipment": dict.fromkeys(EQUIPMENT),
+                      "selected": 0, "drops": []}
+            for slot, name, count in case["items"]:
+                before["slots"][slot] = {"name": name, "count": count, "nbt": "exact"}
+            expected = expected_inventory(before, case)
+            wire = {"sent": {"name": "inventory_transaction", "packet": {}}, "received": []}
+            self.assertEqual(classify_inventory_case(case, wire, expected, expected)["outcome"], "accepted")
+            self.assertEqual(classify_inventory_case(case, wire, before, expected)["outcome"], "inconclusive")
+            for event in ("packet_violation_warning", "disconnect", "kick", "close"):
+                wire["received"] = [{"name": event, "packet": {}}]
+                self.assertEqual(classify_inventory_case(case, wire, expected, expected)["outcome"], "inconclusive")
 
     def test_reconnect_waits_for_online_and_does_not_reconnect_online_bot(self):
         calls = []

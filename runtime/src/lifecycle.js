@@ -284,6 +284,18 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
+  swap (name, a, b) {
+    if (![a, b].every(slot => Number.isSafeInteger(slot) && slot >= 1 && slot <= 36)) throw new Error('Inventory slots must be from 1 to 36')
+    const { profile, state } = this.#requireOnline(name)
+    return { ...this.#status(profile), ...state.session.swap(a, b) }
+  }
+
+  hold (name, item) {
+    if (typeof item !== 'string' || !/^(?:minecraft:)?[a-z0-9_./-]+$/.test(item)) throw new Error('Invalid hold item identifier')
+    const { profile, state } = this.#requireOnline(name)
+    return { ...this.#status(profile), ...state.session.hold(item) }
+  }
+
   drop (name, options = {}) {
     const { profile, state } = this.#requireOnline(name)
     const result = state.session.drop(typeof options === 'boolean' ? { stack: options } : options)

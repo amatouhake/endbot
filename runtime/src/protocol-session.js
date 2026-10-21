@@ -16,6 +16,7 @@ import {
   createBlockInteractionAction,
   createBlockInteractionInput,
   createDropTransaction,
+  createSwapTransaction,
   createEntityMouseOver,
   createMiningAction,
   createReleaseTransaction,
@@ -370,6 +371,32 @@ export class BedrockSession extends EventEmitter {
       }),
       stopAction: action('stop_item_use_on')
     }
+  }
+
+  swap (a, b) {
+    if (![a, b].every(slot => Number.isSafeInteger(slot) && slot >= 1 && slot <= 36)) throw new Error('Inventory slots must be from 1 to 36')
+    if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
+    // Public control uses the same one-based labels as inventory.
+    const packet = createSwapTransaction({ a: a - 1, b: b - 1, itemA: this.inventory[a - 1], itemB: this.inventory[b - 1] })
+    this.inputs?.cancelTimedUse()
+    this.#releaseItemUse()
+    this.client.queue('inventory_transaction', packet)
+    for (const action of packet.transaction.actions) this.inventory[action.slot] = action.new_item
+    this.#selectHeldItem()
+    this.#announceHeldItem()
+    return { slotA: a, slotB: b }
+  }
+
+  hold (item) {
+    if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
+    if (typeof item !== 'string' || !/^(?:minecraft:)?[a-z0-9_./-]+$/.test(item)) throw new Error('Invalid hold item identifier')
+    const identifier = item.startsWith('minecraft:') ? item : `minecraft:${item}`
+    const id = this.itemPalette.get(identifier)
+    const source = this.inventory.findIndex((stack, index) => index < 36 && id !== undefined && stack?.network_id === id && stack.count > 0)
+    if (source < 0) return { found: false }
+    if (source < 9) this.selectHotbar(source)
+    else this.swap(source + 1, this.hotbarSlot + 1)
+    return { found: true, sourceSlot: source + 1, selectedHotbarSlot: this.hotbarSlot + 1 }
   }
 
   dropSelected (stack) {

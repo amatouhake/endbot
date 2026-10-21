@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { BedrockSession } from '../src/protocol-session.js'
 import { createStackRequest, stackAction, stackSlot } from '../src/stack-requests.js'
-import { createInventoryClose, createInventoryOpen, createLegacyDrop, decodeProbeInventory } from './inventory-stack-builders.js'
+import { createInventoryClose, createInventoryOpen, createLegacyDrop, createLegacySwap, decodeProbeInventory } from './inventory-stack-builders.js'
 
 const base = process.env.ENDBOT_INVENTORY_STACK_PROBE
 if (!base) throw new Error('Inventory stack probe requires its isolated fixture directory')
@@ -88,14 +88,18 @@ export function installStackProbe (session, directory, { openWaitMs = 1000, resp
     let sourceItem
     let name = 'item_stack_request'
     let packet
-    if (request.operation === 'legacy-drop') {
+    if (['legacy-drop', 'legacy-swap'].includes(request.operation)) {
       const fixture = JSON.parse(fs.readFileSync(path.join(directory, 'stack-state.json'), 'utf8'))
       if (fixture.id !== request.id) throw new Error('Stale probe inventory observation')
       const observed = decodeProbeInventory(fixture.observation, session.profile.identityId, session.itemPalette)
       sourceItem = request.source.container === 'offhand' ? observed.equipment[0]
         : request.source.container === 'armor' ? observed.equipment[request.source.slot + 1] : observed.slots[request.source.slot]
       name = 'inventory_transaction'
-      packet = createLegacyDrop({ source: request.source, item: sourceItem, count: request.count ?? Number(sourceItem.count) })
+      if (request.operation === 'legacy-swap') {
+        const destinationItem = observed.slots[request.destination.slot]
+        packet = createLegacySwap({ source: request.source, destination: request.destination, item: sourceItem, destinationItem })
+        current.destinationItem = destinationItem
+      } else packet = createLegacyDrop({ source: request.source, item: sourceItem, count: request.count ?? Number(sourceItem.count) })
       current.itemOrigin = 'probe-observation-without-stack-ids'
     } else {
       if (request.openInventory && !current.open.answered) throw new Error('BDS did not answer inventory open')

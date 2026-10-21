@@ -65,6 +65,16 @@ test('opt-in hook sends native IDs, records responses, and never predicts invent
     assert.equal(legacy.sent.packet.transaction.actions[0].new_item.count, 4)
     assert.equal(legacy.sent.sourceItem.metadata, 7)
     assert.equal(legacy.sent.sourceItem.has_stack_id, false)
+    const cachedBefore = structuredClone(session.inventory)
+    fs.writeFileSync(path.join(base, 'stack-state.json'), JSON.stringify({ id: 'legacy-swap', observation }))
+    const exchange = await send({ ...request, id: 'legacy-swap', operation: 'legacy-swap' })
+    assert.equal(exchange.sent.name, 'inventory_transaction')
+    assert.equal(exchange.sent.packet.transaction.actions.length, 2)
+    assert.equal(exchange.sent.packet.transaction.actions[0].new_item.network_id, 0)
+    assert.equal(exchange.sent.packet.transaction.actions[1].new_item.count, 5)
+    assert.equal(exchange.destinationItem.network_id, 0)
+    assert.equal(exchange.itemOrigin, 'probe-observation-without-stack-ids')
+    assert.deepEqual(session.inventory, cachedBefore, 'probe must never predict product inventory')
   } finally {
     session.client.emit('close')
     if (previous === undefined) delete process.env.ENDBOT_INVENTORY_STACK_PROBE

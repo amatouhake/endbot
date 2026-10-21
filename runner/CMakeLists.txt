@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.15)
+cmake_policy(SET CMP0091 NEW)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+project(EndbotLuauSpike LANGUAGES CXX C)
+if(NOT LUAU_SOURCE_DIR)
+    message(FATAL_ERROR "Use node build.mjs to acquire the pinned sources")
+endif()
+add_subdirectory("${LUAU_SOURCE_DIR}" luau EXCLUDE_FROM_ALL)
+add_executable(endbot-luau-spike main.cpp)
+target_compile_features(endbot-luau-spike PRIVATE cxx_std_17)
+target_include_directories(endbot-luau-spike PRIVATE .deps)
+target_link_libraries(endbot-luau-spike PRIVATE Luau.Compiler Luau.VM)
+if(MINGW)
+    target_link_options(endbot-luau-spike PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+set_target_properties(endbot-luau-spike PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin")

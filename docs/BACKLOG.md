@@ -348,8 +348,8 @@ promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Group feature implemented on `feat/groups` — client smoke confirmed; ready for PR review**
-(2026-10-21 JST).
+Status: **Group feature merged to `main` (#69) — client smoke confirmed; live mid-batch revocation remains a manual
+gate** (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
 them. Group operations must also work with scripting disabled; iteration, coordinate calculations and orchestration
@@ -476,11 +476,48 @@ Remaining scope choices:
 The later Luau API should reuse the chosen target-resolution/operation model; script-specific execution lifetime
 remains under BOT-009. Automatic formations and complete mining tasks are not assumed to be Group features.
 
+## BOT-011: Inspect and rearrange a Bot's inventory, and drop everything
+
+Status: **Scope agreed — not designed in detail or implemented** (2026-10-21 JST).
+
+Today a Bot can only select a hotbar slot and drop from the selected slot, and the runtime caches only the nine hotbar
+slots. Emptying a Bot's inventory currently requires killing it. The operator chose this scope ahead of Luau (BOT-009)
+so that scripts can later wrap a stable set of inventory operations:
+
+- **Inspect (read-only):** `/bot <target> inventory` shows the 36 main/hotbar slots, offhand and armor, with counts.
+  The Inventory... form gets the same listing. A Group target is a query: every member's data is shown immediately
+  with index and name, without audit entries or operation history, like `status`.
+- **Hold an item:** `hold <item>` selects a hotbar slot containing the item, or moves it from the main inventory into
+  the selected slot when the hotbar lacks it.
+- **Swap slots:** `swap <from> <to>` exchanges two inventory slots. Slot numbering (one-based, hotbar first or main
+  first) is an open design point; it must match the inventory listing.
+- **Drop from anywhere:** `drop <slot>` and `drop <item> [count]` in addition to the existing selected-slot `drop`.
+- **Drop everything:** `drop all` empties the Bot without killing it. The operator wants offhand and armor included,
+  matching what a death would drop, if BDS accepts dropping from those slots; otherwise main/hotbar slots suffice.
+
+Out of scope for this item: equipping/unequipping offhand and armor, containers (chests, furnaces), crafting, and
+automatic refill or tool switching. Automation is to be decided with BOT-009.
+
+Constraints and open questions:
+
+- No item creation, assignment or removal by the plugin. Every change must be an ordinary inventory request that BDS
+  validates; the plugin only observes. `online-mode=true`, `allow-cheats=false` and no experiments are unchanged.
+- Observation grows from nine hotbar slots to the whole inventory, offhand and armor. Recheck the 60 KiB observation
+  bound and the sync interval/cost (see BOT-007 and [inventory validation](INVENTORY_VALIDATION.md)).
+- Moving items normally uses `item_stack_request` (server-authoritative inventory), while the existing drop sends a
+  legacy `inventory_transaction`. Whether the locked BDS/protocol 2193 accepts the needed request actions is unverified;
+  run a small real-BDS spike before committing to the command design.
+- Mutations through a Group target follow the existing bounded summary/history rules; `inventory` is a query.
+- The stale held-item rendering still tracked under BOT-007 touches the same path and may be addressed alongside.
+
+Validation gates: unit/serializer regressions, a `scripts/raknet_spike.py --inventory` extension against real BDS
+(actual inventory/loot changes, rejected requests converging to BDS state), and a human-client rendering check.
+None of these may be inferred from a green unit build.
+
 ## Deferred priorities
 
-- Inspecting a Bot's inventory and hotbar contents from commands and the menu, and a wider range of operations, are
-  likely next wishes from the operator (noted 2026-10-16 after 0.3.0); not designed yet. Keep the menu rule: forms
-  mirror commands and add no meaning of their own.
+- Inventory inspection and rearrangement are now scoped under BOT-011. Keep the menu rule: forms mirror commands and
+  add no meaning of their own.
 - `for <ticks>` duration and `use hold <ticks>` repeated charges shipped in 0.3.0; see
   [durations](COMMANDS.md#durations-for-and-charged-presses-hold). Real-server and human-client validation (bow/trident
   `hold` repeats, mining duration end, forms) remains a manual gate. The destroy block-count stop

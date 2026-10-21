@@ -5,91 +5,165 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { BedrockSession } from '../src/protocol-session.js'
-import { createDropTransaction, EMPTY_ITEM } from '../src/packets.js'
 import { createStackRequest, stackAction, stackSlot } from '../src/stack-requests.js'
+import { createInventoryClose, createInventoryOpen, createLegacyDrop, decodeProbeInventory } from './inventory-stack-builders.js'
 
 const base = process.env.ENDBOT_INVENTORY_STACK_PROBE
 if (!base) throw new Error('Inventory stack probe requires its isolated fixture directory')
 const encode = data => JSON.stringify(data, (_, value) => typeof value === 'bigint' ? String(value) : value)
+const windowKey = id => ({ 0: 'inventory', 119: 'offhand', 120: 'armor', 124: 'ui' })[id] ?? String(id)
 const originalConnect = BedrockSession.prototype.connect
 BedrockSession.prototype.connect = async function () {
   await originalConnect.call(this)
-  if (this.profile.name !== 'RakNetSpike' || this.stackProbeInstalled) return
-  this.stackProbeInstalled = true
+  if (this.profile.name === 'RakNetSpike' && !this.stackProbeInstalled) installStackProbe(this, base)
+}
+
+export function installStackProbe (session, directory, { openWaitMs = 1000, responseWaitMs = 2000 } = {}) {
+  session.stackProbeInstalled = true
+  const client = session.client
   const containers = new Map()
   let lastId
+  // A reconnect must never replay the previous case's command.
+  try { lastId = JSON.parse(fs.readFileSync(path.join(directory, 'stack-send.json'), 'utf8')).id } catch {}
   let nextRequestId = -1
   let current
+  let request
+  let deadline
   const write = () => {
     if (!current) return
-    fs.writeFileSync(path.join(base, 'stack-wire.tmp'), encode(current))
-    fs.renameSync(path.join(base, 'stack-wire.tmp'), path.join(base, 'stack-wire.json'))
+    fs.writeFileSync(path.join(directory, 'stack-wire.tmp'), encode(current))
+    fs.renameSync(path.join(directory, 'stack-wire.tmp'), path.join(directory, 'stack-wire.json'))
   }
-  for (const name of ['inventory_content', 'inventory_slot', 'item_stack_response']) {
-    this.client.on(name, packet => {
-      if (name === 'inventory_content') containers.set(String(packet.window_id), packet.input.slice())
+  const persist = () => {
+    try { write() } catch (error) { if (current) current.writeError = error.message }
+  }
+  const record = (name, packet) => {
+    if (!current) return
+    // Product listeners may later replace slots in the decoded input array.
+    // Freeze the recorded wire evidence independently of session state.
+    current.received.push({ name, packet: JSON.parse(encode(packet)) })
+    if (name === 'disconnect') {
+      current.disconnected = true
+      current.complete = true
+    }
+    persist()
+  }
+  const nativeEvents = ['container_open', 'container_close', 'inventory_content', 'inventory_slot', 'item_stack_response']
+  // The generic event precedes normal handlers, including ones that close
+  // the client and remove listeners on a disconnect/play_status.
+  client.on('packet', decoded => {
+    const { name, params } = decoded.data
+    if (!nativeEvents.includes(name)) record(name, params)
+  })
+  for (const name of nativeEvents) {
+    client.on(name, packet => {
+      if (name === 'inventory_content') containers.set(windowKey(packet.window_id), packet.input.slice())
       if (name === 'inventory_slot') {
-        const slots = containers.get(String(packet.window_id)) ?? []
+        const slots = containers.get(windowKey(packet.window_id)) ?? []
         slots[packet.slot] = packet.item
-        containers.set(String(packet.window_id), slots)
+        containers.set(windowKey(packet.window_id), slots)
       }
-      if (current) {
-        current.received.push({ name, packet })
-        try { write() } catch (error) { current.writeError = error.message }
-      }
+      if (current && name === 'container_open') current.open = { ...current.open, answered: true, packet }
+      record(name, packet)
     })
   }
+  client.on('kick', packet => record('kick', packet))
+
+  const send = () => {
+    const itemAt = slot => {
+      const window = { inventory: 'inventory', hotbar: 'inventory', hotbar_and_inventory: 'inventory', armor: 'armor', offhand: 'offhand', cursor: 'ui' }[slot.container]
+      // Open cases use ONLY packets received since this case's open request.
+      // Closed baseline cases may use the session's native inventory history.
+      if (!request.openInventory && window === 'inventory') return containers.get(window)?.[slot.slot] ?? session.inventory[slot.slot]
+      return containers.get(window)?.[slot.slot]
+    }
+    const reference = slot => {
+      const item = itemAt(slot)
+      if (!item) throw new Error('Native slot unavailable')
+      if (Number(item.network_id) !== 0 && (!item.has_stack_id || !Number.isInteger(Number(item.stack_id)) || Number(item.stack_id) <= 0)) {
+        throw new Error('Native stack ID unavailable')
+      }
+      return stackSlot(slot.container, slot.slot, Number(item.stack_id ?? 0))
+    }
+    let sourceItem
+    let name = 'item_stack_request'
+    let packet
+    if (request.operation === 'legacy-drop') {
+      const fixture = JSON.parse(fs.readFileSync(path.join(directory, 'stack-state.json'), 'utf8'))
+      if (fixture.id !== request.id) throw new Error('Stale probe inventory observation')
+      const observed = decodeProbeInventory(fixture.observation, session.profile.identityId, session.itemPalette)
+      sourceItem = request.source.container === 'offhand' ? observed.equipment[0]
+        : request.source.container === 'armor' ? observed.equipment[request.source.slot + 1] : observed.slots[request.source.slot]
+      name = 'inventory_transaction'
+      packet = createLegacyDrop({ source: request.source, item: sourceItem, count: request.count ?? Number(sourceItem.count) })
+      current.itemOrigin = 'probe-observation-without-stack-ids'
+    } else {
+      if (request.openInventory && !current.open.answered) throw new Error('BDS did not answer inventory open')
+      sourceItem = itemAt(request.source)
+      if (!sourceItem || !Number(sourceItem.network_id)) throw new Error('Native source item unavailable')
+      const count = request.count ?? Number(sourceItem.count)
+      const source = reference(request.source)
+      const requestId = nextRequestId--
+      const actions = request.operation === 'cursor-move' ? [
+        stackAction('take', source, stackSlot('cursor', 0, 0), count),
+        stackAction('place', stackSlot('cursor', 0, requestId), reference(request.destination), count)
+      ] : [stackAction(request.operation, source, request.destination && reference(request.destination), count)]
+      packet = createStackRequest(requestId, actions)
+      current.itemOrigin = 'native'
+    }
+    client.queue(name, packet)
+    current.sent = { name, packet, sourceItem }
+  }
+  const finish = () => {
+    if (request.openInventory && current.open?.answered && !current.disconnected) {
+      try {
+        const packet = createInventoryClose(current.open.packet)
+        client.queue('container_close', packet)
+        current.close = { name: 'container_close', packet }
+      } catch (error) { current.closeError = error.message }
+    }
+    current.complete = true
+    persist()
+  }
+  const dispatch = () => {
+    try { send() } catch (error) { current.error = error.message }
+    current.phase = 'response'
+    deadline = Date.now() + responseWaitMs
+    persist()
+  }
   const timer = setInterval(() => {
-    let request
-    try { request = JSON.parse(fs.readFileSync(path.join(base, 'stack-send.json'), 'utf8')) } catch { return }
-    if (request.id === lastId) {
-      try { write() } catch { /* Retry Windows atomic replacement on the next tick. */ }
+    if (current && !current.complete) {
+      if (Date.now() < deadline) return
+      if (current.phase === 'opening') dispatch()
+      else finish()
       return
     }
-    lastId = request.id
-    current = { id: request.id, received: [] }
-    try {
-      const itemAt = slot => {
-        const window = { inventory: 'inventory', hotbar: 'inventory', hotbar_and_inventory: 'inventory', armor: 'armor', offhand: 'offhand', cursor: 'ui' }[slot.container]
-        // The session has tracked the main inventory since join; this probe
-        // only starts listening after spawn and misses the initial content.
-        if (window === 'inventory') return this.inventory[slot.slot] ?? EMPTY_ITEM
-        return containers.get(window)?.[slot.slot] ?? EMPTY_ITEM
-      }
-      const reference = slot => {
-        const item = itemAt(slot)
-        // Zero is valid for an empty destination. Never fabricate the ID of a
-        // non-empty item from the read-only hotbar custom event.
-        if (Number(item.network_id) !== 0 && !item.has_stack_id) throw new Error('Native stack ID unavailable')
-        return stackSlot(slot.container, slot.slot, Number(item.stack_id ?? 0))
-      }
-      const sourceItem = itemAt(request.source)
-      if (!Number(sourceItem.network_id)) throw new Error('Native source item unavailable')
-      const count = request.count ?? Number(sourceItem.count)
-      let name = 'item_stack_request'
-      let packet
-      if (request.operation === 'legacy-drop') {
-        name = 'inventory_transaction'
-        packet = createDropTransaction({ hotbarSlot: request.source.slot, heldItem: sourceItem, stack: count === Number(sourceItem.count) })
-      } else {
-        const source = reference(request.source)
-        const requestId = nextRequestId--
-        let actions
-        if (request.operation === 'cursor-move') {
-          actions = [
-            stackAction('take', source, stackSlot('cursor', 0, 0), count),
-            stackAction('place', stackSlot('cursor', 0, requestId), reference(request.destination), count)
-          ]
-        } else {
-          actions = [stackAction(request.operation, source, request.destination && reference(request.destination), count)]
-        }
-        packet = createStackRequest(requestId, actions)
-      }
-      current.sent = { name, packet, sourceItem }
-      this.client.queue(name, packet)
-    } catch (error) { current.error = error.message }
-    try { write() } catch (error) { console.error(`stack probe write: ${error.message}`) }
+    let incoming
+    try { incoming = JSON.parse(fs.readFileSync(path.join(directory, 'stack-send.json'), 'utf8')) } catch { return }
+    if (incoming.id === lastId) { persist(); return }
+    lastId = incoming.id
+    request = incoming
+    current = { id: request.id, received: [], complete: false }
+    if (request.openInventory) {
+      containers.clear()
+      current.open = { answered: false }
+      try {
+        const packet = createInventoryOpen(client.entityId)
+        client.queue('interact', packet)
+        current.open.sent = { name: 'interact', packet }
+        current.phase = 'opening'
+        deadline = Date.now() + openWaitMs
+      } catch (error) { current.error = error.message; finish() }
+      persist()
+    } else dispatch()
   }, 50)
   timer.unref()
-  this.client.once('close', () => clearInterval(timer))
+  client.once('close', reason => {
+    clearInterval(timer)
+    if (current) {
+      current.disconnected = true
+      current.complete = true
+      record('close', { reason: String(reason ?? 'transport closed without a reason') })
+    }
+  })
 }

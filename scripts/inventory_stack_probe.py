@@ -8,8 +8,25 @@ import json
 import os
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 EQUIPMENT = ("item_in_off_hand", "helmet", "chestplate", "leggings", "boots")
+
+
+def probe_inventory_snapshot(player, server, block_ids=None):
+    """Probe-only full item data, using the unchanged hotbar item encoder."""
+    from endstone_endbot.inventory_sync import hotbar_snapshot
+
+    items = [player.inventory.get_item(slot) for slot in range(36)]
+    equipment = [getattr(player.inventory, attribute) for attribute in EQUIPMENT]
+
+    def encode(batch):
+        view = SimpleNamespace(unique_id=player.unique_id, inventory=SimpleNamespace(get_item=batch.__getitem__))
+        return hotbar_snapshot(view, server, block_ids)["slots"]
+
+    return {"identityId": str(player.unique_id),
+            "slots": [item for offset in range(0, 36, 9) for item in encode(items[offset:offset + 9])],
+            "equipment": encode(equipment + [None] * 4)[:5]}
 
 
 def install_probe(plugin_class):
@@ -24,6 +41,7 @@ def install_probe(plugin_class):
         base = Path(os.environ["ENDBOT_INVENTORY_STACK_PROBE"])
         current = None
         drops = []
+        block_ids = {}
 
         def sample():
             nonlocal current, drops
@@ -72,6 +90,7 @@ def install_probe(plugin_class):
                 "equipment": {attribute: describe(getattr(inventory, attribute)) for attribute in EQUIPMENT},
                 "selected": inventory.held_item_slot,
                 "drops": drops,
+                "observation": probe_inventory_snapshot(player, self.server, block_ids),
             }
             temporary = base / "stack-state.tmp"
             temporary.write_text(json.dumps(state), encoding="utf-8")
@@ -98,18 +117,7 @@ def configure_fixture(root: Path, output: Path, environment: dict):
     environment["ENDBOT_INVENTORY_STACK_PROBE"] = str(output)
 
 
-def exercise_inventory_stack(output: Path, console, control, wait, report):
-    def read(name):
-        try:
-            return json.loads((output / name).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-
-    def write(name, value):
-        temporary = output / (name + ".tmp")
-        temporary.write_text(json.dumps(value), encoding="utf-8")
-        temporary.replace(output / name)
-
+def inventory_stack_cases():
     def slot(index, container="hotbar_and_inventory"):
         return {"container": container, "slot": index}
 
@@ -130,41 +138,138 @@ def exercise_inventory_stack(output: Path, console, control, wait, report):
         cases.append((f"drop-{attribute}", "drop", slot(0 if index == 0 else index - 1,
                       "offhand" if index == 0 else "armor"), None, None,
                       [(attribute, f"minecraft:{item}", 1)]))
-    results = report["inventory_stack"] = {}
-    for name, operation, source, destination, count, items in cases:
-        control("stop")
-        write("stack-fixture.json", {"id": name, "items": items})
-        wait("stack fixture setup", lambda name=name: read("stack-state.json").get("id") == name, 10)
-        console("bot RakNetSpike hotbar 1")
-        time.sleep(1)  # Native inventory packets must arrive before deriving stack IDs.
-        before = read("stack-state.json")
-        write("stack-send.json", {"id": name, "operation": operation, "source": source,
-                                  "destination": destination, "count": count})
-        wait("stack request dispatch", lambda name=name: read("stack-wire.json").get("id") == name, 10)
-        time.sleep(2)  # Record rejection/no response too; do not assume success from a send.
-        wire, after = read("stack-wire.json"), read("stack-state.json")
-        responses = [response for event in wire.get("received", []) if event["name"] == "item_stack_response"
-                     for response in event["packet"]["responses"]
-                     if response["request_id"] == wire.get("sent", {}).get("packet", {}).get("requests", [{}])[0].get("request_id")]
-        expected = json.loads(json.dumps(before))
-        if operation in {"take", "place", "cursor-move", "swap"}:
-            a, b = source["slot"], destination["slot"]
-            expected["slots"][a], expected["slots"][b] = expected["slots"][b], expected["slots"][a]
+    # Legacy equipment transactions carry exact SDK-observed item data, not
+    # native stack IDs. Each gets its own disposable fixture.
+    equipment_cases = [case for case in cases if case[2]["container"] in {"offhand", "armor"}]
+    cases.extend((f"legacy-{name}", "legacy-drop", source, destination, count, items)
+                 for name, _, source, destination, count, items in equipment_cases)
+    recorded = [{"id": name, "operation": operation, "source": source, "destination": destination,
+                 "count": count, "items": items, "openInventory": False}
+                for name, operation, source, destination, count, items in cases]
+    for case in recorded[:]:
+        if case["id"] in {"take-10-to-1", "place-10-to-1", "swap-10-2", "drop-main-stack",
+                          "drop-main-partial", "drop-item_in_off_hand"}:
+            opened = {**case, "id": "open-" + case["id"], "openInventory": True}
+            # The inventory screen uses the inventory/hotbar selectors, not
+            # the combined selector used by the closed baseline cases.
+            opened["source"] = {**case["source"], "container": (
+                "inventory" if case["source"]["container"] == "hotbar_and_inventory" else case["source"]["container"])}
+            if case["destination"]:
+                opened["destination"] = {**case["destination"], "container": "hotbar"}
+            recorded.append(opened)
+    # Disconnect-prone native armor requests are always last; legacy armor
+    # cases still run before these even when a native request kills the Bot.
+    return sorted(recorded, key=lambda case: case["operation"] != "legacy-drop" and case["source"]["container"] == "armor")
+
+
+def expected_inventory(before, case):
+    expected = json.loads(json.dumps(before))
+    source, destination, count = case["source"], case["destination"], case["count"]
+    if case["operation"] in {"take", "place", "cursor-move", "swap"}:
+        a, b = source["slot"], destination["slot"]
+        expected["slots"][a], expected["slots"][b] = expected["slots"][b], expected["slots"][a]
+    else:
+        if source["container"] in {"offhand", "armor"}:
+            key = EQUIPMENT[0 if source["container"] == "offhand" else source["slot"] + 1]
+            original = before["equipment"][key]
+            target = expected["equipment"]
         else:
-            if source["container"] in {"offhand", "armor"}:
-                key = EQUIPMENT[0 if source["container"] == "offhand" else source["slot"] + 1]
-                expected["equipment"][key] = None
-                removed = before["equipment"][key]
-            else:
-                original = before["slots"][source["slot"]]
-                removed = {**original, "count": count or original["count"]}
-                expected["slots"][source["slot"]] = {**original, "count": original["count"] - count} if count else None
-            expected["drops"] = [removed]
-        matches = all(after.get(key) == expected[key] for key in ("slots", "equipment", "drops", "selected"))
-        results[name] = {"before": before, "wire": wire, "after": after, "expected": expected,
-                         "inventory_matches": matches,
-                         "outcome": "not-sent" if wire.get("error") else (
-                             "accepted" if matches and (operation == "legacy-drop" or any(r["status"] == "ok" for r in responses))
-                             else "rejected" if responses and all(r["status"] != "ok" for r in responses)
-                             else "inconclusive")}
-        (output / "inventory-stack-results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+            key = source["slot"]
+            original = before["slots"][key]
+            target = expected["slots"]
+        amount = original["count"] if count is None else count
+        target[key] = {**original, "count": original["count"] - amount} if amount < original["count"] else None
+        expected["drops"] = [{**original, "count": amount}]
+    if "observation" in expected:
+        observed = expected["observation"]
+        if case["operation"] in {"take", "place", "cursor-move", "swap"}:
+            a, b = source["slot"], destination["slot"]
+            observed["slots"][a], observed["slots"][b] = observed["slots"][b], observed["slots"][a]
+        else:
+            index = (0 if source["container"] == "offhand" else source["slot"] + 1)
+            target = observed["equipment"] if source["container"] in {"offhand", "armor"} else observed["slots"]
+            index = index if source["container"] in {"offhand", "armor"} else source["slot"]
+            item = target[index]
+            amount = item["count"] if count is None else count
+            target[index] = {**item, "count": item["count"] - amount} if amount < item["count"] else None
+    return expected
+
+
+def classify_inventory_case(case, wire, after, expected):
+    keys = ("slots", "equipment", "drops", "selected") + (("observation",) if "observation" in expected else ())
+    matches = bool(expected) and after.get("id") == case["id"] and all(after.get(key) == expected[key] for key in keys)
+    request_id = wire.get("sent", {}).get("packet", {}).get("requests", [{}])[0].get("request_id")
+    responses = [response for event in wire.get("received", []) if event["name"] == "item_stack_response"
+                 for response in event["packet"]["responses"]
+                 if request_id is not None and response["request_id"] == request_id]
+    if wire.get("error") and not wire.get("sent"):
+        outcome = "not-sent"
+    elif responses and all(response["status"] not in {"ok", 0} for response in responses):
+        outcome = "rejected"
+    elif (wire.get("sent") and not wire.get("disconnected") and matches
+          and (case["operation"] == "legacy-drop" or (responses and all(r["status"] in {"ok", 0} for r in responses)))):
+        outcome = "accepted"
+    else:
+        outcome = "inconclusive"
+    return {"inventory_matches": matches, "outcome": outcome}
+
+
+def reconnect_inventory_bot(control, wait, *, disconnected=False):
+    if disconnected or control("status")["connectionState"] != "online":
+        control("reconnect")
+        wait("inventory Bot reconnect", lambda: control("status")["connectionState"] == "online", 45)
+        return True
+    return False
+
+
+def exercise_inventory_stack(output: Path, console, control, wait, report):
+    def read(name):
+        try:
+            return json.loads((output / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def write(name, value):
+        temporary = output / (name + ".tmp")
+        temporary.write_text(json.dumps(value), encoding="utf-8")
+        temporary.replace(output / name)
+
+    results = report["inventory_stack"] = {}
+    for case in inventory_stack_cases():
+        name = case["id"]
+        reconnect_inventory_bot(control, wait)
+        before = {}
+        interrupted = None
+        try:
+            control("stop")
+            write("stack-fixture.json", {"id": name, "items": case["items"]})
+            wait("stack fixture setup", lambda name=name: (
+                read("stack-state.json").get("id") == name or control("status")["connectionState"] != "online"), 10)
+            if control("status")["connectionState"] != "online":
+                raise ConnectionError("Bot disconnected during fixture setup")
+            console("bot RakNetSpike hotbar 1")
+            time.sleep(1)  # Native packets must arrive before deriving stack IDs.
+            before = read("stack-state.json")
+            write("stack-send.json", {key: value for key, value in case.items() if key != "items"})
+            wait("stack request dispatch", lambda name=name: (
+                (read("stack-wire.json").get("id") == name and read("stack-wire.json").get("complete"))
+                or control("status")["connectionState"] != "online"), 10)
+            time.sleep(0.25)  # Let close acknowledgement and server snapshots settle.
+        except Exception as error:
+            # Only connection loss is recoverable here. Keep real fixture,
+            # filesystem and harness failures visible when the Bot is online.
+            if control("status")["connectionState"] == "online":
+                raise
+            interrupted = str(error)
+        wire, after = read("stack-wire.json"), read("stack-state.json")
+        if wire.get("id") != name:
+            wire = {"id": name, "received": [], "priorWire": wire}
+        if interrupted or control("status")["connectionState"] != "online":
+            wire["disconnected"] = True
+            wire["runnerError"] = interrupted or "Bot disconnected before case completion"
+        expected = expected_inventory(before, case) if before.get("id") == name else {}
+        result = results[name] = {"case": case, "before": before, "wire": wire, "after": after, "expected": expected,
+                                  **classify_inventory_case(case, wire, after, expected)}
+        write("inventory-stack-results.json", results)  # Preserve evidence before attempting recovery.
+        result["reconnected"] = reconnect_inventory_bot(control, wait, disconnected=wire.get("disconnected", False))
+        write("inventory-stack-results.json", results)

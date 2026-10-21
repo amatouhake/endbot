@@ -29,10 +29,18 @@ class FormResponseError(LocalizedError):
 
 
 @dataclass(frozen=True, slots=True)
+class GroupTarget:
+    name: str
+    count: int
+    guard: object
+
+
+@dataclass(frozen=True, slots=True)
 class BotListView:
     """Runtime data for the Bot list; produced off the server thread."""
 
     bots: tuple[dict, ...]
+    groups: tuple[GroupTarget, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +51,10 @@ class BotView:
     summary: str
     status: dict
     observed: dict | None = None
+    guard: object | None = None
+    back: Run | None = None
+    back_label: str = "Back to Bot list"
+    management: Run | None = None
 
 
 # Controls. Field order mirrors the endstone.form constructors.
@@ -91,6 +103,8 @@ class Run:
     """Submit each argument list through the /bot command path, in order."""
 
     commands: tuple[Argv, ...]
+    command: str = "bot"
+    guard: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +128,7 @@ class ActionScreen:
     title: str
     content: str
     items: tuple[Button | Header, ...]
+    guard: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +147,7 @@ class ModalScreen:
     # Maps the submitted values (one per control) to commands to run.
     build: Callable[[list], tuple[Argv, ...]] = field(compare=False)
     submit: str = "Run"
+    command: str = "bot"
 
 
 def run(*commands: Argv) -> Run:
@@ -168,7 +184,11 @@ def bot_list_screen(view: BotListView, lang: str = "en") -> ActionScreen:
         offline_screen = ActionScreen(tr(lang, "Endbot: offline Bots"), tr(lang, "Pick a Bot."), tuple(offline_items))
         items.append(Button(tr(lang, "Offline ({count})...", count=len(offline)), Show(offline_screen)))
     items.append(Button(tr(lang, "+ New Bot here"), Show(spawn_modal(lang))))
-    content = tr(lang, "Pick a Bot. (/bot help lists commands)" if bots else "No Bot profiles yet. Spawn one to start.")
+    if view.groups:
+        items.extend(Button(f"#{group.name} ({group.count})",
+                            Run((menu_argv(f"#{group.name}"),), guard=group.guard)) for group in view.groups)
+    content = tr(lang, "Pick a Bot or group. (/bot help lists commands)" if view.groups else
+                 "Pick a Bot. (/bot help lists commands)" if bots else "No Bot profiles yet. Spawn one to start.")
     return ActionScreen("Endbot", content, tuple(items))
 
 
@@ -192,8 +212,9 @@ def bot_screen(
     names, both read on the server thread when the form is shown.
     """
     name = view.name
+    group = name.startswith("#")
     state = str(view.status.get("connectionState", ""))
-    back = Button(tr(lang, "Back to Bot"), run(menu_argv(name)))
+    back = Button(tr(lang, "Back to group operations" if group else "Back to Bot"), run(menu_argv(name)))
 
     def label(text):
         return tr(lang, text)
@@ -202,7 +223,21 @@ def bot_screen(
         return Show(ActionScreen(tr(lang, "{name}: {title}", name=name, title=Text(title)), content, (*buttons, back)))
 
     items: list[Button | Header]
-    if state == "online":
+    lifecycle = [
+        Button(label("Resume (where it was)"), run((name, "resume"))),
+        Button(label("Spawn here"), run((name, "spawn"))),
+        Button(label("Spawn at coordinates..."), Show(spawn_at_modal(name, lang))),
+        Button(label("Reconnect"), run((name, "reconnect"))),
+        Button(label("Despawn..."), Show(despawn_confirm(name, lang))),
+        Button(label("Chunk radius..."), Show(radius_modal(name, view.status, lang))),
+        Button(label("Status"), run((name, "status"))),
+    ]
+    if not group:
+        lifecycle.append(Button(label("Profile..."), category(
+            "profile", Button(label("Rename..."), Show(rename_modal(name, lang))),
+            Button(label("Forget..."), Show(forget_confirm(name, lang))),
+        )))
+    if state == "online" or group:
         teleport = []
         if caller:
             teleport.append(Button(label("Teleport to me"), run((name, "tp", shlex.quote(caller)))))
@@ -229,6 +264,7 @@ def bot_screen(
                     Button(label("Attack..."), Show(action_screen(name, "attack", lang))),
                     Button(label("Use item..."), Show(action_screen(name, "use", lang))),
                     Button(label("Destroy blocks..."), Show(destroy_screen(name, lang))),
+                    Button(label("Interact with block..."), Show(interact_modal(name, lang))),
                 ),
             ),
             Button(
@@ -241,13 +277,7 @@ def bot_screen(
             ),
             Button(
                 label("Bot..."),
-                category(
-                    "bot",
-                    Button(label("Reconnect"), run((name, "reconnect"))),
-                    Button(label("Despawn..."), Show(despawn_confirm(name, lang))),
-                    Button(label("Chunk radius..."), Show(radius_modal(name, view.status, lang))),
-                    content=view.summary,
-                ),
+                category("bot", *lifecycle, content=view.summary),
             ),
         ]
     else:
@@ -258,8 +288,15 @@ def bot_screen(
         if state in {"connecting", "reconnecting"}:
             items.append(Button(label("Despawn..."), Show(despawn_confirm(name, lang))))
         items.append(Button(label("Chunk radius..."), Show(radius_modal(name, view.status, lang))))
-    items.append(Button(label("Back to Bot list"), run(menu_argv())))
-    if state == "online":
+        items.append(Button(label("Bot..."), category("bot", *lifecycle, content=view.summary)))
+    if group:
+        items.append(Button(label("Recent operation result..."), Run((("menu", name, "result"),), command="botgroup")))
+        if view.management is not None:
+            items.append(Button(label("Group management..."), view.management))
+    items.append(Button(label(view.back_label), view.back or run(menu_argv())))
+    if group:
+        content = view.summary + "\n" + label("Operations apply to every current member. Limits apply per Bot.")
+    elif state == "online":
         content = f"§2{label('online')}§r"
         if view.observed:
             observed = view.observed
@@ -286,6 +323,40 @@ def spawn_modal(lang: str = "en") -> ModalScreen:
         build,
         tr(lang, "Spawn"),
     )
+
+
+def spawn_at_modal(name: str, lang: str = "en") -> ModalScreen:
+    def build(values):
+        return ((name, "spawn", "at", *_coordinates(_text(values[0]))),)
+
+    return ModalScreen(f"{name}: spawn at", (
+        TextInput(tr(lang, "x y z (coordinates only; ~ is relative to you)"), "~ ~ ~"),
+    ), build, tr(lang, "Spawn"))
+
+
+def rename_modal(name: str, lang: str = "en") -> ModalScreen:
+    def build(values):
+        return ((name, "rename", _text(values[0])),)
+
+    return ModalScreen(f"{name}: rename", (
+        TextInput(tr(lang, "New Bot name"), name),
+    ), build, tr(lang, "Rename"))
+
+
+def forget_confirm(name: str, lang: str = "en") -> ConfirmScreen:
+    return ConfirmScreen(f"{name}: forget", tr(lang,
+        "Forget {name}? Requires an offline Bot. Its world player data stays intact.", name=name),
+        tr(lang, "Forget"), tr(lang, "Cancel"), run((name, "forget")))
+
+
+def interact_modal(name: str, lang: str = "en") -> ModalScreen:
+    def build(values):
+        return ((name, "interact", *_coordinates(_text(values[0])), _option(FACES, values[1])),)
+
+    return ModalScreen(f"{name}: interact", (
+        TextInput(tr(lang, "x y z (coordinates only; ~ is relative to you)"), "~ ~-1 ~"),
+        Dropdown("face", FACES),
+    ), build, tr(lang, "Interact"))
 
 
 def look_modal(name: str, observed: dict | None, lang: str = "en") -> ModalScreen:
@@ -389,7 +460,8 @@ def action_screen(name: str, action: str, lang: str = "en") -> ActionScreen:
     ]
     if use:
         items.append(Button("for...", Show(_clause_form(name, (action,), (("for", FOR_REQUIRED_FIELD, True),), lang))))
-    items += [Button("stop", run((name, action, "stop"))), Button(tr(lang, "Back to Bot"), run(menu_argv(name)))]
+    items += [Button("stop", run((name, action, "stop"))),
+              Button(tr(lang, "Back to group" if name.startswith("#") else "Back to Bot"), run(menu_argv(name)))]
     return ActionScreen(f"{name}: {action}", tr(lang, MODE_CONTENT, ticks=TICKS), tuple(items))
 
 
@@ -411,7 +483,8 @@ def move_modal(name: str, lang: str = "en") -> ModalScreen:
 def destroy_screen(name: str, lang: str = "en") -> ActionScreen:
     """``/bot <name> destroy [once|continuous [for|count]|stop]`` or ``destroy <x> <y> <z> [face]``"""
     continuous = _clause_form(
-        name, ("destroy", "continuous"), (("for", FOR_FIELD, False), ("count", COUNT_FIELD, False)), lang
+        name, ("destroy", "continuous"), (("for", FOR_FIELD, False),
+        ("count", Text("count <blocks> (optional; per Bot)") if name.startswith("#") else COUNT_FIELD, False)), lang
     )
     return ActionScreen(
         f"{name}: destroy",
@@ -421,7 +494,7 @@ def destroy_screen(name: str, lang: str = "en") -> ActionScreen:
             Button("continuous...", Show(continuous)),
             Button("x y z...", Show(destroy_coordinates_modal(name, lang))),
             Button("stop", run((name, "destroy", "stop"))),
-            Button(tr(lang, "Back to Bot"), run(menu_argv(name))),
+            Button(tr(lang, "Back to group" if name.startswith("#") else "Back to Bot"), run(menu_argv(name))),
         ),
     )
 
@@ -510,7 +583,8 @@ def radius_modal(name: str, status: dict, lang: str = "en") -> ModalScreen:
         tr(lang, "{name}: chunk radius", name=name),
         (
             Toggle(tr(lang, "Use the shared default"), status.get("chunkRadiusSource") != "bot"),
-            Slider(tr(lang, "Chunk radius (this Bot only)"), 2, 32, 1, default),
+            Slider(tr(lang, "Chunk radius (per Bot)" if name.startswith("#") else "Chunk radius (this Bot only)"),
+                   2, 32, 1, default),
         ),
         build,
         tr(lang, "Apply"),

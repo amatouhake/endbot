@@ -58,6 +58,12 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
+  identityOf (name) {
+    const profile = this.store.getByName(name)
+    if (!profile) throw new ProfileError('not_found', `Bot ${name} does not exist`)
+    return profile.identityId
+  }
+
   async spawn (name) {
     let profile = this.store.getByName(name)
     let created = false

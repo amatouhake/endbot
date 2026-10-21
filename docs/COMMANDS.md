@@ -65,16 +65,20 @@ observations to check the outcome. Connection lifecycle remains asynchronous (`c
 Players can run the common operations from native Bedrock forms instead of typing them:
 
 ```text
-/bot               -> Bot list (players); help page 1 (console)
-/bot menu          -> Bot list (name and connection state), plus "Spawn a new Bot here"
+/bot               -> Bot and Group target list (players); help page 1 (console)
+/bot menu          -> Bot/Group targets, plus "Spawn a new Bot here"
 /bot Alice menu    -> Alice's actions and compact state/position summary
+/bot #miners menu  -> the same operation menu, applied to #miners
 ```
 
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
-Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy),
-Inventory (hotbar, drop) and Bot (reconnect, despawn with a confirmation, radius and the full status text). Group names
-follow Minecraft's control settings. An offline Bot offers resume/spawn and radius.
+Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy, interact),
+Inventory (hotbar, drop) and Bot (resume/spawn, reconnect, confirmed despawn, radius and status).
+Category names follow Minecraft's control settings. An offline Bot offers resume/spawn, radius and the Bot settings
+category. Individual Bot profile controls offer rename and confirmed forget; forget still requires an offline profile.
+The target list also shows `#group (count)` entries that open this same operation screen directly. Group-wide controls
+remain available with mixed/offline membership and report failures per operation; rename/forget require an individual.
 Input forms use dropdowns, sliders and text fields; closing one (or cancelling the despawn confirmation) returns to the screen it was opened from; coordinate fields accept the same `~` forms as the command, and their
 labels say what `~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot` again to
 continue.
@@ -95,8 +99,8 @@ Forms are only another way to type commands: every button or form submission bec
 (for example `/bot Alice attack interval 40`) and goes through the same permission check, command queue, parser and
 replies, so a typed command and a form submission always behave identically. A controller whose permission is revoked
 while a form is open gets the usual permission reply on submit. The server console cannot open forms (`/bot menu` replies
-with a pointer to `/bot help`). `spawn at ...`, `interact`, `rename`, `forget`, `tp ... facing ...` and help
-detail pages stay command-only.
+with a pointer to `/bot help`). Advanced `tp ... facing ...` arguments and help detail pages stay command-only;
+coordinate spawn, block interaction and individual profile rename/forget have form controls.
 
 Unit tests cover screen contents, every form response mapping to parser-accepted arguments, malformed responses, and
 view delivery/revocation. Rendering and input on a real client are a manual check: on a normal Microsoft/Xbox client,
@@ -441,6 +445,33 @@ degraded. Deeper command declaration redesign is deferred until upstream Endston
 stopgap, not the final command API. The pinned Endstone public API does not expose supported dynamic completion for
 Bot profile names, so names remain strings; use `/bot list` to discover them. Endbot does not use private
 registry or raw soft-enum hooks.
+
+## Shared Group menus and results
+
+The Group feature adds direct group operation targets to `/bot menu`. `/botgroup` alone or `/botgroup menu` opens
+group browsing/creation; `/botgroup menu #miners` opens member browsing and membership management, with a nested
+**Group operations...** entry. `/bot #miners menu` opens the shared Bot operation screen directly, including teleport,
+lifecycle and chunk radius. Returning from a nested operation screen goes back to management when entered there, or
+to the Bot/target list when entered directly. **Group management...** links back to the selected group's management
+screen; an existing **Back to group management** button is used instead when entered from management.
+Individual members open their normal Bot screen. Group deletion is confirmed
+and keeps the Bots. Forms echo and submit the same `/bot`
+or `/botgroup` commands and authorization checks, with UUID/membership checks to reject stale forms.
+
+Whole-group mutating-command acknowledgements and their normal audit entries are capped at two lines: counts plus grouped
+failure categories, independent of group/failure size. They confirm acceptance, not completed world actions. Details
+are available without menus via `/botgroup result #miners [history]`. This prints every member's result for one
+operation: omit the number or use `1` for the latest, `2` for the previous operation, and so on. The menu reads the
+same saved results through `/botgroup menu #miners result [history]`, with older/newer buttons. Retention is up to
+20 operations per caller/group and 128 globally, evicting oldest first. Results are private per caller/group, in memory, and reset on
+restart. An unavailable response after sending inputs is reported as unknown acceptance. See
+[Group scope, evidence and client checks](GROUPS.md) for the full behavior and remaining gates.
+
+Queries return data directly: `/bot #miners status`, `/bot #miners hotbar` and `/bot #miners radius` print every
+member's query result, labeled with `#group[index]` and Bot name. Failures occupy that member's result line; the
+remaining members are still queried. Indexed queries work the same way. Queries create no audit entry and do not
+change `result` history, so a state check after an action still leaves that action as the latest operation result.
+`hotbar <slot>` and `radius <value|default>` remain modifying operations with bounded summaries and saved history.
 
 ## Live parser smoke (real BDS required)
 

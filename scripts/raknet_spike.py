@@ -112,7 +112,7 @@ def observed_position(
 
 
 def exercise(
-    output: Path, node: str, report: dict, *, mining=False, inventory=False, item_use=False, transport="raknet"
+    output: Path, node: str, report: dict, *, mining=False, inventory=False, item_use=False, groups=False, transport="raknet"
 ) -> None:
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     installed = importlib.metadata.version("endstone")
@@ -176,6 +176,12 @@ def exercise(
             ROOT / "runtime/package-lock.json",
         ]
     }
+    if groups:
+        for relative in (
+            "scripts/group_probe.py", "plugin/endbot/src/endstone_endbot/groups.py",
+            "runtime/src/control-server.js",
+        ):
+            report["source_sha256"][relative] = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
     if transport == "nethernet":
         # BDS cannot answer discovery while another program owns the port.
         problem = lan_discovery_port_problem()
@@ -482,6 +488,15 @@ def exercise(
                     bds,
                 )
             report["bot_operation_specific_replies"] = True
+            if groups:
+                from group_probe import exercise_groups
+
+                report["stage"] = "Group native parser and bulk operations"
+                exercise_groups(
+                    BOT, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
+                )
             if mining:
                 from mining_probe import exercise_mining
                 report["stage"] = "Survival block mining"
@@ -836,6 +851,7 @@ def main() -> int:
     parser.add_argument("--mining", action="store_true", help="prepare disposable blocks/tools and validate Survival mining")
     parser.add_argument("--inventory", action="store_true", help="validate natural pickups and hotbar/drop without reconnect")
     parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
+    parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
     parser.add_argument(
         "--transport",
         choices=("raknet", "nethernet"),
@@ -865,7 +881,7 @@ def main() -> int:
     }
     try:
         exercise(output, args.node, report, mining=args.mining, inventory=args.inventory,
-                 item_use=args.item_use, transport=args.transport)
+                 item_use=args.item_use, groups=args.groups, transport=args.transport)
     except (Exception, KeyboardInterrupt) as error:  # noqa: BLE001 - persist the failed layer for any upstream failure
         report["error"] = str(error)
         print(f"raknet-spike: FAIL at {report['stage']}: {error}", file=sys.stderr)

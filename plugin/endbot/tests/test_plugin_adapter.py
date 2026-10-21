@@ -192,11 +192,30 @@ class PluginAdapterTests(unittest.TestCase):
         sender = FakeConsole()
         submissions = []
         plugin._command_runner = types.SimpleNamespace(
-            submit=lambda args, target: submissions.append((args, target)) or True,
+            submit=lambda args, target, **_: submissions.append((args, target)) or True,
         )
         self.assertTrue(plugin.on_command(sender, FakeCommand("bot"), ["ping"]))
         self.assertEqual(sender.messages, [])
         self.assertEqual(submissions, [(["ping"], sender)])
+
+    def test_group_management_uses_the_authorized_worker_and_control_permission(self) -> None:
+        plugin = self.module.EndbotPlugin()
+        submissions = []
+        plugin._command_runner = types.SimpleNamespace(
+            submit=lambda args, sender, **options: submissions.append((args, options)) or True,
+        )
+        self.assertEqual(plugin.commands["botgroup"]["permissions"], ["endbot.command.control"])
+        usages = plugin.commands["botgroup"]["usages"]
+        for action in ("list", "help", "create", "delete", "add", "remove"):
+            self.assertTrue(any(usage.startswith(f"/botgroup ({action})<action: EndbotGroup") for usage in usages))
+        self.assertIn("/botgroup <action: string> <arguments: message>", usages)
+        self.assertFalse(any("EndbotGroupMembers" in usage for usage in usages))
+        self.assertIn("/botgroup (list)<action: EndbotGroupList> [group: message]", usages)
+        self.assertTrue(plugin.on_command(FakeConsole(), FakeCommand("botgroup"), ["create", "#miners"]))
+        self.assertEqual(submissions, [(["create", "#miners"], {"command": "botgroup", "group_guard": None})])
+        unauthorized = types.SimpleNamespace(messages=[], send_message=lambda message: None)
+        plugin.on_command(unauthorized, FakeCommand("botgroup"), ["delete", "#miners"])
+        self.assertEqual(len(submissions), 1)
 
     def test_join_binds_pending_controller_and_grants_only_control(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -307,7 +326,7 @@ class PluginAdapterTests(unittest.TestCase):
             plugin = self.controller_fixture(directory)
             submissions = []
             plugin._command_runner = types.SimpleNamespace(
-                submit=lambda args, target: submissions.append((args, target)) or True
+                submit=lambda args, target, **_: submissions.append((args, target)) or True
             )
             player = self.controller_player()
             plugin.server.online_players = [player]

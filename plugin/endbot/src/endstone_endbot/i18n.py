@@ -71,6 +71,129 @@ def _format(text: str, params: dict[str, object], language: str) -> str:
 
 
 JA: dict[str, str] = {
+    "Pick a Bot or group. (/bot help lists commands)": "Bot またはグループを選んでください。(/bot help でコマンド一覧)",
+    "Back to group operations": "グループの操作へ戻る",
+    "Back to group management": "グループの管理へ戻る",
+    "Group management...": "グループ管理...",
+    "Members {count}, online {online}": "メンバー {count} 体、オンライン {online} 体",
+    "Members {count} - page {page}/{pages}. Open a member for individual operations.":
+        "メンバー {count} 体 - {page}/{pages} ページ。各メンバーを開くと単体操作ができます。",
+    "Spawn at coordinates...": "座標を指定してスポーン...",
+    "Status": "状態を表示",
+    "Profile...": "プロファイル...",
+    "profile": "プロファイル",
+    "Rename...": "名前を変更...",
+    "Rename": "名前を変更",
+    "New Bot name": "新しい Bot の名前",
+    "Forget...": "登録を削除...",
+    "Forget": "登録を削除",
+    "Forget {name}? Requires an offline Bot. Its world player data stays intact.":
+        "{name} の登録を削除しますか? オフラインの Bot が対象です。ワールド内のプレイヤーデータは残ります。",
+    "Interact with block...": "ブロックを操作...",
+    "Interact": "操作",
+    "Chunk radius (per Bot)": "チャンク半径 (各 Bot に適用)",
+    "Bot and Group operation menus share the same controls; Group management uses /botgroup.":
+        "Bot とグループの操作メニューは共通です。グループの管理は /botgroup を使います。",
+    # Shared groups and bounded operation results.
+    "+ New group...": "+ グループを作成...",
+    ", other {count}": ", ほか {count} 件",
+    ", unknown {count}": ", 受付不明 {count}",
+    "Add": "追加",
+    "Add a member to {name}": "{name} に Bot を追加",
+    "Add member...": "メンバーを追加...",
+    "Back to group": "グループへ戻る",
+    "Back to groups": "グループ一覧へ戻る",
+    "Bot": "Bot",
+    "Bot identity changed": "Bot の識別情報が変更された",
+    "Create": "作成",
+    "Create a group": "グループを作成",
+    "Delete {name}": "{name} を削除",
+    "Delete group...": "グループを削除...",
+    "Delete {name}? Its Bots stay registered.": "{name} を削除しますか? Bot 自体の登録は残ります。",
+    "Endbot: groups": "Endbot: グループ",
+    "Group operations...": "グループを一括操作...",
+    "Group reference (#name)": "グループ指定 (#名前)",
+    "Member": "メンバー",
+    "Next page": "次のページ",
+    "Previous page": "前のページ",
+    "Operations apply to every current member. Limits apply per Bot.":
+        "現在の全メンバーが対象です。回数や個数の制限は各 Bot に適用します。",
+    "Pick a group.": "グループを選んでください。",
+    "Reasons: {reasons}": "理由: {reasons}",
+    "Recent operation result...": "直近の操作結果...",
+    "Remove": "外す",
+    "Remove a member from {name}": "{name} から Bot を外す",
+    "Newer result": "新しい結果",
+    "Older result": "一つ前の結果",
+    "Remove member...": "メンバーを外す...",
+    "acceptance unknown": "受付不明",
+    "accepted": "受付",
+    "not run": "未実行",
+    "missing": "プロファイルなし",
+    "count <blocks> (optional; per Bot)": "count <blocks> (任意、各 Bot あたりのブロック数)",
+    "missing Bot profile": "Bot プロファイルなし",
+    "other errors": "その他のエラー",
+    "permission revoked or plugin stopped": "権限取消またはプラグイン停止",
+    "runtime unavailable": "runtime と通信できない",
+    "{operation}: accepted {accepted}, failed {failed}, not run {skipped}":
+        "{operation}: 受付 {accepted}, 失敗 {failed}, 未実行 {skipped}",
+    "{reason} {count}": "{reason} {count}",
+    "{target} {operation} - history {history}/{total} (1 = latest)":
+        "{target} {operation} - 履歴 {history}/{total} (1 = 最新)",
+    "Result history must be between 1 and {count} (1 = latest)":
+        "結果の履歴は 1 から {count} の範囲で指定してください (1 = 最新)",
+    "Result history must be a positive integer (1 = latest)":
+        "結果の履歴は 1 以上の整数で指定してください (1 = 最新)",
+    "No recent group result for this controller (results reset on restart)":
+        "この実行者の直近のグループ操作結果はありません (再起動すると結果は消去されます)",
+    "Group changed while the menu was open; reopen the menu":
+        "メニュー表示中にグループが変更されました。メニューを開き直してください",
+    "Bot changed while the menu was open; reopen the menu":
+        "メニュー表示中に Bot が変更されました。メニューを開き直してください",
+    "Result is no longer retained; reopen the result history": "結果の保持期限が切れました。履歴を開き直してください",
+    "Page must be a positive integer": "ページは 1 以上の整数で指定してください",
+    "Group member page is out of range": "メンバー一覧のページが範囲外です",
+    "Group syntax: #group (for example #miners)": "グループは #group の形式で指定してください (例: #miners)",
+    "Group names must start with a letter/underscore and contain 1-16 letters, digits or underscores":
+        "グループ名は英字かアンダースコアで始まる 1-16 文字の英数字・アンダースコアにしてください",
+    "Group {name} does not exist": "グループ {name} はありません",
+    "Group {name} already exists": "グループ {name} はすでにあります",
+    "Bot is already a group member": "この Bot はすでにグループのメンバーです",
+    "Bot is not a group member": "この Bot はグループのメンバーではありません",
+    "Group target syntax: #group or #group[1] (one-based)":
+        "グループは #group または #group[1] (1 から数える) の形式で指定してください",
+    "{target}: member index is out of range": "{target}: メンバー番号が範囲外です",
+    "Bot {name} does not exist; add an existing profile": "Bot {name} はありません。登録済みの Bot を追加してください",
+    "{operation} requires one Bot; use #group[1] or a Bot name":
+        "{operation} は 1 体の Bot が対象です。#group[1] か Bot 名を指定してください",
+    "Groups require the matching updated Endbot runtime":
+        "グループ機能には対応する更新済みの Endbot runtime が必要です",
+    "missing Bot profile; membership retained": "Bot プロファイルなし (メンバー登録は残しています)",
+    "Use /botgroup result #group [history] from the console":
+        "コンソールでは /botgroup result #group [history] を使ってください",
+    "Remove requires a Bot name or one indexed member of this group":
+        "外すには Bot 名か、このグループの番号付きメンバーを 1 体指定してください",
+    "Invalid group command; use /botgroup help":
+        "グループコマンドが正しくありません。/botgroup help を参照してください",
+    "Menu Bot changed; reopen the menu": "メニューの Bot が変更されました。メニューを開き直してください",
+    "Group has no members": "グループにメンバーがいません",
+    "Groups are unavailable because the groups file could not be loaded; see the server log":
+        "グループのファイルを読み込めないため、グループ機能は使えません。サーバーのログを確認してください",
+    "Groups must be stored in a regular file": "グループは通常のファイルに保存する必要があります",
+    "Groups file must not be a symlink": "グループのファイルにシンボリックリンクは使えません",
+    "Invalid groups file": "グループのファイルが正しくありません",
+    "Invalid group entry": "グループの項目が正しくありません",
+    "Duplicate group member": "グループのメンバーが重複しています",
+    "Duplicate group name": "グループ名が重複しています",
+    "Duplicate group identity": "グループの識別情報が重複しています",
+    "Unexpected request while rendering group input result": "グループ操作の結果を表示中に想定外の要求がありました",
+    "Invalid group input batch response": "グループ一括操作の応答が正しくありません",
+    "no groups": "グループはありません",
+    "group created": "グループを作成しました",
+    "group deleted; Bots retained": "グループを削除しました。Bot の登録は残っています",
+    "no members": "メンバーはいません",
+    "add: {target}": "追加: {target}",
+    "remove: {target}": "外しました: {target}",
     # Connection states shown in list/status/forms.
     "online": "オンライン",
     "offline": "オフライン",
@@ -478,6 +601,7 @@ JA: dict[str, str] = {
     "the form response was not understood": "フォームの応答を読み取れませんでした",
     "enter exactly three coordinates: x y z": "座標は x y z の 3 つを入力してください",
     "nothing to change": "変更はありません",
+    "Unknown Endbot command root": "Endbotコマンドの種類が不明です",
 }
 
 CATALOGS: dict[str, dict[str, str]] = {"ja": JA}

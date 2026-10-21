@@ -17,6 +17,7 @@ from endstone_endbot.controller_requests import execute_request
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
 from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
 from endstone_endbot.form_adapter import FormPresenter
+from endstone_endbot.groups import GroupCommandService, GroupStore
 from endstone_endbot.i18n import DEFAULT_LANGUAGE_SETTING, language_setting, resolve_language, tr
 from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings
 from endstone_endbot.world import EndstoneWorld
@@ -110,6 +111,12 @@ COMMAND_USAGES = [
     ),
     "/bot <name: string> (drop)<operation: EndbotDropOne>",
     "/bot <name: string> (drop)<operation: EndbotDropStack> (stack)<mode: EndbotDropMode>",
+    # Group targets. Bedrock Id/string rejects a leading '#', so only a
+    # first-position message carries "#group[1] <operation> ...". It natively
+    # matches any input, which leaves syntax rejection to the Python parser.
+    # Kept last so the typed overloads above lead native completion; that
+    # ordering effect still needs real-client validation.
+    "/bot <arguments: message>",
 ]
 
 
@@ -133,6 +140,26 @@ class EndbotPlugin(Plugin):
                 "/botcontrollers <action: string> <target: message>",
             ],
             "permissions": ["endbot.command.controllers"],
+        },
+        "botgroup": {
+            "description": "Manage shared Endbot groups.",
+            "usages": [
+                "/botgroup",
+                "/botgroup <action: string>",
+                "/botgroup <action: string> <arguments: message>",
+                # Keep the generic parseability layer above, then advertise each
+                # operation separately, like /bot. A multi-value enum is shown
+                # as a type name by the locked Windows client.
+                "/botgroup (list)<action: EndbotGroupList> [group: message]",
+                "/botgroup (help)<action: EndbotGroupHelp>",
+                "/botgroup (menu)<action: EndbotGroupMenu> [arguments: message]",
+                "/botgroup (result)<action: EndbotGroupResult> <group: string> [history: int]",
+                "/botgroup (create)<action: EndbotGroupCreate> <group: message>",
+                "/botgroup (delete)<action: EndbotGroupDelete> <group: message>",
+                "/botgroup (add)<action: EndbotGroupAdd> <group: string> <bot: string>",
+                "/botgroup (remove)<action: EndbotGroupRemove> <group: string> <member: message>",
+            ],
+            "permissions": ["endbot.command.control"],
         },
     }
     permissions: ClassVar[dict[str, dict[str, object]]] = {
@@ -218,7 +245,16 @@ class EndbotPlugin(Plugin):
             lambda: tuple(str(player.name) for player in self.server.online_players),
             language=self._language,
         )
-        self._bot_commands = BotCommandService(control, command_world)
+        try:
+            groups = GroupStore(self.data_folder / "groups.json")
+        except (ValueError, OSError) as error:
+            # A broken groups file must not take /bot down with it.
+            self.logger.error(f"Groups disabled: groups.json could not be loaded ({error}); fix or move it and reload")
+            groups = None
+        self._bot_commands = GroupCommandService(
+            control, command_world, groups,
+            authorize=lambda source: self._server_thread.call(lambda: self._authorize_source(source)),
+        )
         self._command_runner = AsyncCommandRunner(
             self._bot_commands,
             self._server_thread,
@@ -524,6 +560,9 @@ class EndbotPlugin(Plugin):
         if command.name == "botcontrollers":
             self._manage_controllers(sender, args)
             return True
+        if command.name == "botgroup":
+            self._submit_bot(sender, args, command="botgroup")
+            return True
         if command.name != "bot":
             return False
         self._submit_bot(sender, args)
@@ -539,12 +578,15 @@ class EndbotPlugin(Plugin):
             locale = None
         return resolve_language(self._language_setting, locale)
 
-    def _submit_bot(self, sender, args: list[str]) -> None:
+    def _submit_bot(self, sender, args: list[str], *, command: str = "bot", group_guard=None) -> None:
         """Shared entry for typed /bot commands and form submissions."""
         if not isinstance(sender, ConsoleCommandSender) and (
             not hasattr(sender, "unique_id") or not self._allows_control(sender)
         ):
             sender.send_message(f"Endbot: {tr(self._language(sender), 'you do not have Bot control permission')}")
             return
-        if self._command_runner is None or not self._command_runner.submit(args, sender):
+        submitted = self._command_runner is not None and self._command_runner.submit(
+            args, sender, command=command, group_guard=group_guard
+        )
+        if not submitted:
             sender.send_message(f"Endbot: {tr(self._language(sender), 'command service is unavailable')}")

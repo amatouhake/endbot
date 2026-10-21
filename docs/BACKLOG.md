@@ -274,7 +274,7 @@ reuse the event-intercept approach and the one-overload-per-first-token finding 
 
 ## BOT-009: Controller-authored Luau scripts and a small in-game editor
 
-Status: **Design direction agreed — not implemented; release assignment undecided** (2026-10-21 JST).
+Status: **0.4.0 MVP scope and API direction agreed; runner research/prototype in progress** (2026-10-23 JST).
 
 Controllers should be able to write and run their own Bot scripts without server-filesystem access. Use **Luau** as
 the language baseline. Required use cases include loops, conditions, coordinate arithmetic, and placing multiple Bots
@@ -282,8 +282,33 @@ at offsets from a chosen origin before starting their actions. A plain command-l
 use cases; keep expression evaluation and control flow in Luau rather than adding them to `/bot` command strings.
 
 Design order: settle Group targeting and bulk-operation semantics (BOT-010) before the Luau operation API. Groups
-remain a separate feature available when scripting is disabled. Luau remains at the design stage; BOT-010 now has a
-feature implementation on `feat/groups`. Neither feature has a release assignment.
+remain a separate feature available when scripting is disabled. Groups (BOT-010) and inventory (BOT-011) are on `main`;
+all three ship together in 0.4.0.
+
+Decisions for the 0.4.0 MVP (2026-10-23 JST):
+
+- **Minimal surface.** Server-stored scripts with list, view, run and stop; create/update by pasting source into a form
+  text field; run arguments; a few templates (for example placing a group in a row). The numbered-line in-game editor
+  is deferred and built only if pasting proves insufficient on real clients.
+- **API, not command strings.** Scripts call typed functions covering every `/bot` operation, for a single Bot or a
+  Group (`bot("Alice"):move("forward", {ticks = 20})`, `group("#miners"):destroy{...}`). There is no raw command-string
+  escape hatch. The API is derived from one shared definition of operations and parameters that the `/bot` parser
+  also uses, so new commands reach scripts without hand-written drift. Calls return acceptance results like commands;
+  scripts wait explicitly (`wait(ticks)`, `waitOnline(bot)`). Authorization is rechecked before every operation.
+- **Declared parameters, short invocation.** A script declares its parameters with types and defaults at the top
+  (`params { group = param.group(), origin = param.pos("~ ~ ~"), spacing = param.number(2) }`). Commands pass them
+  positionally and may omit defaulted ones (`/botscript run line #miners`); `~` is relative to the invoking player.
+  The menu lists scripts and builds the input form from the declared parameters (group dropdown, position defaulting
+  to the player, numbers with defaults), reachable from `/bot menu`. A short command alias is still to be decided.
+- **Shared server-wide**, like Groups: every controller can list, run and edit; a run uses the invoker's authority.
+- **Off by default**: `[scripting] enabled = false` in the plugin configuration, applied on restart.
+- **Configurable limits**: concurrent runs per controller and server-wide, per-run instruction/time budget, operation
+  rate and script size are configuration values with conservative defaults. Only limits that correctness depends on,
+  such as packet bounds, stay fixed.
+- **Runner selection by evidence.** Compare official Luau artifacts (prebuilt binaries, building the official source
+  for the web/embedding at a pinned version, managed like `endstone.lock`) against community packages, by
+  provenance, maintenance, license, embeddability (yielding for `wait` and host calls, interrupting runaway code),
+  Windows/Linux bundling and sandboxing; then prototype the strongest option.
 
 Initial authoring surface:
 
@@ -333,7 +358,7 @@ Implementation decisions still open:
 - Specify accepted versus completed operations, sequential versus parallel actions, connection/completion waits,
   timeouts and partial failures. Define run/job identifiers, stale-request rejection and bounded cleanup on runner loss
   to enforce the agreed lifetime. Bot disconnect/reconnect behavior and manual-operation conflict policy remain open.
-- Select the concrete runner, isolation/resource limits and plugin/runtime bridge after a small prototype. The existing
+- Select the concrete runner and plugin/runtime bridge after the prototype above. The existing
   Node.js runtime is retained for Bedrock protocol/client behavior. No
   runtime rewrite, additional Endstone core behavior patch or new compatibility claim is implied.
 

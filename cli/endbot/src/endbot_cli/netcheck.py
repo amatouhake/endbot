@@ -71,16 +71,20 @@ def lan_discovery_port_problem(
         try:
             owners = port_owners(port)
         except OSError:
-            owners = []  # Fall back to the trial bind below.
+            owners = None  # Fall back to the trial bind below.
         if owners:
             return _problem(port, "process " + ", ".join(str(pid) for pid in sorted(set(owners))))
+        if owners is not None and os.name == "nt":
+            # The Windows table lists every IPv4 UDP socket, LAN-address ones
+            # included. Skipping the wildcard trial bind avoids a Windows
+            # Firewall prompt for each Python install that runs this check.
+            return None
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        # Loopback still collides with a wildcard holder, and unlike 0.0.0.0 it
-        # does not raise a Windows Firewall prompt for each Python install.
-        probe.bind(("127.0.0.1", port))
+        # Only a wildcard bind collides with a holder on any local address.
+        probe.bind(("0.0.0.0", port))
     except OSError as error:
         return _problem(port, f"errno {error.errno}")
     finally:

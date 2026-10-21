@@ -348,7 +348,7 @@ promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Batching/completion confirmed on client; unified list/# syntax implemented — syntax recheck and Group menus open**
+Status: **Unified list/# syntax passed on client — Group menus and result presentation remain open**
 (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -422,6 +422,8 @@ generic parseability branches and the baseline's dynamic-name/filtering limitati
 completion was comparable to `/bot` and simultaneous execution worked on the real client (source `8a8f875`). The next
 agreed revision unifies `list [#group]` and prefixed management references as above; recheck that revised syntax and
 completion on the client. Earlier generic `members`/bare-name examples are superseded.
+The user then confirmed all six revised management forms worked on the real client (source `905c924`). Menu coverage
+and the result/log presentation of group-targeted `/bot` commands are the next discussion topics, not agreed designs.
 Group menus and live mid-batch revocation remain open. No actual Xbox achievement unlock was reported. See the
 [prototype evidence and follow-up](GROUP_PROTOTYPE.md) for scope and limits.
 

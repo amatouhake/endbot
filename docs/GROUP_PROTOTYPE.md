@@ -140,7 +140,11 @@ and the retired `members` command. The first full probe subsequently failed the 
 observed distance); a fresh-world rerun passed the full probe, including movement and clean shutdown. The syntax checks
 passed in both worlds.
 
-Remaining gates include human-client input/completion for the revised prefixed management grammar, Group menus and live
+The user confirmed the six revised management forms (list all, list one group, create, add, remove and delete) worked
+on the real client with source `905c924`. Group-menu coverage and the chat/server-log presentation of group-targeted
+operations were raised as the next design topics; their behavior is not settled or implemented by this validation.
+
+Remaining gates include completion rendering for the revised management hints, Group menus/result presentation and live
 revocation. Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
 No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
 Endstone/BDS pair.

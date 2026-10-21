@@ -1,8 +1,9 @@
 # Shared Group command prototype
 
-This source-tree prototype exercises the Group design before the Luau API. It is not a published release or a completed
-in-game menu feature. Use the plugin and runtime from the same checkout; an older runtime without the required UUID
-pinning/input-batch capabilities is rejected. No Luau runner, script editor, web service or Endstone core change is involved.
+This source-tree prototype exercises the Group design before the Luau API. It is not a published release; Group menus
+and result presentation still need a human-client check. Use the plugin and runtime from the same checkout; an older
+runtime without the required UUID pinning/input-batch capabilities is rejected. No Luau runner, script editor, web
+service or Endstone core change is involved.
 
 ## Try the command flow
 
@@ -20,6 +21,8 @@ From an authorized controller or the server console (omit the leading slash at t
 /bot #miners[1] look 0 90
 /bot #miners destroy count 64
 /bot #miners destroy stop
+/botgroup result #miners
+/botgroup result #miners 2
 ```
 
 Wait for the Bots to be online and prepare their tools/targets normally before gameplay actions. Replies confirm
@@ -33,6 +36,42 @@ require no migration. Remove a member with `/botgroup remove #miners Alice`, or 
 `/botgroup remove #miners #miners[1]` to remove a missing profile's entry.
 `/botgroup delete #miners` deletes the group registration and leaves Bot profiles intact.
 When using the OS CLI, quote the whole command, for example `endbot console "bot #miners stop"`.
+
+## Menus and operation results
+
+`/bot menu` now includes **Groups...**. `/botgroup menu` opens the group list/create screen; `/bot #miners menu` (also
+`/botgroup menu #miners`) opens the group screen. It offers ordered members with connection state, group operations,
+add/remove membership, group deletion with confirmation, and the initiating controller's recent operation result.
+Members are paginated ten at a time (`/botgroup menu #miners 2`). Selecting an existing member opens its ordinary Bot
+menu. Teleport and other individual-only controls remain there; there is no formation or group teleport button.
+Group inputs and mining controls reuse the ordinary forms, with duration/count limits described per Bot.
+
+Every mutation submitted by a form uses the same `/bot` or `/botgroup` command/permission path and echoes the actual
+root/arguments in chat. Group/Bot UUIDs and membership order are checked on submission; changing membership or
+deleting/recreating a group requires reopening old forms. A member's single-Bot form also retains a UUID guard through
+navigation, so a replacement using the old name is not accidentally controlled. Closing/canceling management forms
+does not perform the operation; deleting a group leaves its Bots registered.
+
+Whole-group operation acknowledgements are at most **two lines**, regardless of failure count: accepted/failed/not-run
+counts and, if needed, failure reasons aggregated by category. At most three categories are shown, with excess entries
+counted under "other". They confirm acceptance, not successful world outcomes. Missing responses after sending a batch
+are counted as **acceptance unknown**, never silently described as not executed and never automatically retried.
+Indexed targets retain the group index and Bot name in their ordinary single-member reply.
+
+Mutating group operations write the same bounded English summary to the server log, including the controller name.
+Player replies follow their language. Menus, result inspection and read-only queries do not add audit entries.
+The bound applies to immediate command acknowledgements; BDS join/quit events and existing asynchronous mining notices
+are separate events. Per-member details do not get dumped into the normal acknowledgement or audit log.
+
+`/botgroup result #miners [page]` retrieves the caller's latest result for that group, with ten member rows per page,
+operation/target, counts, and per-member outcomes/reasons. It is an inspection of saved request results, not a replay or
+fresh status query. The menu's recent-result screen uses the same snapshot (`/botgroup menu #miners result [page]`).
+Snapshots describe group-targeted `/bot` requests; management confirmations and menu navigation do not replace them.
+Each controller/group keeps only its latest result, with a global cap of 128 snapshots; these are in memory and cleared
+on restart. Console/CLI share the console result slot. Another controller's operation cannot overwrite your result.
+Details retain their request-time language. Editing membership/renaming a Bot does not change historical result rows;
+deleting/recreating a group does not expose the previous group's result. An open result page detects replacement of
+its snapshot before navigating to another page.
 
 ## What the prototype implements
 
@@ -55,9 +94,9 @@ When using the OS CLI, quote the whole command, for example `endbot console "bot
   undo those inputs. Existing continuous-mining revocation/lease behavior still applies.
 - Runtime requests carry the expected UUID and reject a stale/reused Bot name before applying an operation. This
   supplements the plugin's UUID lookup; it does not change the Microsoft/Xbox or local-bot login paths.
-- Whole-group rename/forget and menus are rejected. Use one member or a Bot name for those operations. Indexed
-  `menu` opens the existing single-Bot menu; there is no Group menu yet.
-- `/botgroup` now advertises separate native operation hints for `list`, `help`, `create`, `delete`, `add` and `remove`,
+- Whole-group rename/forget are rejected. Use one member or a Bot name for those operations. Whole-group `menu` opens
+  the group screen; indexed `menu` opens the existing single-Bot screen.
+- `/botgroup` advertises separate native hints for `list`, `help`, `create`, `delete`, `add`, `remove`, `menu` and `result`,
   with optional group scope for `list` and group/Bot/member argument hints. It uses the same generic-parseability plus
   typed-enum approach as `/bot`. Generic branches remain for the locked native parser (including indexed removal);
   dynamic group/Bot name suggestions are unavailable on this baseline. Native client filtering can still be weak.
@@ -68,11 +107,11 @@ When using the OS CLI, quote the whole command, for example `endbot console "bot
   digits or underscores. The stored spelling is retained for display.
 - Removing a member compacts later indexes; re-adding appends it. Offline and forgotten entries do not compact
   automatically. Decide whether explicit reordering or stable numbered slots are needed after actual usage.
-- Group creator metadata, group rename, richer permissions and menu management are not implemented yet.
+- Group creator metadata, group rename and richer permissions are not implemented yet.
 - Bulk teleport applies the existing single-Bot teleport independently. There is no automatic formation, collision-safe
   scatter or frozen shared destination for a moving player. Prefer indexed commands while reviewing placement semantics.
-- New Group-specific diagnostics are currently English. The existing single-Bot action replies still follow the
-  controller's language. Group diagnostics/forms need the usual Japanese-client review before release.
+- Group forms, new result summaries and ordinary action replies follow the controller's language. Some earlier Group
+  management diagnostics remain English. Group diagnostics/forms need the usual Japanese-client review before release.
 
 ## Verification
 
@@ -144,7 +183,14 @@ The user confirmed the six revised management forms (list all, list one group, c
 on the real client with source `905c924`. Group-menu coverage and the chat/server-log presentation of group-targeted
 operations were raised as the next design topics; their behavior is not settled or implemented by this validation.
 
-Remaining gates include completion rendering for the revised management hints, Group menus/result presentation and live
-revocation. Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
+Follow-up implementation added the menu/result behavior above. All 221 plugin tests passed, including 100 failed
+members producing only two acknowledgement/audit lines, controller-private result retrieval, pagination, lost-response
+classification, command/form result parity, management-form submit/cancel, stale membership/group/result rejection,
+and old-name reuse protection for member controls/addition choices. Python lint, portability and the plugin-wheel build
+passed. The updated real-BDS probe passed native menu/result declarations, bounded partial-failure logs and paged result retrieval, the
+broader existing checks, and clean shutdown. Native form rendering itself requires the human client.
+
+Remaining gates include completion rendering for the new hints, group forms/result presentation and live revocation.
+Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
 No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
 Endstone/BDS pair.

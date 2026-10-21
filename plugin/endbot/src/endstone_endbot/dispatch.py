@@ -29,6 +29,7 @@ class CommandSource:
     name: str | None = None
     # Reply language, resolved on the server thread when the command arrives.
     language: str = "en"
+    group_guard: object | None = None
 
     @classmethod
     def capture(cls, sender, language: str = "en") -> CommandSource:
@@ -239,10 +240,12 @@ class AsyncCommandRunner:
 
         self._bridge.post(deliver)
 
-    def submit(self, arguments: list[str], sender, *, command: str = "bot") -> bool:
+    def submit(self, arguments: list[str], sender, *, command: str = "bot", group_guard=None) -> bool:
         if command not in {"bot", "botgroup"}:
             raise ValueError("Unknown Endbot command root")
         source = CommandSource.capture(sender, self._language(sender) if self._language else "en")
+        if group_guard is not None:
+            source = replace(source, group_guard=group_guard)
         if self._revision is not None:
             source = replace(source, authorization_revision=self._revision(sender))
         with self._lock:

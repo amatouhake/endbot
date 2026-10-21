@@ -151,6 +151,8 @@ class EndbotPlugin(Plugin):
                 # as a type name by the locked Windows client.
                 "/botgroup (list)<action: EndbotGroupList> [group: message]",
                 "/botgroup (help)<action: EndbotGroupHelp>",
+                "/botgroup (menu)<action: EndbotGroupMenu> [arguments: message]",
+                "/botgroup (result)<action: EndbotGroupResult> <group: string> [page: int]",
                 "/botgroup (create)<action: EndbotGroupCreate> <group: message>",
                 "/botgroup (delete)<action: EndbotGroupDelete> <group: message>",
                 "/botgroup (add)<action: EndbotGroupAdd> <group: string> <bot: string>",
@@ -569,16 +571,18 @@ class EndbotPlugin(Plugin):
             locale = None
         return resolve_language(self._language_setting, locale)
 
-    def _submit_bot(self, sender, args: list[str], *, command: str = "bot") -> None:
+    def _submit_bot(self, sender, args: list[str], *, command: str = "bot", group_guard=None) -> None:
         """Shared entry for typed /bot commands and form submissions."""
         if not isinstance(sender, ConsoleCommandSender) and (
             not hasattr(sender, "unique_id") or not self._allows_control(sender)
         ):
             sender.send_message(f"Endbot: {tr(self._language(sender), 'you do not have Bot control permission')}")
             return
-        submitted = self._command_runner is not None and (
-            self._command_runner.submit(args, sender) if command == "bot"
-            else self._command_runner.submit(args, sender, command=command)
-        )
+        options = {}
+        if command != "bot":
+            options["command"] = command
+        if group_guard is not None:
+            options["group_guard"] = group_guard
+        submitted = self._command_runner is not None and self._command_runner.submit(args, sender, **options)
         if not submitted:
             sender.send_message(f"Endbot: {tr(self._language(sender), 'command service is unavailable')}")

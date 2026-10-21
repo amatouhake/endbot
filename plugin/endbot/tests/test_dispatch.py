@@ -18,6 +18,31 @@ class ScheduledCallbacks:
 
 
 class DispatchTests(unittest.TestCase):
+    def test_form_group_guard_survives_authorized_worker_capture_and_root_dispatch(self):
+        from types import SimpleNamespace
+
+        from endstone_endbot.group_forms import GroupGuard
+
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        captured = []
+        guard = GroupGuard("group-id", "miners", ("bot-uuid",))
+        class Service:
+            def execute_group(self, argv, source):
+                captured.append((argv, source))
+                return CommandResult(True)
+        player = SimpleNamespace(unique_id="player-id", location=object(), name="Tester", xuid="123")
+        runner = AsyncCommandRunner(Service(), bridge, lambda source: player, authorize=lambda source: True)
+        self.addCleanup(runner.close)
+        self.assertTrue(runner.submit(["delete", "#miners"], player, command="botgroup", group_guard=guard))
+        scheduled.run_next()  # authorization on server thread
+        scheduled.run_next()  # delivery
+        self.assertEqual(captured[0][0], ["delete", "#miners"])
+        self.assertIs(captured[0][1].group_guard, guard)
+        self.assertIsNone(captured[0][1].sender)
+        self.assertEqual(captured[0][1].player_id, "player-id")
+
     def test_periodic_poll_is_coalesced_and_not_blocked_by_a_slow_command(self):
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

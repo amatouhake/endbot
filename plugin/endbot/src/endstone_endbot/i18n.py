@@ -71,6 +71,61 @@ def _format(text: str, params: dict[str, object], language: str) -> str:
 
 
 JA: dict[str, str] = {
+    # Shared groups and bounded operation results.
+    "+ New group...": "+ グループを作成...",
+    ", other {count}": ", ほか {count} 件",
+    ", unknown {count}": ", 受付不明 {count}",
+    "Add a group member": "グループに Bot を追加",
+    "Add member...": "メンバーを追加...",
+    "Back to group": "グループへ戻る",
+    "Back to groups": "グループ一覧へ戻る",
+    "Bot": "Bot",
+    "Bot identity changed": "Bot の識別情報が変更された",
+    "Create": "作成",
+    "Create a group": "グループを作成",
+    "Delete group": "グループを削除",
+    "Delete group...": "グループを削除...",
+    "Delete {name}? Its Bots stay registered.": "{name} を削除しますか? Bot 自体の登録は残ります。",
+    "Endbot: groups": "Endbot: グループ",
+    "Group operations...": "グループを一括操作...",
+    "Group reference (#name)": "グループ指定 (#名前)",
+    "Groups...": "グループ...",
+    "Member": "メンバー",
+    "Members {count} - page {page}/{pages}. Open a member for teleport and individual operations.":
+        "メンバー {count} 体 - {page}/{pages} ページ。各メンバーを開くとテレポートや単体操作ができます。",
+    "Next page": "次のページ",
+    "Previous page": "前のページ",
+    "Operations apply to every current member. Limits apply per Bot.":
+        "現在の全メンバーが対象です。回数や個数の制限は各 Bot に適用します。",
+    "Pick a group.": "グループを選んでください。",
+    "Reasons: {reasons}": "理由: {reasons}",
+    "Recent operation result...": "直近の操作結果...",
+    "Remove a group member": "グループから Bot を外す",
+    "Remove member...": "メンバーを外す...",
+    "acceptance unknown": "受付不明",
+    "accepted": "受付",
+    "not run": "未実行",
+    "missing": "プロファイルなし",
+    "count <blocks> (optional; per Bot)": "count <blocks> (任意、各 Bot あたりのブロック数)",
+    "missing Bot profile": "Bot プロファイルなし",
+    "other errors": "その他のエラー",
+    "permission revoked or plugin stopped": "権限取消またはプラグイン停止",
+    "runtime unavailable": "runtime と通信できない",
+    "{operation}: accepted {accepted}, failed {failed}, not run {skipped}":
+        "{operation}: 受付 {accepted}, 失敗 {failed}, 未実行 {skipped}",
+    "{reason} {count}": "{reason} {count}",
+    "{target} {operation} - page {page}/{pages}": "{target} {operation} - {page}/{pages} ページ",
+    "Result page must be between 1 and {pages}": "結果のページは 1 から {pages} の範囲で指定してください",
+    "No recent group result for this controller (results reset on restart)":
+        "この実行者の直近のグループ操作結果はありません (再起動すると結果は消去されます)",
+    "Group changed while the menu was open; reopen the menu":
+        "メニュー表示中にグループが変更されました。メニューを開き直してください",
+    "Bot changed while the menu was open; reopen the menu":
+        "メニュー表示中に Bot が変更されました。メニューを開き直してください",
+    "Recent result changed; reopen the result": "直近の結果が更新されました。結果を開き直してください",
+    "Page must be a positive integer": "ページは 1 以上の整数で指定してください",
+    "Group member page is out of range": "メンバー一覧のページが範囲外です",
+    "Group syntax: #group (for example #miners)": "グループは #group の形式で指定してください (例: #miners)",
     # Connection states shown in list/status/forms.
     "online": "オンライン",
     "offline": "オフライン",

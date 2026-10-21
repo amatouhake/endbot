@@ -442,6 +442,20 @@ stopgap, not the final command API. The pinned Endstone public API does not expo
 Bot profile names, so names remain strings; use `/bot list` to discover them. Endbot does not use private
 registry or raw soft-enum hooks.
 
+## Shared Group prototype menus and results
+
+The source-tree Group prototype adds **Groups...** to `/bot menu`. `/botgroup menu` opens group browsing/creation;
+`/bot #miners menu` opens member browsing, group input/mining controls and membership management. Individual members
+open their normal Bot screen. Group deletion is confirmed and keeps the Bots. Forms echo and submit the same `/bot`
+or `/botgroup` commands and authorization checks, with UUID/membership checks to reject stale forms.
+
+Whole-group operation acknowledgements and their normal audit entries are capped at two lines: counts plus grouped
+failure categories, independent of group/failure size. They confirm acceptance, not completed world actions. Details
+are available without menus via `/botgroup result #miners [page]`, ten members per page. The menu reads the same saved
+result through `/botgroup menu #miners result [page]`. Results are private per caller/group, in memory, and reset on
+restart. An unavailable response after sending inputs is reported as unknown acceptance. See
+[Group prototype scope, evidence and client checks](GROUP_PROTOTYPE.md) for the full behavior and remaining gates.
+
 ## Live parser smoke (real BDS required)
 
 Repository unit tests prove the Python parser and the declaration coverage model, but they cannot execute the

@@ -33,6 +33,7 @@ class BotListView:
     """Runtime data for the Bot list; produced off the server thread."""
 
     bots: tuple[dict, ...]
+    groups: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,7 @@ class BotView:
     summary: str
     status: dict
     observed: dict | None = None
+    guard: object | None = None
 
 
 # Controls. Field order mirrors the endstone.form constructors.
@@ -91,6 +93,8 @@ class Run:
     """Submit each argument list through the /bot command path, in order."""
 
     commands: tuple[Argv, ...]
+    command: str = "bot"
+    guard: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +118,7 @@ class ActionScreen:
     title: str
     content: str
     items: tuple[Button | Header, ...]
+    guard: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +137,7 @@ class ModalScreen:
     # Maps the submitted values (one per control) to commands to run.
     build: Callable[[list], tuple[Argv, ...]] = field(compare=False)
     submit: str = "Run"
+    command: str = "bot"
 
 
 def run(*commands: Argv) -> Run:
@@ -168,6 +174,8 @@ def bot_list_screen(view: BotListView, lang: str = "en") -> ActionScreen:
         offline_screen = ActionScreen(tr(lang, "Endbot: offline Bots"), tr(lang, "Pick a Bot."), tuple(offline_items))
         items.append(Button(tr(lang, "Offline ({count})...", count=len(offline)), Show(offline_screen)))
     items.append(Button(tr(lang, "+ New Bot here"), Show(spawn_modal(lang))))
+    if view.groups:
+        items.append(Button(tr(lang, "Groups..."), Run((("menu",),), command="botgroup")))
     content = tr(lang, "Pick a Bot. (/bot help lists commands)" if bots else "No Bot profiles yet. Spawn one to start.")
     return ActionScreen("Endbot", content, tuple(items))
 
@@ -389,7 +397,8 @@ def action_screen(name: str, action: str, lang: str = "en") -> ActionScreen:
     ]
     if use:
         items.append(Button("for...", Show(_clause_form(name, (action,), (("for", FOR_REQUIRED_FIELD, True),), lang))))
-    items += [Button("stop", run((name, action, "stop"))), Button(tr(lang, "Back to Bot"), run(menu_argv(name)))]
+    items += [Button("stop", run((name, action, "stop"))),
+              Button(tr(lang, "Back to group" if name.startswith("#") else "Back to Bot"), run(menu_argv(name)))]
     return ActionScreen(f"{name}: {action}", tr(lang, MODE_CONTENT, ticks=TICKS), tuple(items))
 
 
@@ -411,7 +420,8 @@ def move_modal(name: str, lang: str = "en") -> ModalScreen:
 def destroy_screen(name: str, lang: str = "en") -> ActionScreen:
     """``/bot <name> destroy [once|continuous [for|count]|stop]`` or ``destroy <x> <y> <z> [face]``"""
     continuous = _clause_form(
-        name, ("destroy", "continuous"), (("for", FOR_FIELD, False), ("count", COUNT_FIELD, False)), lang
+        name, ("destroy", "continuous"), (("for", FOR_FIELD, False),
+        ("count", Text("count <blocks> (optional; per Bot)") if name.startswith("#") else COUNT_FIELD, False)), lang
     )
     return ActionScreen(
         f"{name}: destroy",
@@ -421,7 +431,7 @@ def destroy_screen(name: str, lang: str = "en") -> ActionScreen:
             Button("continuous...", Show(continuous)),
             Button("x y z...", Show(destroy_coordinates_modal(name, lang))),
             Button("stop", run((name, "destroy", "stop"))),
-            Button(tr(lang, "Back to Bot"), run(menu_argv(name))),
+            Button(tr(lang, "Back to group" if name.startswith("#") else "Back to Bot"), run(menu_argv(name))),
         ),
     )
 

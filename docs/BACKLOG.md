@@ -348,7 +348,7 @@ promised here.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Unified list/# syntax passed on client — Group menus and result presentation remain open**
+Status: **Group menus and bounded result presentation implemented — human-client forms/results check remains open**
 (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -423,8 +423,27 @@ completion was comparable to `/bot` and simultaneous execution worked on the rea
 agreed revision unifies `list [#group]` and prefixed management references as above; recheck that revised syntax and
 completion on the client. Earlier generic `members`/bare-name examples are superseded.
 The user then confirmed all six revised management forms worked on the real client (source `905c924`). Menu coverage
-and the result/log presentation of group-targeted `/bot` commands are the next discussion topics, not agreed designs.
-Group menus and live mid-batch revocation remain open. No actual Xbox achievement unlock was reported. See the
+and the result/log presentation of group-targeted `/bot` commands became the next design topics.
+
+The user then agreed to and requested implementation of these rules:
+
+- `/bot menu` links to Groups; `/botgroup menu` lists/creates groups; `/bot #group menu` opens ordered member browsing,
+  bulk controls and membership management. Members open the ordinary Bot menu for teleport/individual operations.
+  Group deletion asks for confirmation and retains Bot registrations. Forms run/echo the same typed commands.
+- Every whole-group acknowledgement and its normal audit entry is at most two lines, with accepted/failed/not-run
+  counts plus up to three aggregated reason categories and an "other" count. No per-failure automatic line. Counts
+  describe acceptance; a lost batch response has a separate unknown count. Logs include actor/target/operation in
+  English; player summaries use their language. Read-only/menu/result requests do not add audit entries.
+- `/botgroup result #group [page]` shows the caller's latest result with ten member rows per page. The menu reads the
+  same snapshot through `/botgroup menu #group result [page]`; result inspection is available without forms. Results
+  are private per controller/group, bounded to 128 in-memory snapshots globally, and reset on restart. No replay.
+- Old forms validate group/Bot UUIDs and membership order; paged result navigation detects when the latest snapshot
+  changed. Recreating a group or reusing a Bot name must not retarget an old form.
+
+These are implemented and covered by 221 plugin tests, including bounded 100-member failures and command/form routing
+and stale-identity cases. The updated real-BDS probe passed summary/result commands and clean shutdown. Actual group
+form rendering/input, new completion hints and live mid-batch revocation remain manual gates.
+No actual Xbox achievement unlock was reported. See the
 [prototype evidence and follow-up](GROUP_PROTOTYPE.md) for scope and limits.
 
 Questions to resolve first:

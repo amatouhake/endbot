@@ -18,6 +18,10 @@ def messages(result):
 
 class GroupControl(FakeControl):
     def request(self, operation, **parameters):
+        if "expectedIdentityId" in parameters:
+            profile = self.bots.get(parameters["name"])
+            if profile is None or profile["identityId"] != parameters["expectedIdentityId"]:
+                raise RuntimeControlError("identity_changed", "Bot identity changed; group operation canceled")
         if operation == "capabilities":
             return {"identityPinnedRequests": True, "groupInputBatch": True}
         if operation == "groupInputBatch":
@@ -106,8 +110,8 @@ class GroupServiceTests(unittest.TestCase):
     def test_missing_profile_retains_its_index_and_does_not_spawn_a_replacement(self):
         del self.control.bots["Alice"]
         result = self.service.execute(["#miners", "spawn"])
-        self.assertIn("#miners[1]: missing Bot profile", messages(result))
-        self.assertIn("Bob", messages(result))
+        self.assertIn("missing Bot profile 1", messages(result))
+        self.assertIn("Bob", messages(self.manage("result", "#miners")))
         self.assertNotIn("Alice", self.control.bots)
         self.assertEqual(len(self.store.get("miners").members), 2)
         removed = self.manage("remove", "#miners", "#miners[1]")
@@ -132,8 +136,10 @@ class GroupServiceTests(unittest.TestCase):
             return original(operation, **parameters)
         self.control.request = request
         result = self.service.execute(["#miners", "stop"])
-        self.assertIn("#miners[1]: Bot is offline", messages(result))
-        self.assertIn("Bob: movement and actions stopped", messages(result))
+        self.assertIn("accepted 1, failed 1", messages(result))
+        detail = messages(self.manage("result", "#miners"))
+        self.assertIn("Alice: failed - Bot is offline", detail)
+        self.assertIn("Bob: accepted - movement and actions stopped", detail)
 
     def test_revocation_cancels_rest_of_batch_and_keeps_already_completed_result(self):
         original = self.control.request
@@ -145,8 +151,10 @@ class GroupServiceTests(unittest.TestCase):
         self.control.request = request
         result = self.service.execute(["#miners", "despawn"])
         self.assertEqual([params["name"] for op, params in self.control.calls if op == "despawn"], ["Alice"])
-        self.assertIn("Alice: despawn requested", messages(result))
-        self.assertIn("permission was revoked", messages(result))
+        self.assertIn("accepted 1, failed 0, not run 1", messages(result))
+        rows = self.service.results.get(None, self.store.get("miners")).rows
+        self.assertIn("despawn requested", rows[0].detail)
+        self.assertEqual(rows[1].outcome, "skipped")
 
     def test_revocation_during_lookup_prevents_persistent_membership_change(self):
         original = self.control.request
@@ -171,9 +179,9 @@ class GroupServiceTests(unittest.TestCase):
                           ["look", "at", "1", "64", "2"], ["sprint", "on"], ["drop"]):
             self.control.calls.clear()
             result = self.service.execute(["#miners", *arguments])
-            self.assertNotIn("failed", messages(result))
-            self.assertIn("Alice:", messages(result))
-            self.assertIn("Bob:", messages(result))
+            self.assertIn("accepted 2, failed 0", messages(result))
+            self.assertEqual([row.name for row in self.service.results.get(None, self.store.get("miners")).rows],
+                             ["Alice", "Bob"])
             batches = [p for op, p in self.control.calls if op == "groupInputBatch"]
             self.assertEqual(len(batches), 1)
             self.assertEqual(sum(op == "list" for op, _ in self.control.calls), 1)
@@ -192,14 +200,14 @@ class GroupServiceTests(unittest.TestCase):
                 return original(*args)
             self.world.look_at = look_at
             result = self.service.execute(["#miners", "look", "at", "1", "64", "2"])
-            self.assertIn("command canceled", messages(result))
+            self.assertIn("accepted 0, failed 0, not run 2", messages(result))
             self.assertFalse(any(op == "groupInputBatch" for op, _ in self.control.calls))
 
     def test_missing_member_is_reported_in_order_and_does_not_retarget_by_name(self):
         del self.control.bots["Alice"]
         result = self.service.execute(["#miners", "jump"])
-        self.assertIn("#miners[1]: missing Bot profile", messages(result))
-        self.assertIn("Bob: jump once requested", messages(result))
+        self.assertIn("missing Bot profile 1", messages(result))
+        self.assertIn("Bob: accepted - jump once requested", messages(self.manage("result", "#miners")))
         batch = next(p for op, p in self.control.calls if op == "groupInputBatch")
         self.assertEqual(len(batch["requests"]), 1)
 
@@ -208,13 +216,16 @@ class GroupServiceTests(unittest.TestCase):
         self.control.request = lambda op, **p: ({"identityPinnedRequests": True} if op == "capabilities"
                                                  else original(op, **p))
         result = self.service.execute(["#miners", "jump"])
-        self.assertIn("matching updated Endbot runtime", messages(result))
+        self.assertIn("not run 2", messages(result))
+        self.assertIn("matching updated Endbot runtime", messages(self.manage("result", "#miners")))
         self.assertEqual(self.control.calls, [])
 
     def test_batched_inputs_keep_the_controllers_reply_language(self):
         result = self.service.execute(["#miners", "jump"], SimpleNamespace(language="ja"))
-        self.assertIn("Alice: jump once を要求しました", messages(result))
-        self.assertIn("Bob: jump once を要求しました", messages(result))
+        self.assertIn("受付 2, 失敗 0", messages(result))
+        self.assertTrue(all("accepted" in strip_colors(line) for line in result.log_messages))
+        details = self.service.execute_group(["result", "#miners"], SimpleNamespace(language="ja"))
+        self.assertIn("Alice: 受付 - jump once を要求しました", messages(details))
 
     def test_delete_only_removes_the_group_and_shutdown_prevents_further_work(self):
         self.manage("delete", "#miners")
@@ -227,7 +238,8 @@ class GroupServiceTests(unittest.TestCase):
     def test_old_runtime_is_rejected_before_any_bot_operation(self):
         self.control.request = lambda *args, **kwargs: {"identityPinnedRequests": False}
         result = self.service.execute(["#miners", "stop"])
-        self.assertIn("matching updated Endbot runtime", messages(result))
+        self.assertIn("not run 2", messages(result))
+        self.assertIn("matching updated Endbot runtime", messages(self.manage("result", "#miners")))
         self.assertEqual(self.control.calls, [])
 
     def test_list_scopes_to_members_and_existing_saved_groups_need_no_migration(self):

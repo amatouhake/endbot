@@ -10,6 +10,7 @@ Screens take the viewer's language; command words stay English.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -273,7 +274,7 @@ def bot_screen(
                     "inventory",
                     Button(label("List inventory"), run((name, "inventory"))),
                     Button(label("Hotbar slot..."), Show(hotbar_modal(name, view.status, lang))),
-                    Button(label("Drop item..."), Show(drop_modal(name, lang))),
+                    Button(label("Drop item..."), Show(drop_screen(name, lang))),
                 ),
             ),
             Button(
@@ -553,6 +554,38 @@ def hotbar_modal(name: str, status: dict | None = None, lang: str = "en") -> Mod
     return ModalScreen(
         f"{name}: hotbar", (StepSlider(tr(lang, "Hotbar slot"), slots, default),), build, tr(lang, "Select")
     )
+
+
+def drop_screen(name: str, lang: str = "en") -> ActionScreen:
+    slots = tuple(str(slot) for slot in range(1, 37)) + ("offhand", "head", "chest", "legs", "feet")
+
+    def slot_command(values):
+        return ((name, "drop", _option(slots, values[0])),)
+
+    def item_command(values):
+        item, count = (_text(value) for value in values)
+        if not re.fullmatch(r"(?:minecraft:)?[a-z0-9_./-]+", item):
+            raise FormResponseError("Enter one item identifier")
+        # This form always selects an item. Bare reserved tokens must never
+        # turn an item search into an unconfirmed drop-all or a slot drop.
+        if item in slots or item in {"all", "stack"}:
+            item = f"minecraft:{item}"
+        return ((name, "drop", item, *((count,) if count else ())),)
+
+    return ActionScreen(f"{name}: drop", tr(lang, "BDS validates each drop request."), (
+        Button(tr(lang, "Selected one / stack..."), Show(drop_modal(name, lang))),
+        Button(tr(lang, "A slot..."), Show(ModalScreen(f"{name}: drop slot", (
+            Dropdown(tr(lang, "Inventory slot (whole stack)"), tuple(tr(lang, slot) for slot in slots)),
+        ), slot_command, tr(lang, "Drop")))),
+        Button(tr(lang, "An item..."), Show(ModalScreen(f"{name}: drop item", (
+            TextInput(tr(lang, "Item identifier"), "stone"),
+            TextInput(tr(lang, "Count (blank = every matching stack)"), "5"),
+        ), item_command, tr(lang, "Drop")))),
+        Button(tr(lang, "Drop all..."), Show(ConfirmScreen(
+            f"{name}: drop all", tr(lang, "Request every inventory and equipment stack to be dropped?"),
+            tr(lang, "Drop all"), tr(lang, "Cancel"), run((name, "drop", "all")),
+        ))),
+    ))
 
 
 def drop_modal(name: str, lang: str = "en") -> ModalScreen:

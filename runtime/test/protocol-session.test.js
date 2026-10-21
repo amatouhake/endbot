@@ -428,6 +428,7 @@ test('hotbar selection interaction and drop use player protocol paths', async t 
   const interactionActions = queued.filter(entry => entry.name === 'player_action').slice(-2)
   assert.deepEqual(interactionActions.map(entry => entry.packet.action), ['start_item_use_on', 'stop_item_use_on'])
 
+  session.itemPalette.set('minecraft:test_item', session.heldItem.network_id)
   session.dropSelected(false)
   const drop = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet
   assert.equal(drop.transaction.transaction_type, 'normal')
@@ -587,6 +588,7 @@ test('drop predicts selected-slot inventory and re-announces equipment', async t
   // slot exactly like the queued transaction and announces the new held
   // item for observers; otherwise the cache keeps the dropped item and
   // the hand rendering goes stale.
+  session.itemPalette.set('minecraft:test_item', session.heldItem.network_id)
   session.dropSelected(false)
   const drop = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet
   assert.equal(drop.transaction.transaction_type, 'normal')
@@ -597,6 +599,7 @@ test('drop predicts selected-slot inventory and re-announces equipment', async t
   assert.equal(announced.selected_slot, 0)
   assert.equal(announced.item.count, 4)
 
+  session.itemPalette.set('minecraft:test_item', session.heldItem.network_id)
   session.dropSelected(true)
   const dropStack = queued.filter(entry => entry.name === 'inventory_transaction').at(-1).packet
   assert.equal(dropStack.transaction.actions[0].new_item.count, 0)

@@ -170,13 +170,14 @@ class ScreenTests(unittest.TestCase):
             ("Sprint / sneak...", (1, 2), [("Alice", "sprint", "on"), ("Alice", "sneak", "off")]),
             ("Sprint / sneak...", (0, 0), []),
             ("Hotbar slot...", (8,), [("Alice", "hotbar", "9")]),
-            ("Drop item...", (0,), [("Alice", "drop")]),
-            ("Drop item...", (1,), [("Alice", "drop", "stack")]),
+            ("Selected one / stack...", (0,), [("Alice", "drop")]),
+            ("Selected one / stack...", (1,), [("Alice", "drop", "stack")]),
             ("Chunk radius...", (False, 16.0), [("Alice", "radius", "16")]),
             ("Chunk radius...", (True, 16.0), [("Alice", "radius", "default")]),
             ("Spawn at coordinates...", ("~1 64 ~2",), [("Alice", "spawn", "at", "~1", "64", "~2")]),
             ("Interact with block...", ("1 64 2", 1), [("Alice", "interact", "1", "64", "2", "up")]),
         ]
+        actions.update(buttons(forms.drop_screen("Alice")))
         for button, values, expected in cases:
             with self.subTest(button=button, values=values):
                 commands = submit(actions[button].screen, *values)

@@ -71,6 +71,39 @@ def _format(text: str, params: dict[str, object], language: str) -> str:
 
 
 JA: dict[str, str] = {
+    "request drops from inventory and equipment": "持ち物と装備を落とすよう要求する",
+    "drop drops one selected item; stack drops the selected stack; a slot drops its whole stack.":
+        "drop は選択中の1個、stack は選択中のスタック、スロット指定はそのスタック全体を落とすよう要求します。",
+    "Slots: 1-36, offhand, head, chest, legs, feet. Item IDs accept minecraft: or no prefix.":
+        "スロット: 1-36、offhand、head、chest、legs、feet。アイテムIDの minecraft: は省略できます。",
+    "An item without count drops every matching stack; count takes up to that many, lowest slots first.":
+        "個数を省略すると一致する全スタック、指定すると小さいスロット番号からその個数まで要求します。",
+    "drop all immediately requests every inventory and equipment stack. BDS validates every request.":
+        "drop all は持ち物と装備の全スタックを即座に要求します。BDS が各要求を検証します。",
+    "Use drop [stack|all|<slot>|<item> [count]]": "drop [stack|all|<slot>|<item> [count]] を使用してください",
+    "A slot or all does not accept a count": "スロット、stack、all に個数は指定できません",
+    "Invalid drop item identifier": "落とすアイテムのIDが正しくありません",
+    "Drop count must be an integer from 1 to 10455": "落とす個数は1から10455の整数で指定してください",
+    "Invalid drop selector": "落とす対象の指定が正しくありません",
+    "Invalid drop stack flag": "スタック指定が正しくありません",
+    "Unknown drop item": "落とすアイテムが不明です",
+    "drop all requested for {slots} slots": "{slots} スロットの drop all を要求しました",
+    "drop {item} x{count} requested (asked for {asked})": "{item} x{count} を落とすよう要求しました (指定個数 {asked})",
+    "drop {item} x{count} requested from {slots} slots":
+        "{slots} スロットから {item} x{count} を落とすよう要求しました",
+    "drop slot {slot} requested; slot is empty": "スロット {slot} を落とすよう要求しました。スロットは空です",
+    "drop slot {slot} {item} x{count} requested": "スロット {slot} の {item} x{count} を落とすよう要求しました",
+    "BDS validates each drop request.": "BDS が落とす要求を検証します。",
+    "Selected one / stack...": "選択中の1個またはスタック...",
+    "A slot...": "スロットを指定...",
+    "An item...": "アイテムを指定...",
+    "Inventory slot (whole stack)": "持ち物スロット (スタック全体)",
+    "Item identifier": "アイテムID",
+    "Count (blank = every matching stack)": "個数 (空欄で一致する全スタック)",
+    "Enter one item identifier": "アイテムIDを1つ入力してください",
+    "Drop all...": "すべて落とす...",
+    "Drop all": "すべて落とす",
+    "Request every inventory and equipment stack to be dropped?": "持ち物と装備の全スタックを落とすよう要求しますか?",
     "Pick a Bot or group. (/bot help lists commands)": "Bot またはグループを選んでください。(/bot help でコマンド一覧)",
     "Back to group operations": "グループの操作へ戻る",
     "Back to group management": "グループの管理へ戻る",

@@ -284,10 +284,10 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
-  drop (name, stack = false) {
+  drop (name, options = {}) {
     const { profile, state } = this.#requireOnline(name)
-    state.session.dropSelected(Boolean(stack))
-    return this.#status(profile)
+    const result = state.session.drop(typeof options === 'boolean' ? { stack: options } : options)
+    return { ...this.#status(profile), ...result }
   }
 
   stop (name) {

@@ -321,6 +321,9 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
 /bot Alice drop
 /bot Alice drop stack
+/bot Alice drop <1-36|offhand|head|chest|legs|feet>
+/bot Alice drop <item> [count]
+/bot Alice drop all
 /bot Alice stop
 ```
 
@@ -341,11 +344,11 @@ The server rejects ordinary Xbox players as Bot inventory targets.
 
 `hotbar` reports or changes the selected slot using human-facing 1–9 numbering. Selection is sent through the normal
 Bedrock equipment path and inventory updates continue to come from BDS; Endbot does not keep a second inventory.
-BDS does not push every pickup's inventory delta to the picker. The Endbot plugin therefore reads the nine actual BDS
-hotbar slots at a configurable interval (four server ticks by default) and sends changed read-only observations over
+BDS does not push every pickup's inventory delta to the picker. The Endbot plugin therefore reads all 36 actual BDS
+inventory slots plus offhand and armor at a configurable interval (four server ticks by default) and sends changed read-only observations over
 that Bot's existing connection, plus periodic unchanged corrections (20 server ticks by default). The runtime
 updates its transient cache, including counts and typed NBT, and re-announces a changed held item through normal Bedrock
-equipment packets. This makes same-session pickups usable by `hotbar`, `drop` and held-item actions without reconnecting,
+equipment packets, including offhand changes. This makes same-session pickups usable by `hotbar`, `drop` and held-item actions without reconnecting,
 normally within four server ticks (about 0.2 seconds at 20 TPS). No item is added, removed or reassigned by the observer.
 `drop` still uses a normal BDS-validated transaction; the reply says requested, not completed. Fresh observations also
 correct an optimistic drop if BDS rejected it; an unchanged correction can take about one second with default settings.
@@ -353,6 +356,24 @@ Native inventory updates also announce changed held equipment, independent of pe
 Unknown/invalid observations are ignored as a whole; an unknown or empty
 selected slot still fails with `Selected hotbar slot is empty`. Without the matching plugin, reconnect remains the
 recovery for missing native deltas. See [pickup validation](INVENTORY_VALIDATION.md).
+
+`drop` requests one selected item; `drop stack` requests the selected stack. `drop <slot>` requests that slot's whole
+stack using the same labels as `inventory`: hotbar 1-9, main 10-36, then offhand/head/chest/legs/feet.
+`drop <item> [count]` matches an exact item identifier, accepting either `stone` or `minecraft:stone`. Without a count,
+it requests every matching stack. With a count (integer 1-10455), it takes up to that number, in increasing slot order,
+then offhand/head/chest/legs/feet. A shortfall reports the number requested and the number asked for.
+Numbers 1-36 and the equipment names select slots; `all` and `stack` are keywords. Other tokens are item identifiers;
+use the `minecraft:` prefix to disambiguate an identifier equal to a keyword or slot name. Counts apply only to items.
+
+`drop all` immediately requests one transaction per non-empty slot, including offhand and every armor slot (helmet too).
+Replies describe requests, for example `drop slot 12 stone x5 requested` or `drop all requested for 41 slots`; BDS
+validates each transaction. **Inventory... / Drop item...** offers selected one/stack, a slot, an item and optional count,
+and drop all. The form asks for confirmation before drop all and echoes the command it submits. Typed commands run
+immediately. Group selectors use the same grammar; drops remain mutations with bounded summaries, audit and history.
+
+The versioned `endbot:inventory-v2` observation carries exact typed item/NBT data in bounded fragments, applied only
+after a full valid snapshot arrives. Existing `hotbar-sync-interval-ticks` and `hotbar-sync-resend-ticks` settings now
+cover the entire inventory. Size bounds and pending live product validation are described in the validation record.
 
 `use continuous` holds right-click: its first input tick sends the initial air-use interaction, and later ticks send
 simulation-tick interactions in the same authoritative input stream. `use stop` or global `stop` releases it, for example
@@ -422,8 +443,8 @@ Destroy blocks form adds `count` for its continuous mode) (see
 right-click on the named block face. It sends the protocol-2193 press, server-authoritative item-interaction tick, and
 release sequence; BDS decides reach, legality, collision, placement, and inventory decrement. A placeable selected
 item can therefore place a block in Survival without the plugin editing the world. `drop` drops one selected item and
-`drop stack` drops the selected stack through normal inventory transactions, operating on the runtime-known selected
-slot (see the `hotbar` pickup-sync note above).
+`drop stack` requests the selected stack through normal inventory transactions; wider selectors use the same legacy
+container-to-world path with exact observed item data (see the inventory/drop grammar above).
 
 The command declaration separates parseability from completion because live BDS overload matching proved three
 rules (verified with a probe plugin dispatching 42 documented forms through the real `compileCommand` path):

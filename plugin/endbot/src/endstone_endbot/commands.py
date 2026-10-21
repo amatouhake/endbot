@@ -272,9 +272,14 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     ),
     "drop": HelpTopic(
         "drop",
-        "drop the selected item",
-        ("drop [stack]",),
-        ("drop drops one item; drop stack drops the selected stack.",),
+        "request drops from inventory and equipment",
+        ("drop [stack|all|<slot>|<item> [count]]",),
+        (
+            "drop drops one selected item; stack drops the selected stack; a slot drops its whole stack.",
+            "Slots: 1-36, offhand, head, chest, legs, feet. Item IDs accept minecraft: or no prefix.",
+            "An item without count drops every matching stack; count takes up to that many, lowest slots first.",
+            "drop all immediately requests every inventory and equipment stack. BDS validates every request.",
+        ),
     ),
     "stop": HelpTopic(
         "stop",
@@ -705,8 +710,29 @@ def parse_command(arguments: list[str]) -> BotCommand:
         if any(value.lower() in DESTROY_CLAUSES for value in tokens):
             raise CommandSyntaxError(DESTROY_SINGLE_BLOCK)
         raise CommandSyntaxError(DESTROY_USAGE)
-    if operation == "drop" and (not remaining or remaining == ["stack"]):
-        return BotCommand(operation, name, {"stack": bool(remaining)})
+    if operation == "drop":
+        if not remaining or remaining == ["stack"]:
+            return BotCommand(operation, name, {"stack": bool(remaining)})
+        if len(remaining) > 2:
+            raise CommandSyntaxError("Use drop [stack|all|<slot>|<item> [count]]")
+        selector = remaining[0]
+        slots = {str(slot) for slot in range(1, 37)} | {"offhand", "head", "chest", "legs", "feet"}
+        if selector in slots or selector == "all":
+            if len(remaining) != 1:
+                raise CommandSyntaxError("A slot or all does not accept a count")
+            return BotCommand(operation, name, {"selector": selector})
+        if selector == "stack":
+            raise CommandSyntaxError("A slot or all does not accept a count")
+        item = selector if ":" in selector else f"minecraft:{selector}"
+        if not re.fullmatch(r"minecraft:[a-z0-9_./-]+", item):
+            raise CommandSyntaxError("Invalid drop item identifier")
+        parameters = {"selector": item}
+        if len(remaining) == 2:
+            token = remaining[1]
+            if not token.isascii() or not token.isdecimal() or len(token) > 5 or not 1 <= int(token) <= 10455:
+                raise CommandSyntaxError("Drop count must be an integer from 1 to 10455")
+            parameters["count"] = int(token)
+        return BotCommand(operation, name, parameters)
     if operation in {"jump", "attack", "use"}:
         return _action(name, operation, remaining)
     if operation in {"sprint", "sneak"} and len(remaining) == 1 and remaining[0].lower() in {"on", "off"}:
@@ -1040,6 +1066,24 @@ class BotCommandService:
             )
         elif command.operation == "drop":
             result = control.request("drop", name=command.name, **command.parameters)
+            selector = command.parameters.get("selector", "selected")
+            if selector == "all":
+                return say("drop all requested for {slots} slots", result["name"], slots=result["droppedSlots"])
+            if selector.startswith("minecraft:"):
+                if "count" in command.parameters:
+                    return say("drop {item} x{count} requested (asked for {asked})", result["name"],
+                               item=selector.removeprefix("minecraft:"), count=result["droppedCount"],
+                               asked=command.parameters["count"])
+                return say("drop {item} x{count} requested from {slots} slots", result["name"],
+                           item=selector.removeprefix("minecraft:"), count=result["droppedCount"],
+                           slots=result["droppedSlots"])
+            if selector != "selected":
+                drops = result.get("drops", [])
+                if not drops:
+                    return say("drop slot {slot} requested; slot is empty", result["name"], slot=Text(selector))
+                drop = drops[0]
+                return say("drop slot {slot} {item} x{count} requested", result["name"], slot=Text(selector),
+                           item=drop["item"].removeprefix("minecraft:"), count=drop["count"])
             return say(
                 "drop stack requested" if command.parameters["stack"] else "drop one item requested", result["name"]
             )

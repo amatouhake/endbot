@@ -112,7 +112,15 @@ COMMAND_USAGES = [
         "(down|up|north|south|west|east)<face: EndbotBlockFace>"
     ),
     "/bot <name: string> (drop)<operation: EndbotDropOne>",
+    # These are hints ending at enums; the enum-free message overload above
+    # carries numeric slots and item/count tails under the pinned BDS rules.
     "/bot <name: string> (drop)<operation: EndbotDropStack> (stack)<mode: EndbotDropMode>",
+    "/bot <name: string> (drop)<operation: EndbotDropAll> (all)<mode: EndbotDropAllMode>",
+    "/bot <name: string> (drop)<operation: EndbotDropOffhand> (offhand)<slot: EndbotDropOffhandSlot>",
+    "/bot <name: string> (drop)<operation: EndbotDropHead> (head)<slot: EndbotDropHeadSlot>",
+    "/bot <name: string> (drop)<operation: EndbotDropChest> (chest)<slot: EndbotDropChestSlot>",
+    "/bot <name: string> (drop)<operation: EndbotDropLegs> (legs)<slot: EndbotDropLegsSlot>",
+    "/bot <name: string> (drop)<operation: EndbotDropFeet> (feet)<slot: EndbotDropFeetSlot>",
     # Group targets. Bedrock Id/string rejects a leading '#', so only a
     # first-position message carries "#group[1] <operation> ...". It natively
     # matches any input, which leaves syntax rejection to the Python parser.

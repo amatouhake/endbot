@@ -6,7 +6,8 @@ import { randomUUID } from 'node:crypto'
 
 import { botChunkRadius, LOOPBACK_HOSTS, serverTransport } from './config.js'
 import { discoverServer } from './discovery.js'
-import { decodeHotbar, INVENTORY_EVENT, sameItem } from './inventory-sync.js'
+import { InventoryObservation, INVENTORY_EVENT, sameItem } from './inventory-sync.js'
+import { dropPlan } from './inventory-drops.js'
 import { createLocalBotAuth } from './local-identity.js'
 import {
   addJumpInputFlags,
@@ -40,6 +41,8 @@ export class BedrockSession extends EventEmitter {
     this.announcedEquipment = undefined
     this.hotbarSlot = 0
     this.inventory = []
+    this.equipment = []
+    this.inventoryObservation = new InventoryObservation()
     this.itemPalette = new Map()
     this.closeEmitted = false
     this.transportClosed = false
@@ -370,20 +373,26 @@ export class BedrockSession extends EventEmitter {
   }
 
   dropSelected (stack) {
+    return this.drop({ stack })
+  }
+
+  drop (options = {}) {
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
+    const plan = dropPlan(options, this.inventory, this.equipment, this.hotbarSlot, this.itemPalette)
+    if (!plan.length && (options.selector ?? 'selected') === 'selected') throw new Error('Selected hotbar slot is empty')
+    this.inputs?.cancelTimedUse()
     this.#releaseItemUse()
-    this.client.queue('inventory_transaction', createDropTransaction({
-      hotbarSlot: this.hotbarSlot,
-      heldItem: this.heldItem,
-      stack
-    }))
-    // BDS applies our drop silently, so predict the selected slot exactly
-    // like the transaction above (vanilla clients update their own
-    // inventory immediately) and re-announce the held item. Without this
-    // the cache keeps the dropped item and observers keep rendering it.
-    const remaining = Number(this.heldItem.count) - (stack ? Number(this.heldItem.count) : 1)
-    this.inventory[this.hotbarSlot] = remaining > 0 ? { ...this.heldItem, count: remaining } : EMPTY_ITEM
-    this.selectHotbar(this.hotbarSlot)
+    for (const entry of plan) {
+      const packet = createDropTransaction({ ...entry, heldItem: entry.item })
+      this.client.queue('inventory_transaction', packet)
+      const cache = entry.windowId === 0 ? this.inventory : this.equipment
+      const index = entry.windowId === 120 ? entry.slot + 1 : entry.slot
+      cache[index] = packet.transaction.actions[0].new_item
+    }
+    this.#selectHeldItem()
+    this.#announceHeldItem()
+    return { drops: plan.map(({ label, itemId, count }) => ({ slot: label, item: itemId, count })),
+      droppedCount: plan.reduce((total, entry) => total + entry.count, 0), droppedSlots: plan.length }
   }
 
   disconnect (reason = 'Endbot disconnect') {
@@ -437,10 +446,15 @@ export class BedrockSession extends EventEmitter {
     this.client.on('script_custom_event', packet => {
       if (packet.event_name !== INVENTORY_EVENT || !this.spawned || this.disconnecting || this.transportClosed) return
       try {
-        const slots = decodeHotbar(packet.event_data, this.profile.identityId, this.itemPalette)
+        const snapshot = this.inventoryObservation.accept(packet.event_data, this.profile.identityId, this.itemPalette)
+        if (!snapshot) return
+        const { slots, equipment } = snapshot
         for (let slot = 0; slot < slots.length; slot++) {
           if (sameItem(this.inventory[slot], slots[slot])) continue
           this.inventory[slot] = slots[slot]
+        }
+        for (let slot = 0; slot < equipment.length; slot++) {
+          if (!sameItem(this.equipment[slot], equipment[slot])) this.equipment[slot] = equipment[slot]
         }
         this.#selectHeldItem()
         this.#announceHeldItem()
@@ -586,6 +600,7 @@ export class BedrockSession extends EventEmitter {
     this.client.on('mob_equipment', packet => {
       if (String(packet.runtime_entity_id) !== String(this.client.entityId) || !this.#isPlayerInventory(packet.window_id)) return
       this.hotbarSlot = packet.selected_slot
+      this.inventory[this.hotbarSlot] = packet.item
       this.#setHeldItem(packet.item)
       this.#announceHeldItem()
     })
@@ -853,12 +868,17 @@ export class BedrockSession extends EventEmitter {
   #announceHeldItem (force = false) {
     if (!this.spawned || this.disconnecting || this.transportClosed || this.client?.status !== 4) return
     const previous = this.announcedEquipment
-    if (!force && previous?.slot === this.hotbarSlot && sameItem(previous.item, this.heldItem)) return
+    const offhand = this.equipment[0] ?? EMPTY_ITEM
+    if (!sameItem(previous?.offhand, offhand)) {
+      this.client.queue('mob_equipment', { runtime_entity_id: this.client.entityId,
+        item: offhand, slot: 0, selected_slot: 0, window_id: 'offhand' })
+    }
+    if (!force && previous?.slot === this.hotbarSlot && sameItem(previous.item, this.heldItem) && sameItem(previous.offhand, offhand)) return
     // Track what observers were told separately from the inventory cache.
     // Native deltas can arrive before an identical plugin observation.
     this.client.queue('mob_equipment', { runtime_entity_id: this.client.entityId,
       item: this.heldItem, slot: this.hotbarSlot, selected_slot: this.hotbarSlot, window_id: 'inventory' })
-    this.announcedEquipment = { slot: this.hotbarSlot, item: structuredClone(this.heldItem) }
+    this.announcedEquipment = { slot: this.hotbarSlot, item: structuredClone(this.heldItem), offhand: structuredClone(offhand) }
   }
 
   #setHeldItem (item) {

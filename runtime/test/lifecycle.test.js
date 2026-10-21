@@ -19,7 +19,7 @@ class FakeSession extends EventEmitter {
   selectedHotbarSlot () { return this.slot }
   selectHotbar (slot) { this.slot = slot }
   interactBlock (interaction) { this.interactions.push(interaction) }
-  dropSelected (stack) { this.drops.push(stack) }
+  drop (options) { this.drops.push(options); return { droppedSlots: 1, droppedCount: 5, drops: [{ slot: '12', item: 'minecraft:stone', count: 5 }] } }
   setChunkRadius (radius) { this.radius = radius; this.serverChunkRadius = undefined }
   startMining (target) { this.mining = { state: 'active', ...target } }
   startMiningLoop (durationTicks, blockCount) {
@@ -188,11 +188,14 @@ test('hotbar interaction and drop target only the named live session', async () 
 
   assert.equal(lifecycle.hotbar('Alice', 4).selectedHotbarSlot, 4)
   lifecycle.interact('Alice', { blockPosition: [1, 64, 2], blockRuntimeId: 42, face: 1 })
-  lifecycle.drop('Alice', true)
+  const result = lifecycle.drop('Alice', true)
+  assert.equal(result.droppedCount, 5)
+  assert.equal(result.drops[0].slot, '12')
+  lifecycle.drop('Alice', { selector: 'minecraft:stone', count: 7 })
 
   assert.equal(sessions[0].slot, 3)
   assert.deepEqual(sessions[0].interactions, [{ blockPosition: [1, 64, 2], blockRuntimeId: 42, face: 1 }])
-  assert.deepEqual(sessions[0].drops, [true])
+  assert.deepEqual(sessions[0].drops, [{ stack: true }, { selector: 'minecraft:stone', count: 7 }])
   assert.equal(sessions[1].slot, 0)
   assert.deepEqual(sessions[1].interactions, [])
   assert.deepEqual(sessions[1].drops, [])

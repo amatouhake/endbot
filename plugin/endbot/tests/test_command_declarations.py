@@ -114,6 +114,9 @@ DOCUMENTED_ROOT_FORMS = [
 ]
 
 DOCUMENTED_NAMED_FORMS = [
+    *[[target, "drop", *tail] for target in ("Alice", "#miners", "#miners[1]")
+      for tail in (("1",), ("12",), ("36",), ("offhand",), ("head",), ("chest",), ("legs",), ("feet",),
+                   ("all",), ("stone",), ("minecraft:stone", "7"), ("stone", "0"), ("head", "2"))],
     ["Alice", "destroy"],
     ["Alice", "destroy", "continuous"],
     ["Alice", "destroy", "stop"],

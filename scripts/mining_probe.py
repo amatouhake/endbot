@@ -9,6 +9,9 @@ import math
 import os
 from pathlib import Path
 
+EQUIPMENT = {"offhand": "item_in_off_hand", "head": "helmet", "chest": "chestplate",
+             "legs": "leggings", "feet": "boots"}
+
 
 def install_probe(plugin_class):
     from endstone.actor import Item
@@ -84,8 +87,24 @@ def install_probe(plugin_class):
                     for cell in targets:
                         dimension.get_block_at(*cell).set_type(data["block"])
                     player.inventory.clear()
+                    for attribute in EQUIPMENT.values():
+                        setattr(player.inventory, attribute, None)
                     inventory_test = data.get("inventory")
-                    if inventory_test:
+                    product_items = data.get("product_items")
+                    if product_items is not None:
+                        for label, name, count in product_items:
+                            stack = ItemStack(name, count)
+                            if name == "minecraft:diamond_pickaxe":
+                                meta = stack.item_meta
+                                meta.display_name = "Endbot product drop probe"
+                                meta.damage = 7
+                                meta.add_enchant("minecraft:efficiency", 2)
+                                stack.set_item_meta(meta)
+                            if label in EQUIPMENT:
+                                setattr(player.inventory, EQUIPMENT[label], stack)
+                            else:
+                                player.inventory.set_item(int(label) - 1, stack)
+                    elif inventory_test:
                         for slot in range(data.get("slot", 0)):
                             player.inventory.set_item(
                                 slot, ItemStack("minecraft:stone", 64)
@@ -110,8 +129,9 @@ def install_probe(plugin_class):
                         "inventory": inventory_test,
                         "cancel_drop": data.get("cancel_drop", False),
                         "dropped": [],
+                        "pickup_actor": "",
                     }
-                    if inventory_test:
+                    if inventory_test and product_items is None:
                         stack = ItemStack(inventory_test, data.get("amount", 5))
                         if data.get("named"):
                             meta = stack.item_meta
@@ -150,6 +170,7 @@ def install_probe(plugin_class):
                             {
                                 "name": actor.item_stack.type.id,
                                 "count": actor.item_stack.amount,
+                                "metadata": actor.item_stack.data,
                                 "nbt": str(actor.item_stack.nbt),
                             }
                         )
@@ -171,16 +192,16 @@ def install_probe(plugin_class):
                 ],
             }
             if probe.get("inventory"):
-                state["hotbar"] = [
-                    None
-                    if (stack := player.inventory.get_item(slot)) is None
-                    else {
-                        "name": stack.type.id,
-                        "count": stack.amount,
-                        "nbt": str(stack.nbt),
+                def describe(stack):
+                    return None if stack is None or stack.amount <= 0 else {
+                        "name": stack.type.id, "count": stack.amount, "metadata": stack.data, "nbt": str(stack.nbt),
                     }
-                    for slot in range(9)
-                ]
+
+                state["slots"] = [describe(player.inventory.get_item(slot)) for slot in range(36)]
+                state["equipment"] = {label: describe(getattr(player.inventory, attribute))
+                                      for label, attribute in EQUIPMENT.items()}
+                state["selected"] = player.inventory.held_item_slot
+                state["hotbar"] = state["slots"][:9]
             temporary = base / "mining-state.tmp"
             temporary.write_text(json.dumps(state), encoding="utf-8")
             try:
@@ -424,6 +445,90 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     setup("cleanup", "minecraft:air")
 
 
+def product_drop_cases():
+    """Independent disposable fixtures; helmet is included even while unverified."""
+    cases = [
+        ("main-slot", "12", [("12", "minecraft:stone", 5)], {"12": 5}),
+        ("main-last-slot", "36", [("36", "minecraft:diamond_pickaxe", 1)], {"36": 1}),
+        ("item-count", "stone 7", [("2", "minecraft:stone", 3), ("12", "minecraft:stone", 6),
+                                  ("36", "minecraft:stone", 2)], {"2": 3, "12": 4}),
+        ("item-shortfall", "stone 99", [("12", "minecraft:stone", 5)], {"12": 5}),
+        ("item-all-stacks", "minecraft:stone", [("1", "minecraft:stone", 2), ("36", "minecraft:stone", 4),
+                                              ("12", "minecraft:dirt", 3)], {"1": 2, "36": 4}),
+    ]
+    equipment = list(zip(EQUIPMENT, ("shield", "iron_helmet", "iron_chestplate", "iron_leggings", "iron_boots"), strict=True))
+    for label, item in equipment:
+        cases.append((label, label, [(label, f"minecraft:{item}", 1)], {label: 1}))
+    items = [(str(slot), "minecraft:stone", 2) for slot in range(1, 37)]
+    items.extend((label, f"minecraft:{item}", 1) for label, item in equipment)
+    cases.append(("all", "all", items, {label: count for label, _, count in items}))
+    return cases
+
+
+def expected_product_drop(before, requested):
+    """Expected authoritative item/NBT state, independent of runtime prediction."""
+    expected = json.loads(json.dumps(before))
+    drops = []
+    for label, count in requested.items():
+        container, key = (expected["equipment"], label) if label in EQUIPMENT else (expected["slots"], int(label) - 1)
+        item = container[key]
+        if item is None or not 0 < count <= item["count"]:
+            raise ValueError("Invalid product drop fixture expectation")
+        drops.append({**item, "count": count})
+        container[key] = {**item, "count": item["count"] - count} if count < item["count"] else None
+    if "hotbar" in expected:
+        expected["hotbar"] = expected["slots"][:9]
+    expected["dropped"] = drops
+    return expected, drops
+
+
+def product_drop_matches(current, expected, drops):
+    # Item actors can merge equal stacks. Compare total counts by exact NBT.
+    def totals(items):
+        result = {}
+        for item in items:
+            key = (item["name"], item.get("metadata", 0), item["nbt"])
+            result[key] = result.get(key, 0) + item["count"]
+        return result
+
+    return (current.get("id") == expected["id"] and current.get("slots") == expected["slots"]
+            and current.get("equipment") == expected["equipment"] and current.get("selected") == expected["selected"]
+            and totals(current.get("dropped", [])) == totals(drops))
+
+
+def exercise_product_drops(output, console, control, wait, report, request, state):
+    import time
+
+    # Use the product commands through the real BDS command declaration/parser.
+    product_results = report["product_drops"] = {}
+    for label, arguments, items, requested in product_drop_cases():
+        control("stop")
+        fixture_id = f"product-drop-{label}"
+        request({"id": fixture_id, "block": "minecraft:air", "inventory": "product",
+                 "product_items": items})
+        wait("product drop fixture setup", lambda fixture_id=fixture_id: state().get("id") == fixture_id, 10)
+        time.sleep(1.2)  # Include one periodic authoritative observation before sending.
+        before = json.loads(json.dumps(state()))
+        expected, drops = expected_product_drop(before, requested)
+        command = f"bot RakNetSpike drop {arguments}"
+        record = product_results[label] = {"command": command, "before": before, "expected": expected,
+                                           "expected_drops": drops, "outcome": "pending"}
+        console(command)
+        try:
+            wait("product drop BDS inventory and ejected items",
+                 lambda expected=expected, drops=drops: product_drop_matches(state(), expected, drops), 10)
+            time.sleep(1.2)  # A correction must preserve the BDS result, with no extra ejections.
+            if not product_drop_matches(state(), expected, drops):
+                raise RuntimeError("Product drop changed after authoritative correction")
+            record["outcome"] = "accepted"
+        except RuntimeError:
+            record["outcome"] = "inconclusive"
+            raise
+        finally:
+            record["after"] = json.loads(json.dumps(state()))
+            (output / "product-drop-results.json").write_text(json.dumps(product_results, indent=2), encoding="utf-8")
+
+
 def exercise_inventory(output: Path, console, control, wait, report):
     """Natural pickups and real BDS transactions, with no Bot reconnect."""
     import time
@@ -539,6 +644,7 @@ def exercise_inventory(output: Path, console, control, wait, report):
             "dropped": [drop["count"] for drop in state()["dropped"]],
             "nbt_preserved": True,
         }
+    exercise_product_drops(output, console, control, wait, report, request, state)
     request({"id": "inventory-cleanup", "block": "minecraft:air"})
     wait(
         "inventory fixture cleanup",

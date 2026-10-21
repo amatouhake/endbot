@@ -37,6 +37,37 @@ test('control server refuses non-loopback binds', () => {
   assert.throws(() => new ControlServer({ host: '0.0.0.0', token: 'a'.repeat(43), lifecycle: {} }), /loopback/)
 })
 
+test('drop control forwards selectors and batch replies project bounded request details', async t => {
+  const calls = []
+  const token = 'd'.repeat(43)
+  const server = new ControlServer({ token, port: 0, lifecycle: {
+    identityOf: name => name,
+    drop: (name, options) => {
+      calls.push(options)
+      const drops = options.selector === 'all' ? Array(41).fill({ slot: 'head', item: 'minecraft:stone', count: 5 })
+        : [{ slot: '12', item: 'minecraft:stone', count: 5 }]
+      return { name, connectionState: 'online', droppedSlots: drops.length, droppedCount: drops.length * 5,
+        drops, inventory: 'x'.repeat(65000) }
+    }
+  } })
+  await server.listen(); t.after(() => server.close())
+  const send = (method, params) => request(server.port, { version: 1, id: 'drop', token, method, params })
+  const direct = await send('drop', { name: 'Alice', selector: 'minecraft:stone', count: 7 })
+  assert.equal(direct.ok, true)
+  assert.deepEqual(calls[0], { selector: 'minecraft:stone', count: 7, stack: undefined })
+  const response = await send('groupInputBatch', { requests: ['12', 'all', 'minecraft:stone'].map(selector => ({
+    method: 'drop', params: { name: 'Alice', expectedIdentityId: 'Alice', selector }
+  })) })
+  assert.equal(response.ok, true)
+  const results = response.result.results.map(row => row.result)
+  assert.deepEqual(results[0].drops, [{ slot: '12', item: 'minecraft:stone', count: 5 }])
+  assert.equal(results[1].drops, undefined)
+  assert.equal(results[1].droppedSlots, 41)
+  assert.equal(results[2].droppedCount, 5)
+  assert.ok(JSON.stringify(response).length < 1000)
+  assert.equal(results.some(result => 'inventory' in result), false)
+})
+
 test('UUID-pinned group requests cannot mutate a replacement profile or create a missing one', async t => {
   const calls = []
   const lifecycle = {

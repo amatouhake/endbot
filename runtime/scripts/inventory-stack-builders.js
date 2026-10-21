@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Probe-only protocol-2193 builders. No product operation imports this module.
-import { decodeHotbar } from '../src/inventory-sync.js'
-import { createDropTransaction, EMPTY_ITEM } from '../src/packets.js'
+import { decodeInventory } from '../src/inventory-sync.js'
+import { createDropTransaction } from '../src/packets.js'
 import { stackSlot } from '../src/stack-requests.js'
 
 export function createInventoryOpen (runtimeId) {
@@ -23,21 +23,11 @@ export function createLegacyDrop ({ source, item, count = Number(item?.count) })
   const windows = { hotbar_and_inventory: 0, inventory: 0, hotbar: 0, offhand: 119, armor: 120 }
   if (!Object.hasOwn(windows, source.container)) throw new Error('Unsupported legacy source')
   if (!Number.isInteger(count) || count < 1 || count > Number(item?.count)) throw new Error('Invalid legacy drop count')
-  const packet = createDropTransaction({ hotbarSlot: source.slot, heldItem: item, stack: true })
-  const [container, world] = packet.transaction.actions
-  container.window_id = windows[source.container]
-  container.new_item = count === Number(item.count) ? EMPTY_ITEM : { ...item, count: Number(item.count) - count }
-  world.new_item = { ...item, count }
-  return packet
+  return createDropTransaction({ windowId: windows[source.container], slot: source.slot, heldItem: item, count })
 }
 
 export function decodeProbeInventory (snapshot, identityId, palette) {
   if (!snapshot || !Array.isArray(snapshot.slots) || snapshot.slots.length !== 36 ||
       !Array.isArray(snapshot.equipment) || snapshot.equipment.length !== 5) throw new Error('Invalid probe inventory')
-  // Reuse the exact product item/NBT decoder in nine-slot batches, without
-  // changing the endbot:hotbar-v1 envelope or ever generating stack IDs.
-  const decode = slots => decodeHotbar(JSON.stringify({ identityId: snapshot.identityId, slots }), identityId, palette)
-  const slots = [0, 9, 18, 27].flatMap(offset => decode(snapshot.slots.slice(offset, offset + 9)))
-  const equipment = decode([...snapshot.equipment, null, null, null, null]).slice(0, 5)
-  return { slots, equipment }
+  return decodeInventory(JSON.stringify(snapshot), identityId, palette)
 }

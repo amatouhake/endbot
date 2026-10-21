@@ -74,7 +74,7 @@ Players can run the common operations from native Bedrock forms instead of typin
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
 Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy, interact),
-Inventory (hotbar, drop) and Bot (resume/spawn, reconnect, confirmed despawn, radius and status).
+Inventory (list inventory, hotbar, drop) and Bot (resume/spawn, reconnect, confirmed despawn, radius and status).
 Category names follow Minecraft's control settings. An offline Bot offers resume/spawn, radius and the Bot settings
 category. Individual Bot profile controls offer rename and confirmed forget; forget still requires an offline profile.
 The target list also shows `#group (count)` entries that open this same operation screen directly. Group-wide controls
@@ -315,6 +315,7 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice use hold <ticks> [interval <ticks>] [for <ticks>]
 /bot Alice sprint on|off
 /bot Alice sneak on|off
+/bot Alice inventory
 /bot Alice hotbar
 /bot Alice hotbar <1-9>
 /bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
@@ -329,6 +330,14 @@ the session connected. `look` remains at its last rotation after stop. `use` sen
 interaction; with an empty hand it is a safe no-op. Endbot does not invent an item or issue a server command.
 Sprint and sneak emit Bedrock's one-tick start/stop transitions as well as steady held-state flags; reconnect input reset
 does not replay transitions from the previous transport.
+
+`inventory` reads the authoritative inventory through Endstone on the server thread. It shows only non-empty slots,
+with identifiers stripped of `minecraft:` and counts, for example `3: diamond_pickaxe x1, 10: stone x64`.
+Slots follow the game screen: hotbar 1–9, main inventory 10–36, then `offhand`, `head`, `chest`, `legs`, `feet`.
+An empty inventory reports `inventory is empty`; equipment-only inventories still list their equipment.
+This query changes no items and needs no runtime inventory cache or request for a named online Bot. Offline Bots
+report that they are not present in the world. In forms, **Inventory... → List inventory** runs the same command.
+The server rejects ordinary Xbox players as Bot inventory targets.
 
 `hotbar` reports or changes the selected slot using human-facing 1–9 numbering. Selection is sent through the normal
 Bedrock equipment path and inventory updates continue to come from BDS; Endbot does not keep a second inventory.
@@ -467,7 +476,7 @@ same saved results through `/botgroup menu #miners result [history]`, with older
 restart. An unavailable response after sending inputs is reported as unknown acceptance. See
 [Group scope, evidence and client checks](GROUPS.md) for the full behavior and remaining gates.
 
-Queries return data directly: `/bot #miners status`, `/bot #miners hotbar` and `/bot #miners radius` print every
+Queries return data directly: `/bot #miners status`, `/bot #miners inventory`, `/bot #miners hotbar` and `/bot #miners radius` print every
 member's query result, labeled with `#group[index]` and Bot name. Failures occupy that member's result line; the
 remaining members are still queried. Indexed queries work the same way. Queries create no audit entry and do not
 change `result` history, so a state check after an action still leaves that action as the latest operation result.
@@ -506,6 +515,9 @@ Bedrock syntax error):
 /bot Alice destroy count 64
 /bot Alice interact 1 64 2 up
 /bot Alice hotbar 9
+/bot Alice inventory
+/bot #miners inventory
+/bot #miners[1] inventory
 /bot Alice radius
 /bot Alice radius 12
 /bot Alice radius default

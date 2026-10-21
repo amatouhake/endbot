@@ -50,7 +50,8 @@ COMMAND_USAGES = [
     "/bot <command: string> <page: int>",
     (
         "/bot (help)<command: EndbotHelpTopic> (status|spawn|resume|reconnect|despawn|forget|rename|tp|move|look|"
-        "jump|attack|use|sprint|sneak|hotbar|interact|destroy|drop|radius|stop|menu)<topic: EndbotHelpTopicName>"
+        "jump|attack|use|sprint|sneak|inventory|hotbar|interact|destroy|drop|radius|stop|menu)"
+        "<topic: EndbotHelpTopicName>"
     ),
     "/bot <name: string> <operation: string>",
     "/bot <name: string> <operation: string> <arguments: message>",
@@ -58,6 +59,7 @@ COMMAND_USAGES = [
     # a multi-value enum here only as its type name (<operation: EndbotNoArgs>),
     # which hid status/resume/reconnect/despawn/forget/stop from suggestions.
     "/bot <name: string> (status)<operation: EndbotStatus>",
+    "/bot <name: string> (inventory)<operation: EndbotInventory>",
     "/bot <name: string> (resume)<operation: EndbotResume>",
     "/bot <name: string> (reconnect)<operation: EndbotReconnect>",
     "/bot <name: string> (despawn)<operation: EndbotDespawn>",

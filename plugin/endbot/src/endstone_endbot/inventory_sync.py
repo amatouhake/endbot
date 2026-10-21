@@ -13,6 +13,27 @@ EVENT_NAME = "endbot:hotbar-v1"
 PACKET_ID = 0x75
 MAX_PAYLOAD = 60 * 1024
 
+# Screen labels, kept separate from SDK property names and protocol selectors.
+EQUIPMENT_SLOTS = (
+    ("offhand", "item_in_off_hand"),
+    ("head", "helmet"),
+    ("chest", "chestplate"),
+    ("legs", "leggings"),
+    ("feet", "boots"),
+)
+
+
+def inventory_snapshot(player) -> list[dict]:
+    """Copy non-empty server slots into plain data on the server thread."""
+    inventory = player.inventory
+    slots = [(str(slot + 1), inventory.get_item(slot)) for slot in range(36)]
+    slots.extend((label, getattr(inventory, attribute)) for label, attribute in EQUIPMENT_SLOTS)
+    return [
+        {"slot": label, "name": item.type.id, "count": item.amount}
+        for label, item in slots
+        if item is not None and item.amount > 0 and item.type.id != "minecraft:air"
+    ]
+
 
 def typed_nbt(tag):
     """Keep NBT types and 64-bit integers intact across JSON."""

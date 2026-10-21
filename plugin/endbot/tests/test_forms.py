@@ -10,6 +10,7 @@ from endstone_endbot import forms
 from endstone_endbot.commands import BotCommandService, CommandResult, parse_command, strip_colors
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge
 from endstone_endbot.form_adapter import FormPresenter
+from endstone_endbot.i18n import tr
 
 ONLINE = {
     "identityId": "00000000-0000-4000-8000-000000000001",
@@ -138,6 +139,16 @@ class ScreenTests(unittest.TestCase):
         connection = next(item.action.screen for item in screen.items if item.text == "Bot...")
         self.assertEqual(connection.content, view.summary)
         self.assertEqual(buttons(screen)["Hotbar slot..."].screen.controls[0].default_index, 8)
+
+    def test_inventory_listing_runs_the_same_command_for_bot_and_group(self):
+        for name in ("Alice", "#miners", "#miners[1]"):
+            for lang, label in (("en", "List inventory"), ("ja", "持ち物を表示")):
+                view = forms.BotView(name, "summary", ONLINE, OBSERVED)
+                screen = forms.bot_screen(view, "Steve", lang=lang)
+                # Category wording is resolved through the same catalog as the label.
+                category = tr(lang, "Inventory...")
+                inventory = at(screen, category)
+                self.assertEqual(buttons(inventory)[label], forms.Run(((name, "inventory"),)))
 
     def test_teleport_targets_quote_player_names_for_the_command_tokenizer(self):
         actions = buttons(self.online_screen(caller="Some Name"))

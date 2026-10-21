@@ -502,6 +502,8 @@ class GroupCommandService(BotCommandService):
                     if guard.bot_identity is not None:
                         if command.name.casefold() != guard.bot_name.casefold():
                             raise ValueError("Menu Bot changed; reopen the menu")
+                        if command.operation == "inventory":
+                            command = replace(command, parameters={"identityId": guard.bot_identity})
                         result = self._execute(command, sender, _language(sender), control=_MemberControl(
                             self.control, guard.bot_identity, lambda: self._check(sender)))
                         if result.view is not None:
@@ -528,7 +530,7 @@ class GroupCommandService(BotCommandService):
                                      operation=command.operation)
             if not members:
                 raise ValueError("Group has no members")
-            query = command.operation == "status" or (
+            query = command.operation in {"status", "inventory"} or (
                 command.operation in {"hotbar", "radius"} and not command.parameters)
             if not indexed and command.operation in GROUP_INPUT_OPERATIONS:
                 rows = self._execute_inputs(command, sender, members)
@@ -552,8 +554,14 @@ class GroupCommandService(BotCommandService):
                     if bot is None:
                         raise _MissingProfile()
                     name = bot["name"]
+                    member = replace(command, name=name)
+                    if command.operation == "inventory":
+                        self._check(sender)
+                        # Preserve the group's UUID pin even though this query
+                        # reads BDS directly instead of using runtime IPC.
+                        member = replace(member, parameters={"identityId": identity})
                     result = self._execute(
-                        replace(command, name=bot["name"]), sender, lang,
+                        member, sender, lang,
                         control=_MemberControl(self.control, identity, lambda: self._check(sender)),
                     )
                     if command.operation == "menu":

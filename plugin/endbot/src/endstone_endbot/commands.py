@@ -231,6 +231,12 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ("hotbar [1-9]",),
         ("Slots use human-facing 1-9 numbering through Bedrock equipment.",),
     ),
+    "inventory": HelpTopic(
+        "inventory",
+        "show non-empty inventory and equipment slots",
+        ("inventory",),
+        ("Slots are hotbar 1-9, main 10-36, offhand, head, chest, legs and feet.",),
+    ),
     "radius": HelpTopic(
         "radius",
         "show or set the Bot chunk radius",
@@ -315,7 +321,7 @@ HELP_TOPIC_ALIASES = {"tp": "teleport"}
 HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
     ("move", "look", "jump", "attack", "use", "sprint", "sneak", "stop"),
-    ("hotbar", "interact", "destroy", "drop", "radius", "rename", "forget"),
+    ("inventory", "hotbar", "interact", "destroy", "drop", "radius", "rename", "forget"),
 )
 
 HELP_PAGE_TITLES = (
@@ -599,7 +605,9 @@ def parse_command(arguments: list[str]) -> BotCommand:
     if len(tokens) < 2:
         raise CommandSyntaxError("Expected /bot <name> <action>")
     name, operation, remaining = tokens[0], tokens[1].lower(), tokens[2:]
-    if operation in {"status", "resume", "reconnect", "despawn", "forget", "stop", "menu"} and not remaining:
+    if operation in {
+        "status", "inventory", "resume", "reconnect", "despawn", "forget", "stop", "menu"
+    } and not remaining:
         return BotCommand(operation, name)
     if operation == "spawn":
         if not remaining:
@@ -896,6 +904,21 @@ class BotCommandService:
             if command.parameters.get("default"):
                 return CommandResult(True, help_page(1, lang))
             return say("menu is available only to players; use /bot help")
+        if command.operation == "inventory":
+            if self.world is None:
+                raise ValueError("Bot is not present in the world")
+            identity = command.parameters.get("identityId")
+            if identity is None and control is not None:
+                # Pin the Bot profile's UUID, as other commands do, rather than any player with that name.
+                identity = control.request("status", name=command.name)["identityId"]
+            snapshot = self.world.inventory(command.name, identity)
+            entries = [
+                f"{tr(lang, slot['slot'])}: {slot['name'].removeprefix('minecraft:')} x{slot['count']}"
+                for slot in snapshot["slots"]
+            ]
+            return say("inventory: {items}", snapshot["name"], items=", ".join(entries)) if entries else say(
+                "inventory is empty", snapshot["name"]
+            )
         if self.control is None:
             raise RuntimeError("runtime control is not configured")
         if command.operation == "menu":

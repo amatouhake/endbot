@@ -271,6 +271,7 @@ def bot_screen(
                 label("Inventory..."),
                 category(
                     "inventory",
+                    Button(label("List inventory"), run((name, "inventory"))),
                     Button(label("Hotbar slot..."), Show(hotbar_modal(name, view.status, lang))),
                     Button(label("Drop item..."), Show(drop_modal(name, lang))),
                 ),

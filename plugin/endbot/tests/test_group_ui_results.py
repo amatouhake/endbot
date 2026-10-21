@@ -114,6 +114,7 @@ class GroupUiResultTests(unittest.TestCase):
         self.assertIsNone(self.service.execute(["#miners", "menu"], self.source).view)
 
     def test_queries_print_member_data_without_audit_or_changing_operation_history(self):
+        self.service.world.inventory = lambda name, identity=None: {"name": name, "slots": []}
         self.service.execute(["#miners", "jump"], self.source)
         self.service.execute(["#miners", "stop"], self.source)
         group = self.store.get("miners")
@@ -122,7 +123,7 @@ class GroupUiResultTests(unittest.TestCase):
         self.control.bots["Bob"].update(chunkRadius=20, chunkRadiusSource="bot")
         for target, names in (("#miners", ("Alice", "Bob")), ("#miners[2]", ("Bob",))):
             for operation, data in (("status", "online | desired=online"), ("hotbar", "hotbar slot 1"),
-                                    ("radius", "chunk radius")):
+                                      ("radius", "chunk radius"), ("inventory", "inventory is empty")):
                 with self.subTest(target=target, operation=operation):
                     result = self.service.execute([target, operation], self.source)
                     self.assertEqual(len(result.messages), len(names))
@@ -146,6 +147,26 @@ class GroupUiResultTests(unittest.TestCase):
                 self.assertEqual(result.log_level, "info")
                 record = self.service.results.get(self.source, self.store.get("miners"))
                 self.assertEqual(record.operation, " ".join(arguments))
+
+    def test_inventory_query_preserves_full_payload_and_continues_after_offline_member(self):
+        calls = []
+        def inventory(name, identity):
+            calls.append((name, identity))
+            if name == "Alice":
+                raise ValueError("Bot is not present in the world")
+            return {"name": name, "slots": [
+                {"slot": str(slot), "name": "minecraft:diamond_pickaxe", "count": 1}
+                for slot in range(1, 37)
+            ]}
+        self.service.world.inventory = inventory
+        result = self.service.execute(["#miners", "inventory"], self.source)
+        self.assertEqual(len(result.messages), 2)
+        self.assertIn("#miners[1] Alice: Bot is not present in the world", strip_colors(result.messages[0]))
+        self.assertIn("#miners[2] Bob: inventory: 1: diamond_pickaxe x1", strip_colors(result.messages[1]))
+        self.assertIn("36: diamond_pickaxe x1", result.messages[1])
+        self.assertEqual(calls, [(name, self.control.bots[name]["identityId"]) for name in ("Alice", "Bob")])
+        self.assertIsNone(result.log_level)
+        self.assertEqual(len(self.service.results.records), 0)
 
     def test_queries_do_not_create_history_and_keep_full_data_after_member_failure(self):
         for operation in ("status", "hotbar", "radius"):

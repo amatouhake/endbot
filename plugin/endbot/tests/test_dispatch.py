@@ -273,6 +273,25 @@ class DispatchTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, {"identityId": "bot-uuid", "thread": main_thread})
 
+    def test_inventory_read_is_marshaled_to_server_thread(self):
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        main_thread = threading.get_ident()
+
+        class World:
+            def inventory(self, name, identity):
+                return {"name": name, "identity": identity, "thread": threading.get_ident()}
+
+        world = ServerThreadWorld(World(), bridge, lambda source: source.sender)
+        result = {}
+        thread = threading.Thread(target=lambda: result.update(world.inventory("Alice", "bot-uuid")))
+        thread.start()
+        scheduled.run_next()
+        thread.join(1)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(result, {"name": "Alice", "identity": "bot-uuid", "thread": main_thread})
+
     def test_continuous_retarget_works_after_the_controller_logs_off(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

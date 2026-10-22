@@ -1,6 +1,7 @@
 """Offline probe plumbing/evaluator tests; these cannot establish live BDS results."""
 
 import copy
+import importlib.util
 import json
 import os
 import sys
@@ -90,8 +91,6 @@ class ScriptingProbeTests(unittest.TestCase):
                 built_runner(root)
 
     def test_config_enables_only_scripting_in_generated_config_and_fixture_changes_only_copy(self):
-        import importlib.util
-
         import tomllib
 
         # enable_config edits the generated config with tomlkit, a dependency of

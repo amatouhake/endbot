@@ -235,6 +235,14 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
 
     scripting = tomlkit.table()
     scripting["enabled"] = config.scripting.enabled
+    # Omit defaults as before; forward explicit resource-limit overrides to the plugin.
+    for key, value, default in (
+        ("os-confinement", config.scripting.os_confinement, True),
+        ("process-memory-bytes", config.scripting.process_memory_bytes, 268435456),
+        ("cpu-seconds", config.scripting.cpu_seconds, 0),
+    ):
+        if value != default:
+            scripting[key] = value
     runner = config.scripting.runner
     if not runner:
         # The installed CLI belongs to the running version, even if app/current changes.

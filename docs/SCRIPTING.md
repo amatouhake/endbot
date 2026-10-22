@@ -37,7 +37,7 @@ Only the two pinned source URLs are fetched; checksum mismatches fail the build.
 `THIRD_PARTY_NOTICES.md`. Preserve these when distributing builds. Source inputs are pinned; compilers and byte-identical output are not.
 Dependencies and build artifacts remain ignored.
 
-Startup limits (positive integers, except `wall-seconds` also accepts zero):
+Startup limits (integers from 1 to 2147483647, except the zero/boolean settings below):
 
 | Setting | Default | Meaning |
 | --- | ---: | --- |
@@ -50,6 +50,82 @@ Startup limits (positive integers, except `wall-seconds` also accepts zero):
 | `max-script-bytes` | 32768 | UTF-8 source limit on save/run, maximum 65536 (protocol bound) |
 | `max-scripts` | 64 | Stored-script creation limit |
 | `memory-bytes` | 33554432 | VM allocator bound, minimum 1 MiB; excludes compiler/process allocations |
+| `os-confinement` | true | Boolean; fail the run if OS confinement cannot be applied; explicit false opts out of OS confinement |
+| `process-memory-bytes` | 268435456 | 256 MiB process cap; 0 disables this cap; nonzero requires at least `memory-bytes + 67108864` (64 MiB native headroom) |
+| `cpu-seconds` | 0 | No cumulative CPU cap; positive values limit CPU consumed per run, independently of wall time and VM slices |
+
+Managed instances also accept `os-confinement`, `process-memory-bytes` and `cpu-seconds` in
+`endbot.toml` under `[scripting]`; the CLI forwards overrides into the generated plugin config.
+Other limits in this table are plugin `config.toml` settings. Managed instances retain the default
+32 MiB VM bound, so a nonzero process cap must be at least 96 MiB there. For example:
+
+```toml
+[scripting]
+enabled = true
+os-confinement = true
+process-memory-bytes = 268435456
+cpu-seconds = 30
+```
+
+## OS resource confinement
+
+Each run, including declaration inspection, gets its own confinement object. OS setup failure rejects
+the run before supplied script execution, kills/reaps any started runner, releases handles and logs the error.
+Players receive a localized error. `os-confinement = false` is an explicit opt-out of all mechanisms
+in this table; it leaves VM, IPC, wall-time, authority and concurrency limits in force. Zero disables
+only the configured memory or CPU cap; it does not raise inherited OS limits.
+
+| Resource | Windows | Linux |
+| --- | --- | --- |
+| Process memory | Job Object `JOB_OBJECT_LIMIT_PROCESS_MEMORY` bounds committed bytes | Native runner sets `RLIMIT_AS` at startup to bound virtual address space; allocation may fail with `ENOMEM` |
+| Child processes | Job `JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1`, no breakaway flags; descendants cannot start after assignment | No per-run OS child-process prohibition. `RLIMIT_NPROC` is per UID and is deliberately unused. The trusted runner never spawns; Luau exposes no spawning API |
+| Parent lifetime | Non-inheritable job handle and `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`; closing the job or BDS process exit kills the runner | Native startup calls `prctl(PR_SET_PDEATHSIG, SIGKILL)`, then checks `getppid()` against the supplied parent PID before reading stdin. Also kills on creator-thread exit |
+| Cumulative CPU | Optional `JOB_OBJECT_LIMIT_PROCESS_TIME`, user CPU seconds, periodically checked by Windows | Optional `RLIMIT_CPU`, user + system CPU seconds; `SIGXCPU` at the soft cap, `SIGKILL` one second later if ignored |
+| Priority | `BELOW_NORMAL_PRIORITY_CLASS` at process creation | Native startup calls `nice(+10)` before reading stdin; already lower priorities stay lower |
+
+Windows configures the job first, starts the trusted executable with `Popen`, then immediately assigns
+the process handle before starting pipe readers or writing its load frame. Native loader/startup code
+can run before assignment; **this startup race is not eliminated**. The runner blocks on its first
+NDJSON frame, so no supplied script runs in that interval. If job creation/configuration/assignment
+fails (including incompatible enclosing jobs), the run fails closed without retrying unconfined.
+See Microsoft's [job limits](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information)
+and [assignment semantics](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject).
+
+Linux passes OS limits as runner command-line arguments; Python performs no child callback between
+fork and exec. The native runner applies confinement at the start of `main`, before reading any stdin,
+and preserves stricter inherited soft/hard limits. Native loader/startup code executes before these
+controls, but supplied script input is not read until they succeed. The flags are:
+
+```text
+--max-address-space BYTES --max-cpu-seconds N --parent-pid PID --nice 10
+```
+
+Pass all four flags together, or omit all four for the standalone harness or `os-confinement = false`.
+Values must be unsigned decimal integers: memory 0 disables `RLIMIT_AS`, CPU 0 disables `RLIMIT_CPU`,
+PID must be positive, and the nice increment must be 10. Memory must be below 18446744073709551615
+and fit the native rlimit type; CPU and PID must be at most 2147483647.
+Unknown, missing, duplicate, partial or invalid arguments fail before reading stdin. Any argument or
+confinement failure emits one NDJSON `error` with `phase = "confinement"` and a message beginning
+`confinement failed:`, then exits nonzero. The plugin treats this as a localized startup failure and
+never retries unconfined. Windows validates these flags if supplied but ignores their effects; the
+plugin omits them and applies the Job Object instead. Real embedded Python/BDS validation remains pending.
+
+The parent-death signal assumes the normal, unprivileged runner executable: set-ID/file capabilities
+or credential changes can clear it. See [Linux resource limits](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
+and [parent-death signal semantics](https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html).
+
+Linux `SIGXCPU` and Windows nonzero exits with job user-time accounting at the cap report a CPU limit
+failure. Startup `ENOMEM` and explicit Windows no-memory/commitment-limit native statuses report allocation failure;
+they cannot prove which memory constraint was hit. Memory limits generally reject allocations rather
+than guaranteeing a special exit code. Linux `SIGKILL` (hard CPU cap, OOM killer, parent death or an
+external kill), `SIGSEGV`, native `bad_alloc`/abort and other ambiguous exits remain runner failures.
+Host stop/watchdog kills are never attributed to an OS cap. The memory floor is validation headroom,
+not a promise that every source or loader/library combination fits; validate on both target systems.
+
+These are resource and lifetime controls, **not a filesystem/network OS sandbox**. Luau's `io`, `os`,
+`require`, loaders, debug/environment access and script-managed coroutines are removed at VM level.
+The native executable still has its account's filesystem/network privileges. Restricted accounts,
+seccomp/namespaces/cgroups and Windows restricted tokens/AppContainer are not installed here.
 
 The protocol also bounds frames to 256 KiB and bounds nesting/string/object sizes. Highly escaped source may
 hit the frame bound earlier. Form/save declaration inspection has a deadline of at most five seconds and
@@ -257,9 +333,10 @@ If an input's acknowledgement is lost, the plugin conservatively retains its pin
 acceptance is unknown. A later input from another caller still replaces that ownership.
 
 Runner VM/IPC/time budgets isolate failures to a run. io/os/require, file loaders, debug/environment access and
-script-managed coroutines are removed. The executable/bootstrap are trusted installation assets. Process separation
-is **not OS confinement**; native compiler/JSON allocations are outside VM memory accounting. OS resource limits,
-restricted accounts and distribution hardening remain deployment work. The Node runtime and Endstone core are unchanged.
+script-managed coroutines are removed. The executable/bootstrap are trusted installation assets. Native compiler/JSON
+allocations are outside VM memory accounting and covered by the optional process cap described above.
+OS resource confinement does not restrict native filesystem/network access; restricted accounts and further
+distribution hardening remain deployment work. The Node runtime and Endstone core are unchanged.
 Keep `online-mode=true`, `allow-cheats=false`, no experiments/Beta APIs/GameTest and normal Microsoft/Xbox authentication.
 
 Fast CI builds/tests the runner on Ubuntu; release-candidate jobs build/test both platform runners and bundle
@@ -267,7 +344,11 @@ self-tests smoke-run a params-only script without BDS. These are required checks
 candidate run. **Caller must run Python suites and live
 plugin/BDS checks**: multiline paste limits/cancel behavior, generated controls, Japanese rendering, stale forms,
 logout/rejoin, revoke/regrant (including mid-operation), Group replacement, overlap cleanup, crashes, shutdown,
-and tick timing. Both platform bundles require real CI/consumer validation; OS confinement remains deployment work. Tests never establish world achievement
+and tick timing. Both platform bundles require real CI/consumer validation, including OS confinement setup,
+memory pressure, cumulative CPU termination and parent-death cleanup. Mocked and real-OS probes live in
+`plugin/endbot/tests/test_script_confine.py`; real probes run only on their matching OS and the native
+runner CPU probe skips when a matching build is unavailable. These new Python/OS probes have not been
+run in the implementation sandbox. Tests never establish world achievement
 history, actual Xbox achievement unlocks or another Endstone/BDS pair's support. See [the spike](LUAU_RUNNER_SPIKE.md).
 
 ## Live validation

@@ -55,3 +55,15 @@ operations-per-second = 20
 max-script-bytes = 32768
 max-scripts = 64
 memory-bytes = 33554432
+# OS resource limits, applied before sending script data. Setup failure rejects
+# the run. Explicit false opts out of ALL OS limits below, not the VM limits.
+os-confinement = true
+# Committed bytes on Windows, address space on Linux. 0 disables this cap.
+# A nonzero value must be >= memory-bytes + 67108864 (64 MiB native headroom).
+process-memory-bytes = 268435456
+# Cumulative CPU seconds per run (Windows user time, Linux user + system time).
+# 0 disables this cap; waits do not consume CPU time. Priority is also lowered.
+cpu-seconds = 0
+# Windows: one-process Job Object, kill on job close/parent exit.
+# Linux: SIGKILL on parent/creator-thread death. No per-run child-process ban;
+# RLIMIT_NPROC would affect the whole UID. The trusted runner never spawns.

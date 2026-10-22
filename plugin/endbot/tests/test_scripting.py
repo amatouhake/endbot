@@ -278,8 +278,11 @@ class RunnerPipeTests(unittest.TestCase):
     def test_zero_wall_time_has_no_watchdog_positive_wall_time_has_one(self):
         for milliseconds in (0, 2000):
             with patch("endstone_endbot.script_process.subprocess.Popen") as popen, \
+                 patch("endstone_endbot.script_process.Confinement") as confinement, \
                  patch("endstone_endbot.script_process.threading.Thread"), \
                  patch("endstone_endbot.script_process.threading.Timer") as timer:
+                confinement.return_value.popen_kwargs = {}
+                confinement.return_value.runner_args = []
                 process = RunnerProcess(
                     Mock(is_file=lambda: True), "params {}", "bootstrap", {}, {"wallMs": milliseconds}
                 )

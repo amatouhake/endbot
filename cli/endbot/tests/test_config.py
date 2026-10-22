@@ -111,6 +111,29 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "ui.locale"):
             load_config(self.path)
 
+    def test_scripting_os_limits_defaults_overrides_and_validation(self):
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n[scripting]\n"
+        self.write(base)
+        config = load_config(self.path).scripting
+        self.assertTrue(config.os_confinement)
+        self.assertEqual(config.process_memory_bytes, 268435456)
+        self.assertEqual(config.cpu_seconds, 0)
+        self.write(base + "os-confinement=false\nprocess-memory-bytes=0\ncpu-seconds=2\n")
+        config = load_config(self.path).scripting
+        self.assertFalse(config.os_confinement)
+        self.assertEqual(config.process_memory_bytes, 0)
+        self.assertEqual(config.cpu_seconds, 2)
+        for setting, value in (
+            ("os-confinement", "0"), ("os-confinement", "'false'"),
+            ("process-memory-bytes", "true"), ("process-memory-bytes", "100663295"),
+            ("process-memory-bytes", "-1"), ("cpu-seconds", "true"),
+            ("cpu-seconds", "-1"), ("cpu-seconds", "2147483648"),
+        ):
+            with self.subTest(setting=setting, value=value):
+                self.write(base + f"{setting}={value}\n")
+                with self.assertRaisesRegex(ConfigError, f"scripting.{setting}"):
+                    load_config(self.path)
+
     def test_absolute_server_path_is_kept(self) -> None:
         self.write(f"[server]\npath = '{self.root.as_posix()}'\n[controllers]\ngamertags = []\n")
         config = load_config(self.path)

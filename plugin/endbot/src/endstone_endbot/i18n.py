@@ -716,6 +716,11 @@ JA.update({
     "Script protocol frame too large": "スクリプトの通信データが上限を超えています",
     "Script stopped or time limit reached": "スクリプトが停止されたか、制限時間に達しました",
     "Script runner failed: {error}": "スクリプト実行プログラムでエラー: {error}",
+    "Script runner OS confinement failed; see the server log": (
+        "スクリプト実行プログラムの OS 制限を設定できません。サーバーログを確認してください"
+    ),
+    "Script runner process memory allocation failed": "スクリプト実行プログラムのプロセスメモリを確保できません",
+    "Script runner exceeded the CPU time limit": "スクリプト実行プログラムが CPU 時間の上限を超えました",
     "Scripting is disabled; enable it in config.toml and restart": (
         "スクリプトは無効です。config.toml で有効にして再起動してください"
     ),

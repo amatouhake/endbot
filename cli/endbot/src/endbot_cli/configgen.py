@@ -16,6 +16,7 @@ falls back to a basic string).
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from endbot_cli.config import EndbotConfig
 from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import InstancePaths
 from endbot_cli.leveldat import LevelDatError, parse_level_dat
+from endbot_cli.processes import _app_dir
 from endbot_cli.properties import PreflightError, parse_properties
 
 DEFAULT_SERVER_PORT = 19132
@@ -230,6 +232,30 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
     ui = tomlkit.table()
     ui["language"] = config.ui.language
     document.add("ui", ui)
+
+    scripting = tomlkit.table()
+    scripting["enabled"] = config.scripting.enabled
+    runner = config.scripting.runner
+    if not runner:
+        # The installed CLI belongs to the running version, even if app/current changes.
+        app_dir = next(
+            (
+                parent.parent for parent in Path(__file__).resolve().parents
+                if parent.name == "python" and parent.parent.parent.name == "app"
+            ),
+            None,
+        )
+        if app_dir is None:  # source checkout / development invocation
+            app_dir = _app_dir(paths)
+        if app_dir is not None:
+            candidate = app_dir / "runner" / (
+                "endbot-luau-runner.exe" if sys.platform == "win32" else "endbot-luau-runner"
+            )
+            if candidate.is_file():
+                runner = str(candidate.resolve())
+    if runner:
+        scripting["runner"] = _path_value(tomlkit, runner)
+    document.add("scripting", scripting)
 
     atomic_write_text(plugin_config, tomlkit.dumps(document))
     warnings = [warning] if warning else []

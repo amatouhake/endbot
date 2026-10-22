@@ -3,7 +3,10 @@
 ## Operator install (platform bundle)
 
 The operator path needs no Python, Node.js, venv, pip, or npm: one platform bundle carries the private CPython with the
-patched Endstone, the Endbot plugin and CLI, a private Node.js, and the prebuilt runtime. No artifact ever contains the
+patched Endstone, the Endbot plugin and CLI, a private Node.js, the prebuilt runtime, and
+`app/<version>/runner/endbot-luau-runner[.exe]` with its trusted `api.luau` sidecar.
+Luau/json MIT texts are in `licenses/`. Scripting stays off by default; set `[scripting] enabled = true` in
+`endbot.toml` and restart to enable it without building anything (see [SCRIPTING.md](SCRIPTING.md)). No artifact ever contains the
 official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition path downloads the pinned BDS
 (`1.26.52.3`, protocol `2193`) during `endbot setup` (AGENTS.md: BDS is never bundled, vendored, or redistributed).
 

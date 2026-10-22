@@ -6,7 +6,9 @@ and without ever running pip/npm: it carries a private CPython 3.12 (from
 ``packaging/toolchain.lock.json``) with the patched Endstone wheel, the
 ``endstone-endbot`` plugin wheel and the ``endbot`` CLI wheel preinstalled, a
 private Node.js 24 runtime, and the runtime tree with production
-``node_modules`` prebuilt.
+``node_modules`` prebuilt. Release candidates also pass ``--runner-dir`` with
+the native Luau runner staged by ``node runner/build.mjs --out <dir>``.
+Local builds may omit that option (scripting then needs a separate runner).
 
 This script must run ON the target platform (it executes the bundled
 interpreter and node); it refuses otherwise. Toolchain downloads are verified
@@ -38,6 +40,7 @@ VERSION_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z._-]{0,63}\Z")
 
 RUNTIME_FILES = ("package.json", "package-lock.json", "README.md", "endbot-runtime.example.json")
 RUNTIME_DIRS = ("scripts", "src")
+RUNNER_LICENSES = ("LUAU_LICENSE.txt", "NLOHMANN_JSON_LICENSE.txt")
 
 
 class BundleError(RuntimeError):
@@ -617,6 +620,30 @@ def write_launchers(bundle_root: Path, platform: str, version: str) -> None:
         launcher.chmod(0o755)
 
 
+def validate_runner(runner_dir: Path, platform: str) -> None:
+    binary = "endbot-luau-runner.exe" if platform == "windows-x86_64" else "endbot-luau-runner"
+    for name in (binary, "api.luau", *RUNNER_LICENSES):
+        source = runner_dir / name
+        if not source.is_file() or source.is_symlink() or source.stat().st_size == 0:
+            raise BundleError(f"--runner-dir requires a non-empty regular file: {source}")
+    if platform == "linux-x86_64" and not os.access(runner_dir / binary, os.X_OK):
+        raise BundleError(f"--runner-dir binary is not executable: {runner_dir / binary}")
+
+
+def copy_runner(runner_dir: Path, app_version: Path, bundle_root: Path, platform: str) -> None:
+    validate_runner(runner_dir, platform)
+    target = app_version / "runner"
+    target.mkdir(parents=True, exist_ok=True)
+    binary = "endbot-luau-runner.exe" if platform == "windows-x86_64" else "endbot-luau-runner"
+    # Explicit allowlist: never copy dependency sources, build trees or unrelated staging files.
+    for name in (binary, "api.luau"):
+        shutil.copy2(runner_dir / name, target / name)
+    licenses = bundle_root / "licenses"
+    licenses.mkdir(parents=True, exist_ok=True)
+    for name in RUNNER_LICENSES:
+        shutil.copy2(runner_dir / name, licenses / name)
+
+
 def copy_licenses(bundle_root: Path, python_dir: Path, node_dir: Path, platform: str, endstone_license: Path | None) -> None:
     target = bundle_root / "licenses"
     target.mkdir(parents=True, exist_ok=True)
@@ -685,6 +712,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plugin-wheel", type=Path, required=True, help="endstone-endbot plugin wheel (pure Python)")
     parser.add_argument("--cli-wheel", type=Path, required=True, help="endbot CLI wheel (pure Python)")
     parser.add_argument("--endstone-license", type=Path, default=None, help="ENDSTONE_LICENSE file for licenses/")
+    parser.add_argument(
+        "--runner-dir", type=Path,
+        help="native runner staging directory from node runner/build.mjs --out (required for release candidates)",
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument(
         "--download-dir",
@@ -722,6 +753,9 @@ def main(argv: list[str] | None = None) -> int:
         for label, wheel in (("plugin", plugin_wheel), ("cli", cli_wheel)):
             if not wheel.is_file():
                 raise BundleError(f"--{label}-wheel {wheel} does not exist")
+        runner_dir = args.runner_dir.resolve() if args.runner_dir is not None else None
+        if runner_dir is not None:
+            validate_runner(runner_dir, args.platform)
 
         lock = load_toolchain_lock()
         fetched = fetch_toolchain(lock, args.platform, args.download_dir.resolve())
@@ -743,11 +777,15 @@ def main(argv: list[str] | None = None) -> int:
         prune_bundle(python_dir, node_dir, app_version / "runtime", args.platform)
         write_launchers(bundle_root, args.platform, args.version)
         copy_licenses(bundle_root, python_dir, node_dir, args.platform, args.endstone_license)
+        if runner_dir is not None:
+            copy_runner(runner_dir, app_version, bundle_root, args.platform)
 
         test_script = ROOT / "scripts" / "test_bundle.py"
         test_command = [sys.executable, str(test_script), "--bundle-root", str(bundle_root)]
         if args.allow_missing_endstone:
             test_command.append("--allow-missing-endstone")
+        if runner_dir is None:
+            test_command.append("--allow-missing-runner")
         run(*test_command)
 
         archive_bundle(bundle_root, args.platform, args.version, args.output_dir.resolve())

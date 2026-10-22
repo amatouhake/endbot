@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -157,6 +158,46 @@ class RuntimeConfigTests(ConfigGenTestCase):
 
 
 class PluginConfigTests(ConfigGenTestCase):
+    def test_bundled_runner_is_absolute_and_scripting_stays_disabled(self):
+        version = "test-version"
+        self.paths.app_current.parent.mkdir(parents=True)
+        self.paths.app_current.write_text(version + "\n", encoding="utf-8")
+        runner = self.root / "app" / version / "runner" / (
+            "endbot-luau-runner.exe" if sys.platform == "win32" else "endbot-luau-runner"
+        )
+        runner.parent.mkdir(parents=True)
+        runner.write_bytes(b"fixture-runner")
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        scripting = tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]
+        self.assertEqual(scripting, {"enabled": False, "runner": str(runner.resolve())})
+
+    def test_unbundled_runner_keeps_plugin_default_and_explicit_override_wins(self):
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        self.assertEqual(tomllib.loads(target.read_text(encoding="utf-8"))["scripting"], {"enabled": False})
+        with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
+            config.write("\n[scripting]\nenabled=true\nrunner='custom/runner'\n")
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        self.assertEqual(
+            tomllib.loads(target.read_text(encoding="utf-8"))["scripting"],
+            {"enabled": True, "runner": "custom/runner"},
+        )
+
+    def test_running_app_runner_takes_precedence_over_current_pointer(self):
+        from unittest.mock import patch
+
+        running = self.root / "app" / "running"
+        module = running / "python" / "Lib" / "site-packages" / "endbot_cli" / "configgen.py"
+        binary = running / "runner" / (
+            "endbot-luau-runner.exe" if sys.platform == "win32" else "endbot-luau-runner"
+        )
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"running-version")
+        with patch("endbot_cli.configgen.__file__", str(module)):
+            target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        self.assertEqual(
+            tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]["runner"], str(binary.resolve())
+        )
+
     def test_gamertags_and_paths_are_written_with_literal_paths(self) -> None:
         write_endbot_toml(self.root, gamertags='["First", "Second"]', control_port=19999)
         target, warnings = generate_plugin_config(self.server, self.paths, self.config())

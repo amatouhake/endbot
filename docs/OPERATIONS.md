@@ -18,7 +18,8 @@ directory may live inside it (fresh setup) or anywhere else (existing server).
 ├─ app/<version>/            replaceable application, one directory per installed version
 │  ├─ python/                private CPython 3.12 with patched Endstone + endstone-endbot + the endbot CLI installed
 │  ├─ node/                  private Node.js runtime
-│  └─ runtime/               Endbot runtime with production node_modules, prebuilt in CI
+│  ├─ runtime/               Endbot runtime with production node_modules, prebuilt in CI
+│  └─ runner/                native endbot-luau-runner[.exe] and trusted api.luau, prebuilt in CI
 ├─ app/current               text file naming the active <version> (no symlink privileges needed on Windows)
 ├─ state/                    persistent Endbot state, never replaced by update
 │  ├─ secrets/               owner-private.pem, owner-public.pem, control.token
@@ -58,7 +59,16 @@ hotbar-sync-resend-ticks = 20   # unchanged corrections, integer 1..72000
 
 [ui]
 language = "auto"          # auto (each player's game language), en, or ja
+
+[scripting]
+enabled = false            # opt in to controller Luau scripts; restart to apply
 ```
+
+`[scripting].enabled` is a boolean and defaults to false, including when the section is absent.
+Bundles ship the runner, so enabling it requires no build or toolchain. On each start the CLI writes this setting
+and the absolute path of the running app version's runner into the generated plugin config. An optional
+`[scripting] runner = 'path'` overrides that path (relative paths resolve from the plugin data folder).
+Manual plugin installations set `[scripting]` directly in their plugin config. See [SCRIPTING.md](SCRIPTING.md).
 
 `[ui].language` sets the language of player-facing replies, help and forms. `auto` (the default, also when omitted)
 gives Japanese clients Japanese and every other client English; `en` or `ja` fixes one language for everyone. Command
@@ -351,8 +361,17 @@ and protocol `2193` remain pinned; no BDS/world format migration is needed.
 Per platform (`linux-x86_64`, `windows-x86_64`), built only in CI:
 
 - `endbot-<version>-<platform>.zip|tar.gz`: private CPython 3.12 with the patched Endstone wheel, `endstone-endbot`,
-  and the `endbot` CLI preinstalled; private Node.js; `runtime/` with production `node_modules`; launcher; licenses
+  and the `endbot` CLI preinstalled; private Node.js; `runtime/` with production `node_modules`;
+  `runner/endbot-luau-runner[.exe]` with `api.luau`; launcher; licenses
   and third-party notices for every bundled component.
 - `compatibility-manifest.json` and `SHA256SUMS` covering every file above.
 
 The standalone wheels and runtime tarball stay available for developers but are not the operator path.
+
+Release-candidate jobs build the runner with `node runner/build.mjs --out build/runner-stage`, run
+`node --test` in `runner/`, and require `--runner-dir build/runner-stage` on `scripts/build_bundle.py`.
+The builder checks the binary, sidecar, both MIT notices and Linux executable permission before copying them.
+The notices go to `licenses/LUAU_LICENSE.txt` and `licenses/NLOHMANN_JSON_LICENSE.txt`.
+Bundle self-tests smoke-run `params{}` without BDS. Local bundle builds may omit `--runner-dir`; those bundles
+have no runner and cannot enable scripting without installing one. For such local bundles only,
+`scripts/test_bundle.py --allow-missing-runner` skips an absent runner directory.

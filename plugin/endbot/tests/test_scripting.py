@@ -2,6 +2,7 @@
 
 import json
 import queue
+import sys
 import tempfile
 import threading
 import time
@@ -27,6 +28,12 @@ from endstone_endbot.scripting import ScriptRun, ScriptService
 
 
 class ConfigStorageParamsTests(unittest.TestCase):
+    def test_default_runner_uses_product_name_inside_plugin_package(self):
+        executable = ScriptConfig().executable(Path("data"))
+        self.assertEqual(executable.name, "endbot-luau-runner.exe" if sys.platform == "win32" else "endbot-luau-runner")
+        self.assertEqual(executable.parent.name, "runner")
+        self.assertEqual(executable.parent.parent.name, "endstone_endbot")
+
     def test_startup_defaults_and_strict_settings(self):
         self.assertFalse(ScriptConfig.from_config({}).enabled)
         self.assertEqual(ScriptConfig.from_config({}).wall_seconds, 0)

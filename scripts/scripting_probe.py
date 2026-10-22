@@ -21,7 +21,7 @@ GROUP = "#script_probe"
 def built_runner(root):
     from e2e_consumer import ConsumerError
 
-    binary = root / "runner/.build/native/bin" / ("endbot-luau-spike.exe" if os.name == "nt" else "endbot-luau-spike")
+    binary = root / "runner/.build/native/bin" / ("endbot-luau-runner.exe" if os.name == "nt" else "endbot-luau-runner")
     sidecar = binary.with_name("api.luau")
     if not binary.is_file() or not sidecar.is_file():
         raise ConsumerError("scripting runner not built; run 'node runner/build.mjs'")

@@ -40,7 +40,7 @@ language = "auto"
 [scripting]
 # Applied at startup. Stored source is retained when disabled.
 enabled = false
-# Empty uses the plugin bundle's runner/endbot-luau-spike[.exe]. A relative
+# Empty uses the plugin bundle's runner/endbot-luau-runner[.exe]. A relative
 # configured path resolves inside the plugin data folder. Install api.luau
 # beside the executable (node runner/build.mjs does this for development).
 runner = ""

@@ -19,7 +19,7 @@ DEFAULT_CONTROL_PORT = 19142
 DEFAULT_CHUNK_RADIUS = 5
 DEFAULT_TRANSPORT = "nethernet"
 TRANSPORTS = ("nethernet", "raknet")
-SECTIONS = ("server", "controllers", "runtime", "ui")
+SECTIONS = ("server", "controllers", "runtime", "ui", "scripting")
 LANGUAGES = ("auto", "en", "ja")
 DEFAULT_LANGUAGE = "auto"
 
@@ -59,11 +59,18 @@ class UiConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ScriptingConfig:
+    enabled: bool = False
+    runner: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class EndbotConfig:
     server: ServerConfig
     controllers: ControllersConfig
     runtime: RuntimeConfig
     ui: UiConfig = UiConfig()
+    scripting: ScriptingConfig = ScriptingConfig()
 
 
 def _fail(path: Path, key: str, problem: str, fix: str) -> ConfigError:
@@ -206,6 +213,20 @@ def _load_ui(path: Path, document: dict[str, Any]) -> UiConfig:
     return UiConfig(language=language)
 
 
+def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
+    table = document.get("scripting", {})
+    if not isinstance(table, dict):
+        raise _fail(path, "scripting", "must be a table", "write it as a [scripting] section")
+    _reject_unknown_keys(path, table, "scripting", ("enabled", "runner"))
+    enabled = table.get("enabled", False)
+    if type(enabled) is not bool:
+        raise _fail(path, "scripting.enabled", "must be a boolean", "use enabled = false or true")
+    runner = table.get("runner", "")
+    if not isinstance(runner, str):
+        raise _fail(path, "scripting.runner", "must be a string", "quote the executable path or use an empty string")
+    return ScriptingConfig(enabled=enabled, runner=runner)
+
+
 def load_config(path: Path) -> EndbotConfig:
     """Load and validate ``endbot.toml``; raise :class:`ConfigError` on any violation."""
 
@@ -233,4 +254,5 @@ def load_config(path: Path) -> EndbotConfig:
         controllers=_load_controllers(path, document),
         runtime=_load_runtime(path, document),
         ui=_load_ui(path, document),
+        scripting=_load_scripting(path, document),
     )

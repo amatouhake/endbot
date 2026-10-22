@@ -6,19 +6,35 @@ revision. Scripting is optional and **off by default**. No process starts merely
 
 ## Install and enable
 
-1. Build in a standalone clone: `cd runner`, then `node build.mjs`. Requires Node 24+, CMake, `tar`, and
-   a C++17 toolchain. `CMAKE` may name the installed CMake executable. Keep the same generator on rebuilds;
-   MinGW instructions are in [the spike](LUAU_RUNNER_SPIKE.md).
-2. Install `.build/native/bin/endbot-luau-spike[.exe]` and its **trusted `api.luau` sidecar** together.
-   Set `[scripting] runner` in the plugin's `config.toml` to that executable. Relative paths resolve from
-   the plugin data folder. Empty `runner` uses `endstone_endbot/runner/endbot-luau-spike[.exe]` inside an
-   operator-built plugin bundle. No binaries are tracked. Missing executable/sidecar reports
-   `scripting runner not built/installed`.
-3. Set `[scripting] enabled = true` and restart. Controller authorization still applies.
+Windows and Linux operator bundles include `app/<version>/runner/endbot-luau-runner[.exe]` and its
+**trusted `api.luau` sidecar**. No developer tools or downloads are needed to enable scripting.
+In the instance's `endbot.toml`, add or change:
+
+```toml
+[scripting]
+enabled = true
+```
+
+Restart with `endbot start`. The CLI writes the boolean and the running app version's absolute runner
+path to the generated plugin config on each start, so update/rollback selects that version's runner.
+Fresh setup writes `enabled = false`; omission also means false. Controller authorization still applies.
+Managed instances edit `endbot.toml`; their plugin config is overwritten on start. An optional
+`[scripting] runner = 'path'` overrides the bundled path. Relative runner paths resolve from the plugin
+data folder. With no bundled runner and no override, the plugin's existing default lookup is retained.
+
+For a manual plugin install, build from a standalone clone with `node runner/build.mjs --out build/runner-stage`
+(Node 24+, CMake, Ninja, `tar`, C++17 toolchain; MSVC developer shell on Windows, GCC on Ubuntu 22.04).
+Install `build/runner-stage/endbot-luau-runner[.exe]` and `api.luau` together, then set `[scripting] runner`
+and `enabled = true` directly in the plugin's `config.toml` and restart. Empty `runner` looks for
+`endstone_endbot/runner/endbot-luau-runner[.exe]` beside the plugin package. Missing executable/sidecar reports
+`scripting runner not built/installed`. See [runner build options](../runner/README.md), including local MinGW.
 
 Official Luau **0.743** remains pinned by commit/SHA-256 in `runner/luau.lock.json`, without source changes.
-The build verifies/restores pinned dependencies and copies the bootstrap beside the binary. Preserve upstream
-license notices when distributing builds. Source inputs are pinned; compilers and byte-identical output are not.
+The build verifies/restores pinned dependencies and copies the bootstrap beside the binary in
+`runner/.build/native/bin/`. `--out` (or `ENDBOT_RUNNER_OUT`) also stages the binary, bootstrap and MIT texts.
+Only the two pinned source URLs are fetched; checksum mismatches fail the build. Bundles carry
+`licenses/LUAU_LICENSE.txt` (from the verified archive) and `licenses/NLOHMANN_JSON_LICENSE.txt`, listed in
+`THIRD_PARTY_NOTICES.md`. Preserve these when distributing builds. Source inputs are pinned; compilers and byte-identical output are not.
 Dependencies and build artifacts remain ignored.
 
 Startup limits (positive integers, except `wall-seconds` also accepts zero):
@@ -246,10 +262,12 @@ is **not OS confinement**; native compiler/JSON allocations are outside VM memor
 restricted accounts and distribution hardening remain deployment work. The Node runtime and Endstone core are unchanged.
 Keep `online-mode=true`, `allow-cheats=false`, no experiments/Beta APIs/GameTest and normal Microsoft/Xbox authentication.
 
-The real pinned VM's Windows build/Node tests are automated evidence. **Caller must run Python suites and live
+Fast CI builds/tests the runner on Ubuntu; release-candidate jobs build/test both platform runners and bundle
+self-tests smoke-run a params-only script without BDS. These are required checks, not a record of a completed
+candidate run. **Caller must run Python suites and live
 plugin/BDS checks**: multiline paste limits/cancel behavior, generated controls, Japanese rendering, stale forms,
 logout/rejoin, revoke/regrant (including mid-operation), Group replacement, overlap cleanup, crashes, shutdown,
-and tick timing. Linux build/bundling and OS confinement remain unverified. Tests never establish world achievement
+and tick timing. Both platform bundles require real CI/consumer validation; OS confinement remains deployment work. Tests never establish world achievement
 history, actual Xbox achievement unlocks or another Endstone/BDS pair's support. See [the spike](LUAU_RUNNER_SPIKE.md).
 
 ## Live validation
@@ -264,7 +282,7 @@ python scripts/raknet_spike.py --scripting --server-dir build/scripting-sandbox 
 
 Use a new ignored output directory each time. `--server-dir` is the existing disposable sandbox mechanism;
 it resets the sandbox world. The probe enables `[scripting]` only in that generated instance config and uses
-the locally built `runner/.build/native/bin/endbot-luau-spike[.exe]` and matching `api.luau`. Missing/stale builds
+the locally built `runner/.build/native/bin/endbot-luau-runner[.exe]` and matching `api.luau`. Missing/stale builds
 fail with the build command. No server settings are weakened. Omit `--scripting` to retain the default config.
 
 | Check | Evidence required | Result |

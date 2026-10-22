@@ -4,7 +4,10 @@
 Runs against the builder staging tree (before archiving) and, identically,
 against an extracted release archive, so CI can call it in both places::
 
-    python scripts/test_bundle.py --bundle-root <dir> [--version V] [--allow-missing-endstone]
+    python scripts/test_bundle.py --bundle-root <dir> [--version V]
+
+Local builds can opt out with ``--allow-missing-endstone`` and/or
+``--allow-missing-runner``. Candidate bundles must pass without either flag.
 """
 
 from __future__ import annotations
@@ -178,6 +181,35 @@ def check_tree(bundle_root: Path, version: str) -> None:
     print("bundle-test: staging tree layout, freeze, licenses, and runtime pin look right")
 
 
+def check_runner(bundle_root: Path, version: str, allow_missing: bool = False) -> None:
+    runner_dir = bundle_root / "app" / version / "runner"
+    if allow_missing and not runner_dir.exists():
+        print("bundle-test: runner omitted (local build)")
+        return
+    binary = runner_dir / ("endbot-luau-runner.exe" if os.name == "nt" else "endbot-luau-runner")
+    if not binary.is_file() or (os.name != "nt" and not os.access(binary, os.X_OK)):
+        raise BundleTestError(f"bundled runner missing or not executable: {binary}")
+    bootstrap = (runner_dir / "api.luau").read_text(encoding="utf-8")
+    for name in ("LUAU_LICENSE.txt", "NLOHMANN_JSON_LICENSE.txt"):
+        if not (bundle_root / "licenses" / name).read_text(encoding="utf-8").strip():
+            raise BundleTestError(f"licenses/{name} is empty")
+    frames = [
+        {"type": "load", "source": "params{}", "bootstrap": bootstrap},
+        {"type": "reply", "id": 1, "accepted": True, "args": {}},
+    ]
+    completed = subprocess.run(
+        [str(binary)], input="".join(json.dumps(frame) + "\n" for frame in frames),
+        text=True, capture_output=True, check=True, timeout=10, cwd=runner_dir,
+    )
+    try:
+        events = [json.loads(line) for line in completed.stdout.splitlines()]
+    except ValueError as error:
+        raise BundleTestError(f"runner output is not NDJSON: {completed.stdout[:500]!r}") from error
+    if events != [{"type": "params", "id": 1, "schema": []}, {"type": "done"}]:
+        raise BundleTestError(f"runner params smoke failed: {completed.stdout[:1000]!r}")
+    print("bundle-test: bundled runner declares params and exits cleanly without BDS")
+
+
 def check_pruned(bundle_root: Path, version: str) -> None:
     # The slim-bundle prune step (scripts/build_bundle.py prune_bundle) must
     # have removed build-time-only files; the kept runtime must still be there.
@@ -261,6 +293,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--version", default=None, help="bundle version (default: read from app/current)")
     parser.add_argument("--allow-missing-endstone", action="store_true",
                         help="skip Endstone import checks (local validation without the wheel)")
+    parser.add_argument("--allow-missing-runner", action="store_true",
+                        help="local builds only: permit bundles built without --runner-dir")
     return parser.parse_args(argv)
 
 
@@ -272,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
         if not version:
             raise BundleTestError("bundle version is empty")
         check_tree(bundle_root, version)
+        check_runner(bundle_root, version, args.allow_missing_runner)
         check_pruned(bundle_root, version)
         check_launcher_help(launcher_path(bundle_root))
         check_doctor_empty_instance(launcher_path(bundle_root))
@@ -279,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
         check_node_syntax(bundled_node(bundle_root, version), bundle_root / "app" / version / "runtime")
         check_node_runtime_imports(bundled_node(bundle_root, version), bundle_root / "app" / version / "runtime")
         print(f"bundle-test: {bundle_root.name} passed")
-    except (BundleTestError, subprocess.CalledProcessError, OSError) as error:
+    except (BundleTestError, subprocess.SubprocessError, OSError) as error:
         print(f"bundle-test: ERROR: {error}", file=sys.stderr)
         return 1
     return 0

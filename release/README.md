@@ -25,6 +25,17 @@ combines both wheels with the Linux-built plugin and CLI wheels (exactly one of 
 bundles, the runtime/config tarballs, license, manifest, and checksums into the single candidate.
 The Windows wheel is no longer a local build.
 
+Both platform jobs also build the native Luau runner using
+`node runner/build.mjs --out build/runner-stage` and run `node --test` in `runner/`.
+Windows uses the MSVC developer environment and CMake/Ninja; Linux uses its installed
+C++ toolchain and CMake/Ninja. Each `build_bundle.py` invocation requires
+`--runner-dir build/runner-stage`. The staging directory is never uploaded separately:
+bundles contain `app/<version>/runner/endbot-luau-runner[.exe]`, `api.luau`, and
+`licenses/LUAU_LICENSE.txt` / `NLOHMANN_JSON_LICENSE.txt`, listed in the bundled
+`THIRD_PARTY_NOTICES.md`. Local bundle builds may omit the option. Bundle self-tests
+require the runner and smoke-run a params-only NDJSON script without BDS; only local
+builds without a runner pass `--allow-missing-runner`. Scripting remains off by default.
+
 Bundle assembly and self-tests require `raknet-native` to load after production dependency pruning.
 The consumer E2E workflow runs both `nethernet` and `raknet` on Windows and Linux, including fresh setup,
 Bot join/resume, clean stop, and synthetic same-code update/rollback. RakNet is exercised with UDP 7551

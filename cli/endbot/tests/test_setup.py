@@ -18,6 +18,7 @@ from pathlib import Path
 from fakeinstance import build_bds_dir, simulate_bds_download
 
 from endbot_cli.allowlist import add_gamertags
+from endbot_cli.config import load_config
 from endbot_cli.instance import InstancePaths
 from endbot_cli.lock import load_lock
 from endbot_cli.properties import parse_properties
@@ -240,6 +241,7 @@ class ApplyTests(SetupTestCase):
         self.assertIn("the first `endbot start` generates the owner keys and control token", out)
         self.assertIn("next steps:", out)
         self.assertIn("join once with each controller GamerTag (Alice, Bob)", out)
+        self.assertFalse(load_config(self.paths.endbot_toml).scripting.enabled)
 
     def test_apply_fresh_flips_unsafe_defaults_from_the_download(self) -> None:
         acquire = RecordingAcquire()

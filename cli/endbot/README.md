@@ -12,6 +12,16 @@ Published `v0.1.x` bundles predate this option; see `docs/RAKNET_VALIDATION.md` 
 
 ## Usage
 
+Operator bundles include `app/<version>/runner/endbot-luau-runner[.exe]` and `api.luau`.
+`setup` writes `[scripting] enabled = false` into `endbot.toml`; old configs without
+the section also keep scripting off. Set the boolean to `true` and restart to enable
+controller scripts. On start the CLI regenerates `[scripting]` in the plugin config,
+including the running application's absolute runner path when present. Optional
+`runner = 'path'` in `endbot.toml` overrides it; relative paths resolve from the plugin
+data folder. Without a bundled runner or override the plugin's default lookup is retained.
+Manual plugin users configure scripting directly in the plugin config; managed instances
+edit `endbot.toml` because their plugin config is overwritten. See [scripting](../../docs/SCRIPTING.md).
+
 ```text
 endbot [--instance PATH] setup (--fresh | --existing PATH) [--controller GAMERTAG ...]
        [--apply] [--backup-worlds | --i-have-a-world-backup]

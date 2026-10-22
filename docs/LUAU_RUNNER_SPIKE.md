@@ -93,7 +93,7 @@ The new top-level `runner/` keeps this native build and standalone harness out o
 `npm test` does not discover build-dependent tests or gain dependencies. No npm install is required for the spike.
 `main.cpp` owns the VM; `api.luau` is trusted bootstrap; `host.mjs` owns the child, mock authorization and scheduling;
 `demo.mjs` and `runner.test.mjs` use real Luau, not a simulated interpreter. The executable is generated at
-`runner/.build/native/bin/endbot-luau-spike[.exe]`.
+`runner/.build/native/bin/endbot-luau-runner[.exe]`.
 
 From a standalone clone with Node >=24, CMake >=3.15, `tar` (gzip support) and a C/C++17 toolchain on PATH:
 

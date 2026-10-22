@@ -26,6 +26,7 @@ class MemberResult:
     outcome: str
     reason: str = "other"
     detail: str = ""
+    data: dict | None = None
 
 
 @dataclass(frozen=True)

@@ -21,15 +21,15 @@ The build verifies/restores pinned dependencies and copies the bootstrap beside 
 license notices when distributing builds. Source inputs are pinned; compilers and byte-identical output are not.
 Dependencies and build artifacts remain ignored.
 
-Startup limits (positive integers):
+Startup limits (positive integers, except `wall-seconds` also accepts zero):
 
 | Setting | Default | Meaning |
 | --- | ---: | --- |
 | `controller-runs` | 2 | Concurrent runs per controller |
 | `server-runs` | 8 | Concurrent runs server-wide |
-| `wall-seconds` | 300 | Total deadline including declarations, waits and IPC |
+| `wall-seconds` | 0 | No total run deadline; positive values limit declarations, waits and IPC in wall seconds |
 | `slice-ms` | 100 | Cooperative VM deadline between yields |
-| `interrupt-budget` | 1000000 | Cumulative safepoint callbacks, not exact instructions |
+| `interrupt-budget` | 1000000 | Safepoint callbacks per VM slice between yields, not exact instructions |
 | `operations-per-second` | 20 | Sliding one-second host operation limit; exceeding fails the run |
 | `max-script-bytes` | 32768 | UTF-8 source limit on save/run, maximum 65536 (protocol bound) |
 | `max-scripts` | 64 | Stored-script creation limit |
@@ -39,7 +39,10 @@ The protocol also bounds frames to 256 KiB and bounds nesting/string/object size
 hit the frame bound earlier. Form/save declaration inspection has a deadline of at most five seconds and
 requires available concurrency capacity. Changes apply on restart. Disabling scripting or lowering storage
 limits retains stored source; oversized stored scripts cannot run until edited or the limit is raised.
-Total IPC events (including logs and zero waits) are bounded by `4 * operations-per-second * wall-seconds`.
+IPC events (including logs and zero waits) are bounded by `4 * operations-per-second` in a sliding
+one-second window, independently of run lifetime. Negative `wall-seconds` values are rejected.
+With zero, runs still end on completion, `/botscript stop`, authority revocation, or plugin/server shutdown.
+Per-slice interrupt/time, memory, operation rate and concurrency limits always apply.
 
 ## Commands, authoring and parameters
 
@@ -62,7 +65,7 @@ does not cancel running copies. Show displays numbered, bounded pages and wraps 
 source. Source is never loaded from a user-supplied filesystem path.
 
 When enabled, `/bot menu` includes **Scripts...**. A script opens Run, Show source (paged), Stop runs,
-Delete (confirmation), and Edit source. Create offers **Group row**, **Simple patrol**, and a blank script.
+Delete (confirmation), and Edit source. Create offers **Group row**, **Simple patrol**, **Mine at spots**, and a blank script.
 Editing uses one paste field with current source as default. Save compiles the complete source and inspects
 its declaration without accepting the body. `save` is an internal form action; typing it cannot update source.
 Stale edit/delete/run forms reject source revision changes. Canceling does not save; drafts are not persisted.
@@ -109,11 +112,58 @@ the Group's own identity guard.
 宣言順です。上の例は `group`、`origin`、`spacing` の順で、末尾の引数を省略すると宣言した初期値を使います。
 引数名の重複、無効な名前、不明な型、名前付きキーや配列との混在はエラーになります。
 
-Calls return **acceptance**, not completion: `{ok=true,messages=...,data=...}` or
+Ordinary operation calls return **acceptance**, not completion: `{ok=true,messages=...,data=...}` or
 `{ok=false,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
 Handle rejected calls explicitly. Revocation, rate/deadline and protocol errors end the run.
 Use `wait(ticks)` (20 ticks = one wall-clock second) and `waitOnline(bot("Alice"))`, which also accepts a name
 or Group handle. `log(text)` emits bounded log text. Waits recheck authority. No command-string API exists.
+
+### Structured status and mining waits
+
+`bot:status()` returns the usual result wrapper; read its `data` fields below. These values come from
+runtime status, including its retained last mining job; they do not infer completion from elapsed time.
+
+| Field | Meaning |
+| --- | --- |
+| `data.name` | Current Bot name |
+| `data.identityId` | Bot UUID |
+| `data.connectionState` | Runtime connection state; `online` means connected |
+| `data.mining.active` | Boolean: a block destroy job or continuous mining loop is active (including waiting for a target) |
+| `data.mining.mode` | `once` or `continuous`; nil before any mining job |
+| `data.mining.state` | Runtime job state (`active`, `waiting`, `completed`, `canceled`, `failed`), or nil with no job |
+| `data.mining.blocksBroken` | Runtime continuous-loop count; for a single block, 1 if completed, otherwise 0; 0 with no job |
+| `data.mining.blockCount` | Continuous count limit, or nil when unlimited/no job |
+| `data.mining.reason` | Nil while active; otherwise the runtime's terminal reason, or nil with no job |
+
+Terminal reasons include `block count reached`, `duration elapsed`, `stopped`, and runtime failure reasons.
+Null JSON fields become nil in Luau. `group:status()` returns `data.results` in pinned membership order;
+each row has `index`, `identityId`, `name`, `ok`, `reason` (nil on success), and `data` containing that
+member's fields above (nil on query failure). Partial query failure sets the outer `ok=false`.
+
+`bot:waitMining{timeout=1200}` and `group:waitMining{timeout=1200}` wait only for destroy/mining jobs.
+They return `{ok=boolean, reason=string, results={...}}`. Each result has `name`, `identityId`, `ok`,
+`reason`, and `mining` (the fields above). The group waits for all current members, pinning membership
+and identity on the first poll; membership replacement ends the run. A literal Bot's identity is also
+pinned on the first poll. Movement and other continuing inputs do not delay this wait.
+
+Timeout defaults to **1200 ticks (60 wall seconds)** and must be an integer from 0 to 2147483647;
+0 performs one status check. Polling runs on the host every `max(0.25, 1 / operations-per-second)` wall
+seconds, with the final sleep shortened to the remaining timeout (timeout uses the last polled snapshot).
+Polls use the normal operation rate
+limit and recheck authorization/stop; no command worker is held while sleeping. Stop/revocation/shutdown
+or the optional positive run deadline ends the run, rather than returning a successful wait.
+
+An inactive online member returns its terminal reason (or `idle` with no job), with `ok=true` unless its
+state is `failed`. An offline member returns `ok=false, reason="offline"`; a still-active member at the
+timeout returns `ok=false, reason="timeout"`. A timeout does not stop its mining job. Query failures
+return `ok=false` with the query reason. The outer `ok` requires every member to succeed; `reason` is
+the shared reason, `completed` for mixed successful reasons, or the first failing member's reason.
+Per-member results preserve mixed outcomes.
+
+**Mine at spots** accepts `name`, `start`, `spots` (default 2), `step` (default 4), and `blocks` (default 2),
+in that order. It teleports along +X from `start` at `step` spacing, faces +Z, runs
+`destroy{mode="continuous",count=blocks}`, waits up to 1200 ticks, and logs `spot N: <reason>` at each
+position. Prepare reachable breakable blocks in front of each spot before running it.
 
 ## Generated API reference
 
@@ -204,7 +254,7 @@ history, actual Xbox achievement unlocks or another Endstone/BDS pair's support.
 
 ## Live validation
 
-Live results below come from `build/scripting-live-3` on 2026-10-23 JST (Windows RakNet, Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, reusable sandbox). Earlier attempts found that Endstone's tomlkit config integers were rejected (fixed) and that the probe sampled positions too coarsely (fixed). In the pinned Python environment with the plugin
+Live results below come from `build/scripting-live-3` and, after the run-lifetime/status/`waitMining` changes, `build/scripting-live-4` (all cases including Mine at spots) on 2026-10-23 JST (Windows RakNet, Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, reusable sandbox). Earlier attempts found that Endstone's tomlkit config integers were rejected (fixed) and that the probe sampled positions too coarsely (fixed). In the pinned Python environment with the plugin
 installed and runtime dependencies present, build the native runner, then run from the repository root:
 
 ```text
@@ -223,6 +273,7 @@ fail with the build command. No server settings are weakened. Omit `--scripting`
 | Patrol stopped by name and run ID | Real move/wait loop runs listed; both Bots move, stop retires the run, fresh BDS samples stay within 0.15 blocks over 1.2 seconds | Passed |
 | Console overlap and subsequent input | Later console movement survives run cleanup; console movement after stop also advances by at least 0.5 blocks | Passed |
 | Runaway loop | `while true do end` terminates with `execution budget exceeded` and cleanup log | Passed |
+| Mine at spots (new case) | Four SDK-placed dirt blocks at two spots become air in BDS; each spot logs `block count reached`; normal completion and cleanup | Passed |
 | Console list/runs | Stored names, active run ID/name and final empty runs output | Passed |
 | Disabled default | Unit coverage in `test_scripting.py`: every `/botscript` entry rejects under default `ScriptConfig`, without constructing a runner; no restart phase | Passed (plugin unittest suite) |
 

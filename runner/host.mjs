@@ -9,7 +9,7 @@ const bootstrap = readFileSync(path.join(root, 'api.luau'), 'utf8');
 // Exercise the production grammar; this standalone host still never controls BDS.
 export const mockOperations = JSON.parse(readFileSync(new URL('../plugin/endbot/src/endstone_endbot/operations.json', import.meta.url), 'utf8'));
 const defaults = Object.freeze({ sliceMs: 100, interruptBudget: 100000, memoryBytes: 32 * 1024 * 1024,
-  wallMs: 5000, requestMs: 1000, maxMessages: 1000, maxTicks: 2000, tickMs: 50 });
+  wallMs: 0, requestMs: 1000, maxMessages: 1000, maxTicks: 2000, tickMs: 50 });
 
 export function parameters(schema, args) {
   if (!Array.isArray(schema)) throw new Error('Script parameters must be an array');
@@ -50,7 +50,7 @@ export function parameters(schema, args) {
 export function startRun(source, args = {}, options = {}) {
   const limits = { ...defaults, ...options.limits };
   for (const [key, value] of Object.entries(limits)) {
-    if (!Number.isFinite(value) || value < 0 || (key !== 'tickMs' && (!Number.isSafeInteger(value) || value < 1))) throw new Error(`invalid limit: ${key}`);
+    if (!Number.isFinite(value) || value < 0 || (key !== 'tickMs' && (!Number.isSafeInteger(value) || (key !== 'wallMs' && value < 1)))) throw new Error(`invalid limit: ${key}`);
   }
   if (typeof source !== 'string' || Buffer.byteLength(source) > 65536) throw new Error('source too large or not text');
   if (!args || typeof args !== 'object') throw new Error('args must be a JSON object or array');
@@ -58,7 +58,8 @@ export function startRun(source, args = {}, options = {}) {
   if (Buffer.byteLength(load) > 256 * 1024) throw new Error('load frame too large');
   const child = spawn(executable, [], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   const events = [];
-  let buffer = '', terminal, closed = false, stopping = false, declared = false, started = false, count = 0, expectedId = 1;
+  let buffer = '', terminal, closed = false, stopping = false, declared = false, started = false, expectedId = 1;
+  const messageTimes = [];
   let resolveDone, resolveReady;
   const done = new Promise(resolve => { resolveDone = resolve; });
   const ready = new Promise(resolve => { resolveReady = resolve; });
@@ -103,7 +104,10 @@ export function startRun(source, args = {}, options = {}) {
   }
   async function handle(event) {
     if (terminal) return;
-    if (++count > limits.maxMessages) return kill('message budget exceeded');
+    const now = performance.now();
+    while (messageTimes.length && messageTimes[0] <= now - 1000) messageTimes.shift();
+    messageTimes.push(now);
+    if (messageTimes.length > limits.maxMessages) return kill('message budget exceeded');
     if (['done', 'error', 'stopped'].includes(event.type)) {
       if (event.type === 'done' && !declared) return kill('script must declare params{}');
       finish(event);
@@ -145,6 +149,10 @@ export function startRun(source, args = {}, options = {}) {
       } else if (event.type === 'waitOnline') {
         send({ type: 'reply', id: event.id, accepted: true, result: await options.onWaitOnline?.(event) ?? { ok: true } });
         return;
+      } else if (event.type === 'waitMining') {
+        if (options.authorize && !await options.authorize(event)) throw new Error('authorization revoked');
+        send({ type: 'reply', id: event.id, accepted: true, result: await options.onWaitMining?.(event) ?? { ok: true, reason: 'idle', results: [] } });
+        return;
       } else throw new Error('unknown request');
       send({ type: 'reply', id: event.id, accepted: true });
     } catch (error) {
@@ -175,7 +183,7 @@ export function startRun(source, args = {}, options = {}) {
     if (!terminal) finish({ type: 'error', phase: 'exit', message: `runner exited ${code}/${signal}` });
     resolveDone({ ...terminal, exitCode: code, signal });
   });
-  timer(() => kill('wall time budget exceeded'), limits.wallMs);
+  if (limits.wallMs > 0) timer(() => kill('wall time budget exceeded'), limits.wallMs);
   send(JSON.parse(load));
   return { ready, done, events, begin, stop };
 }

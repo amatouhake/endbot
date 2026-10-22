@@ -46,7 +46,9 @@ enabled = false
 runner = ""
 controller-runs = 2
 server-runs = 8
-wall-seconds = 300
+# Total run lifetime in wall seconds; 0 disables the total deadline.
+# Per-slice VM, memory, operation rate and concurrency limits still apply.
+wall-seconds = 0
 slice-ms = 100
 interrupt-budget = 1000000
 operations-per-second = 20

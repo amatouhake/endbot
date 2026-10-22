@@ -67,7 +67,7 @@ test('infinite loop interrupted inside VM, including pcall attempts to swallow e
 });
 
 test('elapsed VM slice limit also interrupts an infinite loop', async () => {
-  const run = startRun('params{}\nwhile true do end', {}, { limits: { interruptBudget: 100000000, sliceMs: 1 } });
+  const run = startRun('params{}\nwhile true do end', {}, { limits: { interruptBudget: 100000000, sliceMs: 10 } });
   const result = await run.done;
   assert.equal(result.phase, 'execute');
   assert.match(result.message, /execution budget exceeded/);
@@ -229,7 +229,7 @@ test('typed API rejects surplus options, bad types and command-string escape att
   }
 });
 
-test('declarations cannot perform host work, and run interrupt budgets are cumulative across yields', async () => {
+test('declarations cannot perform host work, and interrupt budgets reset across yields', async () => {
   for (const source of ['bot("A"):look(0,0)\nparams{}', 'wait(1)\nparams{}', 'log("early")\nparams{}']) {
     const run = startRun(source);
     assert.equal((await run.done).type, 'error');
@@ -238,7 +238,7 @@ test('declarations cannot perform host work, and run interrupt budgets are cumul
   const run = startRun('params{}\nfor i=1,100 do for j=1,1000 do local x=j*j end wait(0) end', {}, {
     limits: { interruptBudget: 2000, sliceMs: 1000, tickMs: 0 },
   });
-  assert.match((await run.done).message, /execution budget exceeded/);
+  assert.equal((await run.done).type, 'done');
 });
 
 test('operator API reference matches the operation table shipped in the plugin', async () => {
@@ -247,15 +247,24 @@ test('operator API reference matches the operation table shipped in the plugin',
   assert.equal(section, reference(mockOperations));
 });
 
-test('both menu templates compile and execute with the real generated API', async () => {
+test('all menu templates compile and execute with the real generated API', async () => {
   const forms = await readFile(new URL('../plugin/endbot/src/endstone_endbot/script_forms.py', import.meta.url), 'utf8');
-  for (const [title, args] of [['Group row', {group:'#miners',origin:'1 64 2'}], ['Simple patrol', {name:'Alice',ticks:1}]]) {
+  for (const [title, args] of [['Group row', {group:'#miners',origin:'1 64 2'}], ['Simple patrol', {name:'Alice',ticks:1}],
+    ['Mine at spots', {name:'Alice',start:'1 64 2',spots:2,step:4,blocks:2}]]) {
     const source = new RegExp(`"${title}": """([\\s\\S]*?)"""`).exec(forms)?.[1];
     assert.ok(source, `missing menu template ${title}`);
     const events = [];
-    const run = startRun(source, args, { limits:{tickMs:1}, onMembers:()=>2, onOperation:e=>{events.push(e);} });
+    const run = startRun(source, args, { limits:{tickMs:1}, onMembers:()=>2, onOperation:e=>{events.push(e);},
+      onWaitMining:()=>({ok:true,reason:'block count reached',results:[]}) });
     assert.equal((await run.done).type, 'done');
-    assert.equal(events.length, title === 'Group row' ? 2 : 8);
+    assert.equal(events.length, title === 'Group row' ? 2 : title === 'Mine at spots' ? 4 : 8);
+    if (title === 'Mine at spots') {
+      assert.deepEqual(events.filter(e=>e.operation==='tp').map(e=>e.params.x), [1,5]);
+      assert.deepEqual(events.filter(e=>e.operation==='destroy').map(e=>e.params),
+        [{mode:'continuous',count:2},{mode:'continuous',count:2}]);
+      assert.deepEqual(run.events.filter(e=>e.type==='log').map(e=>e.text),
+        ['spot 1: block count reached','spot 2: block count reached']);
+    }
   }
 });
 
@@ -308,4 +317,61 @@ test('host independently validates array schemas before accepting arguments', ()
     [[{name:'x',type:'string',extra:1}], /declarations/],
   ]) assert.throws(() => parameters(schema, {}), message);
   assert.throws(() => parameters([], [1]), /Too many/);
+});
+
+test('structured status and mining waits pass readable per-member data through the native bridge', async () => {
+  const waits = [];
+  const mining = {active:false,mode:'continuous',state:'completed',blocksBroken:2,blockCount:2,reason:'block count reached'};
+  const status = {name:'Alice',identityId:'uuid',connectionState:'online',mining};
+  const run = startRun(`params{}
+local s = bot("Alice"):status()
+assert(s.data.mining.blocksBroken == 2 and not s.data.mining.active)
+local g = group("#miners"):status()
+assert(g.data.results[1].data.mining.blockCount == 2)
+local r = bot("Alice"):waitMining{timeout=40}
+assert(r.ok and r.results[1].mining.mode == "continuous")
+log(r.reason)
+r = group("#miners"):waitMining()
+assert(not r.ok and r.reason == "timeout")
+assert(r.results[2].reason == "offline")`, {}, {
+    onOperation: e => ({ok:true,data:e.target.startsWith('#') ? {results:[{ok:true,data:status}]} : status}),
+    onWaitMining: e => {
+      waits.push(e);
+      return e.target === 'Alice' ? {ok:true,reason:'block count reached',results:[{...status,ok:true,reason:mining.reason}]}
+        : {ok:false,reason:'timeout',results:[{ok:false,reason:'timeout'},{ok:false,reason:'offline'}]};
+    },
+  });
+  assert.equal((await run.done).type, 'done');
+  assert.deepEqual(waits.map(e=>[e.target,e.timeout]), [['Alice',40],['#miners',1200]]);
+  assert.equal(run.events.find(e=>e.type==='log').text, 'block count reached');
+});
+
+test('waitMining rejects invalid timeouts and options before IPC', async () => {
+  for (const argument of ['{timeout=-1}', '{timeout=1.5}', '{timeout=true}', '{timeout=math.huge}', '{timeout=2147483648}', '{ticks=1}', '1', 'false']) {
+    const run = startRun(`params{}\nbot("A"):waitMining(${argument})`);
+    assert.equal((await run.done).type, 'error');
+    assert.equal(run.events.some(e=>e.type==='waitMining'), false);
+  }
+});
+
+test('waitMining suspends until reply and host stop prevents later work', async () => {
+  let run;
+  run = startRun('params{}\nbot("A"):waitMining{timeout=20}\nlog("wrong")', {}, {
+    onWaitMining: () => { run.stop(); return new Promise(()=>{}); },
+  });
+  assert.equal((await run.done).type, 'stopped');
+  assert.equal(run.events.some(e=>e.type==='log'), false);
+});
+
+test('zero wall lifetime permits waits, positive lifetime still terminates them, negatives reject', async () => {
+  const unlimited = startRun('params{}\nwait(3)\nlog("finished")', {}, {limits:{wallMs:0,tickMs:20}});
+  assert.equal((await unlimited.done).type, 'done');
+  const limited = startRun('params{}\nwait(1000)', {}, {limits:{wallMs:100}});
+  assert.match((await limited.done).message, /wall time budget/);
+  assert.throws(()=>startRun('params{}', {}, {limits:{wallMs:-1}}), /invalid limit/);
+});
+
+test('IPC message bound resets after one second independently of total lifetime', async () => {
+  const run = startRun('params{}\nlog("first")\nwait(22)\nlog("second")', {}, {limits:{wallMs:0,maxMessages:3}});
+  assert.equal((await run.done).type, 'done');
 });

@@ -416,7 +416,8 @@ class GroupCommandService(BotCommandService):
             detail = " ".join(result.messages or ())
         detail = strip_colors(detail).replace("\n", " ").replace("\r", " ")
         detail = detail.removeprefix("Endbot: ").removeprefix(f"{name}: ")
-        return MemberResult(index, identity, name, outcome or ("failed" if error else "accepted"), reason, detail)
+        return MemberResult(index, identity, name, outcome or ("failed" if error else "accepted"), reason, detail,
+                            result.data if result is not None else None)
 
     def _execute_inputs(self, command, sender, members):
         profiles, prepared, requests = {}, [], []
@@ -476,7 +477,11 @@ class GroupCommandService(BotCommandService):
             return CommandResult(True, tuple(
                 reply(row.detail, f"#{group.name}[{row.index}] {row.name}",
                         ERROR if row.outcome != "accepted" else "") for row in rows),
-                                 accepted=all(row.outcome == "accepted" for row in rows))
+                                 accepted=all(row.outcome == "accepted" for row in rows),
+                                 data={"results": [{"index": row.index, "identityId": row.identity,
+                                                    "name": row.name, "ok": row.outcome == "accepted",
+                                                    "reason": row.reason if row.outcome != "accepted" else None,
+                                                    "data": row.data} for row in rows]})
         rows = [replace(row, detail=row.detail[:512]) for row in rows]
         record = self.results.save(sender, group, target, operation, rows)
         if indexed:

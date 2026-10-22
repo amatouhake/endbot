@@ -13,7 +13,7 @@ class ScriptConfig:
     runner: str = ""
     controller_runs: int = 2
     server_runs: int = 8
-    wall_seconds: int = 300
+    wall_seconds: int = 0
     slice_ms: int = 100
     interrupt_budget: int = 1000000
     operations_per_second: int = 20
@@ -38,8 +38,9 @@ class ScriptConfig:
             if f.name in {"enabled", "runner"}:
                 continue
             value = getattr(result, f.name)
-            if type(value) is not int or not 1 <= value <= 2147483647:
-                raise ValueError(f"scripting.{f.name} must be a positive 32-bit integer")
+            minimum = 0 if f.name == "wall_seconds" else 1
+            if type(value) is not int or not minimum <= value <= 2147483647:
+                raise ValueError(f"scripting.{f.name} must be a 32-bit integer >= {minimum}")
         if result.max_script_bytes > SOURCE_BYTES or result.memory_bytes < 1024 * 1024:
             raise ValueError("Invalid scripting source/memory protocol bounds")
         return result

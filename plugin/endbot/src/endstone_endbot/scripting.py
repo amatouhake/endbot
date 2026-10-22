@@ -24,7 +24,7 @@ class ScriptRun:
     name: str
     source: object
     canceled: threading.Event = field(default_factory=threading.Event)
-    deadline: float = 0
+    deadline: float | None = None
     state: str = "running"
     guards: dict = field(default_factory=dict)
     calls: deque = field(default_factory=deque)
@@ -61,7 +61,7 @@ class ScriptService:
 
     def _alive(self, run):
         self._check(run.source)
-        if run.canceled.is_set() or time.monotonic() >= run.deadline:
+        if run.canceled.is_set() or (run.deadline is not None and time.monotonic() >= run.deadline):
             raise LocalizedError("Script stopped or time limit reached")
 
     def _process(self, source, wall_seconds=None):
@@ -102,9 +102,10 @@ class ScriptService:
         with self._lock:
             if len(self._runs) >= self.config.server_runs or len(self.active(source)) >= self.config.controller_runs:
                 raise LocalizedError("Script concurrency limit reached")
-        process = self._process(script.source, min(5, self.config.wall_seconds))
+        seconds = min(5, self.config.wall_seconds or 5)
+        process = self._process(script.source, seconds)
         try:
-            return self._schema(process, source, threading.Event(), time.monotonic() + min(5, self.config.wall_seconds))
+            return self._schema(process, source, threading.Event(), time.monotonic() + seconds)
         finally:
             process.close()
 
@@ -135,7 +136,7 @@ class ScriptService:
                 identity,
                 script.name,
                 source,
-                deadline=time.monotonic() + self.config.wall_seconds,
+                deadline=time.monotonic() + self.config.wall_seconds if self.config.wall_seconds else None,
                 parameter_targets=dict(targets or {}),
             )
             self._runs[identity] = run
@@ -177,7 +178,7 @@ class ScriptService:
         self.service._form_group(replace(run.source, group_guard=guard), group)
         return guard
 
-    def _operation(self, run, event):
+    def _operation(self, run, event, *, audit=True):
         self._alive(run)
         now = time.monotonic()
         while run.calls and run.calls[0] <= now - 1:
@@ -209,7 +210,7 @@ class ScriptService:
                 result = self.service.execute(argv, source)
             except (RuntimeError, ValueError) as error:
                 return {"result": {"ok": False, "reason": localize_error(error, "en")}}
-            if self.notify:
+            if audit and self.notify:
                 # Preserve existing command audit, even if the controller logged out.
                 self.notify(source, result)
             return {
@@ -221,8 +222,57 @@ class ScriptService:
                 }
             }
 
+    def _wait_mining(self, run, event):
+        ticks = event.get("timeout", 1200)
+        if type(ticks) not in (int, float) or not math_is_integer(ticks) or not 0 <= ticks <= 2147483647:
+            raise LocalizedError("Invalid script wait")
+        end = time.monotonic() + ticks / 20
+        # Every poll re-enters the ordered, UUID-pinned status path. Never hold
+        # the command worker while sleeping; mining retargeting needs it too.
+        query = {"type": "operation", "target": event.get("target"), "operation": "status", "params": {}}
+        payload = None
+        while True:
+            # At timeout use the last snapshot, avoiding a final rapid poll that
+            # could itself exceed a low configured operation rate.
+            if payload is None or time.monotonic() < end:
+                payload = self.ordered(lambda: self._operation(run, query, audit=False))["result"]
+            data = payload.get("data") or {}
+            rows = data.get("results")
+            if rows is None:
+                if data.get("identityId") and not query["target"].startswith("#"):
+                    run.bot_pins.setdefault(query["target"].casefold(), data["identityId"])
+                rows = [{"name": data.get("name", query["target"]), "ok": payload["ok"],
+                         "reason": payload.get("reason"), "data": data}]
+            results, pending = [], False
+            expired = time.monotonic() >= end
+            for row in rows:
+                status = row.get("data") or {}
+                mining = status.get("mining") or {}
+                if not row["ok"]:
+                    reason, ok = row.get("reason") or "status failed", False
+                elif status.get("connectionState") != "online":
+                    reason, ok = "offline", False
+                elif mining.get("active"):
+                    pending = True
+                    reason, ok = ("timeout" if expired else "active"), False
+                else:
+                    reason = mining.get("reason") or "idle"
+                    ok = mining.get("state") != "failed"
+                results.append({"name": row["name"], "identityId": status.get("identityId", row.get("identityId")),
+                                "ok": ok, "reason": reason, "mining": mining})
+            if not pending or expired:
+                ok = bool(results) and all(row["ok"] for row in results)
+                reasons = {row["reason"] for row in results}
+                reason = (next(iter(reasons)) if len(reasons) == 1 else
+                          ("completed" if ok else next((row["reason"] for row in results if not row["ok"]), "idle")))
+                self._alive(run)
+                return {"ok": ok, "reason": reason, "results": results}
+            self._wait(run, min(max(0.25, 1 / self.config.operations_per_second), max(0, end - time.monotonic())))
+
     def _wait(self, run, seconds):
-        end = min(time.monotonic() + seconds, run.deadline)
+        end = time.monotonic() + seconds
+        if run.deadline is not None:
+            end = min(end, run.deadline)
         while time.monotonic() < end:
             self._alive(run)
             run.canceled.wait(min(0.1, end - time.monotonic()))
@@ -237,12 +287,15 @@ class ScriptService:
             args = self.ordered(lambda: self._prepare(run, schema, values))
             self._alive(run)
             process.send({"type": "reply", "id": 1, "accepted": True, "args": args})
-            next_id, messages = 2, 0
+            next_id, messages = 2, deque()
             while True:
                 event = process.receive(run.deadline, run.canceled, lambda: self._alive(run))
-                messages += 1
-                # Bound total IPC traffic using the configured operation/time limits.
-                if messages > self.config.operations_per_second * self.config.wall_seconds * 4:
+                now = time.monotonic()
+                while messages and messages[0] <= now - 1:
+                    messages.popleft()
+                messages.append(now)
+                # Logs and zero waits also consume the sliding one-second IPC budget.
+                if len(messages) > self.config.operations_per_second * 4:
                     raise LocalizedError("Script operation rate limit reached")
                 kind = event.get("type")
                 if kind == "done":
@@ -271,6 +324,8 @@ class ScriptService:
                     if type(ticks) not in (int, float) or ticks < 0 or not math_is_integer(ticks):
                         raise LocalizedError("Invalid script wait")
                     self._wait(run, ticks / 20)
+                elif kind == "waitMining":
+                    payload = {"result": self._wait_mining(run, event)}
                 elif kind in {"operation", "members", "waitOnline"}:
                     payload = self.ordered(lambda event=event: self._operation(run, event))
                     while kind == "waitOnline" and not payload["ok"]:

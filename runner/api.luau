@@ -115,6 +115,14 @@ target = function(name, isGroup)
             return reply.result
         end
     end
+    handle.waitMining = function(self, options)
+        if options == nil then options = {} end
+        assert(type(options) == "table", "invalid waitMining options")
+        for key in options do assert(key == "timeout", "invalid waitMining option") end
+        local ticks = if options.timeout == nil then 1200 else options.timeout
+        assert(type(ticks) == "number" and ticks % 1 == 0 and ticks >= 0 and ticks <= 2147483647, "invalid waitMining timeout")
+        return request({type = "waitMining", target = name, timeout = ticks}).result
+    end
     if isGroup then
         handle.members = function(self)
             local reply = request({type = "members", target = name})

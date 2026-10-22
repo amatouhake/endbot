@@ -125,14 +125,25 @@ class ScriptingProbeTests(unittest.TestCase):
     def test_installed_fixture_samples_sdk_locations_and_submits_each_save_once(self):
         callbacks = []
         writes = []
-        dimension = SimpleNamespace(get_block_at=lambda *cell: SimpleNamespace(set_type=lambda kind: writes.append(kind)))
+        blocks = {}
+        def block_at(*cell):
+            if cell not in blocks:
+                block = SimpleNamespace(type="minecraft:air")
+                def set_type(kind):
+                    block.type = kind
+                    writes.append(kind)
+                block.set_type = set_type
+                blocks[cell] = block
+            return blocks[cell]
+        dimension = SimpleNamespace(get_block_at=block_at)
 
         def location(dimension, x, y, z, yaw, pitch):
             return SimpleNamespace(dimension=dimension, x=x, y=y, z=z, yaw=yaw, pitch=pitch)
 
         players = {}
         for name in (BOT, BUDDY):
-            player = SimpleNamespace(location=location(dimension, 10, 64, 20, 0, 0))
+            player = SimpleNamespace(location=location(dimension, 10, 64, 20, 0, 0),
+                                     inventory=SimpleNamespace(clear=Mock(), held_item_slot=4))
             player.teleport = lambda target, player=player: setattr(player, "location", target)
             players[name] = player
 
@@ -169,6 +180,19 @@ class ScriptingProbeTests(unittest.TestCase):
             observed = json.loads((output / "scripting-state.json").read_text(encoding="utf-8"))
             self.assertEqual(observed["positions"][BOT][0], 123)
             self.assertGreater(observed["sequence"], initial["sequence"])
+            request.write_text(json.dumps({"id": "mining", "action": "mining"}), encoding="utf-8")
+            callbacks[0]()
+            prepared = json.loads((output / "scripting-state.json").read_text(encoding="utf-8"))
+            self.assertEqual([row["position"] for row in prepared["mining_blocks"]],
+                             [[10, 201, 22], [10, 201, 23], [14, 201, 22], [14, 201, 23]])
+            self.assertTrue(all(row["type"] == "minecraft:dirt" for row in prepared["mining_blocks"]))
+            self.assertIn(":waitMining", prepared["mine_template"])
+            players[BOT].inventory.clear.assert_called_once()
+            self.assertEqual(players[BOT].inventory.held_item_slot, 0)
+            blocks[(14, 201, 23)].set_type("minecraft:air")
+            callbacks[0]()
+            sampled = json.loads((output / "scripting-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(sampled["mining_blocks"][-1]["type"], "minecraft:air")
 
     def run_probe(self, failure=None):
         with tempfile.TemporaryDirectory() as directory:
@@ -188,19 +212,21 @@ class ScriptingProbeTests(unittest.TestCase):
     def test_console_smoke_records_authoritative_samples_commands_and_both_stop_selectors(self):
         result, driver = self.run_probe()
         self.assertEqual(result["status"], "passed")
-        for phase in ("row", "stop_patrol", "overlap_cleanup", "runaway"):
+        for phase in ("row", "stop_patrol", "overlap_cleanup", "mine", "runaway"):
             self.assertEqual(result[phase]["outcome"], "passed")
         self.assertIn("botscript stop patrol", driver.commands)
         self.assertIn("botscript stop 0003", driver.commands)
         self.assertIn('botscript run line #script_probe "0.5 200 0.5" 3', driver.commands)
-        self.assertEqual(set(driver.saved), {"line", "patrol", "runaway"})
+        self.assertEqual(set(driver.saved), {"line", "patrol", "mine", "runaway"})
+        self.assertTrue(all(block["type"] == "minecraft:air" for block in result["mine"]["after"]))
+        self.assertIn("spot 2: block count reached", result["mine"]["output"])
         self.assertIn('param.group "group"', driver.saved["line"])
         self.assertIn("while true do end", driver.saved["runaway"])
         self.assertGreater(len(result["stop_patrol"]["samples"]), 3)
         self.assertIn("unit test", result["disabled_default"])
 
     def test_probe_fails_and_keeps_evidence_for_wrong_row_drift_cancelled_console_and_missing_budget(self):
-        for failure in ("row", "drift", "overlap", "budget", "cleanup"):
+        for failure in ("row", "drift", "overlap", "budget", "cleanup", "mining_blocks", "mining_reason", "mining_end"):
             with self.subTest(failure=failure):
                 result, _ = self.run_probe(failure)
                 self.assertEqual(result["status"], "failed")
@@ -217,6 +243,7 @@ class FakeBds:
         self.positions = {BOT: [6.5, 200, 4.5], BUDDY: [9.5, 200, 4.5]}
         self.movement, self.console_owned = {}, set()
         self.fixture_id, self.active, self.run_id = None, None, None
+        self.mining_blocks = []
 
     def emit(self, text):
         self.log += text + "\n"
@@ -236,6 +263,7 @@ class FakeBds:
             "id": self.fixture_id, "sequence": self.sequence, "origin": [0.5, 200, 0.5],
             "positions": copy.deepcopy(self.positions),
             "row_template": TEMPLATES["Group row"],
+            "mine_template": TEMPLATES["Mine at spots"], "mining_blocks": self.mining_blocks,
         }), encoding="utf-8")
 
     def request(self, method, **params):
@@ -249,6 +277,9 @@ class FakeBds:
             if data["action"] == "save":
                 self.saved[data["name"]] = data["source"]
                 self.emit(f"Script {data['name']} saved")
+            elif data["action"] == "mining":
+                self.mining_blocks = [{"position": [spot * 4, 201, 2 + block], "type": "minecraft:dirt"}
+                                      for spot in range(2) for block in range(2)]
             self.advance(0.05)
         for _ in range(int(timeout * 20)):
             if predicate():
@@ -286,6 +317,14 @@ class FakeBds:
                 self.movement = {BOT: "forward", BUDDY: "forward"}
                 self.console_owned.clear()
                 self.emit("patrol moving")
+            elif self.active == "mine":
+                if self.failure != "mining_blocks":
+                    for block in self.mining_blocks:
+                        block["type"] = "minecraft:air"
+                for spot in (1, 2):
+                    reason = "timeout" if self.failure == "mining_reason" else "block count reached"
+                    self.emit(f"Endbot script {self.run_id}: spot {spot}: {reason}")
+                self.finish("mine", self.run_id, "failed" if self.failure == "mining_end" else "completed")
             else:
                 reason = "Script runner failed: script:2: execution budget exceeded" if self.failure != "budget" else "completed"
                 self.finish("runaway", self.run_id, reason)

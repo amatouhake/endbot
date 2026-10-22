@@ -71,9 +71,10 @@ def install_probe(plugin_class):
         original_enable(self)
         base = Path(os.environ["ENDBOT_SCRIPTING_PROBE"])
         seen, sequence, arena = None, 0, None
+        mining_cells, mining_dimension = [], None
 
         def sample():
-            nonlocal seen, sequence, arena
+            nonlocal seen, sequence, arena, mining_cells, mining_dimension
             try:
                 data = json.loads((base / "scripting-request.json").read_text(encoding="utf-8"))
             except (OSError, ValueError):
@@ -95,6 +96,17 @@ def install_probe(plugin_class):
                     for index, player in enumerate(players):
                         # Start away from the requested row so a no-op script cannot pass.
                         player.teleport(Location(dimension, arena[0] + 6 + index * 3, 200, arena[2] + 4, 0, 0))
+                elif data["action"] == "mining":
+                    player = self.server.get_player(BOT)
+                    if player is None or arena is None:
+                        return
+                    mining_dimension = player.location.dimension
+                    mining_cells = [[math.floor(arena[0]) + spot * 4, 201, math.floor(arena[2]) + 2 + block]
+                                    for spot in range(2) for block in range(2)]
+                    for cell in mining_cells:
+                        mining_dimension.get_block_at(*cell).set_type("minecraft:dirt")
+                    player.inventory.clear()
+                    player.inventory.held_item_slot = 0
                 elif data["action"] == "save":
                     if not submit_save(self, data["name"], data["source"]):
                         raise RuntimeError("scripting probe save submission rejected")
@@ -109,7 +121,9 @@ def install_probe(plugin_class):
                     location = player.location
                     positions[name] = [location.x, location.y, location.z]
             state = {"id": seen, "sequence": sequence, "origin": arena, "positions": positions,
-                     "row_template": TEMPLATES["Group row"]}
+                     "row_template": TEMPLATES["Group row"], "mine_template": TEMPLATES["Mine at spots"],
+                     "mining_blocks": [{"position": cell, "type": mining_dimension.get_block_at(*cell).type}
+                                       for cell in mining_cells]}
             temporary = base / "scripting-state.tmp"
             temporary.write_text(json.dumps(state), encoding="utf-8")
             try:
@@ -261,6 +275,25 @@ end
                 raise ConsumerError("post-stop console movement was cancelled")
             command(f"bot {GROUP} stop", "accepted 2, failed 0")
             results[label]["outcome"] = "passed"
+
+        fixture({"id": "mining-arena", "action": "mining"})
+        before = state()["mining_blocks"]
+        if len(before) != 4 or any(block["type"] != "minecraft:dirt" for block in before):
+            raise ConsumerError("mining fixture did not place four BDS dirt blocks")
+        save("mine", state()["mine_template"])
+        suffix = f' {BOT} "{origin[0]} {origin[1]} {origin[2]}" 2 4 2'
+        run_id, offset = start("mine", suffix)
+        results["mine"] = {"run_id": run_id, "before": before, "command": "botscript run mine" + suffix}
+        results["mine"]["output"] = ended("mine", run_id, offset, "completed")
+        for spot in (1, 2):
+            if f"Endbot script {run_id}: spot {spot}: block count reached" not in results["mine"]["output"]:
+                raise ConsumerError("mine template did not log block count reached for each spot")
+        expected_cells = [block["position"] for block in before]
+        wait("BDS blocks broken at both spots", lambda: (
+            [block["position"] for block in state().get("mining_blocks", [])] == expected_cells
+            and all(block["type"] == "minecraft:air" for block in state()["mining_blocks"])
+        ), 15)
+        results["mine"].update(after=state()["mining_blocks"], outcome="passed")
 
         run_id, offset = start("runaway", "")
         results["runaway"] = {"run_id": run_id}

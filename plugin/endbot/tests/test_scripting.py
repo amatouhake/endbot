@@ -3,12 +3,13 @@
 import json
 import queue
 import tempfile
+import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from endstone_endbot import forms, script_forms
 from endstone_endbot.commands import HELP_TOPICS, parse_command
@@ -20,17 +21,22 @@ from endstone_endbot.operations import OPERATIONS, operation_argv
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
 from endstone_endbot.script_params import arguments, declarations
+from endstone_endbot.script_process import RunnerProcess
 from endstone_endbot.script_store import Script, ScriptStore
-from endstone_endbot.scripting import ScriptService
+from endstone_endbot.scripting import ScriptRun, ScriptService
 
 
 class ConfigStorageParamsTests(unittest.TestCase):
     def test_startup_defaults_and_strict_settings(self):
         self.assertFalse(ScriptConfig.from_config({}).enabled)
+        self.assertEqual(ScriptConfig.from_config({}).wall_seconds, 0)
+        self.assertEqual(ScriptConfig.from_config({"wall-seconds": 0}).limits()["wallMs"], 0)
+        self.assertEqual(ScriptConfig.from_config({"wall-seconds": 3}).limits()["wallMs"], 3000)
         for setting in (
             {"enabled": "false"},
             {"server-runs": True},
-            {"wall-seconds": 0},
+            {"wall-seconds": -1},
+            {"wall-seconds": True},
             {"interrupt-budget": -1},
             {"max-script-bytes": 65537},
             {"unknown": 1},
@@ -215,7 +221,8 @@ class FakeControl:
 
     def request(self, method, **params):
         self.calls.append((method, params))
-        status = {"name": "Alice", "identityId": "11111111-1111-4111-8111-111111111111", "connectionState": "online"}
+        status = {"name": "Alice", "identityId": "11111111-1111-4111-8111-111111111111",
+                  "connectionState": "online", "desiredState": "online"}
         if method == "list":
             return [status]
         if method == "capabilities":
@@ -244,7 +251,7 @@ class FakeRunner:
     def receive(self, deadline, canceled, check):
         while True:
             check()
-            if canceled.is_set() or time.monotonic() >= deadline:
+            if canceled.is_set() or (deadline is not None and time.monotonic() >= deadline):
                 raise ValueError("stopped")
             try:
                 return self.events.get(timeout=0.01)
@@ -258,6 +265,39 @@ class FakeRunner:
 
     def close(self):
         self.closed = True
+
+
+class RunnerPipeTests(unittest.TestCase):
+    def test_zero_wall_time_has_no_watchdog_positive_wall_time_has_one(self):
+        for milliseconds in (0, 2000):
+            with patch("endstone_endbot.script_process.subprocess.Popen") as popen, \
+                 patch("endstone_endbot.script_process.threading.Thread"), \
+                 patch("endstone_endbot.script_process.threading.Timer") as timer:
+                process = RunnerProcess(Mock(is_file=lambda: True), "params {}", "bootstrap", {}, {"wallMs": milliseconds})
+                if milliseconds:
+                    timer.assert_called_once_with(2, process._terminate)
+                    timer.return_value.start.assert_called_once()
+                else:
+                    timer.assert_not_called()
+                process.close()
+                popen.return_value.wait.assert_called_once_with(timeout=5)
+
+    def test_receive_without_deadline_rechecks_and_obeys_cancel(self):
+        process = RunnerProcess.__new__(RunnerProcess)
+        process._events = queue.Queue()
+        process._process = Mock()
+        process._events.put({"type": "done"})
+        canceled, check = threading.Event(), Mock()
+        self.assertEqual(process.receive(None, canceled, check), {"type": "done"})
+        check.assert_called_once()
+        canceled.set()
+        with self.assertRaises(ValueError):
+            process.receive(None, canceled, check)
+        with self.assertRaises(ValueError):
+            process.receive(time.monotonic() - 1, threading.Event(), check)
+        process._process.poll.return_value = None
+        with self.assertRaisesRegex(ValueError, "revoked"):
+            process.receive(None, threading.Event(), Mock(side_effect=[None, ValueError("revoked")]))
 
 
 class LifecycleTests(unittest.TestCase):
@@ -321,6 +361,157 @@ class LifecycleTests(unittest.TestCase):
                 for result in self.notifications for line in result.log_messages or ()
             )
         )
+
+    def test_unlimited_run_wait_and_inspection_still_has_five_second_cap(self):
+        self.host.config = replace(self.config, wall_seconds=0)
+        with patch.object(self.host, "_process", return_value=self.runner) as process:
+            self.host.inspect(Script("draft", "params {}", "r1"), self.source)
+            process.assert_called_once_with("params {}", 5)
+        identity = self.start([{"type": "wait", "id": 2, "ticks": 100000}])
+        run = self.host.active()[0]
+        self.assertIsNone(run.deadline)
+        with patch("endstone_endbot.scripting.time.monotonic", return_value=10**12):
+            self.host._alive(run)
+        self.host.stop(self.source, identity)
+        self.wait_finished()
+
+    def test_unlimited_run_ipc_rate_bounds_logs_and_zero_waits(self):
+        self.host.config = replace(self.config, wall_seconds=0, operations_per_second=1)
+        for kind in ("log", "wait"):
+            events = [{"type": kind, "id": i, "ticks": 0, "text": "bounded"} for i in range(2, 8)]
+            self.start(events)
+            self.wait_finished()
+            self.assertLess(len(self.runner.replies), 7)
+        self.assertTrue(any("rate limit" in line for result in self.notifications for line in result.log_messages or ()))
+
+    def test_status_structured_runtime_job_and_group_member_payload(self):
+        identity = self.raw.request("status", name="Alice")["identityId"]
+        self.service.groups.create("miners")
+        self.service.groups.add("miners", identity)
+        original = self.raw.request
+        for mining, active, mode in (
+            ({"state": "waiting", "continuous": True, "loopId": "job", "blocksBroken": 1, "blockCount": 2}, True, "continuous"),
+            ({"state": "completed", "blocksBroken": 2, "blockCount": 2, "reason": "block count reached"}, False, "continuous"),
+            ({"state": "failed", "reason": "protected"}, False, "once"),
+            ({}, False, None),
+        ):
+            def request(method, **params):
+                status = original(method, **params)
+                return {**status, "mining": mining} if method == "status" else status
+            with patch.object(self.raw, "request", side_effect=request):
+                status = self.service.execute(["Alice", "status"], self.source).data
+                group = self.service.execute(["#miners", "status"], self.source).data
+            self.assertEqual(status["mining"]["active"], active)
+            self.assertEqual(status["mining"]["mode"], mode)
+            self.assertEqual(status["mining"]["reason"], None if active else mining.get("reason"))
+            self.assertEqual(group["results"][0]["data"], status)
+
+    def test_wait_mining_completion_timeout_offline_failure_and_group(self):
+        run = ScriptRun("run", "test", self.source)
+        def status(active, reason=None, connection="online", state="completed"):
+            return {"name": "Alice", "identityId": "uuid", "connectionState": connection,
+                    "mining": {"active": active, "state": state, "reason": reason}}
+        event = {"target": "Alice", "timeout": 20}
+        for reason in ("block count reached", "duration elapsed", "stopped"):
+            payloads = [{"result": {"ok": True, "data": status(True)}},
+                        {"result": {"ok": True, "data": status(False, reason)}}]
+            with patch.object(self.host, "_operation", side_effect=payloads), patch.object(self.host, "_wait") as pause:
+                result = self.host._wait_mining(run, event)
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["reason"], reason)
+                self.assertEqual(len(result["results"]), 1)
+                pause.assert_called_once()
+        for data, reason in ((status(True), "timeout"), (status(False, connection="offline"), "offline"),
+                             (status(False, "protected", state="failed"), "protected")):
+            with patch.object(self.host, "_operation", return_value={"result": {"ok": True, "data": data}}):
+                result = self.host._wait_mining(run, {**event, "timeout": 0})
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["reason"], reason)
+        rows = [{"ok": True, "name": name, "data": status(False, "block count reached")} for name in ("A", "B")]
+        with patch.object(self.host, "_operation", return_value={"result": {"ok": True, "data": {"results": rows}}}):
+            result = self.host._wait_mining(run, {"target": "#miners"})
+            self.assertTrue(result["ok"])
+            self.assertEqual([row["name"] for row in result["results"]], ["A", "B"])
+        pending = [rows[0], {"ok": True, "name": "B", "data": status(True)}]
+        with patch.object(self.host, "_operation", side_effect=[
+            {"result": {"ok": True, "data": {"results": pending}}},
+            {"result": {"ok": True, "data": {"results": rows}}},
+        ]), patch.object(self.host, "_wait") as pause:
+            result = self.host._wait_mining(run, {"target": "#miners"})
+            self.assertTrue(result["ok"])
+            pause.assert_called_once()
+        mixed = [rows[0], {"ok": True, "name": "B", "data": status(False, connection="offline")}]
+        with patch.object(self.host, "_operation", return_value={"result": {"ok": True, "data": {"results": mixed}}}):
+            result = self.host._wait_mining(run, {"target": "#miners"})
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["reason"], "offline")
+            self.assertEqual([row["reason"] for row in result["results"]], ["block count reached", "offline"])
+        for ticks in (-1, True, float("inf"), 1.5):
+            with self.assertRaises(ValueError):
+                self.host._wait_mining(run, {**event, "timeout": ticks})
+
+    def test_wait_mining_rechecks_authority_stop_and_group_membership(self):
+        identity = self.raw.request("status", name="Alice")["identityId"]
+        self.service.groups.create("miners")
+        self.service.groups.add("miners", identity)
+        original = self.raw.request
+        def request(method, **params):
+            value = original(method, **params)
+            return {**value, "mining": {"state": "waiting", "loopId": "job"}} if method == "status" else value
+        for change in ("revoke", "stop", "shutdown", "membership"):
+            run = ScriptRun("run", "test", self.source)
+            self.allowed = True
+            self.host._open = True
+            def pause(*args):
+                if change == "revoke":
+                    self.allowed = False
+                elif change == "stop":
+                    run.canceled.set()
+                elif change == "shutdown":
+                    self.host.cancel()
+                else:
+                    self.service.groups.remove("miners", identity)
+            with patch.object(self.raw, "request", side_effect=request), patch.object(self.host, "_wait", side_effect=pause):
+                with self.assertRaises(ValueError):
+                    self.host._wait_mining(run, {"target": "#miners", "timeout": 20})
+        self.allowed = True
+        self.host._open = True
+
+    def test_wait_mining_pins_literal_bot_identity_between_polls(self):
+        status = {**self.raw.request("status", name="Alice"), "mining": {"state": "active"}}
+        identity, requests = status["identityId"], []
+        def request(method, **params):
+            requests.append(params)
+            if params.get("expectedIdentityId") and params["expectedIdentityId"] != status["identityId"]:
+                raise RuntimeControlError("identity_changed", "Bot identity changed")
+            return status
+        def replace_bot(*args):
+            status["identityId"] = "22222222-2222-4222-8222-222222222222"
+        with patch.object(self.raw, "request", side_effect=request), patch.object(self.host, "_wait", side_effect=replace_bot):
+            result = self.host._wait_mining(ScriptRun("run", "test", self.source), {"target": "Alice"})
+        self.assertFalse(result["ok"])
+        self.assertIn("identity changed", result["reason"])
+        self.assertEqual(requests[-1]["expectedIdentityId"], identity)
+
+    def test_wait_mining_protocol_and_short_timeout_at_low_operation_rate(self):
+        self.start([{"type": "waitMining", "id": 2, "target": "Alice", "timeout": 0}, {"type": "done"}])
+        self.wait_finished()
+        result = next(reply["result"] for reply in self.runner.replies if reply["id"] == 2)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reason"], "idle")
+        self.host.config = replace(self.config, operations_per_second=1)
+        run, clock = ScriptRun("wait", "test", self.source), [100.0]
+        status = {**self.raw.request("status", name="Alice"), "mining": {"state": "active"}}
+        self.host.ordered = lambda callback: callback()
+        def pause(run, seconds):
+            clock[0] += seconds
+        with patch.object(self.raw, "request", return_value=status) as request, \
+             patch.object(self.host, "_wait", side_effect=pause), \
+             patch("endstone_endbot.scripting.time.monotonic", side_effect=lambda: clock[0]):
+            result = self.host._wait_mining(run, {"target": "Alice", "timeout": 1})
+        self.assertEqual(result["reason"], "timeout")
+        self.assertEqual(request.call_count, 1)
+        self.assertAlmostEqual(clock[0], 100.05)
 
     def test_revocation_is_checked_before_each_operation_and_cleanup_survives_it(self):
         self.runner = FakeRunner(
@@ -564,7 +755,7 @@ class ScriptFormTests(unittest.TestCase):
         self.assertEqual(screen.guard.targets["b"], ("bot", "Alice", "bot-id"))
 
     def test_templates_paged_source_and_hidden_menu(self):
-        self.assertEqual(len(script_forms.TEMPLATES), 2)
+        self.assertEqual(set(script_forms.TEMPLATES), {"Group row", "Simple patrol", "Mine at spots"})
         source = "x" * 4000
         pages = script_forms.source_pages(Script("sample", source, "r1"))
         self.assertGreater(len(pages), 1)

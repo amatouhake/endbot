@@ -995,7 +995,7 @@ class BotCommandService:
         if command.operation == "status":
             status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
-            return CommandResult(True, (self._status_reply(status, observed, lang),))
+            return CommandResult(True, (self._status_reply(status, observed, lang),), data=self.script_status(status))
         if command.operation == "spawn":
             existing = None
             try:
@@ -1269,6 +1269,25 @@ class BotCommandService:
                 words.append(tr(lang, "{ticks} ticks left", ticks=state["remainingTicks"]))
             parts.append(" ".join(words))
         return tr(lang, "timed: {inputs}", inputs=", ".join(parts)) if parts else None
+
+    @staticmethod
+    def script_status(status):
+        """Stable script fields, derived only from the runtime's current/last job."""
+        mining = status.get("mining") or {}
+        active = mining.get("state") == "active" or bool(mining.get("loopId"))
+        continuous = bool(mining.get("continuous")) or "blocksBroken" in mining
+        return {
+            "name": status["name"], "identityId": status["identityId"],
+            "connectionState": status["connectionState"],
+            "mining": {
+                "active": active,
+                "mode": ("continuous" if continuous else "once") if mining else None,
+                "state": mining.get("state"),
+                "blocksBroken": mining.get("blocksBroken", 1 if mining.get("state") == "completed" else 0),
+                "blockCount": mining.get("blockCount"),
+                "reason": None if active else mining.get("reason"),
+            },
+        }
 
     @staticmethod
     def _mining_summary(mining: dict[str, object], lang: str = "en") -> str | None:

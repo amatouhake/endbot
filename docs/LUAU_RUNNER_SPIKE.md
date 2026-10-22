@@ -64,8 +64,8 @@ loaders; the exact `io`/`os`/`require` surface of a configured Luau-backed Rust 
 [mlua library selection](https://docs.rs/mlua/0.12.2/mlua/struct.Lua.html#method.new_with).
 
 The interrupt callback runs at VM safepoints; elapsed-time checks there are cooperative. A long native builtin or
-compilation is not governed by an exact instruction quota. Therefore the harness also owns a wall-clock deadline
-and can kill the child without waiting for IPC or a VM callback. The VM allocator limit does not include compiler,
+compilation is not governed by an exact instruction quota. The harness can also enforce a positive wall-clock deadline
+and kill the child without waiting for IPC or a VM callback; zero (the default) disables that total deadline. The VM allocator limit does not include compiler,
 C++ JSON or other process allocations. A production service still needs OS process memory/CPU limits and restricted
 process permissions. [Callback documentation](https://luau.org/api/#callbacks),
 [pinned compiler implementation](https://github.com/luau-lang/luau/blob/0.743/Compiler/src/Compiler.cpp).
@@ -165,11 +165,11 @@ Configurable harness limits (`startRun` option `limits`):
 | Key | Default | Scope |
 | --- | ---: | --- |
 | `sliceMs` | 100 ms | Elapsed VM time per resume, tested at interrupt safepoints. |
-| `interruptBudget` | 100,000 | Total non-GC callback checks across resumes, not an instruction count. |
+| `interruptBudget` | 100,000 | Non-GC callback checks per resume, not an instruction count. |
 | `memoryBytes` | 33,554,432 | VM allocator bytes, excluding compiler/JSON/process overhead. |
-| `wallMs` | 5,000 ms | Entire run, including declarations, host latency and waits; host kills on expiry. |
+| `wallMs` | 0 ms | No total deadline; positive values cover declarations, host latency and waits, killing on expiry. |
 | `requestMs` | 1,000 ms | Host-response deadline; scheduled wait duration is added for wait requests. |
-| `maxMessages` | 1,000 | Total output/request cap; a coarse bound, not a per-second operation limiter. |
+| `maxMessages` | 1,000 | Output/request cap in a sliding one-second window. |
 | `maxTicks` | 2,000 | Move/wait bound. |
 | `tickMs` | 50 ms | Mock tick duration; tests can use 1 ms. No server tick coupling. |
 

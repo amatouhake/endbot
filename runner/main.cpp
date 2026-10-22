@@ -183,6 +183,7 @@ int main()
         }
         int arguments = 0;
         for (;;) {
+            run.remaining = run.budget;
             run.deadline = Clock::now() + std::chrono::milliseconds(run.limitMs);
             int status = lua_resume(script, nullptr, arguments);
             if (status == LUA_OK) { send({{"type", "done"}}); return 0; }

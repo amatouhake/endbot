@@ -17,6 +17,21 @@ class ScriptGuard:
 
 
 TEMPLATES = {
+    "Mine at spots": """local a = params { param.bot "name", param.pos("start", "~ ~ ~"), param.number("spots", 2), param.number("step", 4), param.number("blocks", 2) }
+assert(a.spots >= 1 and a.spots % 1 == 0, "spots must be a positive integer")
+assert(a.blocks >= 1 and a.blocks % 1 == 0, "blocks must be a positive integer")
+local miner = bot(a.name)
+waitOnline(miner)
+for i = 1, a.spots do
+    local r = miner:tp(a.start.x + (i - 1) * a.step, a.start.y, a.start.z, {yaw = 0, pitch = 0})
+    if not r.ok then error(r.reason or "placement rejected") end
+    r = miner:destroy{mode = "continuous", count = a.blocks}
+    if not r.ok then error(r.reason or "destroy rejected") end
+    r = miner:waitMining{timeout = 1200}
+    log("spot " .. i .. ": " .. r.reason)
+    if not r.ok then error(r.reason) end
+end
+""",
     "Group row": """local a = params { param.group "group", param.pos("origin", "~ ~ ~"), param.number("spacing", 2) }
 for i, member in group(a.group):members() do
     local r = member:tp(a.origin.x + (i - 1) * a.spacing, a.origin.y, a.origin.z)

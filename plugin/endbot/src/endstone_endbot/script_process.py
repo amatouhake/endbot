@@ -24,9 +24,11 @@ class RunnerProcess:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         # Independent of VM callbacks and pipe writes (including the initial load).
-        self._watchdog = threading.Timer(limits["wallMs"] / 1000, self._terminate)
-        self._watchdog.daemon = True
-        self._watchdog.start()
+        self._watchdog = None
+        if limits["wallMs"] > 0:
+            self._watchdog = threading.Timer(limits["wallMs"] / 1000, self._terminate)
+            self._watchdog.daemon = True
+            self._watchdog.start()
         self._reader = threading.Thread(target=self._read, daemon=True, name="endbot-script-pipe")
         self._reader.start()
         try:
@@ -71,10 +73,11 @@ class RunnerProcess:
     def receive(self, deadline, canceled, check):
         while True:
             check()
-            if canceled.is_set() or time.monotonic() >= deadline:
+            if canceled.is_set() or (deadline is not None and time.monotonic() >= deadline):
                 raise LocalizedError("Script stopped or time limit reached")
             try:
-                event = self._events.get(timeout=min(0.1, max(0.001, deadline - time.monotonic())))
+                timeout = 0.1 if deadline is None else min(0.1, max(0.001, deadline - time.monotonic()))
+                event = self._events.get(timeout=timeout)
             except queue.Empty:
                 if self._process.poll() is not None:
                     raise LocalizedError("Script runner failed: {error}", error="runner exited") from None
@@ -85,7 +88,8 @@ class RunnerProcess:
 
     def close(self):
         self._closed.set()
-        self._watchdog.cancel()
+        if self._watchdog is not None:
+            self._watchdog.cancel()
         self._terminate()
         self._process.wait(timeout=5)
         for stream in (self._process.stdin, self._process.stdout):

@@ -681,6 +681,7 @@ JA.update({
     "Choose a template, then paste or edit source.": "テンプレートを選び、ソースを貼り付けるか編集してください。",
     "Group row": "グループを一列に並べる",
     "Simple patrol": "簡単な巡回",
+    "Mine at spots": "指定地点で採掘",
     "Blank script": "空のスクリプト",
     "Delete script": "スクリプトを削除",
     "Delete script {name}?": "スクリプト {name} を削除しますか?",

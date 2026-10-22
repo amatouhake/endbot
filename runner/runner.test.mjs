@@ -242,7 +242,8 @@ test('declarations cannot perform host work, and interrupt budgets reset across 
 });
 
 test('operator API reference matches the operation table shipped in the plugin', async () => {
-  const guide = await readFile(new URL('../docs/SCRIPTING.md', import.meta.url), 'utf8');
+  // Windows CI checks files out with CRLF line endings.
+  const guide = (await readFile(new URL('../docs/SCRIPTING.md', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
   const section = guide.split('<!-- BEGIN GENERATED OPERATIONS -->\n')[1].split('<!-- END GENERATED OPERATIONS -->')[0];
   assert.equal(section, reference(mockOperations));
 });

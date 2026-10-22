@@ -17,7 +17,13 @@ class ScriptGuard:
 
 
 TEMPLATES = {
-    "Mine at spots": """local a = params { param.bot "name", param.pos("start", "~ ~ ~"), param.number("spots", 2), param.number("step", 4), param.number("blocks", 2) }
+    "Mine at spots": """local a = params {
+    param.bot "name",
+    param.pos("start", "~ ~ ~"),
+    param.number("spots", 2),
+    param.number("step", 4),
+    param.number("blocks", 2),
+}
 assert(a.spots >= 1 and a.spots % 1 == 0, "spots must be a positive integer")
 assert(a.blocks >= 1 and a.blocks % 1 == 0, "blocks must be a positive integer")
 local miner = bot(a.name)

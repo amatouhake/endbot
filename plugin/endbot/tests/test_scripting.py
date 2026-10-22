@@ -273,7 +273,9 @@ class RunnerPipeTests(unittest.TestCase):
             with patch("endstone_endbot.script_process.subprocess.Popen") as popen, \
                  patch("endstone_endbot.script_process.threading.Thread"), \
                  patch("endstone_endbot.script_process.threading.Timer") as timer:
-                process = RunnerProcess(Mock(is_file=lambda: True), "params {}", "bootstrap", {}, {"wallMs": milliseconds})
+                process = RunnerProcess(
+                    Mock(is_file=lambda: True), "params {}", "bootstrap", {}, {"wallMs": milliseconds}
+                )
                 if milliseconds:
                     timer.assert_called_once_with(2, process._terminate)
                     timer.return_value.start.assert_called_once()
@@ -382,7 +384,8 @@ class LifecycleTests(unittest.TestCase):
             self.start(events)
             self.wait_finished()
             self.assertLess(len(self.runner.replies), 7)
-        self.assertTrue(any("rate limit" in line for result in self.notifications for line in result.log_messages or ()))
+        logs = [line for result in self.notifications for line in result.log_messages or ()]
+        self.assertTrue(any("rate limit" in line for line in logs))
 
     def test_status_structured_runtime_job_and_group_member_payload(self):
         identity = self.raw.request("status", name="Alice")["identityId"]
@@ -390,12 +393,20 @@ class LifecycleTests(unittest.TestCase):
         self.service.groups.add("miners", identity)
         original = self.raw.request
         for mining, active, mode in (
-            ({"state": "waiting", "continuous": True, "loopId": "job", "blocksBroken": 1, "blockCount": 2}, True, "continuous"),
-            ({"state": "completed", "blocksBroken": 2, "blockCount": 2, "reason": "block count reached"}, False, "continuous"),
+            (
+                {"state": "waiting", "continuous": True, "loopId": "job", "blocksBroken": 1, "blockCount": 2},
+                True,
+                "continuous",
+            ),
+            (
+                {"state": "completed", "blocksBroken": 2, "blockCount": 2, "reason": "block count reached"},
+                False,
+                "continuous",
+            ),
             ({"state": "failed", "reason": "protected"}, False, "once"),
             ({}, False, None),
         ):
-            def request(method, **params):
+            def request(method, mining=mining, **params):
                 status = original(method, **params)
                 return {**status, "mining": mining} if method == "status" else status
             with patch.object(self.raw, "request", side_effect=request):
@@ -462,7 +473,7 @@ class LifecycleTests(unittest.TestCase):
             run = ScriptRun("run", "test", self.source)
             self.allowed = True
             self.host._open = True
-            def pause(*args):
+            def pause(*args, change=change, run=run):
                 if change == "revoke":
                     self.allowed = False
                 elif change == "stop":
@@ -471,9 +482,12 @@ class LifecycleTests(unittest.TestCase):
                     self.host.cancel()
                 else:
                     self.service.groups.remove("miners", identity)
-            with patch.object(self.raw, "request", side_effect=request), patch.object(self.host, "_wait", side_effect=pause):
-                with self.assertRaises(ValueError):
-                    self.host._wait_mining(run, {"target": "#miners", "timeout": 20})
+            with (
+                patch.object(self.raw, "request", side_effect=request),
+                patch.object(self.host, "_wait", side_effect=pause),
+                self.assertRaises(ValueError),
+            ):
+                self.host._wait_mining(run, {"target": "#miners", "timeout": 20})
         self.allowed = True
         self.host._open = True
 
@@ -487,7 +501,10 @@ class LifecycleTests(unittest.TestCase):
             return status
         def replace_bot(*args):
             status["identityId"] = "22222222-2222-4222-8222-222222222222"
-        with patch.object(self.raw, "request", side_effect=request), patch.object(self.host, "_wait", side_effect=replace_bot):
+        with (
+            patch.object(self.raw, "request", side_effect=request),
+            patch.object(self.host, "_wait", side_effect=replace_bot),
+        ):
             result = self.host._wait_mining(ScriptRun("run", "test", self.source), {"target": "Alice"})
         self.assertFalse(result["ok"])
         self.assertIn("identity changed", result["reason"])

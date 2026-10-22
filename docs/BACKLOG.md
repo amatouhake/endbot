@@ -274,7 +274,7 @@ reuse the event-intercept approach and the one-overload-per-first-token finding 
 
 ## BOT-009: Controller-authored Luau scripts and a small in-game editor
 
-Status: **0.4.0 MVP scope and API direction agreed; runner research/prototype in progress** (2026-10-23 JST).
+Status: **MVP implemented behind `[scripting] enabled` (off by default) — Windows RakNet live probe passed; Linux runner build/bundling, OS resource limits and human-client checks pending** (2026-10-23 JST). See [scripting](SCRIPTING.md).
 
 Controllers should be able to write and run their own Bot scripts without server-filesystem access. Use **Luau** as
 the language baseline. Required use cases include loops, conditions, coordinate arithmetic, and placing multiple Bots
@@ -314,6 +314,11 @@ Decisions for the 0.4.0 MVP (2026-10-23 JST):
   interrupts runaway code and removes io/os/require. Chosen over official CLI/web artifacts (no resumable host calls
   or interrupts) and community npm packages (forked or inconsistent provenance); see
   [the runner spike](LUAU_RUNNER_SPIKE.md). Linux build/bundling and OS-level resource limits are still to verify.
+- **Later decisions (2026-10-23):** `params` is an ordered array (`param.group "group", param.pos("origin", "~ ~ ~")`)
+  so positional arguments and forms follow declaration order. `wall-seconds` defaults to 0 (no total run time limit);
+  runaway code is bounded by the per-slice budget, memory, operation rate and concurrency limits. `status()` returns
+  structured data including the mining job state, and `waitMining{timeout}` (Bot or Group) waits only for mining jobs
+  to end; a broader "idle" wait was deliberately not added.
 
 Initial authoring surface:
 

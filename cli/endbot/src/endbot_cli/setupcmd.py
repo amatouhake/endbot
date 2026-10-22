@@ -335,6 +335,10 @@ def write_endbot_toml(paths: InstancePaths, plan: SetupPlan) -> Path:
     ui["language"] = DEFAULT_LANGUAGE
     ui["language"].comment("auto follows each player's game language; en or ja fixes it")
     document.add("ui", ui)
+    scripting = tomlkit.table()
+    # tomlkit returns a plain bool when indexing, so attach the comment to the item itself.
+    scripting["enabled"] = tomlkit.item(False).comment("opt in to controller Luau scripts; restart to apply")
+    document.add("scripting", scripting)
     atomic_write_text(paths.endbot_toml, tomlkit.dumps(document))
     return paths.endbot_toml
 

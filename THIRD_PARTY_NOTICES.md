@@ -1,5 +1,20 @@
 # Third-party notices
 
+## Luau and nlohmann/json
+
+The native `endbot-luau-runner` uses unmodified official Luau **0.743** (Roblox
+Corporation and Lua.org, PUC-Rio; MIT) and nlohmann/json **3.12.0** (Niels Lohmann;
+MIT). Exact source URLs and SHA-256 hashes are pinned in `runner/luau.lock.json`.
+Upstream projects: <https://github.com/luau-lang/luau> and
+<https://github.com/nlohmann/json>.
+
+Operator bundles include the executable and trusted `api.luau` in
+`app/<version>/runner/`. Their `licenses/` directory includes `LUAU_LICENSE.txt`
+(copied from the verified Luau archive's `LICENSE.txt`) and
+`NLOHMANN_JSON_LICENSE.txt` (the complete MIT notice retained in
+`runner/licenses/`). These notices must accompany redistributed runner builds.
+Scripting is disabled by default.
+
 ## Endstone
 
 Endbot prepares a modified Endstone build from:

@@ -54,7 +54,7 @@ class ScriptConfig:
         return (
             Path(__file__).parent
             / "runner"
-            / ("endbot-luau-spike.exe" if sys.platform == "win32" else "endbot-luau-spike")
+            / ("endbot-luau-runner.exe" if sys.platform == "win32" else "endbot-luau-runner")
         )
 
     def limits(self):

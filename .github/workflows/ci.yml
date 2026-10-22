@@ -68,3 +68,17 @@ jobs:
           npm ci --prefix runtime
           npm run check --prefix runtime
           npm test --prefix runtime
+
+      - uses: lukka/get-cmake@latest
+
+      - name: Cache pinned runner dependencies
+        uses: actions/cache@v6
+        with:
+          path: runner/.deps
+          key: runner-deps-${{ runner.os }}-${{ hashFiles('runner/luau.lock.json') }}
+
+      - name: Build and test Luau runner
+        working-directory: runner
+        run: |
+          node build.mjs
+          node --test

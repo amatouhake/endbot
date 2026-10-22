@@ -581,6 +581,7 @@ class BundleContractTests(unittest.TestCase):
                 self.assertIn("--plugin-wheel", blocks[job])
                 self.assertIn("--cli-wheel", blocks[job])
                 self.assertIn("--endstone-license", blocks[job])
+                self.assertIn("--runner-dir build/runner-stage", blocks[job])
         # Each platform job uploads its self-tested bundle as an
         # intermediate artifact; assemble is the only job that publishes.
         self.assertIn("bundle-linux", workflow)
@@ -736,6 +737,118 @@ class SlimBundleContractTests(unittest.TestCase):
             "nethernet",
         ):
             self.assertIn(required, tester)
+
+
+class RunnerBundleTests(unittest.TestCase):
+    def make_stage(self, root: Path, platform: str) -> tuple[Path, str]:
+        stage = root / "stage with spaces"
+        stage.mkdir()
+        binary = "endbot-luau-runner.exe" if platform == "windows-x86_64" else "endbot-luau-runner"
+        for name in (binary, "api.luau", "LUAU_LICENSE.txt", "NLOHMANN_JSON_LICENSE.txt"):
+            (stage / name).write_text(f"fixture {name}\n", encoding="utf-8")
+        (stage / binary).chmod(0o755)
+        return stage, binary
+
+    def test_staged_runner_is_copied_with_licenses_and_no_build_files(self):
+        builder = _load_script("build_bundle.py")
+        for platform in ("windows-x86_64", "linux-x86_64"):
+            with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                stage, binary = self.make_stage(root, platform)
+                (stage / "private-build-file").write_text("do not ship", encoding="utf-8")
+                bundle = root / "bundle"
+                app = bundle / "app" / "test"
+                builder.copy_runner(stage, app, bundle, platform)
+                self.assertEqual(sorted(p.name for p in (app / "runner").iterdir()), sorted([binary, "api.luau"]))
+                self.assertEqual((app / "runner" / binary).read_bytes(), (stage / binary).read_bytes())
+                for name in builder.RUNNER_LICENSES:
+                    self.assertEqual((bundle / "licenses" / name).read_bytes(), (stage / name).read_bytes())
+                if os.name != "nt" and platform == "linux-x86_64":
+                    self.assertTrue(os.access(app / "runner" / binary, os.X_OK))
+
+    def test_missing_or_empty_staged_inputs_fail_before_packaging(self):
+        builder = _load_script("build_bundle.py")
+        with tempfile.TemporaryDirectory() as directory:
+            stage, binary = self.make_stage(Path(directory), "windows-x86_64")
+            for name in (binary, "api.luau", *builder.RUNNER_LICENSES):
+                source = stage / name
+                saved = source.read_bytes()
+                source.unlink()
+                with self.subTest(missing=name), self.assertRaisesRegex(builder.BundleError, name):
+                    builder.validate_runner(stage, "windows-x86_64")
+                source.touch()
+                with self.subTest(empty=name), self.assertRaisesRegex(builder.BundleError, name):
+                    builder.validate_runner(stage, "windows-x86_64")
+                source.write_bytes(saved)
+
+    @unittest.skipIf(os.name == "nt", "POSIX executable mode validation")
+    def test_linux_runner_requires_executable_bit(self):
+        builder = _load_script("build_bundle.py")
+        with tempfile.TemporaryDirectory() as directory:
+            stage, binary = self.make_stage(Path(directory), "linux-x86_64")
+            (stage / binary).chmod(0o644)
+            with self.assertRaisesRegex(builder.BundleError, "not executable"):
+                builder.validate_runner(stage, "linux-x86_64")
+
+    def test_runner_smoke_uses_packaged_bootstrap_and_requires_params_and_done(self):
+        tester = _load_script("test_bundle.py")
+        builder = _load_script("build_bundle.py")
+        platform = "windows-x86_64" if os.name == "nt" else "linux-x86_64"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stage, binary = self.make_stage(root, platform)
+            bundle = root / "bundle"
+            app = bundle / "app" / "test"
+            builder.copy_runner(stage, app, bundle, platform)
+            output = json.dumps({"type": "params", "id": 1, "schema": []}) + '\n{"type":"done"}\n'
+            with mock.patch.object(tester.subprocess, "run") as run:
+                run.return_value.stdout = output
+                tester.check_runner(bundle, "test")
+                args, kwargs = run.call_args
+                self.assertEqual(args[0], [str(app / "runner" / binary)])
+                frames = [json.loads(line) for line in kwargs["input"].splitlines()]
+                self.assertEqual(frames[0]["source"], "params{}")
+                self.assertEqual(frames[0]["bootstrap"], (stage / "api.luau").read_text(encoding="utf-8"))
+                self.assertTrue(frames[1]["accepted"])
+                self.assertTrue(kwargs["check"])
+                self.assertEqual(kwargs["timeout"], 10)
+                for bad_output in ('{"type":"done"}\n', 'not-json\n', output + '{"type":"error"}\n'):
+                    run.return_value.stdout = bad_output
+                    with self.subTest(output=bad_output), self.assertRaises(tester.BundleTestError):
+                        tester.check_runner(bundle, "test")
+            (app / "runner" / binary).unlink()
+            with self.assertRaises(tester.BundleTestError):
+                tester.check_runner(bundle, "test")
+
+    def test_only_explicit_local_opt_out_allows_an_absent_runner(self):
+        tester = _load_script("test_bundle.py")
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory)
+            with self.assertRaises(tester.BundleTestError):
+                tester.check_runner(bundle, "test")
+            tester.check_runner(bundle, "test", allow_missing=True)
+            (bundle / "app" / "test" / "runner").mkdir(parents=True)
+            with self.assertRaises(tester.BundleTestError):
+                tester.check_runner(bundle, "test", allow_missing=True)
+
+    def test_ci_and_candidates_build_and_test_the_native_runner(self):
+        fast = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("working-directory: runner", fast)
+        self.assertIn("node build.mjs", fast)
+        self.assertIn("node --test", fast)
+        self.assertIn("hashFiles('runner/luau.lock.json')", fast)
+        blocks = _release_job_blocks()
+        for platform in ("linux", "windows"):
+            workflow = blocks[platform]
+            self.assertLess(workflow.index("node runner/build.mjs --out build/runner-stage"),
+                            workflow.index("python scripts/build_bundle.py"))
+            self.assertIn("node --test", workflow)
+            self.assertIn("--runner-dir build/runner-stage", workflow)
+            # Staging is bundled, never uploaded as an extra loose artifact.
+            for block in workflow.split("uses: actions/upload-artifact@v4")[1:]:
+                self.assertNotIn("runner-stage", block)
+        self.assertIn("ilammy/msvc-dev-cmd@v1", blocks["windows"])
+        self.assertIn("lukka/get-cmake@latest", blocks["windows"])
 
 
 class BinShimPruneTests(unittest.TestCase):

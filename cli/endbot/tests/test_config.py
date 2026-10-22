@@ -10,6 +10,29 @@ from endbot_cli.config import DEFAULT_CONTROL_PORT, ConfigError, load_config
 
 
 class ConfigTests(unittest.TestCase):
+    def test_scripting_defaults_and_boolean_opt_in(self):
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base)
+        self.assertFalse(load_config(self.path).scripting.enabled)
+        self.assertEqual(load_config(self.path).scripting.runner, "")
+        for value, expected in (("false", False), ("true", True)):
+            self.write(base + f"[scripting]\nenabled={value}\nrunner='custom/runner'\n")
+            self.assertIs(load_config(self.path).scripting.enabled, expected)
+            self.assertEqual(load_config(self.path).scripting.runner, "custom/runner")
+        for setting, key in (
+            ('enabled="true"', "scripting.enabled"),
+            ("enabled=1", "scripting.enabled"),
+            ("runner=false", "scripting.runner"),
+            ("enabld=true", "scripting.enabld"),
+        ):
+            with self.subTest(setting=setting):
+                self.write(base + f"[scripting]\n{setting}\n")
+                with self.assertRaisesRegex(ConfigError, key):
+                    load_config(self.path)
+        self.write("scripting=false\n" + base)
+        with self.assertRaisesRegex(ConfigError, "scripting"):
+            load_config(self.path)
+
     def test_hotbar_sync_settings_defaults_and_bounds(self):
         base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
         self.write(base)

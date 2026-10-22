@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-export const executable = path.join(root, '.build', 'native', 'bin', `endbot-luau-spike${process.platform === 'win32' ? '.exe' : ''}`);
+export const executable = path.join(root, '.build', 'native', 'bin', `endbot-luau-runner${process.platform === 'win32' ? '.exe' : ''}`);
 const bootstrap = readFileSync(path.join(root, 'api.luau'), 'utf8');
 // Exercise the production grammar; this standalone host still never controls BDS.
 export const mockOperations = JSON.parse(readFileSync(new URL('../plugin/endbot/src/endstone_endbot/operations.json', import.meta.url), 'utf8'));

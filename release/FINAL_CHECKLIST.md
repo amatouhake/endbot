@@ -323,6 +323,13 @@ new Endstone/BDS compatibility changes in this release.
 
 ## Standing invariants (must hold at publication)
 
+- Runner bundles: both platform jobs build/test the checksum-pinned Luau runner,
+  pass `--runner-dir` during bundle assembly, and pass the params-only native smoke
+  without BDS. Verify `app/<version>/runner/endbot-luau-runner[.exe]`, `api.luau`,
+  and both Luau/json MIT texts under `licenses/`. Scripting must remain off after
+  setup and for old configs without `[scripting]`; opt-in belongs in `endbot.toml`.
+  These checks do not establish live scripting or achievement gates.
+
 - `online-mode=true`, `allow-cheats=false`, no experiments/packs, normal
   Microsoft/Xbox path for humans. Local-bot trust stays disabled in the patched
   Endstone default config; only `endbot start` enables it, pinned to the

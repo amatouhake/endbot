@@ -71,7 +71,9 @@ class ScriptingProbeTests(unittest.TestCase):
             root = Path(directory)
             with self.assertRaisesRegex(RuntimeError, "node runner/build.mjs"):
                 built_runner(root)
-            binary = root / "runner/.build/native/bin" / ("endbot-luau-spike.exe" if os.name == "nt" else "endbot-luau-spike")
+            binary = root / "runner/.build/native/bin" / (
+                "endbot-luau-runner.exe" if os.name == "nt" else "endbot-luau-runner"
+            )
             binary.parent.mkdir(parents=True)
             api = root / "runner/api.luau"
             api.write_text("new bootstrap", encoding="utf-8")

@@ -1,5 +1,5 @@
 {
-  "name": "@endbot/luau-runner-spike",
+  "name": "@endbot/luau-runner",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",

@@ -11,8 +11,8 @@ end
 param = {}
 for _, kind in {"group", "bot", "pos", "number", "boolean", "string"} do
     local name = if kind == "boolean" then "bool" else kind
-    param[name] = function(default)
-        local descriptor = {type = kind}
+    param[name] = function(parameterName, default)
+        local descriptor = {name = parameterName, type = kind}
         if default ~= nil then descriptor.default = default end
         return table.freeze(descriptor)
     end
@@ -20,7 +20,40 @@ end
 table.freeze(param)
 
 function params(schema)
-    assert(not declared and type(schema) == "table", "declare params exactly once")
+    if declared then error("declare params exactly once", 2) end
+    if type(schema) ~= "table" then error("Script parameters must be an array", 2) end
+    local count, names = 0, {}
+    for key in schema do
+        if type(key) ~= "number" or key % 1 ~= 0 or key < 1 or key > #schema then
+            error("Script parameters must be an array", 2)
+        end
+        count += 1
+    end
+    if count ~= #schema then error("Script parameters must be an array", 2) end
+    if count > 32 then error("Invalid script parameter declarations", 2) end
+    for _, spec in schema do
+        if type(spec) ~= "table" then error("Invalid script parameter declarations", 2) end
+        local name = spec.name
+        if type(name) ~= "string" or #name > 32 or not string.match(name, "^[A-Za-z_][A-Za-z0-9_]*$") then
+            error("Invalid script parameter name", 2)
+        end
+        if names[name] then error("Duplicate script parameter name", 2) end
+        names[name] = true
+        if not table.find({"group", "bot", "pos", "number", "boolean", "string"}, spec.type) then
+            error("Unknown script parameter type", 2)
+        end
+        for key in spec do
+            if key ~= "name" and key ~= "type" and key ~= "default" then
+                error("Invalid script parameter declarations", 2)
+            end
+        end
+        if spec.default ~= nil then
+            local expected = if spec.type == "number" then "number" elseif spec.type == "boolean" then "boolean" else "string"
+            if type(spec.default) ~= expected or (expected == "number" and (spec.default ~= spec.default or math.abs(spec.default) == math.huge)) then
+                error("Invalid script parameter default", 2)
+            end
+        end
+    end
     declared = true
     return request({type = "params", schema = schema}).args
 end

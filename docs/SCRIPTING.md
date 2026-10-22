@@ -73,9 +73,9 @@ leave the previous file/in-memory version intact. There is no automatic resume o
 
 ```lua
 local a = params {
-    group = param.group(),
-    origin = param.pos("~ ~ ~"),
-    spacing = param.number(2),
+    param.group "group",
+    param.pos("origin", "~ ~ ~"),
+    param.number("spacing", 2),
 }
 for i, member in group(a.group):members() do
     local result = member:tp(a.origin.x + (i - 1) * a.spacing, a.origin.y, a.origin.z)
@@ -85,10 +85,16 @@ end
 
 Call `params` exactly once before host work, even without arguments (`params {}`). It yields the declaration
 before the host accepts the body. Inspection executes up to this declaration; code before it has normal budgets
-and cannot call Bot/log/wait functions. Constructors are `param.group([default])`, `param.bot([default])`,
-`param.pos([default])`, `param.number([default])`, `param.bool([default])`, `param.string([default])`.
+and cannot call Bot/log/wait functions. Constructors are `param.group(name[, default])`, `param.bot(name[, default])`,
+`param.pos(name[, default])`, `param.number(name[, default])`, `param.bool(name[, default])`,
+`param.string(name[, default])`. Each declaration carries its name; `a.<name>` access is unchanged.
+Pass a contiguous array of declarations. Named-key, mixed and sparse tables are rejected, as are duplicate
+names, unknown types and invalid defaults. Names match `[A-Za-z_][A-Za-z0-9_]{0,31}`; at most 32 are allowed.
+Declaration errors show the `params` call's script line where available and are localized for Japanese players.
+The runner/host protocol carries `schema` as a JSON array, including `[]` for no parameters; each entry is
+`{"name":"spacing","type":"number","default":2}`. The plugin validates this array again before forms or execution.
 
-**Positional arguments follow alphabetical parameter names**, since Luau tables have no declaration order.
+**Positional arguments and menu controls follow declaration order.**
 Only trailing arguments can be omitted; earlier defaulted parameters still occupy positions. The example accepts
 `/botscript run row #miners` or `/botscript run row #miners "~ ~ ~" 3`. Quote positions and strings with spaces.
 Positions return `{x,y,z}`; declared `~` coordinates resolve from the player's position captured when submitting
@@ -98,6 +104,10 @@ defaulting to the player, number/text inputs and toggles with declared defaults.
 Form selections also pin Group UUID/order and Bot UUID, rejecting deletion/recreation before submission.
 Declared Bot arguments keep their UUID pin on subsequent requests; explicitly Group-pinned calls retain
 the Group's own identity guard.
+
+日本語: 引数は配列で宣言し、各 `param` の最初の引数に名前を指定します。コマンドの引数と実行フォームは
+宣言順です。上の例は `group`、`origin`、`spacing` の順で、末尾の引数を省略すると宣言した初期値を使います。
+引数名の重複、無効な名前、不明な型、名前付きキーや配列との混在はエラーになります。
 
 Calls return **acceptance**, not completion: `{ok=true,messages=...,data=...}` or
 `{ok=false,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
@@ -191,3 +201,35 @@ plugin/BDS checks**: multiline paste limits/cancel behavior, generated controls,
 logout/rejoin, revoke/regrant (including mid-operation), Group replacement, overlap cleanup, crashes, shutdown,
 and tick timing. Linux build/bundling and OS confinement remain unverified. Tests never establish world achievement
 history, actual Xbox achievement unlocks or another Endstone/BDS pair's support. See [the spike](LUAU_RUNNER_SPIKE.md).
+
+## Live validation
+
+Live results below come from `build/scripting-live-3` on 2026-10-23 JST (Windows RakNet, Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, reusable sandbox). Earlier attempts found that Endstone's tomlkit config integers were rejected (fixed) and that the probe sampled positions too coarsely (fixed). In the pinned Python environment with the plugin
+installed and runtime dependencies present, build the native runner, then run from the repository root:
+
+```text
+node runner/build.mjs
+python scripts/raknet_spike.py --scripting --server-dir build/scripting-sandbox --output build/scripting-live-1
+```
+
+Use a new ignored output directory each time. `--server-dir` is the existing disposable sandbox mechanism;
+it resets the sandbox world. The probe enables `[scripting]` only in that generated instance config and uses
+the locally built `runner/.build/native/bin/endbot-luau-spike[.exe]` and matching `api.luau`. Missing/stale builds
+fail with the build command. No server settings are weakened. Omit `--scripting` to retain the default config.
+
+| Check | Evidence required | Result |
+| --- | --- | --- |
+| Group row template, spacing 3 | Two Bots placed by `botscript run line #script_probe "x y z" 3`; BDS SDK positions within 0.35 blocks of expected offsets; completion and input cleanup log | Passed |
+| Patrol stopped by name and run ID | Real move/wait loop runs listed; both Bots move, stop retires the run, fresh BDS samples stay within 0.15 blocks over 1.2 seconds | Passed |
+| Console overlap and subsequent input | Later console movement survives run cleanup; console movement after stop also advances by at least 0.5 blocks | Passed |
+| Runaway loop | `while true do end` terminates with `execution budget exceeded` and cleanup log | Passed |
+| Console list/runs | Stored names, active run ID/name and final empty runs output | Passed |
+| Disabled default | Unit coverage in `test_scripting.py`: every `/botscript` entry rejects under default `ScriptConfig`, without constructing a runner; no restart phase | Passed (plugin unittest suite) |
+
+The fixture installs only into the output's plugin copy, prepares a flat Survival arena using the SDK, and
+saves via the same guarded paste-form command path (including compilation/declaration inspection). Position
+evidence comes from BDS `player.location`, never runtime prediction. Console positions are absolute because
+console has no player origin; in-game callers can use `"~ ~ ~"`.
+`report.json` contains `scripting` results and source/binary hashes; `scripting-results.json` retains phase
+evidence even on failure, including sample sequences, observed/expected positions, tolerances and console output.
+These ignored raw artifacts are operator evidence. They do not establish achievement history or Xbox unlocks.

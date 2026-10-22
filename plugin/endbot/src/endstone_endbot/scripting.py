@@ -1,5 +1,6 @@
 """Plugin-owned per-run Luau processes; all Bot work uses the command worker."""
 
+import re
 import shlex
 import threading
 import time
@@ -10,7 +11,7 @@ from uuid import uuid4
 from endstone_endbot import script_forms
 from endstone_endbot.commands import ERROR, CommandResult, _language, parse_command, reply, strip_colors
 from endstone_endbot.group_forms import GroupGuard
-from endstone_endbot.i18n import LocalizedError, localize_error, tr
+from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.operations import OPERATIONS, operation_argv
 from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
@@ -79,10 +80,22 @@ class ScriptService:
     def _schema(self, process, source, canceled, deadline):
         event = process.receive(deadline, canceled, lambda: self._check(source))
         if event.get("type") != "params" or event.get("id") != 1:
+            message = str(event.get("message", event.get("type")))
+            match = re.fullmatch(r"(script:\d+): (.*)", message)
+            if match and match[2] in {
+                "Script parameters must be an array", "Invalid script parameter declarations",
+                "Invalid script parameter name", "Duplicate script parameter name",
+                "Unknown script parameter type", "Invalid script parameter default",
+            }:
+                raise LocalizedError(
+                    "Script parameter declaration at {location}: {error}", location=match[1], error=Text(match[2])
+                )
             raise LocalizedError(
-                "Script declaration failed: {error}", error=str(event.get("message", event.get("type")))
+                "Script declaration failed: {error}", error=message
             )
-        return declarations(event.get("schema"))
+        schema = event.get("schema")
+        declarations(schema)
+        return schema
 
     def inspect(self, script, source):
         # Inspection executes only up to params and never accepts body operations.
@@ -147,7 +160,7 @@ class ScriptService:
                 raise LocalizedError("Script parameter target changed; reopen the menu")
         result = arguments(schema, values, groups=self.service.groups, bots=bots, origin=run.source.script_origin)
         # Pin declared groups now; later membership/name reuse cannot retarget the run.
-        for name, spec in schema.items():
+        for name, spec in declarations(schema).items():
             if spec["type"] == "group":
                 self._guard(run, result[name])
             elif spec["type"] == "bot":
@@ -273,6 +286,7 @@ class ScriptService:
             outcome = localize_error(error, _language(run.source))
             outcome_en = localize_error(error, "en")
         finally:
+            cleanup_ok = False
             if process is not None:
                 try:
                     process.close()
@@ -281,6 +295,7 @@ class ScriptService:
                     outcome_en = localize_error(error, "en")
             try:
                 failures = self.ordered(lambda: self.inputs.cleanup(run.identity))
+                cleanup_ok = not failures
                 if failures:
                     outcome += "; " + tr(_language(run.source), "Script input cleanup failed; use /bot stop")
                     outcome_en += "; Script input cleanup failed; use /bot stop"
@@ -307,7 +322,10 @@ class ScriptService:
                             ),
                         ),
                         log_level="info",
-                        log_messages=(f"Endbot script {run.identity} {run.name} ended: {outcome_en}",),
+                        log_messages=(
+                            f"Endbot script {run.identity} {run.name} ended: {outcome_en}",
+                            f"Endbot script {run.identity}: input cleanup {'completed' if cleanup_ok else 'failed'}",
+                        ),
                     ),
                 )
 
@@ -355,7 +373,7 @@ class ScriptService:
                         reply(
                             tr(
                                 lang,
-                                "Arguments follow alphabetical parameter names; quote positions. "
+                                "Arguments follow parameter declaration order; quote positions. "
                                 "Create/edit by menu paste only.",
                             )
                         ),

@@ -1,7 +1,7 @@
 local args = params {
-    first = {type = "string", default = "Alice"},
-    second = {type = "string", default = "Bob"},
-    ticks = {type = "number", default = 2},
+    param.string("first", "Alice"),
+    param.string("second", "Bob"),
+    param.number("ticks", 2),
 }
 bot(args.first):move("forward", {ticks = args.ticks})
 wait(1)

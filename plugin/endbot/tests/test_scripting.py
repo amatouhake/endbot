@@ -15,6 +15,7 @@ from endstone_endbot.commands import HELP_TOPICS, parse_command
 from endstone_endbot.control import RuntimeControlError
 from endstone_endbot.dispatch import CommandSource
 from endstone_endbot.groups import GroupCommandService, GroupStore
+from endstone_endbot.i18n import LocalizedError, localize_error
 from endstone_endbot.operations import OPERATIONS, operation_argv
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
@@ -37,6 +38,18 @@ class ConfigStorageParamsTests(unittest.TestCase):
         ):
             with self.subTest(setting=setting), self.assertRaises(ValueError):
                 ScriptConfig.from_config(setting)
+
+    def test_shipped_config_loads_through_tomlkit_like_endstone(self):
+        try:
+            import tomlkit
+        except ImportError:
+            self.skipTest("tomlkit is Endstone's config loader; not installed here")
+        shipped = Path(__file__).resolve().parents[1] / "src" / "endstone_endbot" / "config.toml"
+        document = tomlkit.parse(shipped.read_text(encoding="utf-8"))
+        document["scripting"]["enabled"] = True
+        config = ScriptConfig.from_config(document["scripting"])
+        self.assertTrue(config.enabled)
+        self.assertIs(type(config.server_runs), int)
         config = ScriptConfig.from_config({"enabled": True, "server-runs": 16, "runner": "runner/host.exe"})
         self.assertEqual(config.executable(Path("data")), Path("data/runner/host.exe"))
         self.assertEqual(config.limits()["interruptBudget"], 1000000)
@@ -66,23 +79,30 @@ class ConfigStorageParamsTests(unittest.TestCase):
             self.assertEqual(store.list(), ())
             self.assertEqual(json.loads(path.read_text())["version"], 1)
 
-    def test_all_param_types_relative_positions_and_alphabetical_order(self):
+    def test_all_param_types_relative_positions_and_declaration_order(self):
         groups = type("Groups", (), {"get": lambda self, name: type("G", (), {"name": name})()})()
-        schema = {
-            "text": {"type": "string", "default": "x"},
-            "origin": {"type": "pos", "default": "~ ~ ~"},
-            "group": {"type": "group"},
-            "flag": {"type": "boolean", "default": False},
-            "name": {"type": "bot"},
-            "spacing": {"type": "number", "default": 2},
-        }
+        schema = [
+            {"name": "group", "type": "group"},
+            {"name": "name", "type": "bot"},
+            {"name": "flag", "type": "boolean", "default": False},
+            {"name": "origin", "type": "pos", "default": "~ ~ ~"},
+            {"name": "spacing", "type": "number", "default": 2},
+            {"name": "text", "type": "string", "default": "x"},
+        ]
+        self.assertEqual(list(declarations(schema)), [spec["name"] for spec in schema])
         result = arguments(
             schema,
-            ["true", "#miners", "alice"],
+            ["#miners", "alice", "true"],
             groups=groups,
             bots=[{"name": "Alice"}],
             origin={"x": 1, "y": 64, "z": 2},
         )
+        self.assertEqual(list(result), [spec["name"] for spec in schema])
+        defaulted = arguments(schema, ["#miners", "alice"], groups=groups, bots=[{"name": "Alice"}],
+                              origin={"x": 1, "y": 64, "z": 2})
+        self.assertFalse(defaulted["flag"])
+        self.assertEqual(defaulted["spacing"], 2)
+        self.assertEqual(defaulted["text"], "x")
         self.assertEqual(
             result,
             {
@@ -103,15 +123,26 @@ class ConfigStorageParamsTests(unittest.TestCase):
             ("group", "miners"),
         ):
             with self.subTest(kind=kind), self.assertRaises(ValueError):
-                arguments({"x": {"type": kind}}, [value], groups=groups, bots=[], origin=None)
-        for schema in (
-            {"bad key": {"type": "number"}},
-            {"n": {"type": "number", "default": True}},
-            {"n": {"type": "boolean", "default": "false"}},
-            {"n": {"type": "command"}},
+                arguments([{"name": "x", "type": kind}], [value], groups=groups, bots=[], origin=None)
+        for schema, message in (
+            ({}, "Script parameters must be an array"),
+            ({"n": {"type": "number"}}, "Script parameters must be an array"),
+            ([{"name": "bad key", "type": "number"}], "Invalid script parameter name"),
+            ([{"name": "n", "type": "number", "default": True}], "Invalid script parameter default"),
+            ([{"name": "n", "type": "boolean", "default": "false"}], "Invalid script parameter default"),
+            ([{"name": "n", "type": "command"}], "Unknown script parameter type"),
+            ([{"name": "n", "type": []}], "Unknown script parameter type"),
+            ([{"name": "n", "type": "number"}] * 2, "Duplicate script parameter name"),
+            ([{"type": "number"}], "Invalid script parameter name"),
+            ([1], "Invalid script parameter declarations"),
         ):
-            with self.assertRaises(ValueError):
+            with self.subTest(schema=schema), self.assertRaisesRegex(LocalizedError, message) as caught:
                 declarations(schema)
+            self.assertNotEqual(localize_error(caught.exception, "ja"), message)
+        with self.assertRaisesRegex(LocalizedError, "Too many"):
+            arguments([], [1], groups=groups, bots=[])
+        with self.assertRaisesRegex(LocalizedError, "Unknown script argument"):
+            arguments([], {"x": 1}, groups=groups, bots=[])
 
 
 class OperationParityTests(unittest.TestCase):
@@ -204,7 +235,7 @@ class FakeControl:
 class FakeRunner:
     def __init__(self, events, schema=None):
         self.events = queue.Queue()
-        for event in [{"type": "params", "id": 1, "schema": schema or {}}, *events]:
+        for event in [{"type": "params", "id": 1, "schema": [] if schema is None else schema}, *events]:
             self.events.put(event)
         self.replies = []
         self.closed = False
@@ -281,6 +312,15 @@ class LifecycleTests(unittest.TestCase):
         moves = [params for op, params in self.raw.calls if op == "move"]
         self.assertEqual([p["direction"] for p in moves], ["forward", "stop"])
         self.assertIn("expectedIdentityId", moves[-1])
+        deadline = time.monotonic() + 2
+        while not self.notifications and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(
+            any(
+                "input cleanup completed" in line
+                for result in self.notifications for line in result.log_messages or ()
+            )
+        )
 
     def test_revocation_is_checked_before_each_operation_and_cleanup_survives_it(self):
         self.runner = FakeRunner(
@@ -291,6 +331,17 @@ class LifecycleTests(unittest.TestCase):
         self.wait_finished()
         self.assertFalse(any(op == "look" for op, _ in self.raw.calls))
         self.assertTrue(any(op == "move" and params["direction"] == "stop" for op, params in self.raw.calls))
+
+    def test_cleanup_failure_is_reported_without_a_success_diagnostic(self):
+        with patch.object(self.inputs, "cleanup", return_value=["unavailable"]):
+            self.start([{"type": "done"}])
+            self.wait_finished()
+            deadline = time.monotonic() + 2
+            while not self.notifications and time.monotonic() < deadline:
+                time.sleep(0.01)
+        output = "\n".join(line for result in self.notifications for line in result.log_messages or ())
+        self.assertIn("input cleanup failed", output)
+        self.assertNotIn("input cleanup completed", output)
 
     def test_stop_limits_and_shutdown(self):
         identity = self.start([self.op(2, "move", {"direction": "forward"}), {"type": "wait", "id": 3, "ticks": 100}])
@@ -373,7 +424,7 @@ class LifecycleTests(unittest.TestCase):
         old = self.service.groups.create("miners")
         self.service.groups.delete("miners")
         self.service.groups.create("miners")
-        self.runner = FakeRunner([{"type": "done"}], {"g": {"type": "group"}})
+        self.runner = FakeRunner([{"type": "done"}], [{"name": "g", "type": "group"}])
         self.host.start(
             Script("test", "params {}", "r1"),
             {"g": "#miners"},
@@ -384,7 +435,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual([reply for reply in self.runner.replies if reply.get("args")], [])
         self.raw.calls.clear()
         self.runner = FakeRunner(
-            [self.op(2, "move", {"direction": "forward"}), {"type": "done"}], {"name": {"type": "bot"}}
+            [self.op(2, "move", {"direction": "forward"}), {"type": "done"}], [{"name": "name", "type": "bot"}]
         )
         self.host.start(Script("test", "params {}", "r1"), {"name": "Alice"}, self.source)
         self.wait_finished()
@@ -437,10 +488,33 @@ class LifecycleTests(unittest.TestCase):
 
     def test_disabled_service_rejects_every_entry_without_constructing_runner(self):
         with patch.object(self.host, "config", ScriptConfig()), patch.object(self.host, "_process") as process:
-            self.assertFalse(self.host.execute(["list"], self.source).accepted)
-            self.assertFalse(self.host.execute(["run", "test"], self.source).accepted)
-            self.assertFalse(self.host.execute(["save", "test", "params {}"], self.source).accepted)
+            for argv in ([], ["list"], ["runs"], ["help"], ["menu"], ["show", "test"], ["run", "test"],
+                         ["stop", "test"], ["delete", "test"], ["save", "test", "params {}"]):
+                for source in (self.source, CommandSource(sender=object())):
+                    with self.subTest(argv=argv, console=source.player_id is None):
+                        result = self.host.execute(argv, source)
+                        self.assertFalse(result.accepted)
+                        self.assertIn("Scripting is disabled", " ".join(result.messages))
             process.assert_not_called()
+
+    def test_runner_declaration_line_errors_are_localized_and_invalid_schema_is_not_saved(self):
+        for message in ("Script parameters must be an array", "Duplicate script parameter name",
+                        "Invalid script parameter name", "Unknown script parameter type"):
+            self.runner = FakeRunner([])
+            self.runner.events = queue.Queue()
+            self.runner.events.put({"type": "error", "message": f"script:4: {message}"})
+            source = replace(self.source, language="ja", group_guard=script_forms.ScriptGuard(edit=True))
+            result = self.host.execute(["save", "bad", "params {bad=1}"], source)
+            self.assertFalse(result.accepted)
+            self.assertIn("script:4", " ".join(result.messages))
+            self.assertNotIn(message, " ".join(result.messages))
+            self.assertEqual(self.store.list(), ())
+        for schema in ({}, [{"name": "x", "type": "number"}] * 2):
+            self.runner = FakeRunner([], schema)
+            result = self.host.execute(["save", "bad", "params {}"],
+                                       replace(self.source, group_guard=script_forms.ScriptGuard(edit=True)))
+            self.assertFalse(result.accepted)
+            self.assertEqual(self.store.list(), ())
 
     def test_raw_save_is_rejected_and_form_save_inspects_without_body_acceptance(self):
         self.assertFalse(self.host.execute(["save", "test", "params {}"], self.source).accepted)
@@ -464,23 +538,25 @@ class ScriptFormTests(unittest.TestCase):
 
     def test_param_controls_and_generated_values(self):
         script = Script("sample", "params {}", "r1")
-        schema = {
-            "g": {"type": "group"},
-            "b": {"type": "bot"},
-            "p": {"type": "pos", "default": "~ ~ ~"},
-            "n": {"type": "number", "default": 2},
-            "f": {"type": "boolean", "default": False},
-            "s": {"type": "string", "default": "x"},
-        }
+        schema = [
+            {"name": "g", "type": "group"},
+            {"name": "b", "type": "bot"},
+            {"name": "p", "type": "pos", "default": "~ ~ ~"},
+            {"name": "n", "type": "number", "default": 2},
+            {"name": "f", "type": "boolean", "default": False},
+            {"name": "s", "type": "string", "default": "x"},
+        ]
         group = type("G", (), {"name": "miners", "identity": "group-id", "members": ("bot-id",)})()
         screen = script_forms.run_screen(
             script, schema, [group], [{"name": "Alice", "identityId": "bot-id"}], {"x": 1, "y": 64, "z": 2}
         )
-        self.assertIsInstance(screen.controls[0], forms.Dropdown)  # b
-        self.assertIsInstance(screen.controls[1], forms.Toggle)  # f
-        self.assertEqual(screen.controls[4].default_value, "1 64 2")
+        self.assertIsInstance(screen.controls[0], forms.Dropdown)  # g
+        self.assertIsInstance(screen.controls[1], forms.Dropdown)  # b
+        self.assertIsInstance(screen.controls[4], forms.Toggle)  # f
+        self.assertEqual(screen.controls[2].default_value, "1 64 2")
+        self.assertEqual([control.label for control in screen.controls], [f"{s['name']} ({s['type']})" for s in schema])
         self.assertEqual(
-            forms.modal_commands(screen, json.dumps([0, True, 0, "3", "1 64 2", "hello world"])), (("run", "sample"),)
+            forms.modal_commands(screen, json.dumps([0, 0, "1 64 2", "3", True, "hello world"])), (("run", "sample"),)
         )
         self.assertEqual(screen.guard.values["g"], "#miners")
         self.assertEqual(screen.guard.values["s"], "hello world")

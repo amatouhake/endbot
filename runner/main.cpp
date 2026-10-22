@@ -51,7 +51,7 @@ static void interrupt(lua_State* L, int gc)
     if (--run.remaining <= 0 || Clock::now() >= run.deadline)
         luaL_error(L, "execution budget exceeded");
 }
-static Json fromLua(lua_State* L, int index, int depth = 0)
+static Json fromLua(lua_State* L, int index, int depth = 0, bool array = false)
 {
     if (depth > 8) throw std::runtime_error("API value too deep or cyclic");
     switch (lua_type(L, index)) {
@@ -68,14 +68,32 @@ static Json fromLua(lua_State* L, int index, int depth = 0)
         return std::string(text, length);
     }
     case LUA_TTABLE: {
-        Json result = Json::object();
+        Json result = array ? Json::array() : Json::object();
         index = lua_absindex(L, index);
+        if (array) {
+            int length = lua_objlen(L, index), count = 0;
+            lua_pushnil(L);
+            while (lua_next(L, index)) {
+                double key = lua_type(L, -2) == LUA_TNUMBER ? lua_tonumber(L, -2) : 0;
+                if (key < 1 || key > length || key != std::floor(key))
+                    throw std::runtime_error("Script parameters must be an array");
+                ++count;
+                lua_pop(L, 1);
+            }
+            if (count != length || length > 32) throw std::runtime_error("Invalid script parameter declarations");
+            for (int i = 1; i <= length; ++i) {
+                lua_rawgeti(L, index, i);
+                result.push_back(fromLua(L, -1, depth + 1));
+                lua_pop(L, 1);
+            }
+            return result;
+        }
         lua_pushnil(L);
         while (lua_next(L, index)) {
             if (lua_type(L, -2) != LUA_TSTRING) throw std::runtime_error("API object keys must be strings");
             if (result.size() >= 128) throw std::runtime_error("API object too large");
             std::string key = lua_tostring(L, -2);
-            result[key] = fromLua(L, -1, depth + 1);
+            result[key] = fromLua(L, -1, depth + 1, depth == 0 && key == "schema");
             lua_pop(L, 1);
         }
         return result;

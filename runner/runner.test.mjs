@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { startRun, executable, mockOperations } from './host.mjs';
+import { startRun, executable, mockOperations, parameters } from './host.mjs';
 import { reference } from './api-reference.mjs';
 
 test('declares parameters before body, interleaves two bots, waits explicitly', { timeout: 10000 }, async () => {
@@ -14,7 +14,8 @@ test('declares parameters before body, interleaves two bots, waits explicitly', 
   });
   const declaration = await run.ready;
   assert.equal(declaration.type, 'params');
-  assert.equal(declaration.schema.first.default, 'Alice');
+  assert.deepEqual(declaration.schema.map(spec => spec.name), ['first', 'second', 'ticks']);
+  assert.equal(declaration.schema[0].default, 'Alice');
   assert.equal(run.events.length, 1);
   run.begin();
   assert.equal((await run.done).type, 'done');
@@ -31,7 +32,8 @@ test('host call suspends script until acceptance', async () => {
   const run = startRun('params{}\nbot("A"):look(0, 0)\nlog("after")', {}, {
     onOperation: async () => { observed(); await pending; },
   });
-  await received;
+  assert.equal(await Promise.race([received.then(() => true), run.done.then(() => false)]), true,
+    'runner ended before the expected operation');
   assert.equal(run.events.some(e => e.type === 'log'), false);
   release();
   assert.equal((await run.done).type, 'done');
@@ -120,9 +122,9 @@ test('syntax error retains source line number', async () => {
 });
 
 test('bad arguments and host errors do not continue execution', async () => {
-  const defaulted = startRun('local a=params{n={type="number",default=3},s={type="string",default="ok"},b={type="boolean",default=false}}\nassert(a.n==3 and a.s=="ok" and a.b==false)\nlog("defaults")');
+  const defaulted = startRun('local a=params{param.number("n",3),param.string("s","ok"),param.bool("b",false)}\nassert(a.n==3 and a.s=="ok" and a.b==false)\nlog("defaults")');
   assert.equal((await defaulted.done).type, 'done');
-  const badArgs = startRun('local a=params{n={type="number"}}\nlog("wrong")', { n: 'bad' });
+  const badArgs = startRun('local a=params{param.number "n"}\nlog("wrong")', { n: 'bad' });
   assert.match((await badArgs.done).message, /invalid argument: n/);
   const rejected = startRun('params{}\nbot("A"):look(0,0)\nlog("wrong")', {}, {
     onOperation: () => { throw new Error('mock host unavailable'); },
@@ -195,8 +197,8 @@ test('all production operations and positional overloads are generated from the 
 
 test('param constructors, typed args, group members, acceptance failures and waitOnline', async () => {
   const events = [];
-  const source = `local a=params {group=param.group(),origin=param.pos("1 64 2"),spacing=param.number(2),
-    name=param.bot(),flag=param.bool(false),text=param.string("x")}
+  const source = `local a=params {param.group "group",param.pos("origin","1 64 2"),param.number("spacing",2),
+    param.bot "name",param.bool("flag",false),param.string("text","x")}
 assert(a.origin.x==1 and a.origin.y==64 and a.flag==false and a.text=="x")
 waitOnline(bot(a.name))
 for i, member in group(a.group):members() do
@@ -262,4 +264,48 @@ test('native source limit is supplied by the host', async () => {
   const result = await run.done;
   assert.equal(result.type, 'error');
   assert.match(result.message, /source too large/);
+});
+
+test('array declarations and positional values preserve nonalphabetical order and trailing defaults', async () => {
+  const source = `local args = params {param.string("zeta"),param.number("alpha",2),param.bool("flag",false)}
+assert(args.zeta == "first" and args.alpha == 2 and args.flag == false)`;
+  const run = startRun(source, ['first']);
+  assert.equal((await run.done).type, 'done');
+  assert.deepEqual(run.events[0].schema.map(spec => spec.name), ['zeta', 'alpha', 'flag']);
+  const empty = startRun('params{}');
+  assert.equal((await empty.done).type, 'done');
+  assert.deepEqual(empty.events[0].schema, []);
+});
+
+test('declaration errors retain params call line and never reach the body', async () => {
+  for (const [schema, message] of [
+    ['42', 'Script parameters must be an array'],
+    ['{z=param.string "z"}', 'Script parameters must be an array'],
+    ['{param.string "z", extra=param.number "a"}', 'Script parameters must be an array'],
+    ['{[1]=param.string "z", [3]=param.number "a"}', 'Script parameters must be an array'],
+    ['{param.string "z",param.number "z"}', 'Duplicate script parameter name'],
+    ['{param.string "bad name"}', 'Invalid script parameter name'],
+    ['{param.string()}', 'Invalid script parameter name'],
+    ['{{name="x",type="command"}}', 'Unknown script parameter type'],
+    ['{param.number("x",true)}', 'Invalid script parameter default'],
+    ['{param.number("x",0/0)}', 'Invalid script parameter default'],
+  ]) {
+    const run = startRun(`local x = 1\nlocal a = params(${schema})\nlog("wrong")`);
+    const result = await run.done;
+    assert.equal(result.type, 'error', schema);
+    assert.equal(result.message, `script:2: ${message}`, schema);
+    assert.equal(run.events.some(e => e.type === 'params' || e.type === 'log'), false);
+  }
+});
+
+test('host independently validates array schemas before accepting arguments', () => {
+  for (const [schema, message] of [
+    [{}, /must be an array/],
+    [[{name:'x',type:'number'},{name:'x',type:'string'}], /Duplicate/],
+    [[{name:'bad name',type:'number'}], /Invalid script parameter name/],
+    [[{name:'x',type:'command'}], /Unknown script parameter type/],
+    [[{name:'x',type:'number',default:true}], /default/],
+    [[{name:'x',type:'string',extra:1}], /declarations/],
+  ]) assert.throws(() => parameters(schema, {}), message);
+  assert.throws(() => parameters([], [1]), /Too many/);
 });

@@ -17,13 +17,13 @@ class ScriptGuard:
 
 
 TEMPLATES = {
-    "Group row": """local a = params { group = param.group(), origin = param.pos("~ ~ ~"), spacing = param.number(2) }
+    "Group row": """local a = params { param.group "group", param.pos("origin", "~ ~ ~"), param.number("spacing", 2) }
 for i, member in group(a.group):members() do
     local r = member:tp(a.origin.x + (i - 1) * a.spacing, a.origin.y, a.origin.z)
     if not r.ok then error(r.reason or "placement rejected") end
 end
 """,
-    "Simple patrol": """local a = params { name = param.bot(), ticks = param.number(40) }
+    "Simple patrol": """local a = params { param.bot "name", param.number("ticks", 40) }
 waitOnline(bot(a.name))
 for i = 1, 4 do
     local r = bot(a.name):move("forward", {ticks = a.ticks})

@@ -23,6 +23,9 @@ class ScriptConfig:
 
     @classmethod
     def from_config(cls, config):
+        # Endstone loads config.toml with tomlkit, whose integers are not plain int.
+        if hasattr(config, "unwrap"):
+            config = config.unwrap()
         if not isinstance(config, dict):
             raise ValueError("scripting must be a table")  # noqa: TRY004 - configuration validation API
         values = {key.replace("-", "_"): value for key, value in config.items()}

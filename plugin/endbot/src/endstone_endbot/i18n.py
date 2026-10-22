@@ -702,6 +702,12 @@ JA.update({
     "Script parameter target changed; reopen the menu": "引数の対象が変更されました。メニューを開き直してください",
     "Stored script limit reached": "保存できるスクリプト数の上限に達しました",
     "Invalid script parameter declarations": "スクリプトの引数宣言が正しくありません",
+    "Script parameters must be an array": "引数宣言は配列で指定してください (名前付きキーは使えません)",
+    "Invalid script parameter name": "引数名は英字か下線で始まる32文字以内の英数字と下線で指定してください",
+    "Duplicate script parameter name": "引数名が重複しています",
+    "Unknown script parameter type": "不明な引数の型です",
+    "Invalid script parameter default": "引数の初期値が型に合っていません",
+    "Script parameter declaration at {location}: {error}": "{location} の引数宣言: {error}",
     "Too many script arguments": "スクリプトの引数が多すぎます",
     "Unknown script argument": "不明なスクリプト引数です",
     "Invalid script argument: {name} ({kind})": "スクリプト引数が正しくありません: {name} ({kind})",
@@ -726,8 +732,8 @@ JA.update({
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name> | delete <name> | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name> | delete <name> | menu",
-    "Arguments follow alphabetical parameter names; quote positions. Create/edit by menu paste only.":
-        "引数は名前のアルファベット順です。座標は引用符で囲みます。作成と編集はメニューへの貼り付けで行います。",
+    "Arguments follow parameter declaration order; quote positions. Create/edit by menu paste only.":
+        "引数は宣言順です。座標は引用符で囲みます。作成と編集はメニューへの貼り付けで行います。",
     "No stored scripts": "保存されたスクリプトはありません",
     "No active script runs": "実行中のスクリプトはありません",
     "Stopping {count} script runs": "スクリプト {count} 件を停止します",

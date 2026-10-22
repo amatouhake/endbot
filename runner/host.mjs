@@ -11,12 +11,29 @@ export const mockOperations = JSON.parse(readFileSync(new URL('../plugin/endbot/
 const defaults = Object.freeze({ sliceMs: 100, interruptBudget: 100000, memoryBytes: 32 * 1024 * 1024,
   wallMs: 5000, requestMs: 1000, maxMessages: 1000, maxTicks: 2000, tickMs: 50 });
 
-function parameters(schema, args) {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) throw new Error('invalid params schema');
+export function parameters(schema, args) {
+  if (!Array.isArray(schema)) throw new Error('Script parameters must be an array');
+  if (schema.length > 32) throw new Error('Invalid script parameter declarations');
+  const names = new Set();
+  for (const spec of schema) {
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec)
+      || Object.keys(spec).some(key => !['name', 'type', 'default'].includes(key))) throw new Error('Invalid script parameter declarations');
+    if (typeof spec.name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,31}$/.test(spec.name)) throw new Error('Invalid script parameter name');
+    if (names.has(spec.name)) throw new Error('Duplicate script parameter name');
+    names.add(spec.name);
+    if (!['string', 'number', 'boolean', 'bot', 'group', 'pos'].includes(spec.type)) throw new Error('Unknown script parameter type');
+    const expected = ['number', 'boolean'].includes(spec.type) ? spec.type : 'string';
+    if (Object.hasOwn(spec, 'default') && (typeof spec.default !== expected
+      || (expected === 'number' && !Number.isFinite(spec.default)))) throw new Error('Invalid script parameter default');
+  }
+  if (Array.isArray(args)) {
+    if (args.length > schema.length) throw new Error('Too many script arguments');
+    args = Object.fromEntries(args.map((value, index) => [schema[index].name, value]));
+  }
   const result = {};
-  for (const key of Object.keys(args)) if (!Object.hasOwn(schema, key)) throw new Error(`unknown argument: ${key}`);
-  for (const [key, descriptor] of Object.entries(schema)) {
-    if (!descriptor || !['string', 'number', 'boolean', 'bot', 'group', 'pos'].includes(descriptor.type)) throw new Error(`invalid parameter: ${key}`);
+  for (const key of Object.keys(args)) if (!names.has(key)) throw new Error(`unknown argument: ${key}`);
+  for (const descriptor of schema) {
+    const key = descriptor.name;
     let value = Object.hasOwn(args, key) ? args[key] : descriptor.default;
     if (descriptor.type === 'pos') {
       const coordinates = typeof value === 'string' ? value.split(/\s+/).map(Number) : [];
@@ -36,7 +53,7 @@ export function startRun(source, args = {}, options = {}) {
     if (!Number.isFinite(value) || value < 0 || (key !== 'tickMs' && (!Number.isSafeInteger(value) || value < 1))) throw new Error(`invalid limit: ${key}`);
   }
   if (typeof source !== 'string' || Buffer.byteLength(source) > 65536) throw new Error('source too large or not text');
-  if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be a JSON object');
+  if (!args || typeof args !== 'object') throw new Error('args must be a JSON object or array');
   const load = JSON.stringify({ type: 'load', source, bootstrap, limits, operations: options.operations ?? mockOperations });
   if (Buffer.byteLength(load) > 256 * 1024) throw new Error('load frame too large');
   const child = spawn(executable, [], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });

@@ -9,19 +9,21 @@ KINDS = {"group", "bot", "pos", "number", "boolean", "string"}
 
 
 def declarations(schema):
-    if not isinstance(schema, dict) or len(schema) > 32:
+    if not isinstance(schema, list):
+        raise LocalizedError("Script parameters must be an array")
+    if len(schema) > 32:
         raise LocalizedError("Invalid script parameter declarations")
     result = {}
-    # Luau tables have no declaration order. Positional order is explicitly alphabetical.
-    for name, spec in sorted(schema.items()):
-        if (
-            not isinstance(name, str)
-            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,31}", name)
-            or not isinstance(spec, dict)
-            or spec.keys() - {"type", "default"}
-            or spec.get("type") not in KINDS
-        ):
+    for spec in schema:
+        if not isinstance(spec, dict) or spec.keys() - {"name", "type", "default"}:
             raise LocalizedError("Invalid script parameter declarations")
+        name = spec.get("name")
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,31}", name):
+            raise LocalizedError("Invalid script parameter name")
+        if name in result:
+            raise LocalizedError("Duplicate script parameter name")
+        if not isinstance(spec.get("type"), str) or spec["type"] not in KINDS:
+            raise LocalizedError("Unknown script parameter type")
         if "default" in spec:
             default, kind = spec["default"], spec["type"]
             valid = (
@@ -30,7 +32,7 @@ def declarations(schema):
                 or (kind in {"group", "bot", "pos", "string"} and isinstance(default, str))
             )
             if not valid:
-                raise LocalizedError("Invalid script parameter declarations")
+                raise LocalizedError("Invalid script parameter default")
         result[name] = spec
     return result
 

@@ -1,6 +1,7 @@
 """Offline probe plumbing/evaluator tests; these cannot establish live BDS results."""
 
 import copy
+import importlib.util
 import json
 import os
 import sys
@@ -91,6 +92,11 @@ class ScriptingProbeTests(unittest.TestCase):
 
     def test_config_enables_only_scripting_in_generated_config_and_fixture_changes_only_copy(self):
         import tomllib
+
+        # enable_config edits the generated config with tomlkit, a dependency of
+        # live probe environments but not of every job that runs this suite.
+        if importlib.util.find_spec("tomlkit") is None:
+            self.skipTest("tomlkit is not installed")
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)

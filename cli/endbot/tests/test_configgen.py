@@ -158,6 +158,27 @@ class RuntimeConfigTests(ConfigGenTestCase):
 
 
 class PluginConfigTests(ConfigGenTestCase):
+    def test_scripting_os_limit_overrides_reach_plugin_and_defaults_return(self):
+        with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
+            config.write("\n[scripting]\nos-confinement=false\nprocess-memory-bytes=0\ncpu-seconds=3\n")
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        table = tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]
+        self.assertFalse(table["os-confinement"])
+        self.assertEqual(table["process-memory-bytes"], 0)
+        self.assertEqual(table["cpu-seconds"], 3)
+        text = self.paths.endbot_toml.read_text(encoding="utf-8")
+        self.paths.endbot_toml.write_text(
+            text.replace("os-confinement=false", "os-confinement=true")
+                .replace("process-memory-bytes=0", "process-memory-bytes=268435456")
+                .replace("cpu-seconds=3", "cpu-seconds=0"),
+            encoding="utf-8",
+        )
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        table = tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]
+        self.assertNotIn("os-confinement", table)
+        self.assertNotIn("process-memory-bytes", table)
+        self.assertNotIn("cpu-seconds", table)
+
     def test_bundled_runner_is_absolute_and_scripting_stays_disabled(self):
         version = "test-version"
         self.paths.app_current.parent.mkdir(parents=True)

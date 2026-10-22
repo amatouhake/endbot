@@ -4,6 +4,20 @@ Research checked **2026-10-22**. This is a runner selection experiment, not BOT-
 Endstone/BDS compatibility claim. Findings below distinguish observed metadata/source from execution tests and
 unverified behavior. Release/download figures are snapshots, not guarantees about future maintenance.
 
+The production plugin now adds per-run OS resource and lifetime controls in `script_confine.py`
+and native startup in `runner/main.cpp`. Linux uses
+`--max-address-space BYTES --max-cpu-seconds N --parent-pid PID --nice 10`, applied before stdin;
+there is no Python callback between fork and exec in the multithreaded server. All four flags are
+validated together, and startup failures emit one NDJSON confinement error and exit nonzero.
+Windows retains plugin-side Job Objects and does not require these flags (valid supplied flags are ignored).
+`os-confinement = false` omits the flags. The standalone Node harness also omits them by default.
+`runner/confinement.test.mjs` covers portable argument rejection plus Linux-only address-space allocation,
+nice, cumulative CPU and parent-death checks; the parent-death probe uses a dedicated native subreaper.
+Those Linux checks require a Linux run; Windows results do not verify them.
+The spike's confinement remarks below describe the original standalone harness; see
+[Scripting OS resource confinement](SCRIPTING.md#os-resource-confinement) for current mechanisms,
+limitations and pending real-OS/plugin validation. This does not turn the Node spike host into an OS sandbox.
+
 ## Scope and decision inputs
 
 Read BOT-009 on this branch and the decisions in local `docs/luau-decisions` at

@@ -4,12 +4,25 @@
 #include "json.hpp"
 
 #include <chrono>
+#include <charconv>
+#include <cerrno>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
+
+#ifdef __linux__
+#include <csignal>
+#include <sys/prctl.h>
+#include <sys/resource.h>
+#include <unistd.h>
+#endif
 
 using Json = nlohmann::json;
 using Clock = std::chrono::steady_clock;
@@ -22,6 +35,94 @@ struct Run {
 };
 
 static void send(const Json& event) { std::cout << event.dump() << '\n' << std::flush; }
+
+static void confinementError(const char* message)
+{
+    // Error reporting must not need a JSON/string allocation after RLIMIT_AS.
+    std::fputs("{\"type\":\"error\",\"phase\":\"confinement\",\"message\":\"confinement failed: ", stdout);
+    for (const unsigned char* p = reinterpret_cast<const unsigned char*>(message); *p; ++p) {
+        if (*p == '"' || *p == '\\') { std::fputc('\\', stdout); std::fputc(*p, stdout); }
+        else if (*p < 0x20 || *p >= 0x7f) std::fprintf(stdout, "\\u%04x", unsigned(*p));
+        else std::fputc(*p, stdout);
+    }
+    std::fputs("\"}\n", stdout);
+    std::fflush(stdout);
+}
+
+struct Confinement {
+    uint64_t memory = 0, cpu = 0, parent = 0, priority = 0;
+    bool enabled = false;
+};
+
+static Confinement arguments(int argc, char** argv)
+{
+    Confinement result;
+    unsigned seen = 0;
+    for (int i = 1; i < argc; ++i) {
+        std::string flag = argv[i];
+        uint64_t* target;
+        uint64_t maximum;
+        unsigned bit;
+        if (flag == "--max-address-space") {
+            target = &result.memory; maximum = std::numeric_limits<uint64_t>::max() - 1; bit = 1;
+        } else if (flag == "--max-cpu-seconds") {
+            target = &result.cpu; maximum = std::numeric_limits<int>::max(); bit = 2;
+        } else if (flag == "--parent-pid") {
+            target = &result.parent; maximum = std::numeric_limits<int>::max(); bit = 4;
+        } else if (flag == "--nice") {
+            target = &result.priority; maximum = 10; bit = 8;
+        } else throw std::runtime_error("unknown argument: " + flag);
+        if (seen & bit) throw std::runtime_error("duplicate argument: " + flag);
+        if (++i == argc) throw std::runtime_error("missing value for " + flag);
+        std::string value = argv[i];
+        auto parsed = std::from_chars(value.data(), value.data() + value.size(), *target);
+        if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos
+            || parsed.ec != std::errc() || parsed.ptr != value.data() + value.size() || *target > maximum
+            || (bit == 4 && *target == 0) || (bit == 8 && *target != 10))
+            throw std::runtime_error("invalid value for " + flag);
+        seen |= bit;
+    }
+    if (seen != 0 && seen != 15) throw std::runtime_error("all four confinement arguments are required together");
+    result.enabled = seen != 0;
+    return result;
+}
+
+#ifdef __linux__
+static void systemFailure(const char* call)
+{
+    throw std::runtime_error(std::string(call) + ": " + std::strerror(errno));
+}
+
+static void limitResource(decltype(RLIMIT_AS) resource, uint64_t soft, uint64_t hard)
+{
+    if (hard >= uint64_t(RLIM_INFINITY)) throw std::runtime_error("rlimit value out of range");
+    rlimit limit;
+    if (getrlimit(resource, &limit) != 0) systemFailure("getrlimit");
+    // Never relax a stricter inherited soft or hard limit.
+    if (limit.rlim_cur == RLIM_INFINITY || soft < limit.rlim_cur) limit.rlim_cur = rlim_t(soft);
+    if (limit.rlim_max == RLIM_INFINITY || hard < limit.rlim_max) limit.rlim_max = rlim_t(hard);
+    if (limit.rlim_cur > limit.rlim_max) limit.rlim_cur = limit.rlim_max;
+    if (setrlimit(resource, &limit) != 0) systemFailure("setrlimit");
+}
+#endif
+
+static void confine(const Confinement& limits)
+{
+#ifdef __linux__
+    if (!limits.enabled) return;
+    if (limits.memory) limitResource(RLIMIT_AS, limits.memory, limits.memory);
+    // SIGXCPU at the soft cap, SIGKILL one second later if ignored.
+    if (limits.cpu) limitResource(RLIMIT_CPU, limits.cpu, limits.cpu + 1);
+    if (prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0) != 0) systemFailure("PR_SET_PDEATHSIG");
+    if (getppid() != pid_t(limits.parent)) throw std::runtime_error("parent PID changed");
+    errno = 0;
+    if (nice(int(limits.priority)) == -1 && errno != 0) systemFailure("nice");
+    // RLIMIT_NPROC is per UID, not per run; deliberately leave it unchanged.
+#else
+    (void)limits; // Windows uses the plugin's Job Object, not runner-side limits.
+#endif
+}
+
 static Json readFrame()
 {
     std::string line;
@@ -143,8 +244,14 @@ static int load(lua_State* L, const std::string& source, const char* name)
     std::string code = Luau::compile(source);
     return luau_load(L, name, code.data(), code.size(), 0);
 }
-int main()
+int main(int argc, char** argv)
 {
+    try {
+        confine(arguments(argc, argv));
+    } catch (const std::exception& e) {
+        confinementError(e.what());
+        return 1;
+    }
     try {
         Json input = readFrame();
         if (input.at("type") != "load") throw std::runtime_error("expected load");

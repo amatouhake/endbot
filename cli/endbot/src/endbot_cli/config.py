@@ -62,6 +62,9 @@ class UiConfig:
 class ScriptingConfig:
     enabled: bool = False
     runner: str = ""
+    os_confinement: bool = True
+    process_memory_bytes: int = 268435456
+    cpu_seconds: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,14 +220,29 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     table = document.get("scripting", {})
     if not isinstance(table, dict):
         raise _fail(path, "scripting", "must be a table", "write it as a [scripting] section")
-    _reject_unknown_keys(path, table, "scripting", ("enabled", "runner"))
+    _reject_unknown_keys(
+        path, table, "scripting", ("enabled", "runner", "os-confinement", "process-memory-bytes", "cpu-seconds")
+    )
     enabled = table.get("enabled", False)
     if type(enabled) is not bool:
         raise _fail(path, "scripting.enabled", "must be a boolean", "use enabled = false or true")
     runner = table.get("runner", "")
     if not isinstance(runner, str):
         raise _fail(path, "scripting.runner", "must be a string", "quote the executable path or use an empty string")
-    return ScriptingConfig(enabled=enabled, runner=runner)
+    confinement = table.get("os-confinement", True)
+    if type(confinement) is not bool:
+        raise _fail(path, "scripting.os-confinement", "must be a boolean", "use os-confinement = true or false")
+    memory = table.get("process-memory-bytes", 268435456)
+    cpu = table.get("cpu-seconds", 0)
+    for key, value in (("process-memory-bytes", memory), ("cpu-seconds", cpu)):
+        if type(value) is not int or not 0 <= value <= 2147483647:
+            raise _fail(path, f"scripting.{key}", "must be a nonnegative 32-bit integer", "use 0 to disable the cap")
+    # Managed instances use the plugin's 32 MiB VM default plus 64 MiB native headroom.
+    if memory and memory < 100663296:
+        raise _fail(path, "scripting.process-memory-bytes", "is too small", "use at least 100663296 bytes, or 0")
+    return ScriptingConfig(
+        enabled=enabled, runner=runner, os_confinement=confinement, process_memory_bytes=memory, cpu_seconds=cpu
+    )
 
 
 def load_config(path: Path) -> EndbotConfig:

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "checked": "2026-10-22",
+  "luau": {
+    "version": "0.743",
+    "commit": "9d7748a4f324213a18cb8283fa2a77c330225fa0",
+    "url": "https://codeload.github.com/luau-lang/luau/tar.gz/9d7748a4f324213a18cb8283fa2a77c330225fa0",
+    "sha256": "35c10aa3860fd69f465d79a40263ae28f88c5d64ec598010af29ab4df7ad97e3",
+    "license": "MIT"
+  },
+  "json": {
+    "version": "3.12.0",
+    "url": "https://raw.githubusercontent.com/nlohmann/json/v3.12.0/single_include/nlohmann/json.hpp",
+    "sha256": "aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63",
+    "license": "MIT"
+  }
+}

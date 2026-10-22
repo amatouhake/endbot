@@ -42,6 +42,7 @@ class BotListView:
 
     bots: tuple[dict, ...]
     groups: tuple[GroupTarget, ...] = ()
+    scripting: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +150,7 @@ class ModalScreen:
     build: Callable[[list], tuple[Argv, ...]] = field(compare=False)
     submit: str = "Run"
     command: str = "bot"
+    guard: object | None = None
 
 
 def run(*commands: Argv) -> Run:
@@ -185,6 +187,8 @@ def bot_list_screen(view: BotListView, lang: str = "en") -> ActionScreen:
         offline_screen = ActionScreen(tr(lang, "Endbot: offline Bots"), tr(lang, "Pick a Bot."), tuple(offline_items))
         items.append(Button(tr(lang, "Offline ({count})...", count=len(offline)), Show(offline_screen)))
     items.append(Button(tr(lang, "+ New Bot here"), Show(spawn_modal(lang))))
+    if view.scripting:
+        items.append(Button(tr(lang, "Scripts..."), Run((("menu",),), command="botscript")))
     if view.groups:
         items.extend(Button(f"#{group.name} ({group.count})",
                             Run((menu_argv(f"#{group.name}"),), guard=group.guard)) for group in view.groups)

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from endstone_endbot.control import RuntimeControlError
 from endstone_endbot.forms import BotListView, BotView
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
+from endstone_endbot.operations import ALIASES, OPERATIONS
 
 
 class CommandSyntaxError(LocalizedError):
@@ -90,6 +91,8 @@ class CommandResult:
     view: object | None = None
     # English wording for the log when ``messages`` are in another language.
     log_messages: tuple[str, ...] | None = None
+    accepted: bool = True
+    data: object | None = None
 
     @property
     def message(self) -> str | None:
@@ -619,6 +622,9 @@ def parse_command(arguments: list[str]) -> BotCommand:
     if len(tokens) < 2:
         raise CommandSyntaxError("Expected /bot <name> <action>")
     name, operation, remaining = tokens[0], tokens[1].lower(), tokens[2:]
+    operation = ALIASES.get(operation, operation)
+    if operation not in OPERATIONS:
+        raise CommandSyntaxError("Unknown or invalid Bot action: {operation}", operation=operation)
     if operation in {
         "status", "inventory", "resume", "reconnect", "despawn", "forget", "stop", "menu"
     } and not remaining:
@@ -930,7 +936,7 @@ class BotCommandService:
                 if len(tokens) >= 2 and tokens[0].lower() != "help":
                     # Syntax errors still name the Bot the operator addressed.
                     name = tokens[0]
-            return CommandResult(True, (reply(detail, name, ERROR),))
+            return CommandResult(True, (reply(detail, name, ERROR),), accepted=False)
 
     def _execute(self, command: BotCommand, sender, lang: str = "en", *, control=None) -> CommandResult:
         control = self.control if control is None else control
@@ -989,7 +995,7 @@ class BotCommandService:
         if command.operation == "status":
             status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
-            return CommandResult(True, (self._status_reply(status, observed, lang),))
+            return CommandResult(True, (self._status_reply(status, observed, lang),), data=self.script_status(status))
         if command.operation == "spawn":
             existing = None
             try:
@@ -1263,6 +1269,25 @@ class BotCommandService:
                 words.append(tr(lang, "{ticks} ticks left", ticks=state["remainingTicks"]))
             parts.append(" ".join(words))
         return tr(lang, "timed: {inputs}", inputs=", ".join(parts)) if parts else None
+
+    @staticmethod
+    def script_status(status):
+        """Stable script fields, derived only from the runtime's current/last job."""
+        mining = status.get("mining") or {}
+        active = mining.get("state") == "active" or bool(mining.get("loopId"))
+        continuous = bool(mining.get("continuous")) or "blocksBroken" in mining
+        return {
+            "name": status["name"], "identityId": status["identityId"],
+            "connectionState": status["connectionState"],
+            "mining": {
+                "active": active,
+                "mode": ("continuous" if continuous else "once") if mining else None,
+                "state": mining.get("state"),
+                "blocksBroken": mining.get("blocksBroken", 1 if mining.get("state") == "completed" else 0),
+                "blockCount": mining.get("blockCount"),
+                "reason": None if active else mining.get("reason"),
+            },
+        }
 
     @staticmethod
     def _mining_summary(mining: dict[str, object], lang: str = "en") -> str | None:

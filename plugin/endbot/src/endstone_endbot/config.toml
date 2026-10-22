@@ -36,3 +36,22 @@ hotbar-sync-resend-ticks = 20
 # "en" or "ja" fixes it for everyone. Command words, the server console and
 # logs stay English.
 language = "auto"
+
+[scripting]
+# Applied at startup. Stored source is retained when disabled.
+enabled = false
+# Empty uses the plugin bundle's runner/endbot-luau-spike[.exe]. A relative
+# configured path resolves inside the plugin data folder. Install api.luau
+# beside the executable (node runner/build.mjs does this for development).
+runner = ""
+controller-runs = 2
+server-runs = 8
+# Total run lifetime in wall seconds; 0 disables the total deadline.
+# Per-slice VM, memory, operation rate and concurrency limits still apply.
+wall-seconds = 0
+slice-ms = 100
+interrupt-budget = 1000000
+operations-per-second = 20
+max-script-bytes = 32768
+max-scripts = 64
+memory-bytes = 33554432

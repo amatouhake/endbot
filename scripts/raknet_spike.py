@@ -125,9 +125,14 @@ def check_locked_endstone() -> dict:
 
 def exercise(
     output: Path, node: str, report: dict, *, mining=False, inventory=False, inventory_stack=False,
-    item_use=False, groups=False,
+    item_use=False, groups=False, scripting=False,
     transport="raknet", server: Path | None = None,
 ) -> None:
+    scripting_runner = None
+    if scripting:
+        from scripting_probe import built_runner
+
+        scripting_runner = built_runner(ROOT)
     lock = check_locked_endstone()
     plugin = importlib.metadata.version("endstone-endbot")
     entrypoints = list(importlib.metadata.entry_points(group="endstone"))
@@ -191,6 +196,13 @@ def exercise(
             "runtime/src/control-server.js",
         ):
             report["source_sha256"][relative] = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+    if scripting:
+        sources = [ROOT / "scripts/scripting_probe.py", ROOT / "runner/main.cpp", ROOT / "runner/api.luau",
+                   ROOT / "runner/luau.lock.json", scripting_runner, scripting_runner.with_name("api.luau")]
+        sources.extend((ROOT / "plugin/endbot/src/endstone_endbot").glob("script*.py"))
+        for source in sources:
+            relative = source.relative_to(ROOT).as_posix()
+            report["source_sha256"][relative] = hashlib.sha256(source.read_bytes()).hexdigest()
     if transport == "nethernet":
         # BDS cannot answer discovery while another program owns the port.
         problem = lan_discovery_port_problem()
@@ -284,7 +296,7 @@ def exercise(
         [str(ROOT / "plugin/endbot/src"), str(ROOT / "cli/endbot/src")]
     )
     environment["PYTHONIOENCODING"] = "utf-8"
-    if mining or inventory or item_use or inventory_stack:
+    if mining or inventory or item_use or inventory_stack or scripting:
         from mining_probe import configure_fixture
         configure_fixture(ROOT, output, environment)
     if item_use:
@@ -294,6 +306,10 @@ def exercise(
         from inventory_stack_probe import configure_fixture as configure_stack
 
         configure_stack(ROOT, output, environment)
+    if scripting:
+        from scripting_probe import configure_fixture as configure_scripting
+
+        configure_scripting(ROOT, output, environment)
     runtime = bds = None
     token = None
     with (
@@ -330,7 +346,11 @@ def exercise(
                 ControllersConfig(()),
                 RuntimeConfig(control_port),
             )
-            generate_plugin_config(server, paths, config)
+            plugin_config, _ = generate_plugin_config(server, paths, config)
+            if scripting:
+                from scripting_probe import enable_config
+
+                enable_config(plugin_config, scripting_runner)
             generate_endstone_config(server, paths)
             report["stage"] = "BDS startup"
             bds = subprocess.Popen(
@@ -507,6 +527,15 @@ def exercise(
                     bds,
                 )
             report["bot_operation_specific_replies"] = True
+            if scripting:
+                from scripting_probe import exercise_scripting
+
+                report["stage"] = "scripting console commands and authoritative BDS state"
+                exercise_scripting(
+                    output, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
+                )
             if groups:
                 from group_probe import exercise_groups
 
@@ -883,6 +912,7 @@ def main() -> int:
     parser.add_argument("--inventory-stack", action="store_true", help="record stack requests/responses and authoritative inventory in disposable fixtures")
     parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
     parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
+    parser.add_argument("--scripting", action="store_true", help="enable scripting only in the disposable instance and validate native runs/stop/budgets with BDS observations")
     parser.add_argument(
         "--server-dir",
         type=Path,
@@ -918,7 +948,7 @@ def main() -> int:
     try:
         options = {"mining": args.mining, "inventory": args.inventory, "inventory_stack": args.inventory_stack,
                    "item_use": args.item_use,
-                   "groups": args.groups, "transport": args.transport}
+                   "groups": args.groups, "scripting": args.scripting, "transport": args.transport}
         if args.server_dir is None:
             exercise(output, args.node, report, **options)
         else:

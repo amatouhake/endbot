@@ -355,6 +355,20 @@ def _matches_any(tokens, allow_enums=True):
 
 
 class DeclarationCoverageTests(unittest.TestCase):
+    def test_script_root_permission_and_native_parseability(self):
+        module = importlib.import_module("endstone_endbot.plugin")
+        usages = [usage.replace("/botscript", "/bot", 1) for usage in module.SCRIPT_USAGES]
+        self.assertEqual(module.EndbotPlugin.commands["botscript"]["permissions"], ["endbot.command.control"])
+        for usage in usages:
+            _parse_usage(usage)
+        forms = [[], ["list"], ["help"], ["menu"], ["runs"], ["show", "row", "2"],
+                 ["run", "row", "#miners", "~ ~ ~", "2"], ["stop", "123456789012"], ["delete", "row"]]
+        for tokens in forms:
+            with self.subTest(tokens=tokens):
+                self.assertTrue(any(_match(_parse_usage(usage), tokens, False) for usage in usages))
+        for name in ("list", "show", "run", "runs", "stop", "delete", "help"):
+            self.assertTrue(any(f"({name})" in usage for usage in usages))
+
     def test_inventory_move_hints_keep_required_tails_and_distinct_enum_types(self):
         self.assertIn("/bot <name: string> (swap)<operation: EndbotSwap> <a: int> <b: int>", COMMAND_USAGES)
         self.assertIn("/bot <name: string> (hold)<operation: EndbotHold> <item: string>", COMMAND_USAGES)

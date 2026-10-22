@@ -18,8 +18,12 @@ from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerTh
 from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
 from endstone_endbot.form_adapter import FormPresenter
 from endstone_endbot.groups import GroupCommandService, GroupStore
-from endstone_endbot.i18n import DEFAULT_LANGUAGE_SETTING, language_setting, resolve_language, tr
+from endstone_endbot.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, resolve_language, tr
 from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings
+from endstone_endbot.script_config import ScriptConfig
+from endstone_endbot.script_inputs import OwnedInputs
+from endstone_endbot.script_store import ScriptStore
+from endstone_endbot.scripting import ScriptService
 from endstone_endbot.world import EndstoneWorld
 
 COMMAND_USAGES = [
@@ -131,6 +135,18 @@ COMMAND_USAGES = [
     "/bot <arguments: message>",
 ]
 
+SCRIPT_USAGES = [
+    "/botscript", "/botscript <action: string>", "/botscript <action: string> <arguments: message>",
+    "/botscript (list)<action: EndbotScriptList>",
+    "/botscript (help)<action: EndbotScriptHelp>",
+    "/botscript (menu)<action: EndbotScriptMenu>",
+    "/botscript (runs)<action: EndbotScriptRuns>",
+    "/botscript (show)<action: EndbotScriptShow> <name: string> [page: int]",
+    "/botscript (run)<action: EndbotScriptRun> <name: string> [arguments: message]",
+    "/botscript (stop)<action: EndbotScriptStop> <run: string>",
+    "/botscript (delete)<action: EndbotScriptDelete> <name: string>",
+]
+
 
 class EndbotPlugin(Plugin):
     api_version = "0.11"
@@ -139,6 +155,10 @@ class EndbotPlugin(Plugin):
     website = "https://github.com/amatouhake/endbot"
 
     commands: ClassVar[dict[str, dict[str, object]]] = {
+        "botscript": {
+            "description": "Run shared Luau scripts.", "usages": SCRIPT_USAGES,
+            "permissions": ["endbot.command.control"],
+        },
         "bot": {
             "description": "Control Endbot fake players.",
             "usages": COMMAND_USAGES,
@@ -200,9 +220,13 @@ class EndbotPlugin(Plugin):
         self._hotbar_tick = 0
         self._hotbar_publisher = HotbarPublisher()
         self._language_setting = DEFAULT_LANGUAGE_SETTING
+        self._script_config = ScriptConfig()
+        self._scripts = None
+        self._grant_versions = {}
 
     def on_load(self) -> None:
         self.save_default_config()
+        self._script_config = ScriptConfig.from_config(self.config.get("scripting", {}))
         try:
             self._language_setting = language_setting((self.config.get("ui") or {}).get("language"))
         except ValueError as error:
@@ -239,6 +263,7 @@ class EndbotPlugin(Plugin):
             token_file=token_file,
             timeout=float(runtime.get("timeout-seconds", 10.0)),
         )
+        control = OwnedInputs(control)
         self._world = EndstoneWorld(self.server)
         self._server_thread = ServerThreadBridge(lambda task: self.server.scheduler.run_task(self, task))
 
@@ -248,6 +273,10 @@ class EndbotPlugin(Plugin):
             return source.sender
 
         def authorized_sender(source: CommandSource):
+            if source.script_run_id is not None:
+                if not self._authorize_script(source):
+                    raise LocalizedError("Script authority was revoked")
+                return resolve_sender(source)
             return resolve_sender(source) if self._authorize_source(source) else None
 
         command_world = ServerThreadWorld(self._world, self._server_thread, authorized_sender)
@@ -265,8 +294,24 @@ class EndbotPlugin(Plugin):
             groups = None
         self._bot_commands = GroupCommandService(
             control, command_world, groups,
-            authorize=lambda source: self._server_thread.call(lambda: self._authorize_source(source)),
+            authorize=lambda source: self._server_thread.call(lambda: (
+                self._authorize_script(source) if source.script_run_id is not None
+                else self._authorize_source(source))),
         )
+        try:
+            scripts = ScriptStore(self.data_folder / "scripts.json", self._script_config)
+        except (ValueError, OSError, KeyError) as error:
+            self.logger.error(f"Scripts unavailable: scripts.json could not be loaded ({error})")
+            scripts = None
+        self._scripts = ScriptService(self._script_config, scripts, self._bot_commands, control, self.data_folder,
+            authorize=lambda source: self._server_thread.call(lambda: self._authorize_script(source)))
+
+        def script_origin(sender):
+            if not hasattr(sender, "location"):
+                return None
+            location = sender.location
+            return {"x": float(location.x), "y": float(location.y), "z": float(location.z),
+                    "yaw": float(location.yaw), "pitch": float(location.pitch), "dimension": location.dimension.name}
         self._command_runner = AsyncCommandRunner(
             self._bot_commands,
             self._server_thread,
@@ -276,6 +321,10 @@ class EndbotPlugin(Plugin):
             log=self._log_endbot,
             show_view=presenter.show_view,
             language=self._language,
+            scripts=self._scripts,
+            grant_revision=lambda sender: self._grant_versions.get(str(sender.unique_id), 0)
+            if hasattr(sender, "unique_id") else None,
+            origin=script_origin,
             revision=lambda sender: (
                 self._authorization_versions.get(str(sender.unique_id), 0) if hasattr(sender, "unique_id") else None
             ),
@@ -460,10 +509,17 @@ class EndbotPlugin(Plugin):
         """
         if source.player_id is None:
             return isinstance(source.sender, ConsoleCommandSender)
+        if source.script_run_id is not None and source.grant_revision != self._grant_versions.get(source.player_id, 0):
+            return False
         player = self.server.get_player(UUID(source.player_id))
         if player is not None:
             return self._allows_control(player)
         return self._control_decision(source.name or "", source.xuid or "", source.player_id)[0]
+
+    def _authorize_script(self, source: CommandSource) -> bool:
+        return (
+            source.player_id is None or source.grant_revision == self._grant_versions.get(source.player_id, 0)
+        ) and self._authorize_loop(source)
 
     def _log_endbot(self, level: str, message: str) -> None:
         getattr(self.logger, level, self.logger.info)(message)
@@ -548,6 +604,9 @@ class EndbotPlugin(Plugin):
                 else:
                     self._controller_policy.add(target)
             else:
+                # Separate grant revisions survive logout/rejoin. A revoke/regrant
+                # never revives a run holding the old revision, including offline runs.
+                before = self._controller_report()
                 self._controller_policy.remove(
                     target,
                     known=self._controllers.bindings,
@@ -555,6 +614,15 @@ class EndbotPlugin(Plugin):
                     xuid=str(player.xuid) if player is not None else None,
                     player_uuid=str(player.unique_id) if player is not None else None,
                 )
+                denied = self._controller_policy.state
+                for row in before:
+                    if (row.get("xuid") not in denied.denied_xuids
+                            and row.get("uuid") not in denied.denied_uuids
+                            and row.get("name", "").casefold() not in denied.denied_names):
+                        continue
+                    identity = row.get("uuid")
+                    if identity:
+                        self._grant_versions[identity] = self._grant_versions.get(identity, 0) + 1
             for entry in self.server.online_players:
                 self._apply_control_permission(entry)
             state = "updated" if operation == "add" else "revoked"
@@ -569,6 +637,9 @@ class EndbotPlugin(Plugin):
             return {"ok": False, "messages": [f"Endbot: controller change failed: {error}"]}
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
+        if command.name == "botscript":
+            self._submit_bot(sender, args, command="botscript")
+            return True
         if command.name == "botcontrollers":
             self._manage_controllers(sender, args)
             return True

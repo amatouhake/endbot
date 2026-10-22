@@ -1,5 +1,28 @@
 # Endbot commands and operation
 
+## Optional Luau scripts
+
+Scripting is off by default. Enable `[scripting] enabled = true` and install the pinned native runner;
+see [SCRIPTING.md](SCRIPTING.md) for installation, configurable limits, generated API and validation gates.
+The plugin hosts scripts; the Node Bedrock runtime is unchanged. Scripts use the invoking controller's
+`endbot.command.control` authority, rechecked for every operation, and survive logout until stopped/revoked.
+
+```text
+/botscript list
+/botscript show <name> [page]
+/botscript run <name> [positional arguments...]
+/botscript runs
+/botscript stop <run-id|name>
+/botscript delete <name>
+/botscript help
+/botscript menu
+```
+
+Enabled `/bot menu` adds **Scripts...** for shared source, paste-only creation/editing, two templates,
+parameter forms, paged source, per-controller stopping and confirmed deletion. Typed `save` cannot author
+source. Positional run arguments follow alphabetical parameter names; quote positions, for example
+`/botscript run row #miners "~ ~ ~" 2`. Runs never resume after restart. Disabling scripting retains source.
+
 ## Quick start
 
 Every command names its Bot; there is no selected-target state.

@@ -31,6 +31,54 @@ NON_MINING_TARGETS = {
 }
 
 
+# Dismount exits. The SDK exposes no collision shapes, so passability is a
+# conservative name-based list: unknown blocks count as solid (not an exit).
+PASSABLE_BLOCKS = {
+    "minecraft:air", "minecraft:cave_air", "minecraft:void_air", "minecraft:light_block",
+    "minecraft:water", "minecraft:flowing_water", "minecraft:short_grass", "minecraft:tall_grass",
+    "minecraft:grass", "minecraft:fern", "minecraft:large_fern", "minecraft:deadbush", "minecraft:seagrass",
+    "minecraft:kelp", "minecraft:vine", "minecraft:glow_lichen", "minecraft:snow_layer", "minecraft:reeds",
+    "minecraft:sweet_berry_bush", "minecraft:wheat", "minecraft:carrots", "minecraft:potatoes",
+    "minecraft:beetroot", "minecraft:redstone_wire", "minecraft:tripwire", "minecraft:pink_petals",
+}
+PASSABLE_PARTS = ("rail", "torch", "button", "lever", "pressure_plate", "sapling", "_sign", "banner", "carpet",
+                  "flower", "tulip", "dandelion", "poppy", "orchid", "allium", "bluet", "daisy", "lily_of_the_valley",
+                  "rose", "lilac", "peony", "mushroom")
+NON_FLOOR_BLOCKS = {"minecraft:water", "minecraft:flowing_water", "minecraft:lava", "minecraft:flowing_lava"}
+HAZARD_BLOCKS = {"minecraft:lava", "minecraft:flowing_lava", "minecraft:fire", "minecraft:soul_fire"}
+
+
+def _passable(block_type: str) -> bool:
+    if block_type in PASSABLE_BLOCKS:
+        return True
+    name = block_type.removeprefix("minecraft:")
+    return not name.endswith("_block") and any(part in name for part in PASSABLE_PARTS)
+
+
+def _exit_cells(forward: tuple[int, int], vehicle_type: str) -> list[tuple[int, int]]:
+    """Neighbour cells in vanilla priority relative to a cardinal forward direction.
+
+    Minecart (Minecraft Wiki, Minecart#Dismounting): right, left, rear right,
+    rear left, front right, front left, rear, front, relative to travel. Boats
+    place the rider in its look direction, so front comes first there. Other
+    rideables use Bedrock's default "valid ground position around the entity".
+    """
+    fx, fz = forward
+    rx, rz = -fz, fx  # yaw 0 faces +Z (south); the right hand is then -X
+    right, left, rear, front = (rx, rz), (-rx, -rz), (-fx, -fz), (fx, fz)
+    order = [right, left, (rear[0] + rx, rear[1] + rz), (rear[0] - rx, rear[1] - rz),
+             (front[0] + rx, front[1] + rz), (front[0] - rx, front[1] - rz), rear, front]
+    if vehicle_type.endswith("boat"):
+        order = [front, (front[0] + rx, front[1] + rz), (front[0] - rx, front[1] - rz), right, left,
+                 (rear[0] + rx, rear[1] + rz), (rear[0] - rx, rear[1] - rz), rear]
+    return order
+
+
+def _cardinal(yaw: float) -> tuple[int, int]:
+    radians = math.radians(round(yaw / 90) * 90)
+    return round(-math.sin(radians)), round(math.cos(radians))
+
+
 class EndstoneWorld:
     def __init__(self, server) -> None:
         self.server = server
@@ -177,6 +225,41 @@ class EndstoneWorld:
             "blockRuntimeId": int(block.data.runtime_id),
             "face": int(parameters["face"]),
         }
+
+    def resolve_dismount(self, identity_id: str, vehicle_runtime_id: str | None) -> dict[str, float] | None:
+        """Pick a vanilla-style exit next to the vehicle, as a feet position.
+
+        Returns None when the Bot or vehicle is not observable or no exit is
+        free; the Bot then stays where the vehicle was, as before.
+        """
+        bot = self.server.get_player(UUID(identity_id))
+        if bot is None or vehicle_runtime_id is None:
+            return None
+        dimension = bot.location.dimension
+        vehicle = next((actor for actor in dimension.actors if str(actor.runtime_id) == str(vehicle_runtime_id)), None)
+        if vehicle is None:
+            return None
+        location = vehicle.location
+        if vehicle.type.endswith("boat"):
+            yaw = float(bot.location.yaw)
+        else:
+            velocity = vehicle.velocity
+            moving = math.hypot(float(velocity.x), float(velocity.z)) > 0.01
+            yaw = math.degrees(math.atan2(-float(velocity.x), float(velocity.z))) if moving else float(location.yaw)
+        base = (math.floor(location.x), math.floor(location.y), math.floor(location.z))
+
+        def block(x, y, z):
+            return str(dimension.get_block_at(x, y, z).type)
+
+        for dy in (0, 1, -1):
+            for dx, dz in _exit_cells(_cardinal(yaw), vehicle.type):
+                x, y, z = base[0] + dx, base[1] + dy, base[2] + dz
+                floor, feet, head = block(x, y - 1, z), block(x, y, z), block(x, y + 1, z)
+                if (_passable(floor) or floor in NON_FLOOR_BLOCKS or floor in HAZARD_BLOCKS
+                        or not _passable(feet) or not _passable(head)):
+                    continue
+                return {"x": x + 0.5, "y": float(y), "z": z + 0.5}
+        return None
 
     def assert_name_available(self, name: str, identity_id: str | None = None) -> None:
         player = self.server.get_player(name)

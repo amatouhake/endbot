@@ -175,6 +175,9 @@ class ServerThreadWorld:
             )
         )
 
+    def resolve_dismount(self, identity_id, vehicle_runtime_id):
+        return self._bridge.call(lambda: self._world.resolve_dismount(identity_id, vehicle_runtime_id))
+
     def assert_name_available(self, name, identity_id=None):
         return self._bridge.call(lambda: self._world.assert_name_available(name, identity_id))
 

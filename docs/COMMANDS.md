@@ -507,8 +507,18 @@ names, and an empty hand on a minecart, boat or rideable animal mounts it. BDS d
 only confirms the request.
 
 While riding, the Bot follows the vehicle position BDS sends and ignores its own movement prediction; `status` and
-the Bot screen show `riding <type>`, and a riding Bot refuses `interact entity` until `dismount`. `dismount` sends
-the vanilla leave-vehicle action; BDS removes the link and the Bot falls back to normal movement. Steering horses or
+the Bot screen show `riding <type>`. A riding Bot may `interact entity` another vehicle to switch to it, as a player
+can; `nearest` skips the vehicle it is riding. `dismount` sends the vanilla leave-vehicle action. As in the vanilla
+client, the rider chooses its exit spot: the plugin checks the neighbouring blocks for a solid floor and two passable
+blocks above it, at the vehicle's level, then one above, then one below. Minecarts use the
+[Minecraft Wiki](https://minecraft.wiki/w/Minecart#Dismounting) order relative to travel (right, left, rear right,
+rear left, front right, front left, rear, front); boats prefer the Bot's look direction
+([Boat#Exiting](https://minecraft.wiki/w/Boat#Exiting)); other rideables use the same ring, matching Bedrock's default
+"valid ground position around the entity". Block passability is a conservative name list (unknown blocks are solid).
+With no free spot the Bot stays where the vehicle was. BDS ignores a rider's reported position but corrects a sideways
+jump right after the link ends, so the Bot reports the exit spot for two ticks while still riding and then sends the
+leave action; its first free input then does not move. Live check (2026-10-24): switching from a minecart to a boat
+without dismounting, a boat exit in the look direction and a moving-minecart side exit, each with no correction. Steering horses or
 boats is not implemented. Live check (2026-10-24, Windows RakNet, locked pair): feeding a cow consumed wheat,
 the Bot boarded a minecart by id, rode a powered minecart about 12 blocks with BDS keeping its position on the
 cart, refused interaction while riding, and walked normally after leaving both a stationary and a moving cart

@@ -35,7 +35,11 @@ export const ENTITY_REACH = 6
 // Nearby listings stay short and exclude players: they are interaction targets.
 export const ENTITY_LIST_RADIUS = 16
 export const ENTITY_LIST_LIMIT = 10
+// Bedrock reports player positions at eye height.
 const EYE_HEIGHT = 1.62
+// An exit is a neighbouring block, possibly one level up or down.
+const MAX_EXIT_DISTANCE = 3
+const EXIT_LEAD_TICKS = 2
 
 export class BedrockSession extends EventEmitter {
   constructor (profile, options) {
@@ -407,7 +411,6 @@ export class BedrockSession extends EventEmitter {
   interactEntity ({ runtimeId, type } = {}) {
     if (!this.position) throw new Error('Bot position is not initialized')
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
-    if (this.vehicle) throw new Error('Bot is riding; dismount first')
     if (this.pendingEntityInteraction) throw new Error('An entity interaction is already pending')
     const target = this.#entityTarget({ runtimeId, type })
     const distance = this.#eyeDistance(target)
@@ -420,12 +423,21 @@ export class BedrockSession extends EventEmitter {
     return this.#describeEntity(target, distance)
   }
 
-  dismount () {
+  // `exit` is the feet position beside the vehicle chosen by the plugin. BDS
+  // ignores a rider's reported position but corrects a jump right after the
+  // link ends, so the Bot reports the exit spot for EXIT_LEAD_TICKS while still
+  // riding and leaves afterwards; its first free input then does not move.
+  dismount (exit = undefined) {
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
     if (!this.vehicle) throw new Error('Bot is not riding')
     const entity = this.#entityByUniqueId(this.vehicle.uniqueId)
     if (!entity) throw new Error('The vehicle is not in view')
-    this.client.queue('interact', createLeaveVehicle(entity.runtimeId))
+    if (this.vehicle.exit) throw new Error('A dismount is already pending')
+    if (exit && this.position && Math.hypot(exit.x - this.position.x, exit.z - this.position.z) > MAX_EXIT_DISTANCE) {
+      throw new Error('The dismount exit is too far from the vehicle')
+    }
+    if (exit) this.vehicle.exit = { position: { x: exit.x, y: exit.y + EYE_HEIGHT, z: exit.z }, ticks: EXIT_LEAD_TICKS }
+    else this.client.queue('interact', createLeaveVehicle(entity.runtimeId))
     return { type: entity.type, runtimeId: String(entity.runtimeId) }
   }
 
@@ -440,6 +452,8 @@ export class BedrockSession extends EventEmitter {
     let best
     for (const entity of this.entities.values()) {
       if (entity.type === 'minecraft:player' || (wanted && entity.type !== wanted)) continue
+      // A rider does not pick its own vehicle as the nearest target.
+      if (this.vehicle && String(entity.uniqueId) === this.vehicle.uniqueId) continue
       const distance = this.#eyeDistance(entity)
       if (distance <= ENTITY_REACH && (!best || distance < best.distance)) best = { entity, distance }
     }
@@ -464,6 +478,7 @@ export class BedrockSession extends EventEmitter {
   }
 
   #leaveVehicle () {
+    if (this.vehicle?.exit) this.position = { ...this.vehicle.exit.position }
     this.vehicle = undefined
     // Fall onto whatever BDS placed us on; its corrections settle the height.
     this.onGround = false
@@ -721,6 +736,9 @@ export class BedrockSession extends EventEmitter {
         if (this.vehicle?.uniqueId === String(link.ridden_entity_id)) this.#leaveVehicle()
         return
       }
+      // BDS can repeat the link for the vehicle already ridden; keep its seat
+      // offset and any requested exit instead of treating it as a new ride.
+      if (this.vehicle?.uniqueId === String(link.ridden_entity_id)) return
       const entity = this.#entityByUniqueId(link.ridden_entity_id)
       // Keep the seat at the height difference seen when boarding; BDS sends
       // the vehicle's movement, not the rider's, while the link lasts.
@@ -869,7 +887,9 @@ export class BedrockSession extends EventEmitter {
     // A rider follows its vehicle instead of integrating its own movement.
     const vehicle = this.vehicle && this.#entityByUniqueId(this.vehicle.uniqueId)
     if (vehicle) {
-      this.position = { x: vehicle.position.x, y: vehicle.position.y + this.vehicle.offsetY, z: vehicle.position.z }
+      this.position = this.vehicle.exit
+        ? { ...this.vehicle.exit.position }
+        : { x: vehicle.position.x, y: vehicle.position.y + this.vehicle.offsetY, z: vehicle.position.z }
       speed = 0
     }
     this.position.x += (-Math.sin(radians) * move.z + Math.cos(radians) * move.x) * speed
@@ -969,6 +989,9 @@ export class BedrockSession extends EventEmitter {
       raw_move_vector: move
     })
     if (this.pendingEntityInteraction) this.#sendEntityInteraction()
+    if (vehicle && this.vehicle.exit && --this.vehicle.exit.ticks === 0) {
+      this.client.queue('interact', createLeaveVehicle(vehicle.runtimeId))
+    }
     this.tick += 1n
   }
 

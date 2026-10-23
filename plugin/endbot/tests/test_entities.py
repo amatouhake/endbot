@@ -145,3 +145,75 @@ class EntityFormTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeBlock:
+    def __init__(self, block_type):
+        self.type = block_type
+
+
+class FakeDimension:
+    def __init__(self, solid, actors):
+        self.solid, self.actors = solid, actors
+
+    def get_block_at(self, x, y, z):
+        return FakeBlock("minecraft:stone" if (x, y, z) in self.solid else "minecraft:air")
+
+
+class FakeActor:
+    def __init__(self, runtime_id, actor_type, x, y, z, yaw=0.0, velocity=(0.0, 0.0, 0.0)):
+        from types import SimpleNamespace
+
+        self.runtime_id, self.type = runtime_id, actor_type
+        self.location = SimpleNamespace(x=x, y=y, z=z, yaw=yaw, pitch=0.0)
+        self.velocity = SimpleNamespace(x=velocity[0], y=velocity[1], z=velocity[2])
+
+
+class DismountExitTests(unittest.TestCase):
+    def world(self, solid, vehicle, bot_yaw=0.0):
+        from types import SimpleNamespace
+
+        from endstone_endbot.world import EndstoneWorld
+
+        dimension = FakeDimension(solid, [vehicle])
+        bot = SimpleNamespace(location=SimpleNamespace(x=vehicle.location.x, y=vehicle.location.y,
+                                                       z=vehicle.location.z, yaw=bot_yaw, dimension=dimension))
+        server = SimpleNamespace(get_player=lambda _identity: bot)
+        return EndstoneWorld(server)
+
+    def floor(self, *cells):
+        return {(x, 63, z) for x, z in cells}
+
+    def test_minecart_exits_right_of_travel_then_left(self):
+        cart = FakeActor(8, "minecraft:minecart", 0.5, 64.0, 0.5, velocity=(0.0, 0.0, 0.4))  # travelling +Z
+        world = self.world(self.floor((-1, 0), (1, 0)), cart)
+        self.assertEqual(world.resolve_dismount(BOT["identityId"], "8"), {"x": -0.5, "y": 64.0, "z": 0.5})
+        world = self.world(self.floor((1, 0)), cart)
+        self.assertEqual(world.resolve_dismount(BOT["identityId"], "8"), {"x": 1.5, "y": 64.0, "z": 0.5})
+
+    def test_boat_prefers_the_look_direction_and_blocked_cells_are_skipped(self):
+        boat = FakeActor(9, "minecraft:oak_boat", 0.5, 64.0, 0.5)
+        world = self.world(self.floor((0, 1), (-1, 0)), boat, bot_yaw=0.0)
+        self.assertEqual(world.resolve_dismount(BOT["identityId"], "9"), {"x": 0.5, "y": 64.0, "z": 1.5})
+        walled = self.floor((0, 1), (-1, 0)) | {(0, 64, 1)}
+        world = self.world(walled, boat, bot_yaw=0.0)
+        self.assertEqual(world.resolve_dismount(BOT["identityId"], "9"), {"x": -0.5, "y": 64.0, "z": 0.5})
+
+    def test_steps_up_one_level_or_stays_without_a_free_spot(self):
+        cart = FakeActor(8, "minecraft:minecart", 0.5, 64.0, 0.5, yaw=90.0)
+        world = self.world({(0, 64, -1)}, cart)
+        self.assertEqual(world.resolve_dismount(BOT["identityId"], "8"), {"x": 0.5, "y": 65.0, "z": -0.5})
+        self.assertIsNone(self.world(set(), cart).resolve_dismount(BOT["identityId"], "8"))
+        self.assertIsNone(self.world(set(), cart).resolve_dismount(BOT["identityId"], "99"))
+
+    def test_dismount_command_passes_the_exit_position(self):
+        class World:
+            def resolve_dismount(self, identity, runtime_id):
+                self.args = (identity, runtime_id)
+                return {"x": -0.5, "y": 64.0, "z": 0.5}
+
+        control, world = EntityControl(vehicle={"runtimeId": "30", "type": "minecraft:minecart"}), World()
+        PlainCommandService(control, world).execute(["Alice", "dismount"])
+        self.assertEqual(world.args, (BOT["identityId"], "30"))
+        exit_position = {"x": -0.5, "y": 64.0, "z": 0.5}
+        self.assertEqual(control.calls[-1], ("dismount", {"name": "Alice", "exit": exit_position}))

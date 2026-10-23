@@ -37,7 +37,7 @@ class FakeSession extends EventEmitter {
   nearbyEntities () { return [{ runtimeId: '20', type: 'minecraft:cow', distance: 2 }] }
   interactEntity (target) { this.entityTarget = target; return { runtimeId: '20', type: 'minecraft:cow', distance: 2 } }
   vehicleStatus () { return this.vehicle ?? null }
-  dismount () { return { runtimeId: '30', type: 'minecraft:minecart' } }
+  dismount (exit) { this.exit = exit; return { runtimeId: '30', type: 'minecraft:minecart' } }
 }
 
 function fixture (options = {}) {
@@ -93,6 +93,11 @@ test('entity operations validate selectors and report the vehicle in status', as
   sessions[0].vehicle = { type: 'minecraft:minecart', runtimeId: '30' }
   assert.equal(lifecycle.status('Alice').vehicle.type, 'minecraft:minecart')
   assert.equal(lifecycle.dismount('Alice').vehicle.runtimeId, '30')
+  lifecycle.dismount('Alice', { x: 1.5, y: 64, z: 0.5, extra: true })
+  assert.deepEqual(sessions[0].exit, { x: 1.5, y: 64, z: 0.5 })
+  for (const exit of [{ x: 1, y: 0 }, { x: '1', y: 0, z: 0 }, { x: Infinity, y: 0, z: 0 }, 3, null]) {
+    assert.throws(() => lifecycle.dismount('Alice', exit), /dismount exit/)
+  }
   await lifecycle.despawn('Alice')
   assert.throws(() => lifecycle.entities('Alice'))
   assert.equal(lifecycle.status('Alice').vehicle, null)

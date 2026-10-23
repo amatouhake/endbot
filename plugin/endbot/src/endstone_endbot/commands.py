@@ -1133,7 +1133,12 @@ class BotCommandService:
             return say("interaction with {entity} #{id} requested", result["name"],
                        entity=entity["type"].removeprefix("minecraft:"), id=entity["runtimeId"])
         if command.operation == "dismount":
-            result = control.request("dismount", name=command.name)
+            status = control.request("status", name=command.name)
+            vehicle = status.get("vehicle") or {}
+            exit_position = (self.world.resolve_dismount(status["identityId"], vehicle.get("runtimeId"))
+                             if self.world is not None and vehicle else None)
+            result = control.request("dismount", name=command.name,
+                                     **({"exit": exit_position} if exit_position else {}))
             return say("dismount from {vehicle} requested", result["name"],
                        vehicle=result["vehicle"]["type"].removeprefix("minecraft:"))
         if command.operation == "interact":

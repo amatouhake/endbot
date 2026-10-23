@@ -276,9 +276,13 @@ export class BotLifecycle extends EventEmitter {
     return { ...this.#status(profile), entity: state.session.interactEntity({ runtimeId, type }) }
   }
 
-  dismount (name) {
+  dismount (name, exit = undefined) {
+    if (exit !== undefined && !(exit && typeof exit === 'object' && ['x', 'y', 'z'].every(axis => Number.isFinite(exit[axis])))) {
+      throw new Error('Invalid dismount exit')
+    }
     const { profile, state } = this.#requireOnline(name)
-    return { ...this.#status(profile), vehicle: state.session.dismount() }
+    const position = exit && { x: exit.x, y: exit.y, z: exit.z }
+    return { ...this.#status(profile), vehicle: state.session.dismount(position) }
   }
 
   mine (name, parameters) {

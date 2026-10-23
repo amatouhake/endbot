@@ -383,7 +383,6 @@ JA: dict[str, str] = {
     "No entity within reach": "届く範囲にエンティティがいません",
     "No entity with that ID is in view": "その ID のエンティティが見当たりません",
     "That entity is out of reach": "そのエンティティには届きません",
-    "Bot is riding; dismount first": "Bot は乗車中です。先に dismount してください",
     "Bot is not riding": "Bot は何にも乗っていません",
     "The vehicle is not in view": "乗り物が見当たりません",
     "An entity interaction is already pending": "エンティティへの操作がすでに待機中です",

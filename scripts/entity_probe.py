@@ -14,8 +14,19 @@ from pathlib import Path
 def install_probe(plugin_class):
     from endstone.inventory import ItemStack
     from endstone.level import Location
+    from endstone_endbot import world as world_module
 
     original_enable = plugin_class.on_enable
+    original_resolve = world_module.EndstoneWorld.resolve_dismount
+    exits = []
+
+    def resolve_dismount(self, identity_id, vehicle_runtime_id):
+        # Evidence only: record the exit the plugin chose for each dismount.
+        exit_position = original_resolve(self, identity_id, vehicle_runtime_id)
+        exits.append({"vehicle": str(vehicle_runtime_id), "exit": exit_position})
+        return exit_position
+
+    world_module.EndstoneWorld.resolve_dismount = resolve_dismount
 
     def enable(self):
         original_enable(self)
@@ -62,6 +73,9 @@ def install_probe(plugin_class):
                     dimension.get_block_at(x, 200, z + 2).set_type("minecraft:rail")
                     target = Location(dimension, x + 0.5, 200.1, z + 2.5, 0, 0)
                 dimension.spawn_actor(target, request["entity"])
+                if request.get("boat"):
+                    # A second vehicle beside the cart for switching without dismount.
+                    dimension.spawn_actor(Location(dimension, x + 2.5, 200, z + 2.5, 0, 0), "minecraft:boat")
                 self._entity_probe = {"id": request["id"]}
             if request.get("power") and not self._entity_probe.get("powered"):
                 x, z = self._entity_origin
@@ -77,6 +91,7 @@ def install_probe(plugin_class):
             state = {
                 **self._entity_probe,
                 "player": [loc.x, loc.y, loc.z],
+                "exits": exits,
                 "actors": actors,
                 "hotbar": [
                     None if (item := player.inventory.get_item(slot)) is None
@@ -132,9 +147,9 @@ def exercise_entity(output: Path, console, control, wait, report, log):
         wait(f"reply to {line}", lambda: expected in log()[offset:], 10)
         return log()[offset:]
 
-    def prepare(label, entity, item=None, count=1, track=False):
+    def prepare(label, entity, item=None, count=1, track=False, boat=False):
         control("stop")
-        request({"id": label, "entity": entity, "item": item, "count": count, "track": track})
+        request({"id": label, "entity": entity, "item": item, "count": count, "track": track, "boat": boat})
         wait(f"{label} fixture ready", lambda: state().get("id") == label and state().get("actors"), 10)
         wait(f"Bot tracks the {entity}", lambda: any(
             candidate["type"] == entity for candidate in control("entities")["entities"]), 10)
@@ -151,19 +166,29 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     wait("BDS consumed one wheat", lambda: (state()["hotbar"][0] or {}).get("count") == 4, 10)
     results["feed_cow"] = {"listing": listing.strip().splitlines()[-1][-160:], "hotbar": state()["hotbar"][0]}
 
-    # Riding by id from the listing, then dismount and walk.
-    prepare("ride-minecart", "minecraft:minecart")
+    def beside(vehicle_type):
+        """BDS feet position is on the floor and in a neighbouring block, not on its spot."""
+        vehicle = next(actor for actor in state()["actors"] if actor["type"] == vehicle_type)
+        player = state()["player"]
+        horizontal = math.hypot(player[0] - vehicle["position"][0], player[2] - vehicle["position"][2])
+        return horizontal >= 0.75 and abs(player[1] - 200) < 0.05, {"player": player, "vehicle": vehicle["position"]}
+
+    # Riding by id from the listing, switching to a boat without dismounting, then a side exit.
+    prepare("ride-minecart", "minecraft:minecart", boat=True)
     command("hotbar 2", "hotbar slot 2 selected")
     cart = next(entry for entry in control("entities")["entities"] if entry["type"] == "minecraft:minecart")
     command(f"interact entity {cart['runtimeId']}", f"interaction with minecart #{cart['runtimeId']}")
     wait("BDS linked the Bot to the minecart", lambda: (riding() or {}).get("type") == "minecraft:minecart", 10)
     command("status", "riding minecart")
-    offset = len(log())
-    console("bot RakNetSpike interact entity nearest")
-    wait("riding Bots refuse entity interaction", lambda: "dismount first" in log()[offset:], 10)
-    command("dismount", "dismount from minecart requested")
+    command("interact entity boat", "interaction with boat #")
+    wait("BDS moved the rider from the minecart to the boat", lambda: (riding() or {}).get("type") == "minecraft:boat", 10)
+    command("dismount", "dismount from boat requested")
     wait("BDS removed the vehicle link", lambda: riding() is None, 10)
-    time.sleep(0.5)
+    time.sleep(1)
+    side, boat_exit = beside("minecraft:boat")
+    if not side:
+        raise RuntimeError(f"boat exit was not beside the boat: {boat_exit} exits={state().get('exits')}")
+    results["boat_exit"] = boat_exit
     start = list(state()["player"])
     control("look", yaw=180, pitch=0)
     control("move", direction="forward", durationTicks=20)
@@ -191,6 +216,10 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     command("dismount", "dismount from minecart requested")
     wait("BDS removed the moving-cart link", lambda: riding() is None, 10)
     time.sleep(1)
+    side, cart_exit = beside("minecraft:minecart")
+    if not side:
+        raise RuntimeError(f"minecart exit was not beside the cart: {cart_exit}")
+    results["minecart_exit"] = cart_exit
     start = list(state()["player"])
     control("look", yaw=0, pitch=0)
     control("move", direction="backward", durationTicks=20)

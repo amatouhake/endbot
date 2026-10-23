@@ -161,6 +161,9 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     # Feeding: the Bot turns to the nearest cow by itself; an adult cow eats wheat only through BDS.
     prepare("feed-cow", "minecraft:cow", "minecraft:wheat", 5)
     command("hotbar 1", "hotbar slot 1 selected")
+    command("status", " food ")  # BDS health from the SDK and hunger from runtime attributes
+    command("hotbar", "hotbar slot 1")
+    command("inventory", "1: wheat x5")
     listing = command("entities", "nearby: cow (id ")
     command("interact cow", "interaction with cow (id ")
     wait("BDS consumed one wheat", lambda: (state()["hotbar"][0] or {}).get("count") == 4, 10)

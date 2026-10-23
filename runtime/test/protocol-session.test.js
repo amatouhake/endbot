@@ -819,3 +819,13 @@ test('dismount reports the exit spot while riding, then leaves and stays there',
   assert.equal(session.vehicleStatus(), null)
   assert.deepEqual(session.position, { x: 1.5, y: 65.62, z: 2.5 })
 })
+
+test('own hunger and saturation come from update_attributes; other entities are ignored', async t => {
+  const { session, client } = await entitySession(t, [])
+  assert.deepEqual(session.vitals(), { hunger: null, saturation: null })
+  client.emit('update_attributes', { runtime_entity_id: 99n, attributes: [{ name: 'minecraft:player.hunger', current: 3 }] })
+  client.emit('update_attributes', { runtime_entity_id: 7n, attributes: [
+    { name: 'minecraft:player.hunger', current: 17 }, { name: 'minecraft:player.saturation', current: 4.5 },
+    { name: 'minecraft:health', current: 20 }] })
+  assert.deepEqual(session.vitals(), { hunger: 17, saturation: 4.5 })
+})

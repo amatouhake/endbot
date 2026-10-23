@@ -607,6 +607,27 @@ Risks to settle in the spike: which packets BDS 1.26.52.3 expects for entity use
 and the exact dismount packet. The spike covers feeding a cow (wheat), entering a minecart and dismounting on the locked
 pair before product work.
 
+## BOT-014: Read-only world and Bot queries for scripts
+
+Status: **In progress for 0.4.0** (2026-10-24 JST). Bot state, inventory/hotbar data and entity details are
+implemented; look target, block lookup and block search follow.
+
+Scripts could act but hardly observe: `status` carried no position, `inventory`/`hotbar` returned only text, and there
+was no block information, so scripts such as "walk to the tree and cut it" could not be written. The operator chose to
+add a broad set of read-only queries in 0.4.0, accepting the later release. Decisions (2026-10-24 JST):
+
+- **Every query is also a `/bot` command** in the shared operation table, so scripts and chat stay one surface and
+  queries can be tried in chat. Group targets print per-member results like `status`, with no history or audit.
+- **Authoritative data**: Bot state, blocks and entity details come from BDS through the Endstone SDK on the server
+  thread; hunger/saturation from the attributes BDS sends the Bot. Each query counts against the script rate limit.
+- **No x-ray**: block search returns only blocks exposed to a passable neighbour (air, water, plants), as a player could
+  see them. Looking up one named block position is not restricted.
+- Scope: (A) `status` data with position, look, dimension, health, hunger, ground/water, selected and held item;
+  `inventory`/`hotbar` slot data. (B) `target`: the block (position, face, type) or entity the Bot looks at, within
+  reach. (C) `block <x> <y> <z>`: type and block states, `~` relative to the Bot. (D) `blocks <type> [radius] [limit]`:
+  nearest exposed blocks, bounded radius and count. (E) entity details in `entities`: position, health, name tag.
+- `use` stays air-use only; right-clicking what the Bot looks at stays an explicit `interact`.
+
 ## BOT-013: Web script editor
 
 Status: **0.5.0 candidate — not started** (2026-10-24 JST).

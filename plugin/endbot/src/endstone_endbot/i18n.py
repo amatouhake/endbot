@@ -376,6 +376,8 @@ JA: dict[str, str] = {
     "interaction with {entity} (id {id}) requested": "{entity} (id {id}) への操作を要求しました",
     "dismount from {vehicle} requested": "{vehicle} から降りるよう要求しました",
     "riding {vehicle}": "{vehicle} に乗車中",
+    "health {health}/{max}": "体力 {health}/{max}",
+    "food {food}": "満腹度 {food}",
     "Invalid entity type": "エンティティの種類が正しくありません",
     "No matching entity within reach": "届く範囲に該当するエンティティがいません",
     "No entity within reach": "届く範囲にエンティティがいません",

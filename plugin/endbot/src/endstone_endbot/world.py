@@ -149,6 +149,7 @@ class EndstoneWorld:
         if player is None:
             return None
         location = player.location
+        held = player.inventory.item_in_main_hand
         return {
             "dimension": location.dimension.name,
             "x": float(location.x),
@@ -156,7 +157,35 @@ class EndstoneWorld:
             "z": float(location.z),
             "yaw": float(location.yaw),
             "pitch": float(location.pitch),
+            "health": float(player.health),
+            "maxHealth": float(player.max_health),
+            "onGround": bool(player.is_on_ground),
+            "inWater": bool(player.is_in_water),
+            "selectedSlot": int(player.inventory.held_item_slot) + 1,
+            "held": None if held is None or held.amount <= 0 or held.type.id == "minecraft:air"
+            else {"name": held.type.id, "count": held.amount},
         }
+
+    def describe_entities(self, identity_id: str, runtime_ids: list[str]) -> dict[str, dict]:
+        """BDS details for entities the Bot sees: position, health and name tag where they exist."""
+        bot = self.server.get_player(UUID(identity_id))
+        if bot is None:
+            return {}
+        wanted = {str(value) for value in runtime_ids}
+        details = {}
+        for actor in bot.location.dimension.actors:
+            key = str(actor.runtime_id)
+            if key not in wanted:
+                continue
+            location = actor.location
+            health = getattr(actor, "health", None)
+            details[key] = {
+                "position": {"x": float(location.x), "y": float(location.y), "z": float(location.z)},
+                "health": None if health is None else float(health),
+                "maxHealth": None if health is None else float(actor.max_health),
+                "nameTag": str(actor.name_tag) or None,
+            }
+        return details
 
     def inventory(self, name: str, identity_id: str | None = None) -> dict:
         """Read a live local-auth Bot without contacting the runtime."""

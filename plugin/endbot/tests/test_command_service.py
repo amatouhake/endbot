@@ -104,6 +104,12 @@ class FakeWorld:
     def observe(self, identity_id):
         return None
 
+    def inventory(self, name, identity_id=None):
+        raise ValueError("Bot is not present in the world")
+
+    def describe_entities(self, identity_id, runtime_ids):
+        return {}
+
     def look_at(self, identity_id, coordinates):
         self.look_targets.append((identity_id, coordinates))
         return (90.0, -10.0)

@@ -212,14 +212,26 @@ or Group handle. `log(text)` emits bounded log text. Waits recheck authority. No
 
 ### Structured status and mining waits
 
-`bot:status()` returns the usual result wrapper; read its `data` fields below. These values come from
+`bot:status()` returns the usual result wrapper; read its `data` fields below. Mining values come from
 runtime status, including its retained last mining job; they do not infer completion from elapsed time.
+Position, look, health and inventory come from BDS through the Endstone SDK at the time of the call;
+hunger and saturation come from the attributes BDS sends the Bot. A field is nil when the Bot is not in
+the world (or before BDS has sent it).
 
 | Field | Meaning |
 | --- | --- |
 | `data.name` | Current Bot name |
 | `data.identityId` | Bot UUID |
 | `data.connectionState` | Runtime connection state; `online` means connected |
+| `data.vehicle` | `{type, runtimeId}` while riding, else nil |
+| `data.position` | Feet position `{x, y, z}` |
+| `data.dimension` | `Overworld`, `Nether` or `TheEnd` |
+| `data.look` | `{yaw, pitch}` in degrees |
+| `data.health`, `data.maxHealth` | BDS health |
+| `data.hunger`, `data.saturation` | Food level (0-20) and saturation |
+| `data.onGround`, `data.inWater` | Booleans |
+| `data.selectedSlot` | Selected hotbar slot, 1-9 |
+| `data.held` | `{name, count}` of the selected item, or nil when empty |
 | `data.mining.active` | Boolean: a block destroy job or continuous mining loop is active (including waiting for a target) |
 | `data.mining.mode` | `once` or `continuous`; nil before any mining job |
 | `data.mining.state` | Runtime job state (`active`, `waiting`, `completed`, `canceled`, `failed`), or nil with no job |
@@ -231,6 +243,12 @@ Terminal reasons include `block count reached`, `duration elapsed`, `stopped`, a
 Null JSON fields become nil in Luau. `group:status()` returns `data.results` in pinned membership order;
 each row has `index`, `identityId`, `name`, `ok`, `reason` (nil on success), and `data` containing that
 member's fields above (nil on query failure). Partial query failure sets the outer `ok=false`.
+
+Other queries also return data: `bot:inventory().data.slots` lists non-empty slots as `{slot, name, count}`
+(slots `"1"`-`"36"`, `offhand`, `head`, `chest`, `legs`, `feet`); `bot:hotbar().data` has `selectedSlot` and the
+hotbar `slots`; `bot:entities().data.entities` lists up to 10 nearby non-player entities, nearest first, as
+`{runtimeId, type, distance, position, health, maxHealth, nameTag}` (health is nil for non-mobs). Pass a
+`runtimeId` to `:interact(id)`.
 
 `bot:waitMining{timeout=1200}` and `group:waitMining{timeout=1200}` wait only for destroy/mining jobs.
 They return `{ok=boolean, reason=string, results={...}}`. Each result has `name`, `identityId`, `ok`,

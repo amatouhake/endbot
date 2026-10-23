@@ -376,6 +376,38 @@ JA: dict[str, str] = {
     "interaction with {entity} (id {id}) requested": "{entity} (id {id}) への操作を要求しました",
     "dismount from {vehicle} requested": "{vehicle} から降りるよう要求しました",
     "riding {vehicle}": "{vehicle} に乗車中",
+    "show the block or entity the Bot is looking at": "Bot が見ているブロックかエンティティを表示する",
+    "Within 6 blocks of the Bot's eyes; the nearer of a block and a non-player entity.":
+        "Bot の目から6ブロック以内で、近い方のブロックかプレイヤー以外のエンティティを表示します。",
+    "show one block's type and states": "1つのブロックの種類と状態を表示する",
+    "~ is relative to the Bot. Any loaded position can be read.":
+        "~ は Bot からの相対位置です。読み込まれた位置なら調べられます。",
+    "find the nearest exposed blocks of a type": "見えている指定の種類のブロックを近い順に探す",
+    "Only blocks with a face open to air, water or plants count, as a player could see them.":
+        "空気、水、植物に面したブロックだけを数えます。プレイヤーに見えるものだけです。",
+    "Radius defaults to 8 and limit to 10; results are nearest first.":
+        "半径の既定は8、件数の既定は10です。近い順に表示します。",
+    "looking around, entities and vehicles": "周囲の確認、エンティティと乗り物",
+    "looking at {block} at {position} face {face} ({distance}m)":
+        "{position} の {block} の面 {face} を見ています ({distance}m)",
+    "looking at {entity} (id {id}) ({distance}m)": "{entity} (id {id}) を見ています ({distance}m)",
+    "looking at nothing within 6 blocks": "6ブロック以内に見ているものはありません",
+    "block at {position}: {block}": "{position} のブロック: {block}",
+    "{block}: {positions}": "{block}: {positions}",
+    "no exposed {block} within {radius} blocks": "{radius}ブロック以内に見えている {block} はありません",
+    "Use block <x> <y> <z>": "block <x> <y> <z> の形で指定してください",
+    "Use blocks <type> [radius <1-12>] [limit <1-64>]":
+        "blocks <type> [radius <1-12>] [limit <1-64>] の形で指定してください",
+    "Invalid block type": "ブロックの種類が正しくありません",
+    "{clause} must be an integer from {low} to {high}": "{clause} は {low} から {high} の整数で指定してください",
+    "Look around...": "周囲を確認...",
+    "look around": "周囲の確認",
+    "Looking at": "見ているもの",
+    "Block info...": "ブロックを調べる...",
+    "Find blocks...": "ブロックを探す...",
+    "Enter one block type": "ブロックの種類を1つ入力してください",
+    "Block type": "ブロックの種類",
+    "Radius": "半径",
     "health {health}/{max}": "体力 {health}/{max}",
     "food {food}": "満腹度 {food}",
     "Invalid entity type": "エンティティの種類が正しくありません",

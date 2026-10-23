@@ -274,6 +274,27 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ("entities",),
         ("Shows up to 10 non-player entities within 16 blocks with their id and distance.",),
     ),
+    "target": HelpTopic(
+        "target",
+        "show the block or entity the Bot is looking at",
+        ("target",),
+        ("Within 6 blocks of the Bot's eyes; the nearer of a block and a non-player entity.",),
+    ),
+    "block": HelpTopic(
+        "block",
+        "show one block's type and states",
+        ("block <x> <y> <z>",),
+        ("~ is relative to the Bot. Any loaded position can be read.",),
+    ),
+    "blocks": HelpTopic(
+        "blocks",
+        "find the nearest exposed blocks of a type",
+        ("blocks <type> [radius <1-12>] [limit <1-64>]",),
+        (
+            "Only blocks with a face open to air, water or plants count, as a player could see them.",
+            "Radius defaults to 8 and limit to 10; results are nearest first.",
+        ),
+    ),
     "dismount": HelpTopic(
         "dismount",
         "get off a minecart, boat or animal",
@@ -351,18 +372,21 @@ HELP_TOPICS: dict[str, HelpTopic] = {
 
 HELP_TOPIC_ALIASES = {"tp": "teleport"}
 
+BLOCKS_USAGE = "Use blocks <type> [radius <1-12>] [limit <1-64>]"
+BLOCKS_CLAUSES = {"radius": (1, 12), "limit": (1, 64)}
+
 HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
     ("move", "look", "jump", "attack", "use", "sprint", "sneak", "stop"),
     ("inventory", "hotbar", "swap", "hold", "interact", "destroy", "drop", "radius", "rename", "forget"),
-    ("entities", "dismount"),
+    ("entities", "target", "block", "blocks", "dismount"),
 )
 
 HELP_PAGE_TITLES = (
     "lifecycle, status and teleport",
     "movement and actions",
     "inventory, blocks and Bot settings",
-    "entities and vehicles",
+    "looking around, entities and vehicles",
 )
 
 
@@ -644,7 +668,8 @@ def parse_command(arguments: list[str]) -> BotCommand:
     if operation not in OPERATIONS:
         raise CommandSyntaxError("Unknown or invalid Bot action: {operation}", operation=operation)
     if operation in {
-        "status", "inventory", "entities", "resume", "reconnect", "despawn", "forget", "stop", "menu", "dismount"
+        "status", "inventory", "entities", "target", "resume", "reconnect", "despawn", "forget", "stop", "menu",
+        "dismount",
     } and not remaining:
         return BotCommand(operation, name)
     if operation == "spawn":
@@ -713,6 +738,34 @@ def parse_command(arguments: list[str]) -> BotCommand:
         if not 2 <= radius <= 32:
             raise CommandSyntaxError("Chunk radius must be from 2 to 32")
         return BotCommand(operation, name, {"value": radius})
+    if operation == "block":
+        if len(remaining) != 3:
+            raise CommandSyntaxError("Use block <x> <y> <z>")
+        position, unused = _position(remaining)
+        assert not unused
+        return BotCommand(operation, name, position)
+    if operation == "blocks":
+        if not remaining:
+            raise CommandSyntaxError(BLOCKS_USAGE)
+        block_type = remaining[0].lower()
+        block_type = block_type if ":" in block_type else f"minecraft:{block_type}"
+        if not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_./-]+", block_type):
+            raise CommandSyntaxError("Invalid block type")
+        parameters = {"type": block_type, "radius": 8, "limit": 10}
+        tokens = remaining[1:]
+        seen = set()
+        while tokens:
+            clause = tokens.pop(0).lower()
+            if clause not in BLOCKS_CLAUSES or clause in seen or not tokens:
+                raise CommandSyntaxError(BLOCKS_USAGE)
+            seen.add(clause)
+            low, high = BLOCKS_CLAUSES[clause]
+            value = tokens.pop(0)
+            if not value.isascii() or not value.isdecimal() or not low <= int(value) <= high:
+                raise CommandSyntaxError("{clause} must be an integer from {low} to {high}",
+                                         clause=clause, low=low, high=high)
+            parameters[clause] = int(value)
+        return BotCommand(operation, name, parameters)
     # Like tp, the argument shape picks the target: one token is an entity,
     # coordinates and a face are a block.
     if operation == "interact" and len(remaining) == 1:
@@ -1139,6 +1192,45 @@ class BotCommandService:
             entity = result["entity"]
             return say("interaction with {entity} (id {id}) requested", result["name"],
                        entity=entity["type"].removeprefix("minecraft:"), id=entity["runtimeId"])
+        if command.operation in {"target", "block", "blocks"}:
+            if self.world is None:
+                raise ValueError("Bot is not present in the world")
+            status = control.request("status", name=command.name)
+            identity, name = status["identityId"], status["name"]
+            if command.operation == "target":
+                data = self.world.target(identity)
+                if data["kind"] == "block":
+                    block = data["block"]
+                    text = tr(lang, "looking at {block} at {position} face {face} ({distance}m)",
+                              block=block["type"].removeprefix("minecraft:"), face=block["face"],
+                              position=f"{block['x']} {block['y']} {block['z']}", distance=data["distance"])
+                elif data["kind"] == "entity":
+                    entity = data["entity"]
+                    text = tr(lang, "looking at {entity} (id {id}) ({distance}m)", id=entity["runtimeId"],
+                              entity=entity["type"].removeprefix("minecraft:"), distance=data["distance"])
+                else:
+                    text = tr(lang, "looking at nothing within 6 blocks")
+            elif command.operation == "block":
+                data = self.world.block_info(identity, command.parameters["coordinates"])
+                states = " ".join(f"{key}={value}" for key, value in data["states"].items())
+                text = tr(lang, "block at {position}: {block}", position=f"{data['x']} {data['y']} {data['z']}",
+                          block=data["type"].removeprefix("minecraft:"))
+                if states:
+                    text += f" {DIM}[{states}]{RESET}"
+            else:
+                parameters = command.parameters
+                found = self.world.find_blocks(identity, parameters["type"], parameters["radius"], parameters["limit"])
+                data = {"type": parameters["type"], "radius": parameters["radius"], "blocks": found}
+                block_name = parameters["type"].removeprefix("minecraft:")
+                if found:
+                    listed = ", ".join(f"{entry['x']} {entry['y']} {entry['z']} {DIM}{entry['distance']}m{RESET}"
+                                       for entry in found[:10])
+                    more = "" if len(found) <= 10 else f" (+{len(found) - 10})"
+                    text = tr(lang, "{block}: {positions}", block=block_name, positions=listed) + more
+                else:
+                    text = tr(lang, "no exposed {block} within {radius} blocks", block=block_name,
+                              radius=parameters["radius"])
+            return CommandResult(True, (reply(text, name),), data={"name": name, **data})
         if command.operation == "dismount":
             status = control.request("status", name=command.name)
             vehicle = status.get("vehicle") or {}

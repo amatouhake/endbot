@@ -27,6 +27,17 @@ def install_probe(plugin_class):
         return exit_position
 
     world_module.EndstoneWorld.resolve_dismount = resolve_dismount
+    original_find = world_module.EndstoneWorld.find_blocks
+    searches = []
+
+    def find_blocks(self, *arguments):
+        # Evidence only: server-thread time of each block search.
+        start = time.perf_counter()
+        found = original_find(self, *arguments)
+        searches.append({"radius": arguments[2], "milliseconds": round((time.perf_counter() - start) * 1000, 1)})
+        return found
+
+    world_module.EndstoneWorld.find_blocks = find_blocks
 
     def enable(self):
         original_enable(self)
@@ -73,6 +84,12 @@ def install_probe(plugin_class):
                     dimension.get_block_at(x, 200, z + 2).set_type("minecraft:rail")
                     target = Location(dimension, x + 0.5, 200.1, z + 2.5, 0, 0)
                 dimension.spawn_actor(target, request["entity"])
+                if request.get("ores"):
+                    # One exposed ore on the platform and one sealed in stone below it.
+                    dimension.get_block_at(x + 3, 200, z).set_type("minecraft:diamond_ore")
+                    for dx, dy, dz in ((0, 0, 0), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+                        dimension.get_block_at(x + dx, 195 + dy, z + dz).set_type("minecraft:stone")
+                    dimension.get_block_at(x, 195, z).set_type("minecraft:diamond_ore")
                 if request.get("boat"):
                     # A second vehicle beside the cart for switching without dismount.
                     dimension.spawn_actor(Location(dimension, x + 2.5, 200, z + 2.5, 0, 0), "minecraft:boat")
@@ -92,6 +109,7 @@ def install_probe(plugin_class):
                 **self._entity_probe,
                 "player": [loc.x, loc.y, loc.z],
                 "exits": exits,
+                "searches": searches,
                 "actors": actors,
                 "hotbar": [
                     None if (item := player.inventory.get_item(slot)) is None
@@ -147,9 +165,10 @@ def exercise_entity(output: Path, console, control, wait, report, log):
         wait(f"reply to {line}", lambda: expected in log()[offset:], 10)
         return log()[offset:]
 
-    def prepare(label, entity, item=None, count=1, track=False, boat=False):
+    def prepare(label, entity, item=None, count=1, track=False, boat=False, ores=False):
         control("stop")
-        request({"id": label, "entity": entity, "item": item, "count": count, "track": track, "boat": boat})
+        request({"id": label, "entity": entity, "item": item, "count": count, "track": track, "boat": boat,
+                 "ores": ores})
         wait(f"{label} fixture ready", lambda: state().get("id") == label and state().get("actors"), 10)
         wait(f"Bot tracks the {entity}", lambda: any(
             candidate["type"] == entity for candidate in control("entities")["entities"]), 10)
@@ -159,13 +178,24 @@ def exercise_entity(output: Path, console, control, wait, report, log):
 
     results = {}
     # Feeding: the Bot turns to the nearest cow by itself; an adult cow eats wheat only through BDS.
-    prepare("feed-cow", "minecraft:cow", "minecraft:wheat", 5)
+    prepare("feed-cow", "minecraft:cow", "minecraft:wheat", 5, ores=True)
     command("hotbar 1", "hotbar slot 1 selected")
     command("status", " food ")  # BDS health from the SDK and hunger from runtime attributes
     command("hotbar", "hotbar slot 1")
     command("inventory", "1: wheat x5")
     listing = command("entities", "nearby: cow (id ")
     command("interact cow", "interaction with cow (id ")
+    time.sleep(0.5)
+    command("target", "looking at cow (id ")
+    command("block ~ ~-1 ~", ": stone")
+    start = time.monotonic()
+    found = command("blocks diamond_ore radius 12", "diamond_ore: ")
+    search_seconds = round(time.monotonic() - start, 2)
+    ore_line = next(line for line in found.splitlines() if "diamond_ore: " in line)
+    if "195" in ore_line or ore_line.count("m") < 1 or "," in ore_line.split("diamond_ore: ", 1)[1]:
+        raise RuntimeError(f"block search reported a hidden ore or extra blocks: {ore_line}")
+    results["queries"] = {"blocks_line": ore_line[-120:], "radius_12_reply_seconds": search_seconds,
+                          "server_thread": state().get("searches")}
     wait("BDS consumed one wheat", lambda: (state()["hotbar"][0] or {}).get("count") == 4, 10)
     results["feed_cow"] = {"listing": listing.strip().splitlines()[-1][-160:], "hotbar": state()["hotbar"][0]}
 

@@ -128,10 +128,16 @@ class EntityFormTests(unittest.TestCase):
         screen = bot_screen(BotView("Alice", "", BOT, None))
         gameplay = next(item for item in screen.items if item.text == "Gameplay...").action.screen
         texts = [item.text for item in gameplay.items]
-        self.assertEqual(texts[4:7], ["List nearby entities", "Interact with entity...", "Dismount"])
-        self.assertEqual(gameplay.items[4].action.commands, (("Alice", "entities"),))
-        self.assertEqual(gameplay.items[6].action.commands, (("Alice", "dismount"),))
-        modal = gameplay.items[5].action
+        self.assertEqual(texts[4:7], ["Interact with entity...", "Dismount", "Look around..."])
+        self.assertEqual(gameplay.items[5].action.commands, (("Alice", "dismount"),))
+        around = gameplay.items[6].action.screen
+        self.assertEqual([item.action.commands for item in around.items[:2]],
+                         [(("Alice", "target"),), (("Alice", "entities"),)])
+        self.assertEqual(modal_commands(around.items[2].action.screen, '["~ ~-1 ~"]'),
+                         (("Alice", "block", "~", "~-1", "~"),))
+        self.assertEqual(modal_commands(around.items[3].action.screen, '["oak_log", 5]'),
+                         (("Alice", "blocks", "oak_log", "radius", "5"),))
+        modal = gameplay.items[4].action
         self.assertIsInstance(modal, Show)
         self.assertIsInstance(modal.screen, ModalScreen)
         self.assertEqual(modal_commands(modal.screen, '["Cow"]'), (("Alice", "interact", "cow"),))

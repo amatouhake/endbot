@@ -346,6 +346,9 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice hold <item>
 /bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
 /bot Alice entities
+/bot Alice target
+/bot Alice block <x> <y> <z>
+/bot Alice blocks <type> [radius <1-12>] [limit <1-64>]
 /bot Alice interact <type|nearest|id>
 /bot Alice dismount
 /bot Alice drop
@@ -494,6 +497,15 @@ release sequence; BDS decides reach, legality, collision, placement, and invento
 item can therefore place a block in Survival without the plugin editing the world. `drop` drops one selected item and
 `drop stack` requests the selected stack through normal inventory transactions; wider selectors use the same legacy
 container-to-world path with exact observed item data (see the inventory/drop grammar above).
+
+### Looking around
+
+`target` shows what the Bot's crosshair hits within 6 blocks: the nearer of a block (position, face, type) and a
+non-player entity. `block <x> <y> <z>` shows one block's type and states; `~` is relative to the Bot. `blocks <type>`
+lists the nearest blocks of that type within a radius (default 8, at most 12), up to `limit` (default 10, at most 64),
+counting only blocks with a face open to air, water or plants, so it does not reveal buried ores. All three read BDS
+through the Endstone SDK, never change anything, and return data to scripts; Group targets print every member's
+result like `status`. The Gameplay form's **Look around...** offers them with the nearby-entity list.
 
 ### Entities and vehicles
 

@@ -303,6 +303,8 @@ new Endstone/BDS compatibility changes in this release.
 - 0.4.0 (decided 2026-10-22): one release for operating many Bots — shared Groups (BOT-010, on `main`),
   inventory inspection/rearrangement and `drop all` (BOT-011), and controller Luau scripts/macros (BOT-009).
   No interim release of Groups alone; the human-client gate covers these together.
+  Added 2026-10-24: per-script ownership/visibility/copy/revisions for BOT-009 and entity interaction
+  (feeding, riding/dismounting, BOT-012). The web script editor (BOT-013) is a 0.5.0 candidate.
 - Runtime-download installer: version **TBD**, no longer a required 0.4.0 feature; whether it is built at all
   is undecided.
   Keep the existing managed operator bundles and setup/update workflow until the

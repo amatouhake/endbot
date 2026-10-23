@@ -274,7 +274,7 @@ reuse the event-intercept approach and the one-overload-per-first-token finding 
 
 ## BOT-009: Controller-authored Luau scripts and a small in-game editor
 
-Status: **MVP implemented behind `[scripting] enabled` (off by default) — Windows RakNet live probe passed; Linux runner build/bundling, OS resource limits and human-client checks pending** (2026-10-23 JST). See [scripting](SCRIPTING.md).
+Status: **MVP implemented behind `[scripting] enabled` (off by default) — Windows RakNet live probe passed; Linux runner build/bundling, OS resource limits and human-client checks pending** (2026-10-23 JST). Ownership, revisions and a source preview are planned for 0.4.0 (2026-10-24 decisions below). See [scripting](SCRIPTING.md).
 
 Controllers should be able to write and run their own Bot scripts without server-filesystem access. Use **Luau** as
 the language baseline. Required use cases include loops, conditions, coordinate arithmetic, and placing multiple Bots
@@ -372,11 +372,24 @@ Implementation decisions still open:
   Node.js runtime is retained for Bedrock protocol/client behavior. No
   runtime rewrite, additional Endstone core behavior patch or new compatibility claim is implied.
 
-Web editing remains a future extension to reconsider when the in-game/external-editor workflow demonstrates a need;
-it is not part of the initial scripting scope. Reuse the same source and operation model if it is added. A reference is
-[endstone-live-map](https://github.com/wingxia/endstone-live-map#readme): its documented local Node map service has
-optional Cloudflare R2 tile mirroring/Worker delivery. That is a deployment reference, not a scripting-editor or
-controller-authentication implementation to adopt. No Cloudflare service is required by this design.
+Decisions after the first human-client look (2026-10-24 JST):
+
+- **Free authoring stays.** Every controller may write and run their own scripts; command-based control proved too
+  limited. Finer permissions are acceptable if they protect this, but a template-only or operator-only source model is
+  rejected. Scripting ships in 0.4.0.
+- **Ownership instead of shared editing.** Shared editing let any controller break a working script by mistake.
+  Each script records its creator's XUID as owner. Only the owner may edit, rename or delete it. Each script is
+  `private` (owner runs it) or `shared` (every controller may run it, nobody else may edit). Others use **Copy and
+  edit** to derive their own script. Each save keeps a bounded revision history (about ten) that the owner can
+  restore from the menu. Runs keep the invoker's authority. Groups remain fully shared.
+- **Optional permission split**: running (`endbot.script.run`) and authoring (`endbot.script.author`) may be granted
+  separately; whether an administrator tier that can edit/stop others' scripts is needed is still open.
+- **Editing in 0.4.0 stays paste-based.** The client's form text input keeps newlines but has a fixed height of about
+  two lines (seen 2026-10-24 on Windows). Add a read-only label above the input with the full source and line numbers;
+  keep syntax-error line numbers. Neither Endstone 0.11.13 `TextInput` nor the form JSON offers a taller/multiline
+  input; command-block UI needs operator/creative access and is not a server form, so it does not fit the
+  `allow-cheats=false`, no-operator model. Book and quill is an unverified in-game multiline candidate.
+- **Web editing** is the preferred long-term authoring experience; see BOT-013.
 
 This records the agreed scripting direction only. Scripts, a Luau API and editing/import behavior are not yet available;
 the independent Group feature implementation is tracked under BOT-010. Implementation and real-client editing, permission,
@@ -573,7 +586,45 @@ Validation gates: unit/serializer regressions, a `scripts/raknet_spike.py --inve
 (actual inventory/loot changes, rejected requests converging to BDS state), and a human-client rendering check.
 None of these may be inferred from a green unit build.
 
+## BOT-012: Interact with entities — feeding, riding and dismounting
+
+Status: **Scoped for 0.4.0 — protocol spike first** (2026-10-24 JST).
+
+Operators could not put a Bot in a minecart or feed animals. Add entity interaction through the vanilla client path
+(no server-side shortcuts), so achievements and BDS authority stay intact:
+
+- **Track nearby entities** in the runtime from `add_entity`/`remove_entity`/movement packets, per Bot. A read-only
+  `/bot <target> entities` lists nearby entities (type, runtime ID, distance); Group targets behave as a query like
+  `status`.
+- **Interact with an entity** using the held item: `/bot <target> interact entity <type|nearest|id>`. Feeding, breeding,
+  shearing and name tags are the same operation.
+- **Ride and dismount** minecarts, boats and horses; `dismount` leaves the vehicle.
+- Commands, forms and the Luau API come from the shared operation definition, so scripts get the operations
+  automatically (BOT-009).
+
+Risks to settle in the spike: which packets BDS 1.26.52.3 expects for entity use (`inventory_transaction`
+`item_use_on_entity` versus `interact`), how the Bot's predicted movement/`player_auth_input` must change while riding,
+and the exact dismount packet. The spike covers feeding a cow (wheat), entering a minecart and dismounting on the locked
+pair before product work.
+
+## BOT-013: Web script editor
+
+Status: **0.5.0 candidate — not started** (2026-10-24 JST).
+
+A browser editor gives syntax highlighting, completion from `api.luau`, line-numbered errors and revision diffs, a
+far better experience than in-game paste. Proposed shape: off by default, listening on localhost/LAN only (public
+exposure is the operator's reverse proxy/TLS); a controller opens it via an in-game `/botscript web` that issues a
+short-lived one-time URL bound to their XUID; saves go through the same compile/declaration/ownership/revision path as
+in-game saves (BOT-009). Authentication, CSRF and rate limits are the main design work. A deployment reference is
+[endstone-live-map](https://github.com/wingxia/endstone-live-map#readme) (local Node service, optional Cloudflare
+delivery); it is not an editor or authentication design to adopt, and no Cloudflare service is required.
+
 ## Deferred priorities
+
+- Container/UI operations — crafting, villager trading, enchanting — use `item_stack_request` on current Bedrock, which
+  the BOT-011 spike found unusable for Bots on the locked pair (no stack IDs outside hotbar/offhand). Low priority
+  (2026-10-24 JST): even the follow-up spike (does opening a container deliver native stack IDs?) may wait. Do not
+  substitute server-side inventory edits for vanilla crafting/trading.
 
 - Inventory inspection and rearrangement are now scoped under BOT-011. Keep the menu rule: forms mirror commands and
   add no meaning of their own.

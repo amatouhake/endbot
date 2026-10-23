@@ -596,7 +596,7 @@ Operators could not put a Bot in a minecart or feed animals. Add entity interact
 - **Track nearby entities** in the runtime from `add_entity`/`remove_entity`/movement packets, per Bot. A read-only
   `/bot <target> entities` lists nearby entities (type, runtime ID, distance); Group targets behave as a query like
   `status`.
-- **Interact with an entity** using the held item: `/bot <target> interact entity <type|nearest|id>`. Feeding, breeding,
+- **Interact with an entity** using the held item: `/bot <target> interact <type|nearest|id>`. Feeding, breeding,
   shearing and name tags are the same operation.
 - **Ride and dismount** minecarts, boats and horses; `dismount` leaves the vehicle.
 - Commands, forms and the Luau API come from the shared operation definition, so scripts get the operations

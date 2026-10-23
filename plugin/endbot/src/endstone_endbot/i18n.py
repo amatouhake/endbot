@@ -360,11 +360,10 @@ JA: dict[str, str] = {
         "default で共通の runtime 設定に戻します。BDS が値を制限することがあります。"
     ),
     "right-click a block face or an entity": "ブロックの面かエンティティを右クリックする",
-    "entity turns to the nearest match within 6 blocks and uses the held item: feed, breed, shear, ride.":
-        "entity は6ブロック以内で一番近い対象の方を向き、手に持ったアイテムを使います。"
-        "エサやり、繁殖、毛刈り、乗車に使えます。",
-    "An id comes from entities; players are never targets.":
-        "id は entities で確認できます。プレイヤーは対象になりません。",
+    "One argument turns to the nearest matching entity within 6 blocks and uses the held item.":
+        "引数が1つなら、6ブロック以内で一番近いエンティティの方を向き、手に持ったアイテムを使います。",
+    "That feeds, breeds, shears, names and rides. An id comes from entities; players are never targets.":
+        "エサやり、繁殖、毛刈り、名付け、乗車に使えます。id は entities で確認できます。プレイヤーは対象外です。",
     "list nearby entities": "近くのエンティティを一覧表示する",
     "Shows up to 10 non-player entities within 16 blocks with their id and distance.":
         "16ブロック以内のプレイヤー以外のエンティティを最大10件、id と距離つきで表示します。",
@@ -374,10 +373,9 @@ JA: dict[str, str] = {
     "entities and vehicles": "エンティティと乗り物",
     "no entities nearby": "近くにエンティティはいません",
     "nearby: {entities}": "近く: {entities}",
-    "interaction with {entity} #{id} requested": "{entity} #{id} への操作を要求しました",
+    "interaction with {entity} (id {id}) requested": "{entity} (id {id}) への操作を要求しました",
     "dismount from {vehicle} requested": "{vehicle} から降りるよう要求しました",
     "riding {vehicle}": "{vehicle} に乗車中",
-    "Use interact entity <type|nearest|id>": "interact entity <type|nearest|id> の形で指定してください",
     "Invalid entity type": "エンティティの種類が正しくありません",
     "No matching entity within reach": "届く範囲に該当するエンティティがいません",
     "No entity within reach": "届く範囲にエンティティがいません",

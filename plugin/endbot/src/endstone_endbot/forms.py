@@ -379,9 +379,9 @@ def entity_modal(name: str, lang: str = "en") -> ModalScreen:
         selector = _text(values[0]).lower()
         if not re.fullmatch(r"nearest|[0-9]{1,19}|(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+", selector):
             raise FormResponseError("Enter one entity type, nearest or id")
-        return ((name, "interact", "entity", selector),)
+        return ((name, "interact", selector),)
 
-    return ModalScreen(f"{name}: interact entity", (
+    return ModalScreen(f"{name}: interact", (
         TextInput(tr(lang, "Entity type, nearest or id (from the list)"), "cow", "nearest"),
     ), build, tr(lang, "Interact"))
 

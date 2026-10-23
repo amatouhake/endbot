@@ -346,7 +346,7 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice hold <item>
 /bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
 /bot Alice entities
-/bot Alice interact entity <type|nearest|id>
+/bot Alice interact <type|nearest|id>
 /bot Alice dismount
 /bot Alice drop
 /bot Alice drop stack
@@ -498,8 +498,9 @@ container-to-world path with exact observed item data (see the inventory/drop gr
 ### Entities and vehicles
 
 `entities` lists up to 10 non-player entities within 16 blocks of the Bot, nearest first, as
-`<type> #<id> <distance>m`. A Group target is a query like `status`: every member's list is printed, with no history
-or audit entry. `interact entity <type|nearest|id>` picks the nearest matching non-player entity within 6 blocks
+`<type> (id <id>) <distance>m`. A Group target is a query like `status`: every member's list is printed, with no
+history or audit entry. Like `tp`, `interact` tells its target by the argument shape: coordinates and a face are a
+block, one token is an entity. `interact <type|nearest|id>` picks the nearest matching non-player entity within 6 blocks
 (`cow` and `minecraft:cow` are the same; `nearest` takes any type; an id comes from `entities`), turns the Bot
 toward it and right-clicks it with the held item on the next input tick. This is the vanilla client path
 (`item_use_on_entity` with action `interact`): feeding and breeding consume the held item, shears shear, a name tag
@@ -507,7 +508,7 @@ names, and an empty hand on a minecart, boat or rideable animal mounts it. BDS d
 only confirms the request.
 
 While riding, the Bot follows the vehicle position BDS sends and ignores its own movement prediction; `status` and
-the Bot screen show `riding <type>`. A riding Bot may `interact entity` another vehicle to switch to it, as a player
+the Bot screen show `riding <type>`. A riding Bot may `interact` another vehicle to switch to it, as a player
 can; `nearest` skips the vehicle it is riding. `dismount` sends the vanilla leave-vehicle action. As in the vanilla
 client, the rider chooses its exit spot: the plugin checks the neighbouring blocks for a solid floor and two passable
 blocks above it, at the vehicle's level, then one above, then one below. Minecarts use the

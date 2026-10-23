@@ -999,13 +999,14 @@ class BotCommandService:
                 # Pin the Bot profile's UUID, as other commands do, rather than any player with that name.
                 identity = control.request("status", name=command.name)["identityId"]
             snapshot = self.world.inventory(command.name, identity)
+            data = {"name": snapshot["name"], "slots": snapshot["slots"]}
             entries = [
                 f"{tr(lang, slot['slot'])}: {slot['name'].removeprefix('minecraft:')} x{slot['count']}"
                 for slot in snapshot["slots"]
             ]
-            return say("inventory: {items}", snapshot["name"], items=", ".join(entries)) if entries else say(
-                "inventory is empty", snapshot["name"]
-            )
+            text = (tr(lang, "inventory: {items}", items=", ".join(entries)) if entries
+                    else tr(lang, "inventory is empty"))
+            return CommandResult(True, (reply(text, snapshot["name"]),), data=data)
         if self.control is None:
             raise RuntimeError("runtime control is not configured")
         if command.operation == "menu":
@@ -1025,7 +1026,8 @@ class BotCommandService:
         if command.operation == "status":
             status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
-            return CommandResult(True, (self._status_reply(status, observed, lang),), data=self.script_status(status))
+            return CommandResult(True, (self._status_reply(status, observed, lang),),
+                                 data=self.script_status(status, observed))
         if command.operation == "spawn":
             existing = None
             try:
@@ -1117,6 +1119,10 @@ class BotCommandService:
         if command.operation == "entities":
             result = control.request("entities", name=command.name)
             entities = result["entities"]
+            if entities and self.world is not None:
+                ids = [entity["runtimeId"] for entity in entities]
+                details = self.world.describe_entities(result["identityId"], ids)
+                entities = [{**entity, **details.get(entity["runtimeId"], {})} for entity in entities]
             data = {"name": result["name"], "identityId": result["identityId"], "entities": entities}
             if not entities:
                 return CommandResult(True, (reply(tr(lang, "no entities nearby"), result["name"]),), data=data)
@@ -1148,11 +1154,17 @@ class BotCommandService:
             result = control.request("interact", name=command.name, **interaction)
         elif command.operation == "hotbar":
             result = control.request("hotbar", name=command.name, **command.parameters)
-            return say(
-                "hotbar slot {slot} selected" if command.parameters else "hotbar slot {slot}",
-                result["name"],
-                slot=result["selectedHotbarSlot"],
-            )
+            text = tr(lang, "hotbar slot {slot} selected" if command.parameters else "hotbar slot {slot}",
+                      slot=result["selectedHotbarSlot"])
+            data = {"name": result["name"], "selectedSlot": result["selectedHotbarSlot"]}
+            if not command.parameters and self.world is not None:
+                try:
+                    slots = self.world.inventory(result["name"], result.get("identityId"))["slots"]
+                except ValueError:
+                    slots = None
+                if slots is not None:
+                    data["slots"] = [slot for slot in slots if slot["slot"].isdecimal() and int(slot["slot"]) <= 9]
+            return CommandResult(True, (reply(text, result["name"]),), data=data)
         elif command.operation == "swap":
             result = control.request("swap", name=command.name, **command.parameters)
             return say("swap {a} {b} requested", result["name"], **command.parameters)
@@ -1285,6 +1297,11 @@ class BotCommandService:
         if status.get("vehicle"):
             vehicle = str(status["vehicle"].get("type") or "?").removeprefix("minecraft:")
             fields.append(tr(lang, "riding {vehicle}", vehicle=vehicle))
+        if observed and observed.get("health") is not None:
+            hunger = (status.get("vitals") or {}).get("hunger")
+            fields.append(tr(lang, "health {health}/{max}", health=f"{observed['health']:g}",
+                             max=f"{observed['maxHealth']:g}")
+                          + ("" if hunger is None else " " + tr(lang, "food {food}", food=f"{hunger:g}")))
         return reply(f"{DIM} | {RESET}".join(fields), status["name"])
 
     @staticmethod
@@ -1332,8 +1349,11 @@ class BotCommandService:
         return tr(lang, "timed: {inputs}", inputs=", ".join(parts)) if parts else None
 
     @staticmethod
-    def script_status(status):
-        """Stable script fields, derived only from the runtime's current/last job."""
+    def script_status(status, observed=None):
+        """Stable script fields: runtime state and jobs, plus BDS observation when the Bot is in the world."""
+        observed = observed or {}
+        vitals = status.get("vitals") or {}
+        position = ({axis: observed[axis] for axis in ("x", "y", "z")} if "x" in observed else None)
         mining = status.get("mining") or {}
         active = mining.get("state") == "active" or bool(mining.get("loopId"))
         continuous = bool(mining.get("continuous")) or "blocksBroken" in mining
@@ -1341,6 +1361,17 @@ class BotCommandService:
             "name": status["name"], "identityId": status["identityId"],
             "connectionState": status["connectionState"],
             "vehicle": status.get("vehicle"),
+            "position": position,
+            "dimension": observed.get("dimension"),
+            "look": {"yaw": observed["yaw"], "pitch": observed["pitch"]} if "yaw" in observed else None,
+            "health": observed.get("health"),
+            "maxHealth": observed.get("maxHealth"),
+            "hunger": vitals.get("hunger"),
+            "saturation": vitals.get("saturation"),
+            "onGround": observed.get("onGround"),
+            "inWater": observed.get("inWater"),
+            "selectedSlot": observed.get("selectedSlot"),
+            "held": observed.get("held"),
             "mining": {
                 "active": active,
                 "mode": ("continuous" if continuous else "once") if mining else None,

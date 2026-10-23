@@ -35,6 +35,7 @@ export const ENTITY_REACH = 6
 // Nearby listings stay short and exclude players: they are interaction targets.
 export const ENTITY_LIST_RADIUS = 16
 export const ENTITY_LIST_LIMIT = 10
+const VITALS = { 'minecraft:player.hunger': 'hunger', 'minecraft:player.saturation': 'saturation' }
 // Bedrock reports player positions at eye height.
 const EYE_HEIGHT = 1.62
 // An exit is a neighbouring block, possibly one level up or down.
@@ -80,6 +81,7 @@ export class BedrockSession extends EventEmitter {
     this.uniqueId = undefined
     this.vehicle = undefined
     this.pendingEntityInteraction = undefined
+    this.attributes = {}
   }
 
   connect () {
@@ -398,6 +400,10 @@ export class BedrockSession extends EventEmitter {
       .sort((a, b) => a.distance - b.distance)
       .slice(0, ENTITY_LIST_LIMIT)
       .map(({ entity, distance }) => this.#describeEntity(entity, distance))
+  }
+
+  vitals () {
+    return { hunger: this.attributes.hunger ?? null, saturation: this.attributes.saturation ?? null }
   }
 
   vehicleStatus () {
@@ -727,6 +733,13 @@ export class BedrockSession extends EventEmitter {
       // coordinates are absolute. Preserve omitted axes from the last update.
       for (const axis of ['x', 'y', 'z']) {
         if (Number.isFinite(packet[axis])) entity.position[axis] = packet[axis]
+      }
+    })
+    this.client.on('update_attributes', packet => {
+      // Hunger and saturation exist only in the client view; the SDK exposes health alone.
+      if (String(packet.runtime_entity_id) !== String(this.client.entityId)) return
+      for (const attribute of packet.attributes ?? []) {
+        if (VITALS[attribute.name]) this.attributes[VITALS[attribute.name]] = Number(attribute.current)
       }
     })
     this.client.on('set_entity_link', packet => {

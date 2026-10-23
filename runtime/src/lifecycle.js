@@ -422,7 +422,8 @@ export class BotLifecycle extends EventEmitter {
       serverChunkRadius: state.state === 'online' ? state.session?.serverChunkRadius ?? null : null,
       inputs: state.inputs.snapshot(),
       mining: state.session?.miningStatus?.() ?? null,
-      vehicle: state.state === 'online' ? state.session?.vehicleStatus?.() ?? null : null
+      vehicle: state.state === 'online' ? state.session?.vehicleStatus?.() ?? null : null,
+      vitals: state.state === 'online' ? state.session?.vitals?.() ?? null : null
     }
   }
 

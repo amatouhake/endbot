@@ -154,6 +154,9 @@ class ServerThreadWorld:
     def observe(self, identity_id):
         return self._bridge.call(lambda: self._world.observe(identity_id))
 
+    def describe_entities(self, identity_id, runtime_ids):
+        return self._bridge.call(lambda: self._world.describe_entities(identity_id, runtime_ids))
+
     def inventory(self, name, identity_id=None):
         return self._bridge.call(lambda: self._world.inventory(name, identity_id))
 

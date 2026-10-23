@@ -762,7 +762,8 @@ test('riding follows the vehicle until BDS removes the link, and dismount leaves
   await nextTick()
   const last = queued.filter(entry => entry.name === 'player_auth_input').at(-1)
   assert.equal(last.packet.position.z, 12)
-  assert.equal(last.packet.position.y, 64)
+  // Eyes as if standing on the block the vehicle is in, not the boarding height.
+  assert.equal(last.packet.position.y, 64 + 1.62)
   assert.deepEqual(session.dismount(), { type: 'minecraft:minecart', runtimeId: '30' })
   const leave = queued.find(entry => entry.name === 'interact' && entry.packet.action_id === 'leave_vehicle')
   assert.equal(leave.packet.target_entity_id, 30n)

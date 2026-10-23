@@ -92,6 +92,16 @@ def install_probe(plugin_class):
                     for dx, dy, dz in ((0, 0, 0), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
                         dimension.get_block_at(x + dx, 195 + dy, z + dz).set_type("minecraft:stone")
                     dimension.get_block_at(x, 195, z).set_type("minecraft:diamond_ore")
+                if request.get("low"):
+                    # Leaves under the boat spot; the Bot stands on leaves one block lower.
+                    for dx in (-1, 0, 1):
+                        for dz in (1, 2, 3):
+                            dimension.get_block_at(x + dx, 199, z + dz).set_type("minecraft:oak_leaves")
+                    for dx in (-1, 0, 1):
+                        for dz in (-1, 0):
+                            dimension.get_block_at(x + dx, 199, z + dz).set_type("minecraft:air")
+                            dimension.get_block_at(x + dx, 198, z + dz).set_type("minecraft:oak_leaves")
+                    player.teleport(Location(dimension, x + 0.5, 199, z + 0.5, 0, 20))
                 if request.get("boat"):
                     # A second vehicle beside the cart for switching without dismount.
                     dimension.spawn_actor(Location(dimension, x + 2.5, 200, z + 2.5, 0, 0), "minecraft:boat")
@@ -245,6 +255,23 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     control("move", direction="forward", durationTicks=20)
     wait("Bot walks after dismount", lambda: math.dist(start, state()["player"]) > 0.5, 10)
     results["ride_minecart"] = {"start": start, "after_walk": state()["player"]}
+
+    # Boarding a boat from one block lower must not make BDS bob the boat.
+    request({"id": "board-low", "entity": "minecraft:boat", "low": True})
+    wait("low boarding fixture", lambda: state().get("id") == "board-low", 10)
+    time.sleep(1.5)
+    command("hotbar 2", "hotbar slot 2")
+    command("interact boat", "interaction with boat (id ")
+    wait("BDS linked the Bot to the boat from below", lambda: riding() is not None, 10)
+    heights = []
+    for _ in range(30):
+        heights.extend(actor["position"][1] for actor in state()["actors"] if actor["type"] == "minecraft:boat")
+        time.sleep(0.1)
+    if max(heights) - min(heights) > 0.02:
+        raise RuntimeError(f"boat bobbed after boarding from below: {min(heights)}..{max(heights)}")
+    results["board_low"] = {"min": min(heights), "max": max(heights)}
+    command("dismount", "dismount from boat requested")
+    wait("BDS removed the low-boarding link", lambda: riding() is None, 10)
 
     # A moving minecart: board while stationary, then power the track.
     prepare("ride-powered", "minecraft:minecart", track=True)

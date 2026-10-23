@@ -323,7 +323,10 @@ class EndstoneWorld:
         return self._facing(self._coordinates(bot.location), target)
 
     def resolve_interaction(self, identity_id: str, parameters: dict[str, object], sender) -> dict[str, object]:
-        """Resolve a client block click without changing the world in the plugin."""
+        """Resolve a client block click without changing the world in the plugin.
+
+        Without a face, the face toward the Bot's eyes is clicked, as for destroy.
+        """
         bot = self.server.get_player(UUID(identity_id))
         if bot is None:
             raise ValueError("Bot is not present in the world")
@@ -331,11 +334,42 @@ class EndstoneWorld:
         coordinates = self._resolve_coordinates(parameters["coordinates"], reference)
         block_position = [math.floor(value) for value in coordinates]
         block = bot.location.dimension.get_block_at(*block_position)
+        face = parameters.get("face")
+        if face is None:
+            face = self._face_toward(bot.location, block_position)
         return {
             "blockPosition": block_position,
             "blockRuntimeId": int(block.data.runtime_id),
-            "face": int(parameters["face"]),
+            "face": int(face),
         }
+
+    @staticmethod
+    def _face_toward(location, cell) -> int:
+        eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
+        offsets = [eye[index] - (cell[index] + 0.5) for index in range(3)]
+        axis = max(range(3), key=lambda index: abs(offsets[index]))
+        # Face numbering uses Y, Z, X order; parity is down/north/west versus up/south/east.
+        return ((5, 4), (1, 0), (3, 2))[axis][0 if offsets[axis] > 0 else 1]
+
+    def reachable_block(self, identity_id: str, block_type: str, reach: float) -> list[int]:
+        """The nearest block of a type the Bot can see and reach (eye to the facing side); x-ray never."""
+        bot = self._bot(identity_id)
+        location = bot.location
+        eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
+        candidates = self.find_blocks(identity_id, block_type, math.ceil(reach) + 1, SEARCH_LIMIT_MAX)
+        candidates.sort(key=lambda entry: math.dist(eye, (entry["x"] + 0.5, entry["y"] + 0.5, entry["z"] + 0.5)))
+        for entry in candidates:
+            cell = [entry["x"], entry["y"], entry["z"]]
+            center = [value + 0.5 for value in cell]
+            distance = math.dist(eye, center)
+            if distance > reach + 0.5 or distance < 0.001:
+                continue
+            direction = [(center[index] - eye[index]) / distance for index in range(3)]
+            found = self._ray_block(location.dimension, eye, direction, distance + 0.5)
+            if found is not None and found[0] == cell:
+                return cell
+        raise LocalizedError("No {block} in sight within {reach} blocks",
+                             block=block_type.removeprefix("minecraft:"), reach=f"{reach:g}")
 
     def _bot(self, identity_id: str):
         bot = self.server.get_player(UUID(identity_id))
@@ -382,9 +416,16 @@ class EndstoneWorld:
         return {"x": position[0], "y": position[1], "z": position[2], "type": str(block.type),
                 "states": {str(key): _state_value(value) for key, value in dict(states).items()}}
 
+    def _known_block(self, block_type: str) -> None:
+        try:
+            self.server.create_block_data(block_type)
+        except (RuntimeError, ValueError) as error:
+            raise LocalizedError("Unknown block type: {block}", block=block_type.removeprefix("minecraft:")) from error
+
     def find_blocks(self, identity_id: str, block_type: str, radius: int, limit: int) -> list[dict]:
         """Nearest exposed blocks of one type around the Bot; hidden blocks are never reported."""
         bot = self._bot(identity_id)
+        self._known_block(block_type)
         location = bot.location
         dimension = location.dimension
         low, high = DIMENSION_HEIGHTS.get(dimension.name, (-64, 319))

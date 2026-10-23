@@ -29,7 +29,7 @@
     {
       "positional": [
         [
-          "entity",
+          "target",
           {
             "type": "stringOrInteger"
           }
@@ -412,6 +412,35 @@
   ],
   "interact": [
     {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "x",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "y",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "z",
+          {
+            "type": "coordinate"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    },
+    {
       "positional": [
         [
           "x",
@@ -452,7 +481,7 @@
     {
       "positional": [
         [
-          "entity",
+          "target",
           {
             "type": "stringOrInteger"
           }
@@ -519,6 +548,18 @@
           ]
         }
       },
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "type",
+          {
+            "type": "string"
+          }
+        ]
+      ],
+      "options": {},
       "prefix": []
     }
   ],
@@ -590,6 +631,18 @@
           "clause": "for"
         }
       },
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "target",
+          {
+            "type": "string"
+          }
+        ]
+      ],
+      "options": {},
       "prefix": []
     }
   ],

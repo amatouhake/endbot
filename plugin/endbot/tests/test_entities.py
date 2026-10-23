@@ -44,13 +44,13 @@ class EntityParseTests(unittest.TestCase):
         }
         for selector, parameters in cases.items():
             with self.subTest(selector=selector):
-                command = parse_command(["Alice", "interact", *selector])
+                command = parse_command(["Alice", "interact", "@" + selector[0]])
                 self.assertEqual((command.operation, command.parameters), ("interact", parameters))
         for operation in ("entities", "dismount"):
             self.assertEqual(parse_command(["Alice", operation]).operation, operation)
 
     def test_invalid_forms(self):
-        for arguments in (["interact"], ["interact", "cow", "pig"], ["interact", "a/:b"],
+        for arguments in (["interact", "cow", "pig"], ["interact", "@a/:b"], ["destroy", "@cow"],
                           ["entities", "all"], ["dismount", "now"]):
             with self.subTest(arguments=arguments), self.assertRaises(CommandSyntaxError):
                 parse_command(["Alice", *arguments])
@@ -68,10 +68,10 @@ class EntityCommandTests(unittest.TestCase):
     def test_interact_entity_sends_only_the_chosen_selector(self):
         control = EntityControl()
         service = PlainCommandService(control)
-        self.assertEqual(service.execute(["Alice", "interact", "cow"]).messages,
+        self.assertEqual(service.execute(["Alice", "interact", "@cow"]).messages,
                          ("Endbot: Alice: interaction with cow (id 20) requested",))
-        service.execute(["Alice", "interact", "20"])
-        service.execute(["Alice", "interact", "nearest"])
+        service.execute(["Alice", "interact", "@20"])
+        service.execute(["Alice", "interact", "@nearest"])
         self.assertEqual([params for method, params in control.calls if method == "interactEntity"], [
             {"name": "Alice", "type": "minecraft:cow"}, {"name": "Alice", "runtimeId": "20"}, {"name": "Alice"},
         ])
@@ -89,7 +89,7 @@ class EntityCommandTests(unittest.TestCase):
         class Japanese:
             language = "ja"
 
-        result = PlainCommandService(EntityControl()).execute(["Alice", "interact", "cow"], Japanese())
+        result = PlainCommandService(EntityControl()).execute(["Alice", "interact", "@cow"], Japanese())
         self.assertEqual(result.messages, ("Endbot: Alice: cow (id 20) への操作を要求しました",))
 
 
@@ -141,7 +141,8 @@ class EntityFormTests(unittest.TestCase):
         modal = gameplay.items[4].action
         self.assertIsInstance(modal, Show)
         self.assertIsInstance(modal.screen, ModalScreen)
-        self.assertEqual(modal_commands(modal.screen, '["Cow"]'), (("Alice", "interact", "cow"),))
+        self.assertEqual(modal_commands(modal.screen, '["Cow"]'), (("Alice", "interact", "@cow"),))
+        self.assertEqual(modal_commands(modal.screen, '["@9"]'), (("Alice", "interact", "@9"),))
         with self.assertRaises(ValueError):
             modal_commands(modal.screen, '["cow pig"]')
 

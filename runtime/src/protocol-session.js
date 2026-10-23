@@ -17,7 +17,6 @@ import {
   createBlockInteractionInput,
   createDropTransaction,
   createSwapTransaction,
-  createEntityInteractTransaction,
   createEntityMouseOver,
   createLeaveVehicle,
   createMiningAction,
@@ -32,6 +31,8 @@ function vector (value) { return { x: value.x, y: value.y, z: value.z } }
 
 // Survival interaction reach from the eyes (the runtime position); BDS still validates each request.
 export const ENTITY_REACH = 6
+// Survival melee reach, as for the crosshair attack target.
+export const ATTACK_REACH = 4.5
 // Nearby listings stay short and exclude players: they are interaction targets.
 export const ENTITY_LIST_RADIUS = 16
 export const ENTITY_LIST_LIMIT = 10
@@ -420,10 +421,19 @@ export class BedrockSession extends EventEmitter {
   // Turn toward the entity now; the right-click goes out on the next tick
   // with that rotation, like a player aiming before clicking.
   interactEntity ({ runtimeId, type } = {}) {
+    return this.#aimAtEntity({ runtimeId, type }, 'interact', ENTITY_REACH)
+  }
+
+  // Left-click a chosen entity: turn toward it and attack on the next tick.
+  attackEntity ({ runtimeId, type } = {}) {
+    return this.#aimAtEntity({ runtimeId, type }, 'attack', ATTACK_REACH)
+  }
+
+  #aimAtEntity ({ runtimeId, type }, actionType, reach) {
     if (!this.position) throw new Error('Bot position is not initialized')
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
     if (this.pendingEntityInteraction) throw new Error('An entity interaction is already pending')
-    const target = this.#entityTarget({ runtimeId, type })
+    const target = this.#entityTarget({ runtimeId, type }, reach)
     const distance = this.#eyeDistance(target)
     const center = { x: target.position.x, y: target.position.y + 0.5, z: target.position.z }
     // The runtime position is already at eye height (Bedrock player positions are).
@@ -431,7 +441,7 @@ export class BedrockSession extends EventEmitter {
     const yaw = Math.atan2(-(center.x - eye.x), center.z - eye.z) * 180 / Math.PI
     const pitch = -Math.atan2(center.y - eye.y, Math.hypot(center.x - eye.x, center.z - eye.z)) * 180 / Math.PI
     this.inputs?.setLook(yaw, pitch)
-    this.pendingEntityInteraction = { runtimeId: String(target.runtimeId) }
+    this.pendingEntityInteraction = { runtimeId: String(target.runtimeId), actionType }
     return this.#describeEntity(target, distance)
   }
 
@@ -453,11 +463,11 @@ export class BedrockSession extends EventEmitter {
     return { type: entity.type, runtimeId: String(entity.runtimeId) }
   }
 
-  #entityTarget ({ runtimeId, type }) {
+  #entityTarget ({ runtimeId, type }, reach = ENTITY_REACH) {
     if (runtimeId !== undefined) {
       const entity = this.entities.get(String(runtimeId))
       if (!entity || entity.type === 'minecraft:player') throw new Error('No entity with that ID is in view')
-      if (this.#eyeDistance(entity) > ENTITY_REACH) throw new Error('That entity is out of reach')
+      if (this.#eyeDistance(entity) > reach) throw new Error('That entity is out of reach')
       return entity
     }
     const wanted = type === undefined ? undefined : (String(type).includes(':') ? String(type) : `minecraft:${type}`)
@@ -467,7 +477,7 @@ export class BedrockSession extends EventEmitter {
       // A rider does not pick its own vehicle as the nearest target.
       if (this.vehicle && String(entity.uniqueId) === this.vehicle.uniqueId) continue
       const distance = this.#eyeDistance(entity)
-      if (distance <= ENTITY_REACH && (!best || distance < best.distance)) best = { entity, distance }
+      if (distance <= reach && (!best || distance < best.distance)) best = { entity, distance }
     }
     if (!best) throw new Error(wanted ? 'No matching entity within reach' : 'No entity within reach')
     return best.entity
@@ -514,12 +524,13 @@ export class BedrockSession extends EventEmitter {
     const target = pending && this.entities.get(pending.runtimeId)
     if (!target) return
     this.client.queue('interact', createEntityMouseOver(target.runtimeId))
-    this.client.queue('inventory_transaction', createEntityInteractTransaction({
+    this.client.queue('inventory_transaction', createAttackTransaction({
       runtimeId: target.runtimeId,
       hotbarSlot: this.hotbarSlot,
       heldItem: this.heldItem,
       position: this.position,
-      clickPosition: { x: 0, y: 0.5, z: 0 }
+      clickPosition: { x: 0, y: 0.5, z: 0 },
+      actionType: pending.actionType
     }))
     this.client.queue('animate', { action_id: 'swing_arm', runtime_entity_id: this.client.entityId, data: 0, has_swing_source: false })
   }

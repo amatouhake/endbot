@@ -628,6 +628,18 @@ add a broad set of read-only queries in 0.4.0, accepting the later release. Deci
   nearest exposed blocks, bounded radius and count. (E) entity details in `entities`: position, health, name tag.
 - `use` stays air-use only; right-clicking what the Bot looks at stays an explicit `interact`.
 
+## BOT-015: One target syntax for attack, destroy and interact
+
+Status: **Implemented for 0.4.0 — console live check passed; Windows-client chat entry of `@` pending** (2026-10-24 JST).
+
+The operator found that blocks could only be targeted by coordinates while entities had type/nearest/id selectors, and
+that `interact` mixed blocks and entities. Decision (2026-10-24 JST, "plan B"): keep the separate left/right-click verbs
+(`attack`/`destroy`, `use`/`interact`) and give them one target syntax: no argument is the crosshair target,
+`<x> <y> <z> [face]` a block, a bare `<block type>` the nearest visible block of that type, and `@<type|id|nearest>` an
+entity (vanilla's selector sign). The alternative of separate right-click verbs for blocks ("plan A") was rejected:
+right-clicking a block opens, toggles, places or tills, so no verb name fits. See
+[targets](COMMANDS.md#targets-crosshair-coordinates-block-types-and--entities).
+
 ## BOT-013: Web script editor
 
 Status: **0.5.0 candidate — not started** (2026-10-24 JST).

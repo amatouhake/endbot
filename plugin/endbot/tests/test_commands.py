@@ -295,12 +295,12 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertEqual(parse_command(["Alice", "destroy", "ONCE"]).parameters, {})
         with self.assertRaisesRegex(ValueError, "no interval mode"):
             parse_command(["Alice", "destroy", "interval", "20"])
-        with self.assertRaisesRegex(ValueError, "once, continuous, stop"):
-            parse_command(["Alice", "destroy", "start"])
+        # A single unknown word is a block type; execution reports an unknown type.
+        self.assertEqual(parse_command(["Alice", "destroy", "start"]).parameters, {"blockType": "minecraft:start"})
         mining = parse_command(["Alice", "destroy", "~", "~-1", "-2", "up"])
         self.assertEqual(mining.parameters["face"], 1)
         self.assertEqual(mining.parameters["coordinates"][1], ("relative", -1.0))
-        for tail in (["one"], ["1", "64"], ["1", "64", "2", "badface"], ["nan", "64", "2"]):
+        for tail in (["1", "64"], ["1", "64", "2", "badface"], ["nan", "64", "2"]):
             with self.assertRaises(ValueError):
                 parse_command(["Alice", "destroy", *tail])
         self.assertEqual(parse_command(["Alice", "hotbar"]).parameters, {})

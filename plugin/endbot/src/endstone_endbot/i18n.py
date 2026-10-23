@@ -359,11 +359,6 @@ JA: dict[str, str] = {
     "default restores the shared runtime setting; BDS may clamp the requested range.": (
         "default で共通の runtime 設定に戻します。BDS が値を制限することがあります。"
     ),
-    "right-click a block face or an entity": "ブロックの面かエンティティを右クリックする",
-    "One argument turns to the nearest matching entity within 6 blocks and uses the held item.":
-        "引数が1つなら、6ブロック以内で一番近いエンティティの方を向き、手に持ったアイテムを使います。",
-    "That feeds, breeds, shears, names and rides. An id comes from entities; players are never targets.":
-        "エサやり、繁殖、毛刈り、名付け、乗車に使えます。id は entities で確認できます。プレイヤーは対象外です。",
     "list nearby entities": "近くのエンティティを一覧表示する",
     "Shows up to 10 non-player entities within 16 blocks with their id and distance.":
         "16ブロック以内のプレイヤー以外のエンティティを最大10件、id と距離つきで表示します。",
@@ -376,6 +371,24 @@ JA: dict[str, str] = {
     "interaction with {entity} (id {id}) requested": "{entity} (id {id}) への操作を要求しました",
     "dismount from {vehicle} requested": "{vehicle} から降りるよう要求しました",
     "riding {vehicle}": "{vehicle} に乗車中",
+    "right-click a block or an entity": "ブロックかエンティティを右クリックする",
+    "No argument right-clicks what the Bot looks at. A block type is the nearest visible one within 6 blocks.":
+        "引数なしなら Bot が見ているものを右クリックします。"
+        "ブロックの種類なら6ブロック以内で見えている一番近いものです。",
+    "@ picks an entity within 6 blocks, turns to it and uses the held item: feed, breed, shear, name, ride.":
+        "@ は6ブロック以内のエンティティを選び、その方を向いて手に持ったアイテムを使います。"
+        "エサやり、繁殖、毛刈り、名付け、乗車。",
+    "Without a face, the side facing the Bot. BDS decides reach and outcome; players are never targets.":
+        "面を省くと Bot に向いた面です。届くかどうかと結果は BDS が決めます。プレイヤーは対象外です。",
+    "@ turns to the nearest matching entity within 4.5 blocks and attacks it once; players are never targets.":
+        "@ は4.5ブロック以内で一番近い該当エンティティの方を向き、1回攻撃します。プレイヤーは対象外です。",
+    "A block type breaks the nearest one the Bot can see within 5 blocks.":
+        "ブロックの種類を指定すると、5ブロック以内で Bot に見えている一番近いものを壊します。",
+    "Unknown block type: {block}": "不明なブロックの種類です: {block}",
+    "No {block} in sight within {reach} blocks": "{reach}ブロック以内に見えている {block} はありません",
+    "destroy breaks blocks; use attack @<entity>":
+        "destroy はブロックを壊します。エンティティには attack @<entity> を使ってください",
+    "attack on {entity} (id {id}) requested": "{entity} (id {id}) への攻撃を要求しました",
     "show one nearby entity in detail": "近くのエンティティ1体の詳細を表示する",
     "Position, distance, health and name tag of the nearest match within 16 blocks; players are excluded.":
         "16ブロック以内で一番近い該当エンティティの位置、距離、体力、名前を表示します。プレイヤーは対象外です。",

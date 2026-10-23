@@ -771,10 +771,12 @@ export class BedrockSession extends EventEmitter {
       // offset and any requested exit instead of treating it as a new ride.
       if (this.vehicle?.uniqueId === String(link.ridden_entity_id)) return
       const entity = this.#entityByUniqueId(link.ridden_entity_id)
-      // Keep the seat at the height difference seen when boarding; BDS sends
-      // the vehicle's movement, not the rider's, while the link lasts.
+      // Report the rider's eyes as if standing on the block the vehicle is in,
+      // as when boarding from the same level. Using the boarding height made a
+      // Bot that boarded from below report a seat inside the boat, and BDS
+      // kept pushing the boat up and down. BDS sends the vehicle's movement.
       this.vehicle = { uniqueId: String(link.ridden_entity_id),
-        offsetY: entity && this.position ? this.position.y - entity.position.y : 0 }
+        offsetY: entity ? EYE_HEIGHT - (entity.position.y - Math.floor(entity.position.y)) : EYE_HEIGHT }
       this.inputs?.setMovement('stop')
       this.horizontalVelocity = { x: 0, z: 0 }
       this.verticalVelocity = 0

@@ -301,7 +301,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:inventory()` | none | none |
 | `:entities()` | none | none |
 | `:entity()` | none | none |
-| `:entity()` | entity: stringOrInteger | none |
+| `:entity()` | target: stringOrInteger | none |
 | `:target()` | none | none |
 | `:block()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:blocks()` | type: string | radius: integer, limit: integer |
@@ -326,14 +326,18 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:hotbar()` | slot: integer | none |
 | `:radius()` | none | none |
 | `:radius()` | value: integerOrDefault | none |
+| `:interact()` | none | none |
+| `:interact()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:interact()` | x: coordinate, y: coordinate, z: coordinate, face: down / up / north / south / west / east | none |
-| `:interact()` | entity: stringOrInteger | none |
+| `:interact()` | target: stringOrInteger | none |
 | `:destroy()` | none | mode: once / continuous / stop, ticks: integer, count: integer |
 | `:destroy()` | x: coordinate, y: coordinate, z: coordinate | face: down / up / north / south / west / east |
+| `:destroy()` | type: string | none |
 | `:drop()` | none | none |
 | `:drop()` | selector: stringOrInteger | count: integer |
 | `:jump()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |
 | `:attack()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |
+| `:attack()` | target: string | none |
 | `:use()` | none | mode: once / continuous / stop, interval: integer, hold: integer, ticks: integer |
 | `:sprint()` | value: boolean | none |
 | `:sneak()` | value: boolean | none |

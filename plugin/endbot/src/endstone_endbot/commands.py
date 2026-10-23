@@ -199,8 +199,10 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "attack": HelpTopic(
         "attack",
         "make a Bot attack",
-        ("attack [once|continuous|interval <ticks>|stop]", "attack [continuous|interval <ticks>] for <ticks>"),
-        ("Continuous actions run every input tick; for stops them after that many ticks.",),
+        ("attack [once|continuous|interval <ticks>|stop]", "attack [continuous|interval <ticks>] for <ticks>",
+         "attack @<type|id|nearest>"),
+        ("Continuous actions run every input tick; for stops them after that many ticks.",
+         "@ turns to the nearest matching entity within 4.5 blocks and attacks it once; players are never targets."),
     ),
     "use": HelpTopic(
         "use",
@@ -260,12 +262,12 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     ),
     "interact": HelpTopic(
         "interact",
-        "right-click a block face or an entity",
-        ("interact <x> <y> <z> <down|up|north|south|west|east>", "interact <type|nearest|id>"),
+        "right-click a block or an entity",
+        ("interact", "interact <x> <y> <z> [face]", "interact <block type>", "interact @<type|id|nearest>"),
         (
-            "BDS decides reach, legality and inventory changes.",
-            "One argument turns to the nearest matching entity within 6 blocks and uses the held item.",
-            "That feeds, breeds, shears, names and rides. An id comes from entities; players are never targets.",
+            "No argument right-clicks what the Bot looks at. A block type is the nearest visible one within 6 blocks.",
+            "@ picks an entity within 6 blocks, turns to it and uses the held item: feed, breed, shear, name, ride.",
+            "Without a face, the side facing the Bot. BDS decides reach and outcome; players are never targets.",
         ),
     ),
     "entities": HelpTopic(
@@ -315,9 +317,11 @@ HELP_TOPICS: dict[str, HelpTopic] = {
             "destroy [continuous] for <ticks> [count <blocks>]",
             "destroy [continuous] count <blocks>",
             "destroy <x> <y> <z> [down|up|north|south|west|east]",
+            "destroy <block type>",
         ),
         (
             "once (default) breaks one block in sight; x y z breaks that block. ~ is relative to the Bot.",
+            "A block type breaks the nearest one the Bot can see within 5 blocks.",
             "continuous holds left-click along the Bot's sight, also after you log off; waits when empty.",
             "Other commands do not cancel it; only destroy stop, stop, death or disconnect end it.",
             "for ends continuous mining after that many ticks, aborting a block in progress.",
@@ -516,6 +520,22 @@ def _coordinate(value: str) -> float | tuple[str, float]:
     if value.startswith("~"):
         return ("relative", _number(value[1:] or "0", Text("relative coordinate")))
     return _number(value, Text("coordinate"))
+
+
+def _block_type(raw: str) -> str:
+    block_type = raw.lower() if ":" in raw else f"minecraft:{raw.lower()}"
+    if not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_./-]+", block_type):
+        raise CommandSyntaxError("Invalid block type")
+    return block_type
+
+
+def _target_token(raw: str) -> dict[str, object]:
+    """`@<type|id|nearest>` is an entity; a bare id stays an entity; anything else is a block type."""
+    if raw.startswith("@"):
+        return _entity_selector(raw[1:])
+    if raw.isascii() and raw.isdecimal():
+        return _entity_selector(raw)
+    return {"blockType": _block_type(raw)}
 
 
 def _entity_selector(raw: str) -> dict[str, object]:
@@ -798,8 +818,21 @@ def parse_command(arguments: list[str]) -> BotCommand:
         return BotCommand(operation, name, parameters)
     # Like tp, the argument shape picks the target: one token is an entity,
     # coordinates and a face are a block.
-    if operation in {"interact", "entity"} and len(remaining) == 1:
-        return BotCommand(operation, name, _entity_selector(remaining[0]))
+    # attack, destroy and interact share target forms: nothing is the crosshair,
+    # `<x> <y> <z> [face]` a block, a bare type the nearest visible block and
+    # `@<type|id|nearest>` an entity.
+    if operation == "entity" and len(remaining) == 1:
+        return BotCommand(operation, name, _entity_selector(remaining[0].removeprefix("@")))
+    if operation == "interact" and not remaining:
+        return BotCommand(operation, name, {"crosshair": True})
+    if operation == "interact" and len(remaining) == 1:
+        return BotCommand(operation, name, _target_token(remaining[0]))
+    if operation == "interact" and len(remaining) == 3:
+        target, unused = _position(remaining)
+        assert not unused
+        return BotCommand(operation, name, target)
+    if operation == "attack" and len(remaining) == 1 and remaining[0].startswith("@"):
+        return BotCommand(operation, name, _entity_selector(remaining[0][1:]))
     if operation == "interact" and len(remaining) == 4 and remaining[-1].lower() in BLOCK_FACES:
         target, unused = _position(remaining[:3])
         assert not unused
@@ -812,6 +845,10 @@ def parse_command(arguments: list[str]) -> BotCommand:
         modes = [value.lower() for value in remaining]
         if not remaining or modes == ["once"]:
             return BotCommand(operation, name)
+        if len(remaining) == 1 and remaining[0].startswith("@"):
+            raise CommandSyntaxError("destroy breaks blocks; use attack @<entity>")
+        if len(remaining) == 1 and modes[0] not in {"once", "continuous", "stop", "interval", *DESTROY_CLAUSES}:
+            return BotCommand(operation, name, {"blockType": _block_type(remaining[0])})
         if modes in (["continuous"], ["stop"]):
             return BotCommand(operation, name, {"mode": modes[0]})
         if modes and modes[0] == "interval":
@@ -1151,7 +1188,11 @@ class BotCommandService:
                 target = {"mode": "stop"}
             else:
                 status = control.request("status", name=command.name)
-                target = self.world.resolve_mining(status["identityId"], command.parameters, sender)
+                parameters = command.parameters
+                if "blockType" in parameters:
+                    cell = self.world.reachable_block(status["identityId"], parameters["blockType"], 5.0)
+                    parameters = {"coordinates": cell}
+                target = self.world.resolve_mining(status["identityId"], parameters, sender)
             result = control.request("mine", name=command.name, **target)
             key = command.name.casefold()
             with self._mining_lock:
@@ -1230,12 +1271,35 @@ class BotCommandService:
                 fields.append(tr(lang, "named {name}", name=entity["nameTag"]))
             return CommandResult(True, (reply(f"{DIM} | {RESET}".join(fields), result["name"]),),
                                  data={"name": result["name"], "entity": entity})
-        if command.operation == "interact" and "entity" in command.parameters:
+        if command.operation == "interact" and command.parameters.get("crosshair"):
+            if self.world is None:
+                raise ValueError("Bot is not present in the world")
+            status = control.request("status", name=command.name)
+            seen = self.world.target(status["identityId"])
+            if seen["kind"] == "entity":
+                command = BotCommand("interact", command.name, {"entity": "id",
+                                                                "runtimeId": seen["entity"]["runtimeId"]})
+            elif seen["kind"] == "block":
+                block = seen["block"]
+                command = BotCommand("interact", command.name, {"coordinates": [block["x"], block["y"], block["z"]],
+                                                                "face": BLOCK_FACES[block["face"]]})
+            else:
+                raise LocalizedError("looking at nothing within 6 blocks")
+        if command.operation in {"interact", "attack"} and "entity" in command.parameters:
             selector = {key: command.parameters[key] for key in ("runtimeId", "type") if key in command.parameters}
-            result = control.request("interactEntity", name=command.name, **selector)
+            method = "attackEntity" if command.operation == "attack" else "interactEntity"
+            result = control.request(method, name=command.name, **selector)
             entity = result["entity"]
-            return say("interaction with {entity} (id {id}) requested", result["name"],
-                       entity=entity["type"].removeprefix("minecraft:"), id=entity["runtimeId"])
+            template = ("attack on {entity} (id {id}) requested" if command.operation == "attack"
+                        else "interaction with {entity} (id {id}) requested")
+            return say(template, result["name"], entity=entity["type"].removeprefix("minecraft:"),
+                       id=entity["runtimeId"])
+        if command.operation == "interact" and "blockType" in command.parameters:
+            if self.world is None:
+                raise ValueError("Bot is not present in the world")
+            status = control.request("status", name=command.name)
+            cell = self.world.reachable_block(status["identityId"], command.parameters["blockType"], 6.0)
+            command = BotCommand("interact", command.name, {"coordinates": cell})
         if command.operation in {"target", "block", "blocks"}:
             if self.world is None:
                 raise ValueError("Bot is not present in the world")

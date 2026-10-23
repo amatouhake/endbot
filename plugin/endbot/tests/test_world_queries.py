@@ -30,7 +30,12 @@ def world(blocks, actors=(), yaw=0.0, pitch=0.0, position=(0.5, 64.0, 0.5)):
     dimension = Dimension(blocks, actors)
     location = SimpleNamespace(x=position[0], y=position[1], z=position[2], yaw=yaw, pitch=pitch, dimension=dimension)
     bot = SimpleNamespace(location=location)
-    return EndstoneWorld(SimpleNamespace(get_player=lambda _identity: bot))
+    def create_block_data(name):
+        if name == "minecraft:start":
+            raise RuntimeError("unknown block")
+        return SimpleNamespace(runtime_id=1)
+
+    return EndstoneWorld(SimpleNamespace(get_player=lambda _identity: bot, create_block_data=create_block_data))
 
 
 def actor(runtime_id, actor_type, x, y, z):
@@ -172,3 +177,102 @@ class FeedbackTests(unittest.TestCase):
         self.assertEqual(hotbar.messages, ("Endbot: Alice: hotbar slot 2: 2: iron_pickaxe x1 (210/250)",))
         inventory = service.execute(["Alice", "inventory"])
         self.assertIn("iron_pickaxe x1 (210/250)", inventory.messages[0])
+
+
+class SelectorTests(unittest.TestCase):
+    def test_target_forms_parse_alike(self):
+        cases = {
+            ("interact",): {"crosshair": True},
+            ("interact", "@cow"): {"entity": "type", "type": "minecraft:cow"},
+            ("interact", "@9"): {"entity": "id", "runtimeId": "9"},
+            ("interact", "9"): {"entity": "id", "runtimeId": "9"},
+            ("interact", "@nearest"): {"entity": "nearest"},
+            ("interact", "Chest"): {"blockType": "minecraft:chest"},
+            ("attack", "@zombie"): {"entity": "type", "type": "minecraft:zombie"},
+            ("destroy", "oak_log"): {"blockType": "minecraft:oak_log"},
+            ("entity", "@cow"): {"entity": "type", "type": "minecraft:cow"},
+        }
+        for arguments, parameters in cases.items():
+            with self.subTest(arguments=arguments):
+                self.assertEqual(parse_command(["Alice", *arguments]).parameters, parameters)
+        self.assertNotIn("face", parse_command(["Alice", "interact", "1", "64", "2"]).parameters)
+        self.assertEqual(parse_command(["Alice", "attack"]).operation, "action")
+
+    def test_reachable_block_needs_line_of_sight_and_known_types(self):
+        from endstone_endbot.i18n import LocalizedError
+
+        log = Block("minecraft:oak_log")
+        stone = Block("minecraft:stone")
+        # A log 3 blocks ahead at eye level is visible; a second one behind it is not chosen first.
+        blocks = {(0, 65, 3): log, (0, 65, 5): log}
+        self.assertEqual(world(blocks).reachable_block(BOT["identityId"], "minecraft:oak_log", 5.0), [0, 65, 3])
+        # Walled off by stone in between: no visible log.
+        walled = {(0, 65, 3): log, (0, 65, 2): stone, (1, 65, 2): stone, (-1, 65, 2): stone,
+                  (0, 66, 2): stone, (0, 64, 2): stone}
+        with self.assertRaises(LocalizedError):
+            world(walled).reachable_block(BOT["identityId"], "minecraft:oak_log", 5.0)
+        with self.assertRaisesRegex(ValueError, "Unknown block type"):
+            world(blocks).find_blocks(BOT["identityId"], "minecraft:start", 8, 10)
+
+    def test_interaction_face_defaults_toward_the_bot(self):
+        w = world({(0, 64, 3): Block("minecraft:chest")})
+        interaction = w.resolve_interaction(BOT["identityId"], {"coordinates": [0, 64, 3]}, None)
+        self.assertEqual(interaction["face"], 2)  # north faces the Bot at z=0.5
+
+
+class SelectorCommandTests(unittest.TestCase):
+    class Control:
+        def __init__(self):
+            self.calls = []
+
+        def request(self, method, **params):
+            self.calls.append((method, params))
+            if method in {"interactEntity", "attackEntity"}:
+                return {**BOT, "entity": {"runtimeId": "9", "type": "minecraft:zombie", "distance": 2.0}}
+            return BOT
+
+    class World:
+        def __init__(self, seen):
+            self.seen = seen
+
+        def target(self, identity):
+            return self.seen
+
+        def reachable_block(self, identity, block_type, reach):
+            self.reach = (block_type, reach)
+            return [1, 64, 2]
+
+        def resolve_interaction(self, identity, parameters, sender):
+            self.interaction = parameters
+            return {"blockPosition": [1, 64, 2], "blockRuntimeId": 3, "face": parameters.get("face", 2)}
+
+        def resolve_mining(self, identity, parameters, sender):
+            self.mining = parameters
+            return {"blockPosition": [1, 64, 2], "blockRuntimeId": 3, "blockName": "minecraft:oak_log", "face": 2,
+                    "yaw": 0.0, "pitch": 0.0, "dimension": "Overworld"}
+
+    def test_attack_entity_and_crosshair_interact(self):
+        control = self.Control()
+        entity_view = {"kind": "entity", "entity": {"runtimeId": "9", "type": "minecraft:cow"}, "block": None,
+                       "distance": 2.0}
+        service = PlainCommandService(control, self.World(entity_view))
+        self.assertEqual(service.execute(["Alice", "attack", "@zombie"]).messages,
+                         ("Endbot: Alice: attack on zombie (id 9) requested",))
+        self.assertEqual(control.calls[-1], ("attackEntity", {"name": "Alice", "type": "minecraft:zombie"}))
+        service.execute(["Alice", "interact"])
+        self.assertEqual(control.calls[-1], ("interactEntity", {"name": "Alice", "runtimeId": "9"}))
+        block_view = {"kind": "block", "entity": None, "distance": 2.0,
+                      "block": {"x": 1, "y": 64, "z": 2, "face": "up", "type": "minecraft:chest"}}
+        world_view = self.World(block_view)
+        PlainCommandService(control, world_view).execute(["Alice", "interact"])
+        self.assertEqual(world_view.interaction, {"coordinates": [1, 64, 2], "face": 1})
+
+    def test_block_types_resolve_the_nearest_visible_block(self):
+        control, world_view = self.Control(), self.World(None)
+        service = PlainCommandService(control, world_view)
+        service.execute(["Alice", "interact", "chest"])
+        self.assertEqual(world_view.reach, ("minecraft:chest", 6.0))
+        self.assertEqual(world_view.interaction, {"coordinates": [1, 64, 2]})
+        service.execute(["Alice", "destroy", "oak_log"])
+        self.assertEqual(world_view.reach, ("minecraft:oak_log", 5.0))
+        self.assertEqual(world_view.mining, {"coordinates": [1, 64, 2]})

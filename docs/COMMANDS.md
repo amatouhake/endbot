@@ -344,7 +344,9 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice hotbar <1-9>
 /bot Alice swap <a> <b>
 /bot Alice hold <item>
-/bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
+/bot Alice interact [<x> <y> <z> [face] | <block type> | @<type|id|nearest>]
+/bot Alice attack @<type|id|nearest>
+/bot Alice destroy <block type>
 /bot Alice entities
 /bot Alice entity [type|nearest|id]
 /bot Alice target
@@ -499,6 +501,24 @@ item can therefore place a block in Survival without the plugin editing the worl
 `drop stack` requests the selected stack through normal inventory transactions; wider selectors use the same legacy
 container-to-world path with exact observed item data (see the inventory/drop grammar above).
 
+### Targets: crosshair, coordinates, block types and `@` entities
+
+Left- and right-click verbs stay separate (`attack`/`destroy`, `use`/`interact`), and their targets share one syntax
+(decided 2026-10-24):
+
+| Form | Target | Examples |
+| --- | --- | --- |
+| none | what the Bot is looking at | `interact`, `destroy`, `attack` |
+| `<x> <y> <z> [face]` | that block; without a face, the side facing the Bot | `interact ~~-1~`, `destroy 1 64 2 up` |
+| `<block type>` | the nearest block of that type the Bot can see (`interact` within 6 blocks, `destroy` within 5) | `interact chest`, `destroy oak_log` |
+| `@<type\|id\|nearest>` | the nearest matching non-player entity (`interact` within 6 blocks, `attack` within 4.5) | `interact @cow`, `attack @zombie`, `interact @9` |
+
+`@` follows vanilla's entity-selector sign; `entity` also accepts it (`entity @cow`). A bare id still means an entity,
+so script calls such as `:interact(entity.runtimeId)` keep working. Unknown block types are reported as such, and
+`destroy @…` points to `attack`. In Luau: `bot:interact("@cow")`, `bot:interact("chest")`, `bot:destroy("oak_log")`,
+`bot:attack("@zombie")`. Live check (2026-10-24, Windows RakNet, console): `interact @cow` fed the cow, the crosshair
+`interact` reached it, `attack @cow` damaged it and `destroy dirt` broke the nearest dirt block.
+
 ### Looking around
 
 Coordinates anywhere in `/bot` accept vanilla's compact relative form: `~~-1~` is `~ ~-1 ~`. `inventory` and
@@ -518,8 +538,7 @@ result like `status`. The Gameplay form's **Look around...** offers them with th
 
 `entities` lists up to 10 non-player entities within 16 blocks of the Bot, nearest first, as
 `<type> (id <id>) <distance>m`. A Group target is a query like `status`: every member's list is printed, with no
-history or audit entry. Like `tp`, `interact` tells its target by the argument shape: coordinates and a face are a
-block, one token is an entity. `interact <type|nearest|id>` picks the nearest matching non-player entity within 6 blocks
+history or audit entry. `interact @<type|nearest|id>` picks the nearest matching non-player entity within 6 blocks
 (`cow` and `minecraft:cow` are the same; `nearest` takes any type; an id comes from `entities`), turns the Bot
 toward it and right-clicks it with the held item on the next input tick. This is the vanilla client path
 (`item_use_on_entity` with action `interact`): feeding and breeding consume the held item, shears shear, a name tag

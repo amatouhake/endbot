@@ -856,3 +856,16 @@ test('a plugin unsupported notice starts a fall only for this Bot on the ground 
   notice(session.profile.identityId)
   assert.equal(session.onGround, true)
 })
+
+test('attack @selector turns to the entity and left-clicks it within melee reach', async t => {
+  const queued = []
+  const { session, add } = await entitySession(t, queued)
+  add(70n, 'minecraft:zombie', { x: 0, y: 64, z: 3 })
+  add(71n, 'minecraft:zombie', { x: 0, y: 64, z: 5.5 })
+  assert.throws(() => session.attackEntity({ runtimeId: '71' }), /out of reach/)
+  assert.equal(session.attackEntity({ type: 'zombie' }).runtimeId, '70')
+  await nextTick()
+  const transaction = queued.find(entry => entry.name === 'inventory_transaction')
+  assert.equal(transaction.packet.transaction.transaction_data.action_type, 'attack')
+  assert.equal(transaction.packet.transaction.transaction_data.entity_runtime_id, 70n)
+})

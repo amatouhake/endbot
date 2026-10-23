@@ -282,6 +282,12 @@ export class BotLifecycle extends EventEmitter {
     return { ...this.#status(profile), entity: state.session.interactEntity({ runtimeId, type }) }
   }
 
+  attackEntity (name, selector = {}) {
+    const { runtimeId, type } = entitySelector(selector)
+    const { profile, state } = this.#requireOnline(name)
+    return { ...this.#status(profile), entity: state.session.attackEntity({ runtimeId, type }) }
+  }
+
   dismount (name, exit = undefined) {
     if (exit !== undefined && !(exit && typeof exit === 'object' && ['x', 'y', 'z'].every(axis => Number.isFinite(exit[axis])))) {
       throw new Error('Invalid dismount exit')

@@ -126,6 +126,7 @@ export class ControlServer {
       case 'interact': return this.lifecycle.interact(params.name, params)
       case 'entities': return this.lifecycle.entities(params.name, { runtimeId: params.runtimeId, type: params.type })
       case 'interactEntity': return this.lifecycle.interactEntity(params.name, { runtimeId: params.runtimeId, type: params.type })
+      case 'attackEntity': return this.lifecycle.attackEntity(params.name, { runtimeId: params.runtimeId, type: params.type })
       case 'dismount': return this.lifecycle.dismount(params.name, params.exit)
       case 'mine': return this.lifecycle.mine(params.name, params)
       case 'drop': return this.lifecycle.drop(params.name, { selector: params.selector, count: params.count, stack: params.stack })

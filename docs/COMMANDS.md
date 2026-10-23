@@ -535,7 +535,14 @@ blocks above it, at the vehicle's level, then one above, then one below. Minecar
 rear left, front right, front left, rear, front); boats prefer the Bot's look direction
 ([Boat#Exiting](https://minecraft.wiki/w/Boat#Exiting)); other rideables use the same ring, matching Bedrock's default
 "valid ground position around the entity". Block passability is a conservative name list (unknown blocks are solid).
-With no free spot the Bot stays where the vehicle was. BDS ignores a rider's reported position but corrects a sideways
+With no free spot the Bot stays where the vehicle was. The exit point stays inside its block, 0.05 clear of the
+vehicle's box and the block edges, so the Bot never rests on a boat's edge or a neighbouring block.
+
+The runtime has no world collision: it starts falling when BDS corrects its position. BDS skips that correction while
+a boat (or another standable entity) is nearby, so a Bot whose floor was removed next to a boat stood in the air. The
+plugin now checks every hotbar-sync interval whether a Bot standing on a block top has a solid block under its feet
+box and, if not, tells the runtime to start falling; BDS then corrects the landing. Fractional heights (slabs, carpets),
+water, flight and standing on a boat or shulker are never reported. BDS ignores a rider's reported position but corrects a sideways
 jump right after the link ends, so the Bot reports the exit spot for two ticks while still riding and then sends the
 leave action; its first free input then does not move. Live check (2026-10-24): switching from a minecart to a boat
 without dismounting, a boat exit in the look direction and a moving-minecart side exit, each with no correction. Steering horses or

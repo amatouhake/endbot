@@ -92,6 +92,70 @@ def _exposed(dimension, x, y, z) -> bool:
     return any(_passable(str(dimension.get_block_at(x + dx, y + dy, z + dz).type)) for dx, dy, dz in NEIGHBOURS)
 
 
+# Half the collision width of common rideables (Bedrock entity definitions); a
+# rider placed inside this box stands on the vehicle instead of the block.
+VEHICLE_HALF_WIDTHS = {"minecraft:minecart": 0.49, "minecraft:boat": 0.7, "minecraft:chest_boat": 0.7,
+                       "minecraft:pig": 0.45, "minecraft:strider": 0.45, "minecraft:llama": 0.45,
+                       "minecraft:trader_llama": 0.45, "minecraft:camel": 0.85}
+DEFAULT_VEHICLE_HALF_WIDTH = 0.7
+PLAYER_HALF_WIDTH = 0.3
+# Keep a margin from both the vehicle and the cell edges: a box that merely
+# touches another counts as resting on it, so the Bot would not fall.
+CLEARANCE = 0.05
+
+
+def _clear_of_vehicle(cell: tuple[int, int], vehicle: tuple[float, float], half: float) -> tuple[float, float] | None:
+    """A point whose player box lies inside the cell and clear of the vehicle box, nearest the cell centre."""
+    gap = half + PLAYER_HALF_WIDTH + CLEARANCE
+    point = [cell[0] + 0.5, cell[1] + 0.5]
+    if all(abs(point[axis] - vehicle[axis]) >= gap for axis in (0, 1)):
+        return tuple(point)
+    for axis in (0, 1):
+        if abs(point[axis] - vehicle[axis]) >= gap:
+            return tuple(point)
+        low = cell[axis] + PLAYER_HALF_WIDTH + CLEARANCE
+        high = cell[axis] + 1 - PLAYER_HALF_WIDTH - CLEARANCE
+        target = vehicle[axis] + (gap if point[axis] >= vehicle[axis] else -gap)
+        if low <= target <= high:
+            point[axis] = target
+            return tuple(point)
+    return None
+
+
+# Entities a player can stand on; a Bot resting on one is supported by it.
+STANDABLE_HALF_WIDTHS = {"minecraft:boat": 0.7, "minecraft:chest_boat": 0.7, "minecraft:shulker": 0.5}
+
+
+def unsupported(player) -> bool:
+    """True when a Bot standing exactly on a block top has no solid block under its feet box.
+
+    Conservative: fractional feet heights (slabs, carpets, farmland), water,
+    flight and standing on a boat or shulker are never reported.
+    """
+    location = player.location
+    x, y, z = float(location.x), float(location.y), float(location.z)
+    if abs(y - round(y)) > 0.001 or player.is_in_water or getattr(player, "is_flying", False):
+        return False
+    dimension = location.dimension
+    floor_y = round(y) - 1
+    edge = PLAYER_HALF_WIDTH - 0.001
+    cells = {(math.floor(x + dx), math.floor(z + dz)) for dx in (-edge, edge) for dz in (-edge, edge)}
+    for cell_x, cell_z in cells:
+        floor = str(dimension.get_block_at(cell_x, floor_y, cell_z).type)
+        if not _passable(floor) and floor not in NON_FLOOR_BLOCKS:
+            return False
+    for actor in dimension.actors:
+        half = STANDABLE_HALF_WIDTHS.get(actor.type)
+        if half is None:
+            continue
+        actor_location = actor.location
+        if (abs(float(actor_location.x) - x) < half + PLAYER_HALF_WIDTH
+                and abs(float(actor_location.z) - z) < half + PLAYER_HALF_WIDTH
+                and -0.1 <= y - float(actor_location.y) <= 1.1):
+            return False
+    return True
+
+
 def _cardinal(yaw: float) -> tuple[int, int]:
     radians = math.radians(round(yaw / 90) * 90)
     return round(-math.sin(radians)), round(math.cos(radians))
@@ -370,7 +434,11 @@ class EndstoneWorld:
                 if (_passable(floor) or floor in NON_FLOOR_BLOCKS or floor in HAZARD_BLOCKS
                         or not _passable(feet) or not _passable(head)):
                     continue
-                return {"x": x + 0.5, "y": float(y), "z": z + 0.5}
+                point = _clear_of_vehicle((x, z), (float(location.x), float(location.z)),
+                                          VEHICLE_HALF_WIDTHS.get(vehicle.type, DEFAULT_VEHICLE_HALF_WIDTH))
+                if point is None:
+                    continue
+                return {"x": point[0], "y": float(y), "z": point[1]}
         return None
 
     def assert_name_available(self, name: str, identity_id: str | None = None) -> None:

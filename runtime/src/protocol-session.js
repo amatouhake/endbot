@@ -35,6 +35,8 @@ export const ENTITY_REACH = 6
 // Nearby listings stay short and exclude players: they are interaction targets.
 export const ENTITY_LIST_RADIUS = 16
 export const ENTITY_LIST_LIMIT = 10
+// Sent by the plugin when the Bot stands on nothing (see inventory_sync.py).
+const GROUND_EVENT = 'endbot:unsupported-v1'
 const VITALS = { 'minecraft:player.hunger': 'hunger', 'minecraft:player.saturation': 'saturation' }
 // Bedrock reports player positions at eye height.
 const EYE_HEIGHT = 1.62
@@ -487,6 +489,17 @@ export class BedrockSession extends EventEmitter {
     return { runtimeId: String(entity.runtimeId), type: entity.type, distance: Math.round(distance * 10) / 10 }
   }
 
+  // The plugin saw no block under the Bot's feet. Without world collision the
+  // runtime only falls on BDS corrections, which BDS skips near a boat; start
+  // falling and let BDS correct the landing (or put us back if we were wrong).
+  #acceptUnsupported (data) {
+    let identityId
+    try { identityId = JSON.parse(data).identityId } catch { return }
+    if (identityId !== this.profile.identityId || this.vehicle || !this.onGround) return
+    this.onGround = false
+    this.verticalVelocity = 0
+  }
+
   #leaveVehicle () {
     if (this.vehicle?.exit) this.position = { ...this.vehicle.exit.position }
     this.vehicle = undefined
@@ -609,6 +622,7 @@ export class BedrockSession extends EventEmitter {
       this.itemPalette = new Map(packet.itemstates.map(item => [item.name, item.runtime_id]))
     })
     this.client.on('script_custom_event', packet => {
+      if (packet.event_name === GROUND_EVENT) return this.#acceptUnsupported(packet.event_data)
       if (packet.event_name !== INVENTORY_EVENT || !this.spawned || this.disconnecting || this.transportClosed) return
       try {
         const snapshot = this.inventoryObservation.accept(packet.event_data, this.profile.identityId, this.itemPalette)

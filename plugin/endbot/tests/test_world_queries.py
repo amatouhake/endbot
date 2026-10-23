@@ -109,9 +109,66 @@ class QueryCommandTests(unittest.TestCase):
         self.assertEqual(block.data["states"], {"growth": 7})
         found = service.execute(["Alice", "blocks", "oak_log", "radius", "12"])
         self.assertEqual(queries.search, ("minecraft:oak_log", 12, 10))
-        self.assertEqual(found.messages, ("Endbot: Alice: oak_log: 1 64 0 1.2m",))
+        self.assertEqual(found.messages, ("Endbot: Alice: oak_log: 1 64 0 (1.2m)",))
         self.assertEqual(found.data["blocks"][0]["x"], 1)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FeedbackTests(unittest.TestCase):
+    def test_compact_relative_coordinates_split_like_vanilla(self):
+        for arguments, expected in (
+            (["block", "~~-1~"], [("relative", 0.0), ("relative", -1.0), ("relative", 0.0)]),
+            (["block", "~1~", "~-2.5"], [("relative", 1.0), ("relative", 0.0), ("relative", -2.5)]),
+        ):
+            with self.subTest(arguments=arguments):
+                self.assertEqual(parse_command(["Alice", *arguments]).parameters["coordinates"], expected)
+        self.assertEqual(parse_command(["Alice", "tp", "~~1~"]).parameters["coordinates"],
+                         [("relative", 0.0), ("relative", 1.0), ("relative", 0.0)])
+
+    def test_item_summary_reports_durability_only_for_damageable_items(self):
+        from endstone_endbot.inventory_sync import item_summary
+
+        pickaxe = SimpleNamespace(type=SimpleNamespace(id="minecraft:iron_pickaxe", max_durability=250), amount=1,
+                                  item_meta=SimpleNamespace(damage=40))
+        self.assertEqual(item_summary(pickaxe)["durability"], {"remaining": 210, "max": 250})
+        stone = SimpleNamespace(type=SimpleNamespace(id="minecraft:stone", max_durability=0), amount=3, item_meta=None)
+        self.assertNotIn("durability", item_summary(stone))
+
+    def test_entity_details_and_hotbar_items(self):
+        class Control:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, **params):
+                self.calls.append((method, params))
+                if method == "entities":
+                    return {**BOT, "entities": [{"runtimeId": "9", "type": "minecraft:cow", "distance": 2.0}]}
+                if method == "hotbar":
+                    return {**BOT, "selectedHotbarSlot": 2}
+                return BOT
+
+        class World:
+            def describe_entities(self, identity, ids):
+                return {"9": {"position": {"x": 1.0, "y": 64.0, "z": 2.5}, "health": 8.0, "maxHealth": 10.0,
+                              "nameTag": "Bessie"}}
+
+            def inventory(self, name, identity=None):
+                return {"name": "Alice", "slots": [
+                    {"slot": "2", "name": "minecraft:iron_pickaxe", "count": 1,
+                     "durability": {"remaining": 210, "max": 250}},
+                    {"slot": "12", "name": "minecraft:stone", "count": 3}]}
+
+        control = Control()
+        service = PlainCommandService(control, World())
+        result = service.execute(["Alice", "entity", "cow"])
+        self.assertEqual(result.messages,
+                         ("Endbot: Alice: cow (id 9) | 2.0m | 1.0 64.0 2.5 | health 8/10 | named Bessie",))
+        self.assertEqual(control.calls[-1], ("entities", {"name": "Alice", "type": "minecraft:cow"}))
+        self.assertEqual(result.data["entity"]["nameTag"], "Bessie")
+        hotbar = service.execute(["Alice", "hotbar"])
+        self.assertEqual(hotbar.messages, ("Endbot: Alice: hotbar slot 2: 2: iron_pickaxe x1 (210/250)",))
+        inventory = service.execute(["Alice", "inventory"])
+        self.assertIn("iron_pickaxe x1 (210/250)", inventory.messages[0])

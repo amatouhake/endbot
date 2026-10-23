@@ -248,7 +248,9 @@ Other queries also return data: `bot:inventory().data.slots` lists non-empty slo
 (slots `"1"`-`"36"`, `offhand`, `head`, `chest`, `legs`, `feet`); `bot:hotbar().data` has `selectedSlot` and the
 hotbar `slots`; `bot:entities().data.entities` lists up to 10 nearby non-player entities, nearest first, as
 `{runtimeId, type, distance, position, health, maxHealth, nameTag}` (health is nil for non-mobs). Pass a
-`runtimeId` to `:interact(id)`.
+`runtimeId` to `:interact(id)`. `bot:entity("cow")` (or an id, `"nearest"`, or no argument) returns `data.entity`, one
+such entry within 16 blocks. Inventory, hotbar and `held` items carry `durability = {remaining, max}` for damageable
+items such as tools and armor.
 
 World queries read BDS on the server thread and count as operations:
 
@@ -298,6 +300,8 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:status()` | none | none |
 | `:inventory()` | none | none |
 | `:entities()` | none | none |
+| `:entity()` | none | none |
+| `:entity()` | entity: stringOrInteger | none |
 | `:target()` | none | none |
 | `:block()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:blocks()` | type: string | radius: integer, limit: integer |

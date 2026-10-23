@@ -8,7 +8,7 @@ from uuid import UUID
 from endstone.level import Location
 
 from endstone_endbot.i18n import LocalizedError
-from endstone_endbot.inventory_sync import inventory_snapshot
+from endstone_endbot.inventory_sync import inventory_snapshot, item_summary
 
 DIMENSIONS = {
     "overworld": "Overworld",
@@ -181,7 +181,7 @@ class EndstoneWorld:
             "inWater": bool(player.is_in_water),
             "selectedSlot": int(player.inventory.held_item_slot) + 1,
             "held": None if held is None or held.amount <= 0 or held.type.id == "minecraft:air"
-            else {"name": held.type.id, "count": held.amount},
+            else item_summary(held),
         }
 
     def describe_entities(self, identity_id: str, runtime_ids: list[str]) -> dict[str, dict]:

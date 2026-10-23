@@ -69,6 +69,8 @@ def install_probe(plugin_class):
                 player.inventory.clear()
                 if request.get("item"):
                     player.inventory.set_item(0, ItemStack(request["item"], request.get("count", 1)))
+                if request.get("ores"):
+                    player.inventory.set_item(2, ItemStack("minecraft:iron_pickaxe", 1))
                 player.inventory.held_item_slot = 1
                 player.teleport(Location(dimension, x + 0.5, 200, z + 0.5, 0, 20))
                 target = Location(dimension, x + 0.5, 200, z + 2.5, 0, 0)
@@ -181,13 +183,14 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     prepare("feed-cow", "minecraft:cow", "minecraft:wheat", 5, ores=True)
     command("hotbar 1", "hotbar slot 1 selected")
     command("status", " food ")  # BDS health from the SDK and hunger from runtime attributes
-    command("hotbar", "hotbar slot 1")
+    command("hotbar", ": 1: wheat x5, 3: iron_pickaxe x1 (250/250)")
     command("inventory", "1: wheat x5")
     listing = command("entities", "nearby: cow (id ")
     command("interact cow", "interaction with cow (id ")
     time.sleep(0.5)
     command("target", "looking at cow (id ")
-    command("block ~ ~-1 ~", ": stone")
+    command("entity cow", "cow (id ")
+    command("block ~~-1~", ": stone")
     start = time.monotonic()
     found = command("blocks diamond_ore radius 12", "diamond_ore: ")
     search_seconds = round(time.monotonic() - start, 2)

@@ -829,3 +829,12 @@ test('own hunger and saturation come from update_attributes; other entities are 
     { name: 'minecraft:health', current: 20 }] })
   assert.deepEqual(session.vitals(), { hunger: 17, saturation: 4.5 })
 })
+
+test('nearby entities filter by id or type before the list limit', async t => {
+  const { session, add } = await entitySession(t, [])
+  for (let index = 0; index < 12; index++) add(BigInt(40 + index), 'minecraft:sheep', { x: index, y: 64, z: 1 })
+  add(60n, 'minecraft:cow', { x: 0, y: 64, z: 15 })
+  assert.equal(session.nearbyEntities().length, 10)
+  assert.deepEqual(session.nearbyEntities({ type: 'cow' }).map(entity => entity.runtimeId), ['60'])
+  assert.deepEqual(session.nearbyEntities({ runtimeId: '51' }).map(entity => entity.type), ['minecraft:sheep'])
+})

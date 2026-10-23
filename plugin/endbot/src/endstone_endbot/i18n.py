@@ -376,6 +376,13 @@ JA: dict[str, str] = {
     "interaction with {entity} (id {id}) requested": "{entity} (id {id}) への操作を要求しました",
     "dismount from {vehicle} requested": "{vehicle} から降りるよう要求しました",
     "riding {vehicle}": "{vehicle} に乗車中",
+    "show one nearby entity in detail": "近くのエンティティ1体の詳細を表示する",
+    "Position, distance, health and name tag of the nearest match within 16 blocks; players are excluded.":
+        "16ブロック以内で一番近い該当エンティティの位置、距離、体力、名前を表示します。プレイヤーは対象外です。",
+    "No matching entity within 16 blocks": "16ブロック以内に該当するエンティティがいません",
+    "named {name}": "名前 {name}",
+    "empty": "空",
+    "Entity details...": "エンティティの詳細...",
     "show the block or entity the Bot is looking at": "Bot が見ているブロックかエンティティを表示する",
     "Within 6 blocks of the Bot's eyes; the nearer of a block and a non-player entity.":
         "Bot の目から6ブロック以内で、近い方のブロックかプレイヤー以外のエンティティを表示します。",

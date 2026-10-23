@@ -193,8 +193,8 @@ class OperationParityTests(unittest.TestCase):
             "radius": [({}, ["radius"]), ({"value": "default"}, ["radius", "default"])],
             "interact": [
                 ({"x": 1, "y": 64, "z": 2, "face": "up"}, ["interact", "1", "64", "2", "up"]),
-                ({"entity": "cow"}, ["interact", "entity", "cow"]),
-                ({"entity": 42}, ["interact", "entity", "42"]),
+                ({"entity": "cow"}, ["interact", "cow"]),
+                ({"entity": 42}, ["interact", "42"]),
             ],
             "destroy": [
                 ({"mode": "continuous", "count": 64}, ["destroy", "continuous", "count", "64"]),

@@ -261,11 +261,11 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "interact": HelpTopic(
         "interact",
         "right-click a block face or an entity",
-        ("interact <x> <y> <z> <down|up|north|south|west|east>", "interact entity <type|nearest|id>"),
+        ("interact <x> <y> <z> <down|up|north|south|west|east>", "interact <type|nearest|id>"),
         (
             "BDS decides reach, legality and inventory changes.",
-            "entity turns to the nearest match within 6 blocks and uses the held item: feed, breed, shear, ride.",
-            "An id comes from entities; players are never targets.",
+            "One argument turns to the nearest matching entity within 6 blocks and uses the held item.",
+            "That feeds, breeds, shears, names and rides. An id comes from entities; players are never targets.",
         ),
     ),
     "entities": HelpTopic(
@@ -713,10 +713,10 @@ def parse_command(arguments: list[str]) -> BotCommand:
         if not 2 <= radius <= 32:
             raise CommandSyntaxError("Chunk radius must be from 2 to 32")
         return BotCommand(operation, name, {"value": radius})
-    if operation == "interact" and remaining and remaining[0].lower() == "entity":
-        if len(remaining) != 2:
-            raise CommandSyntaxError("Use interact entity <type|nearest|id>")
-        selector = remaining[1].lower()
+    # Like tp, the argument shape picks the target: one token is an entity,
+    # coordinates and a face are a block.
+    if operation == "interact" and len(remaining) == 1:
+        selector = remaining[0].lower()
         if selector == "nearest":
             return BotCommand(operation, name, {"entity": "nearest"})
         if selector.isascii() and selector.isdecimal() and len(selector) <= 19:
@@ -1121,7 +1121,8 @@ class BotCommandService:
             if not entities:
                 return CommandResult(True, (reply(tr(lang, "no entities nearby"), result["name"]),), data=data)
             listed = ", ".join(
-                f"{entity['type'].removeprefix('minecraft:')} {DIM}#{entity['runtimeId']}{RESET} {entity['distance']}m"
+                f"{entity['type'].removeprefix('minecraft:')} {DIM}(id {entity['runtimeId']}){RESET} "
+                f"{entity['distance']}m"
                 for entity in entities
             )
             return CommandResult(True, (reply(tr(lang, "nearby: {entities}", entities=listed), result["name"]),),
@@ -1130,7 +1131,7 @@ class BotCommandService:
             selector = {key: command.parameters[key] for key in ("runtimeId", "type") if key in command.parameters}
             result = control.request("interactEntity", name=command.name, **selector)
             entity = result["entity"]
-            return say("interaction with {entity} #{id} requested", result["name"],
+            return say("interaction with {entity} (id {id}) requested", result["name"],
                        entity=entity["type"].removeprefix("minecraft:"), id=entity["runtimeId"])
         if command.operation == "dismount":
             status = control.request("status", name=command.name)

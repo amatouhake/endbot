@@ -161,8 +161,8 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     # Feeding: the Bot turns to the nearest cow by itself; an adult cow eats wheat only through BDS.
     prepare("feed-cow", "minecraft:cow", "minecraft:wheat", 5)
     command("hotbar 1", "hotbar slot 1 selected")
-    listing = command("entities", "nearby: cow #")
-    command("interact entity cow", "interaction with cow #")
+    listing = command("entities", "nearby: cow (id ")
+    command("interact cow", "interaction with cow (id ")
     wait("BDS consumed one wheat", lambda: (state()["hotbar"][0] or {}).get("count") == 4, 10)
     results["feed_cow"] = {"listing": listing.strip().splitlines()[-1][-160:], "hotbar": state()["hotbar"][0]}
 
@@ -177,10 +177,10 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     prepare("ride-minecart", "minecraft:minecart", boat=True)
     command("hotbar 2", "hotbar slot 2 selected")
     cart = next(entry for entry in control("entities")["entities"] if entry["type"] == "minecraft:minecart")
-    command(f"interact entity {cart['runtimeId']}", f"interaction with minecart #{cart['runtimeId']}")
+    command(f"interact {cart['runtimeId']}", f"interaction with minecart (id {cart['runtimeId']})")
     wait("BDS linked the Bot to the minecart", lambda: (riding() or {}).get("type") == "minecraft:minecart", 10)
     command("status", "riding minecart")
-    command("interact entity boat", "interaction with boat #")
+    command("interact boat", "interaction with boat (id ")
     wait("BDS moved the rider from the minecart to the boat", lambda: (riding() or {}).get("type") == "minecraft:boat", 10)
     command("dismount", "dismount from boat requested")
     wait("BDS removed the vehicle link", lambda: riding() is None, 10)
@@ -198,7 +198,7 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     # A moving minecart: board while stationary, then power the track.
     prepare("ride-powered", "minecraft:minecart", track=True)
     command("hotbar 2", "hotbar slot 2 selected")
-    command("interact entity minecart", "interaction with minecart #")
+    command("interact minecart", "interaction with minecart (id ")
     wait("BDS linked the Bot to the launch minecart", lambda: riding() is not None, 10)
     start = list(state()["player"])
     samples = []

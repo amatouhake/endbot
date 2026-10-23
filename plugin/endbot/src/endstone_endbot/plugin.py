@@ -119,8 +119,6 @@ COMMAND_USAGES = [
         "/bot <name: string> (interact)<operation: EndbotInteract> <block: block_pos> "
         "(down|up|north|south|west|east)<face: EndbotBlockFace>"
     ),
-    # A hint ending at an enum; the message overload carries the entity selector.
-    "/bot <name: string> (interact)<operation: EndbotInteractEntity> (entity)<mode: EndbotEntityMode>",
     "/bot <name: string> (drop)<operation: EndbotDropOne>",
     # These are hints ending at enums; the enum-free message overload above
     # carries numeric slots and item/count tails under the pinned BDS rules.

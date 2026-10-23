@@ -690,3 +690,94 @@ function usableHeldItem () {
     extra: { has_nbt: 0, nbt: undefined, can_place_on: [], can_destroy: [] }
   }
 }
+
+async function entitySession (t, queued) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-protocol-session-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  client.queue = (name, packet) => queued.push({ name, packet })
+  const { session, connecting } = connectedSession(directory, client)
+  await turn()
+  client.emit('start_game', { entity_id: -5n, player_position: { x: 0, y: 64, z: 0 }, rotation: { x: 0, z: 0 } })
+  const inputs = new InputState()
+  session.applyInputs(inputs)
+  client.emit('spawn')
+  await connecting
+  t.after(() => session.disconnect('test complete'))
+  const add = (runtimeId, type, position) => client.emit('add_entity', {
+    runtime_id: runtimeId, unique_id: -runtimeId, entity_type: type, position
+  })
+  return { session, client, inputs, add }
+}
+
+const nextTick = () => new Promise(resolve => setTimeout(resolve, 80))
+
+test('nearby entities exclude players and stay sorted and bounded', async t => {
+  const { session, client, add } = await entitySession(t, [])
+  add(20n, 'minecraft:cow', { x: 0, y: 64, z: 5 })
+  add(21n, 'minecraft:sheep', { x: 0, y: 64, z: 2 })
+  add(22n, 'minecraft:zombie', { x: 0, y: 64, z: 40 })
+  client.emit('add_player', { runtime_id: 23n, unique_id: -23n, position: { x: 0, y: 64, z: 1 } })
+  const entities = session.nearbyEntities()
+  assert.deepEqual(entities.map(entity => [entity.runtimeId, entity.type]),
+    [['21', 'minecraft:sheep'], ['20', 'minecraft:cow']])
+})
+
+test('interact entity turns toward the nearest match and right-clicks it on the next tick', async t => {
+  const queued = []
+  const { session, inputs, add } = await entitySession(t, queued)
+  add(20n, 'minecraft:cow', { x: 3, y: 64, z: 0 })
+  add(21n, 'minecraft:cow', { x: 0, y: 64, z: 5 })
+  add(22n, 'minecraft:sheep', { x: 0, y: 64, z: 1 })
+  const target = session.interactEntity({ type: 'cow' })
+  assert.equal(target.runtimeId, '20')
+  assert.ok(Math.abs(inputs.snapshot().look.yaw - 270) < 0.01)
+  await nextTick()
+  const transaction = queued.find(entry => entry.name === 'inventory_transaction')
+  assert.equal(transaction.packet.transaction.transaction_type, 'item_use_on_entity')
+  assert.equal(transaction.packet.transaction.transaction_data.action_type, 'interact')
+  assert.equal(transaction.packet.transaction.transaction_data.entity_runtime_id, 20n)
+  const order = queued.map(entry => entry.name)
+  assert.ok(order.indexOf('player_auth_input') < order.indexOf('inventory_transaction'))
+  assert.equal(session.pendingEntityInteraction, undefined)
+})
+
+test('interact entity rejects players, unknown IDs and targets out of reach', async t => {
+  const { session, client, add } = await entitySession(t, [])
+  add(20n, 'minecraft:cow', { x: 0, y: 64, z: 12 })
+  client.emit('add_player', { runtime_id: 23n, unique_id: -23n, position: { x: 0, y: 64, z: 1 } })
+  assert.throws(() => session.interactEntity({ type: 'cow' }), /No matching entity within reach/)
+  assert.throws(() => session.interactEntity({}), /No entity within reach/)
+  assert.throws(() => session.interactEntity({ runtimeId: '23' }), /No entity with that ID/)
+  assert.throws(() => session.interactEntity({ runtimeId: '20' }), /out of reach/)
+})
+
+test('riding follows the vehicle until BDS removes the link, and dismount leaves it', async t => {
+  const queued = []
+  const { session, client, add } = await entitySession(t, queued)
+  add(30n, 'minecraft:minecart', { x: 0, y: 64, z: 2 })
+  client.emit('set_entity_link', { link: { ridden_entity_id: -30n, rider_entity_id: -5n, type: 1 } })
+  assert.deepEqual(session.vehicleStatus(), { type: 'minecraft:minecart', runtimeId: '30' })
+  assert.throws(() => session.interactEntity({ type: 'minecart' }), /dismount first/)
+  client.emit('move_entity', { runtime_entity_id: 30n, position: { x: 0, y: 64, z: 12 } })
+  await nextTick()
+  const last = queued.filter(entry => entry.name === 'player_auth_input').at(-1)
+  assert.equal(last.packet.position.z, 12)
+  assert.equal(last.packet.position.y, 64)
+  assert.deepEqual(session.dismount(), { type: 'minecraft:minecart', runtimeId: '30' })
+  const leave = queued.find(entry => entry.name === 'interact' && entry.packet.action_id === 'leave_vehicle')
+  assert.equal(leave.packet.target_entity_id, 30n)
+  client.emit('set_entity_link', { link: { ridden_entity_id: -30n, rider_entity_id: -5n, type: 0 } })
+  assert.equal(session.vehicleStatus(), null)
+  assert.throws(() => session.dismount(), /not riding/)
+})
+
+test('links for other riders and a removed vehicle do not leave stale riding state', async t => {
+  const { session, client, add } = await entitySession(t, [])
+  add(30n, 'minecraft:minecart', { x: 0, y: 64, z: 2 })
+  client.emit('set_entity_link', { link: { ridden_entity_id: -30n, rider_entity_id: -99n, type: 1 } })
+  assert.equal(session.vehicleStatus(), null)
+  client.emit('set_entity_link', { link: { ridden_entity_id: -30n, rider_entity_id: -5n, type: 1 } })
+  client.emit('remove_entity', { entity_id_self: -30n })
+  assert.equal(session.vehicleStatus(), null)
+})

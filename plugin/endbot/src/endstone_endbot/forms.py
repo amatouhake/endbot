@@ -270,6 +270,9 @@ def bot_screen(
                     Button(label("Use item..."), Show(action_screen(name, "use", lang))),
                     Button(label("Destroy blocks..."), Show(destroy_screen(name, lang))),
                     Button(label("Interact with block..."), Show(interact_modal(name, lang))),
+                    Button(label("List nearby entities"), run((name, "entities"))),
+                    Button(label("Interact with entity..."), Show(entity_modal(name, lang))),
+                    Button(label("Dismount"), run((name, "dismount"))),
                 ),
             ),
             Button(
@@ -312,6 +315,10 @@ def bot_screen(
         mining = view.status.get("mining") or {}
         if mining.get("continuous") or mining.get("state") == "active":
             content += " · " + label("mining continuous" if mining.get("continuous") else "mining active")
+        vehicle = view.status.get("vehicle")
+        if vehicle:
+            content += " · " + tr(lang, "riding {vehicle}",
+                                  vehicle=str(vehicle.get("type") or "?").removeprefix("minecraft:"))
     else:
         content = _offline_content(view.status, lang)
     return ActionScreen(f"Endbot: {name}", content, tuple(items))
@@ -364,6 +371,18 @@ def interact_modal(name: str, lang: str = "en") -> ModalScreen:
     return ModalScreen(f"{name}: interact", (
         TextInput(tr(lang, "x y z (coordinates only; ~ is relative to you)"), "~ ~-1 ~"),
         Dropdown("face", FACES),
+    ), build, tr(lang, "Interact"))
+
+
+def entity_modal(name: str, lang: str = "en") -> ModalScreen:
+    def build(values):
+        selector = _text(values[0]).lower()
+        if not re.fullmatch(r"nearest|[0-9]{1,19}|(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+", selector):
+            raise FormResponseError("Enter one entity type, nearest or id")
+        return ((name, "interact", "entity", selector),)
+
+    return ModalScreen(f"{name}: interact entity", (
+        TextInput(tr(lang, "Entity type, nearest or id (from the list)"), "cow", "nearest"),
     ), build, tr(lang, "Interact"))
 
 

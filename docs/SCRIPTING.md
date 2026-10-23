@@ -269,11 +269,13 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | --- | --- | --- |
 | `:status()` | none | none |
 | `:inventory()` | none | none |
+| `:entities()` | none | none |
 | `:resume()` | none | none |
 | `:reconnect()` | none | none |
 | `:despawn()` | none | none |
 | `:forget()` | none | none |
 | `:stop()` | none | none |
+| `:dismount()` | none | none |
 | `:menu()` | none | none |
 | `:spawn()` | none | none |
 | `:spawn()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string |
@@ -290,6 +292,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:radius()` | none | none |
 | `:radius()` | value: integerOrDefault | none |
 | `:interact()` | x: coordinate, y: coordinate, z: coordinate, face: down / up / north / south / west / east | none |
+| `:interact()` | entity: stringOrInteger | none |
 | `:destroy()` | none | mode: once / continuous / stop, ticks: integer, count: integer |
 | `:destroy()` | x: coordinate, y: coordinate, z: coordinate | face: down / up / north / south / west / east |
 | `:drop()` | none | none |

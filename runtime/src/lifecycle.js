@@ -259,6 +259,28 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
+  entities (name) {
+    const { profile, state } = this.#requireOnline(name)
+    return { ...this.#status(profile), entities: state.session.nearbyEntities() }
+  }
+
+  interactEntity (name, { runtimeId, type } = {}) {
+    if (runtimeId !== undefined && !(typeof runtimeId === 'string' && /^\d{1,19}$/.test(runtimeId))) {
+      throw new Error('Invalid entity ID')
+    }
+    if (type !== undefined && !(typeof type === 'string' && /^(?:minecraft:)?[a-z0-9_./-]+$/.test(type))) {
+      throw new Error('Invalid entity type')
+    }
+    if (runtimeId !== undefined && type !== undefined) throw new Error('Choose an entity ID or a type, not both')
+    const { profile, state } = this.#requireOnline(name)
+    return { ...this.#status(profile), entity: state.session.interactEntity({ runtimeId, type }) }
+  }
+
+  dismount (name) {
+    const { profile, state } = this.#requireOnline(name)
+    return { ...this.#status(profile), vehicle: state.session.dismount() }
+  }
+
   mine (name, parameters) {
     const { profile, state } = this.#requireOnline(name)
     if (parameters.mode === 'stop') {
@@ -395,7 +417,8 @@ export class BotLifecycle extends EventEmitter {
       chunkRadiusSource: profile.chunkRadius === undefined ? 'default' : 'bot',
       serverChunkRadius: state.state === 'online' ? state.session?.serverChunkRadius ?? null : null,
       inputs: state.inputs.snapshot(),
-      mining: state.session?.miningStatus?.() ?? null
+      mining: state.session?.miningStatus?.() ?? null,
+      vehicle: state.state === 'online' ? state.session?.vehicleStatus?.() ?? null : null
     }
   }
 

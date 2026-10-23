@@ -17,7 +17,9 @@ import {
   createBlockInteractionInput,
   createDropTransaction,
   createSwapTransaction,
+  createEntityInteractTransaction,
   createEntityMouseOver,
+  createLeaveVehicle,
   createMiningAction,
   createReleaseTransaction,
   createUseInput,
@@ -27,6 +29,13 @@ import {
 } from './packets.js'
 
 function vector (value) { return { x: value.x, y: value.y, z: value.z } }
+
+// Survival interaction reach from the eyes; BDS still validates each request.
+export const ENTITY_REACH = 6
+// Nearby listings stay short and exclude players: they are interaction targets.
+export const ENTITY_LIST_RADIUS = 16
+export const ENTITY_LIST_LIMIT = 10
+const EYE_HEIGHT = 1.62
 
 export class BedrockSession extends EventEmitter {
   constructor (profile, options) {
@@ -64,6 +73,9 @@ export class BedrockSession extends EventEmitter {
     this.horizontalVelocity = { x: 0, z: 0 }
     this.mining = undefined
     this.pendingBlockActions = []
+    this.uniqueId = undefined
+    this.vehicle = undefined
+    this.pendingEntityInteraction = undefined
   }
 
   connect () {
@@ -373,6 +385,107 @@ export class BedrockSession extends EventEmitter {
     }
   }
 
+  nearbyEntities () {
+    if (!this.position) return []
+    return [...this.entities.values()]
+      .filter(entity => entity.type !== 'minecraft:player')
+      .map(entity => ({ entity, distance: this.#eyeDistance(entity) }))
+      .filter(({ distance }) => distance <= ENTITY_LIST_RADIUS)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, ENTITY_LIST_LIMIT)
+      .map(({ entity, distance }) => this.#describeEntity(entity, distance))
+  }
+
+  vehicleStatus () {
+    if (!this.vehicle) return null
+    const entity = this.#entityByUniqueId(this.vehicle.uniqueId)
+    return { type: entity ? entity.type : null, runtimeId: entity ? String(entity.runtimeId) : null }
+  }
+
+  // Turn toward the entity now; the right-click goes out on the next tick
+  // with that rotation, like a player aiming before clicking.
+  interactEntity ({ runtimeId, type } = {}) {
+    if (!this.position) throw new Error('Bot position is not initialized')
+    if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
+    if (this.vehicle) throw new Error('Bot is riding; dismount first')
+    if (this.pendingEntityInteraction) throw new Error('An entity interaction is already pending')
+    const target = this.#entityTarget({ runtimeId, type })
+    const distance = this.#eyeDistance(target)
+    const center = { x: target.position.x, y: target.position.y + 0.5, z: target.position.z }
+    const eye = { x: this.position.x, y: this.position.y + EYE_HEIGHT, z: this.position.z }
+    const yaw = Math.atan2(-(center.x - eye.x), center.z - eye.z) * 180 / Math.PI
+    const pitch = -Math.atan2(center.y - eye.y, Math.hypot(center.x - eye.x, center.z - eye.z)) * 180 / Math.PI
+    this.inputs?.setLook(yaw, pitch)
+    this.pendingEntityInteraction = { runtimeId: String(target.runtimeId) }
+    return this.#describeEntity(target, distance)
+  }
+
+  dismount () {
+    if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
+    if (!this.vehicle) throw new Error('Bot is not riding')
+    const entity = this.#entityByUniqueId(this.vehicle.uniqueId)
+    if (!entity) throw new Error('The vehicle is not in view')
+    this.client.queue('interact', createLeaveVehicle(entity.runtimeId))
+    return { type: entity.type, runtimeId: String(entity.runtimeId) }
+  }
+
+  #entityTarget ({ runtimeId, type }) {
+    if (runtimeId !== undefined) {
+      const entity = this.entities.get(String(runtimeId))
+      if (!entity || entity.type === 'minecraft:player') throw new Error('No entity with that ID is in view')
+      if (this.#eyeDistance(entity) > ENTITY_REACH) throw new Error('That entity is out of reach')
+      return entity
+    }
+    const wanted = type === undefined ? undefined : (String(type).includes(':') ? String(type) : `minecraft:${type}`)
+    let best
+    for (const entity of this.entities.values()) {
+      if (entity.type === 'minecraft:player' || (wanted && entity.type !== wanted)) continue
+      const distance = this.#eyeDistance(entity)
+      if (distance <= ENTITY_REACH && (!best || distance < best.distance)) best = { entity, distance }
+    }
+    if (!best) throw new Error(wanted ? 'No matching entity within reach' : 'No entity within reach')
+    return best.entity
+  }
+
+  #entityByUniqueId (uniqueId) {
+    for (const entity of this.entities.values()) {
+      if (String(entity.uniqueId) === String(uniqueId)) return entity
+    }
+    return undefined
+  }
+
+  #eyeDistance (entity) {
+    return Math.hypot(entity.position.x - this.position.x, entity.position.y + 0.5 - (this.position.y + EYE_HEIGHT),
+      entity.position.z - this.position.z)
+  }
+
+  #describeEntity (entity, distance) {
+    return { runtimeId: String(entity.runtimeId), type: entity.type, distance: Math.round(distance * 10) / 10 }
+  }
+
+  #leaveVehicle () {
+    this.vehicle = undefined
+    // Fall onto whatever BDS placed us on; its corrections settle the height.
+    this.onGround = false
+    this.verticalVelocity = 0
+  }
+
+  #sendEntityInteraction () {
+    const pending = this.pendingEntityInteraction
+    this.pendingEntityInteraction = undefined
+    const target = pending && this.entities.get(pending.runtimeId)
+    if (!target) return
+    this.client.queue('interact', createEntityMouseOver(target.runtimeId))
+    this.client.queue('inventory_transaction', createEntityInteractTransaction({
+      runtimeId: target.runtimeId,
+      hotbarSlot: this.hotbarSlot,
+      heldItem: this.heldItem,
+      position: this.position,
+      clickPosition: { x: 0, y: 0.5, z: 0 }
+    }))
+    this.client.queue('animate', { action_id: 'swing_arm', runtime_entity_id: this.client.entityId, data: 0, has_swing_source: false })
+  }
+
   swap (a, b) {
     if (![a, b].every(slot => Number.isSafeInteger(slot) && slot >= 1 && slot <= 36)) throw new Error('Inventory slots must be from 1 to 36')
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
@@ -498,6 +611,7 @@ export class BedrockSession extends EventEmitter {
       this.#fail(new Error(`BDS rejected a malformed protocol packet: ${packet.reason}`))
     })
     this.client.on('start_game', packet => {
+      this.uniqueId = String(packet.entity_id)
       this.position = vector(packet.player_position)
       this.dimension = packet.dimension
       this.serverAuthoritativeMining = packet.server_authoritative_block_breaking === true
@@ -515,6 +629,8 @@ export class BedrockSession extends EventEmitter {
       this.releaseItemUseNextTick = false
       this.pendingInteraction = undefined
       this.interactionStopNextTick = undefined
+      this.pendingEntityInteraction = undefined
+      this.vehicle = undefined
       this.entities.clear()
       this.dimension = packet.dimension
       this.position = vector(packet.position)
@@ -598,8 +714,25 @@ export class BedrockSession extends EventEmitter {
         if (Number.isFinite(packet[axis])) entity.position[axis] = packet[axis]
       }
     })
+    this.client.on('set_entity_link', packet => {
+      const link = packet.link
+      if (String(link.rider_entity_id) !== this.uniqueId) return
+      if (link.type === 0) {
+        if (this.vehicle?.uniqueId === String(link.ridden_entity_id)) this.#leaveVehicle()
+        return
+      }
+      const entity = this.#entityByUniqueId(link.ridden_entity_id)
+      // Keep the seat at the height difference seen when boarding; BDS sends
+      // the vehicle's movement, not the rider's, while the link lasts.
+      this.vehicle = { uniqueId: String(link.ridden_entity_id),
+        offsetY: entity && this.position ? this.position.y - entity.position.y : 0 }
+      this.inputs?.setMovement('stop')
+      this.horizontalVelocity = { x: 0, z: 0 }
+      this.verticalVelocity = 0
+    })
     this.client.on('remove_entity', packet => {
       const uniqueId = String(packet.entity_id_self)
+      if (this.vehicle?.uniqueId === uniqueId) this.#leaveVehicle()
       for (const [runtimeId, entity] of this.entities) {
         if (String(entity.uniqueId) === uniqueId) this.entities.delete(runtimeId)
       }
@@ -733,10 +866,18 @@ export class BedrockSession extends EventEmitter {
     const radians = state.yaw * Math.PI / 180
     let speed = state.sprint ? 0.28 : state.sneak ? 0.065 : 0.215
     if (!state.movement) speed = 0
+    // A rider follows its vehicle instead of integrating its own movement.
+    const vehicle = this.vehicle && this.#entityByUniqueId(this.vehicle.uniqueId)
+    if (vehicle) {
+      this.position = { x: vehicle.position.x, y: vehicle.position.y + this.vehicle.offsetY, z: vehicle.position.z }
+      speed = 0
+    }
     this.position.x += (-Math.sin(radians) * move.z + Math.cos(radians) * move.x) * speed
     this.position.z += (Math.cos(radians) * move.z + Math.sin(radians) * move.x) * speed
-    this.position.x += this.horizontalVelocity.x
-    this.position.z += this.horizontalVelocity.z
+    if (!vehicle) {
+      this.position.x += this.horizontalVelocity.x
+      this.position.z += this.horizontalVelocity.z
+    }
     const drag = this.onGround ? 0.6 : 0.91
     this.horizontalVelocity.x *= drag
     this.horizontalVelocity.z *= drag
@@ -760,7 +901,7 @@ export class BedrockSession extends EventEmitter {
       this.verticalVelocity = 0.42
       this.onGround = false
     }
-    if (!this.onGround) {
+    if (!this.onGround && !vehicle) {
       this.position.y += this.verticalVelocity
       this.verticalVelocity = (this.verticalVelocity - 0.08) * 0.98
     }
@@ -827,6 +968,7 @@ export class BedrockSession extends EventEmitter {
       camera_orientation: this.#lookVector(state),
       raw_move_vector: move
     })
+    if (this.pendingEntityInteraction) this.#sendEntityInteraction()
     this.tick += 1n
   }
 

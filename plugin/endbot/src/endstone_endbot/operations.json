@@ -13,6 +13,13 @@
       "prefix": []
     }
   ],
+  "entities": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
   "resume": [
     {
       "positional": [],
@@ -42,6 +49,13 @@
     }
   ],
   "stop": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "dismount": [
     {
       "positional": [],
       "options": {},
@@ -359,6 +373,20 @@
       ],
       "options": {},
       "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "entity",
+          {
+            "type": "stringOrInteger"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": [
+        "entity"
+      ]
     }
   ],
   "destroy": [

@@ -96,7 +96,8 @@ Players can run the common operations from native Bedrock forms instead of typin
 
 The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
-Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy, interact),
+Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy, interact, nearby
+entities, interact with entity, dismount),
 Inventory (list inventory, hotbar, hold, swap, drop) and Bot (resume/spawn, reconnect, confirmed despawn, radius and status).
 Category names follow Minecraft's control settings. An offline Bot offers resume/spawn, radius and the Bot settings
 category. Individual Bot profile controls offer rename and confirmed forget; forget still requires an offline profile.
@@ -344,6 +345,9 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice swap <a> <b>
 /bot Alice hold <item>
 /bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
+/bot Alice entities
+/bot Alice interact entity <type|nearest|id>
+/bot Alice dismount
 /bot Alice drop
 /bot Alice drop stack
 /bot Alice drop <1-36|offhand|head|chest|legs|feet>
@@ -490,6 +494,25 @@ release sequence; BDS decides reach, legality, collision, placement, and invento
 item can therefore place a block in Survival without the plugin editing the world. `drop` drops one selected item and
 `drop stack` requests the selected stack through normal inventory transactions; wider selectors use the same legacy
 container-to-world path with exact observed item data (see the inventory/drop grammar above).
+
+### Entities and vehicles
+
+`entities` lists up to 10 non-player entities within 16 blocks of the Bot, nearest first, as
+`<type> #<id> <distance>m`. A Group target is a query like `status`: every member's list is printed, with no history
+or audit entry. `interact entity <type|nearest|id>` picks the nearest matching non-player entity within 6 blocks
+(`cow` and `minecraft:cow` are the same; `nearest` takes any type; an id comes from `entities`), turns the Bot
+toward it and right-clicks it with the held item on the next input tick. This is the vanilla client path
+(`item_use_on_entity` with action `interact`): feeding and breeding consume the held item, shears shear, a name tag
+names, and an empty hand on a minecart, boat or rideable animal mounts it. BDS decides every outcome; the reply
+only confirms the request.
+
+While riding, the Bot follows the vehicle position BDS sends and ignores its own movement prediction; `status` and
+the Bot screen show `riding <type>`, and a riding Bot refuses `interact entity` until `dismount`. `dismount` sends
+the vanilla leave-vehicle action; BDS removes the link and the Bot falls back to normal movement. Steering horses or
+boats is not implemented. Live check (2026-10-24, Windows RakNet, locked pair): feeding a cow consumed wheat,
+the Bot boarded a minecart by id, rode a powered minecart about 12 blocks with BDS keeping its position on the
+cart, refused interaction while riding, and walked normally after leaving both a stationary and a moving cart
+(`scripts/raknet_spike.py --entity`).
 
 The command declaration separates parseability from completion because live BDS overload matching proved three
 rules (verified with a probe plugin dispatching 42 documented forms through the real `compileCommand` path):

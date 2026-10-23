@@ -12,6 +12,9 @@ import json
 import time
 
 EVENT_NAME = "endbot:inventory-v2"
+# The Bot runtime has no world collision and relies on BDS corrections to start
+# falling; BDS skips them near a boat. This tells the Bot its floor is gone.
+GROUND_EVENT = "endbot:unsupported-v1"
 PACKET_ID = 0x75
 MAX_PAYLOAD = 60 * 1024
 MAX_INVENTORY_BYTES = 2 * 1024 * 1024
@@ -142,6 +145,10 @@ def _payload(snapshot) -> bytes:
     if len(payload) > MAX_PAYLOAD:
         raise ValueError("Bot inventory observation exceeds the packet limit")
     return payload
+
+
+def unsupported_payload(identity_id: str) -> bytes:
+    return _string(GROUND_EVENT) + _string(json.dumps({"identityId": identity_id}, separators=(",", ":")))
 
 
 def observation_payloads(snapshot, sequence: int) -> tuple[bytes, ...]:

@@ -838,3 +838,20 @@ test('nearby entities filter by id or type before the list limit', async t => {
   assert.deepEqual(session.nearbyEntities({ type: 'cow' }).map(entity => entity.runtimeId), ['60'])
   assert.deepEqual(session.nearbyEntities({ runtimeId: '51' }).map(entity => entity.type), ['minecraft:sheep'])
 })
+
+test('a plugin unsupported notice starts a fall only for this Bot on the ground and not riding', async t => {
+  const { session, client, add } = await entitySession(t, [])
+  const notice = identityId => client.emit('script_custom_event', {
+    event_name: 'endbot:unsupported-v1', event_data: JSON.stringify({ identityId })
+  })
+  session.onGround = true
+  notice('00000000-0000-4000-8000-000000000099')
+  assert.equal(session.onGround, true)
+  notice(session.profile.identityId)
+  assert.equal(session.onGround, false)
+  session.onGround = true
+  add(31n, 'minecraft:boat', { x: 0, y: 64, z: 2 })
+  client.emit('set_entity_link', { link: { ridden_entity_id: -31n, rider_entity_id: -5n, type: 1 } })
+  notice(session.profile.identityId)
+  assert.equal(session.onGround, true)
+})

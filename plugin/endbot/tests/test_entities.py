@@ -201,10 +201,10 @@ class DismountExitTests(unittest.TestCase):
     def test_boat_prefers_the_look_direction_and_blocked_cells_are_skipped(self):
         boat = FakeActor(9, "minecraft:oak_boat", 0.5, 64.0, 0.5)
         world = self.world(self.floor((0, 1), (-1, 0)), boat, bot_yaw=0.0)
-        self.assertEqual(world.resolve_dismount(BOT["identityId"], "9"), {"x": 0.5, "y": 64.0, "z": 1.5})
+        self.assertEqual(world.resolve_dismount(BOT["identityId"], "9"), {"x": 0.5, "y": 64.0, "z": 1.55})
         walled = self.floor((0, 1), (-1, 0)) | {(0, 64, 1)}
         world = self.world(walled, boat, bot_yaw=0.0)
-        self.assertEqual(world.resolve_dismount(BOT["identityId"], "9"), {"x": -0.5, "y": 64.0, "z": 0.5})
+        self.assertEqual(world.resolve_dismount(BOT["identityId"], "9"), {"x": -0.55, "y": 64.0, "z": 0.5})
 
     def test_steps_up_one_level_or_stays_without_a_free_spot(self):
         cart = FakeActor(8, "minecraft:minecart", 0.5, 64.0, 0.5, yaw=90.0)
@@ -224,3 +224,46 @@ class DismountExitTests(unittest.TestCase):
         self.assertEqual(world.args, (BOT["identityId"], "30"))
         exit_position = {"x": -0.5, "y": 64.0, "z": 0.5}
         self.assertEqual(control.calls[-1], ("dismount", {"name": "Alice", "exit": exit_position}))
+
+
+class VehicleClearanceTests(unittest.TestCase):
+    def test_exit_point_stays_inside_its_cell_and_clear_of_the_vehicle(self):
+        from endstone_endbot.world import _clear_of_vehicle
+
+        # A boat 1.0 from the cell centre: shift 0.05 further, still inside the cell.
+        self.assertEqual(_clear_of_vehicle((0, 1), (0.5, 0.5), 0.7), (0.5, 1.55))
+        # A boat 0.8 from the cell centre cannot be cleared without leaving the cell.
+        self.assertIsNone(_clear_of_vehicle((3, 0), (2.7, 0.5), 0.7))
+        # A minecart one block away is already clear.
+        self.assertEqual(_clear_of_vehicle((1, 0), (0.5, 0.5), 0.49), (1.5, 0.5))
+
+
+class GroundCheckTests(unittest.TestCase):
+    def player(self, solid, y=64.0, x=0.5, z=0.5, actors=(), water=False):
+        from types import SimpleNamespace
+
+        dimension = FakeDimension(solid, list(actors))
+        return SimpleNamespace(location=SimpleNamespace(x=x, y=y, z=z, dimension=dimension), is_in_water=water,
+                               is_flying=False)
+
+    def test_reports_only_a_missing_floor_under_a_block_top(self):
+        from endstone_endbot.world import unsupported
+
+        self.assertFalse(unsupported(self.player({(0, 63, 0)})))
+        self.assertTrue(unsupported(self.player(set())))
+        # Straddling an edge: a neighbouring floor block still supports the Bot.
+        self.assertFalse(unsupported(self.player({(1, 63, 0)}, x=0.9)))
+        # Slab/carpet heights, water and standing on a boat are never reported.
+        self.assertFalse(unsupported(self.player(set(), y=64.5)))
+        self.assertFalse(unsupported(self.player(set(), water=True)))
+        boat = FakeActor(9, "minecraft:boat", 0.6, 63.6, 0.5)
+        self.assertFalse(unsupported(self.player(set(), actors=[boat])))
+        far_boat = FakeActor(9, "minecraft:boat", 2.5, 64.0, 0.5)
+        self.assertTrue(unsupported(self.player(set(), actors=[far_boat])))
+
+    def test_payload_names_the_bot(self):
+        from endstone_endbot.inventory_sync import GROUND_EVENT, unsupported_payload
+
+        payload = unsupported_payload("abc")
+        self.assertIn(GROUND_EVENT.encode(), payload)
+        self.assertTrue(payload.endswith(b'{"identityId":"abc"}'))

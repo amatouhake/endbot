@@ -19,12 +19,13 @@ from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
 from endstone_endbot.form_adapter import FormPresenter
 from endstone_endbot.groups import GroupCommandService, GroupStore
 from endstone_endbot.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, resolve_language, tr
-from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings
+from endstone_endbot.inventory_sync import PACKET_ID as INVENTORY_PACKET_ID
+from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings, unsupported_payload
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
 from endstone_endbot.script_store import ScriptStore
 from endstone_endbot.scripting import ScriptService
-from endstone_endbot.world import EndstoneWorld
+from endstone_endbot.world import EndstoneWorld, unsupported
 
 COMMAND_USAGES = [
     # Each usage becomes one native BDS overload, matched before Python runs.
@@ -366,6 +367,11 @@ class EndbotPlugin(Plugin):
             if str(player.xuid):
                 continue
             identities.add(str(player.unique_id))
+            try:
+                if unsupported(player):
+                    player.send_packet(INVENTORY_PACKET_ID, unsupported_payload(str(player.unique_id)))
+            except (AttributeError, RuntimeError, ValueError, TypeError):
+                pass  # Best effort: BDS corrections still apply away from boats.
             try:
                 self._hotbar_publisher.publish(player, self.server, self._hotbar_tick)
             except (RuntimeError, ValueError, TypeError) as error:

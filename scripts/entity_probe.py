@@ -96,6 +96,14 @@ def install_probe(plugin_class):
                     # A second vehicle beside the cart for switching without dismount.
                     dimension.spawn_actor(Location(dimension, x + 2.5, 200, z + 2.5, 0, 0), "minecraft:boat")
                 self._entity_probe = {"id": request["id"]}
+            if request.get("dig") and self._entity_probe.get("dug") != request["dig"]:
+                # Remove the block under the Bot's feet (3 deep); a Bot standing only on it falls.
+                here = player.location
+                bx, bz = math.floor(here.x), math.floor(here.z)
+                for y in (199, 198, 197):
+                    here.dimension.get_block_at(bx, y, bz).set_type("minecraft:air")
+                here.dimension.get_block_at(bx, 196, bz).set_type("minecraft:stone")
+                self._entity_probe["dug"] = request["dig"]
             if request.get("power") and not self._entity_probe.get("powered"):
                 x, z = self._entity_origin
                 for dz in range(2, 15):
@@ -222,6 +230,13 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     wait("BDS removed the vehicle link", lambda: riding() is None, 10)
     time.sleep(1)
     side, boat_exit = beside("minecraft:boat")
+    # The exit spot must not overlap the boat: a Bot touching its box stands on it and never falls.
+    request({"id": "ride-minecart", "entity": "minecraft:minecart", "boat": True, "dig": "boat-exit"})
+    try:
+        wait("Bot falls when the block under its exit spot is removed", lambda: state()["player"][1] < 199, 5)
+    finally:
+        results["boat_exit_fall"] = {"player": state()["player"], "actors": state()["actors"]}
+        report["entity"] = results
     if not side:
         raise RuntimeError(f"boat exit was not beside the boat: {boat_exit} exits={state().get('exits')}")
     results["boat_exit"] = boat_exit

@@ -30,7 +30,7 @@ import {
 
 function vector (value) { return { x: value.x, y: value.y, z: value.z } }
 
-// Survival interaction reach from the eyes; BDS still validates each request.
+// Survival interaction reach from the eyes (the runtime position); BDS still validates each request.
 export const ENTITY_REACH = 6
 // Nearby listings stay short and exclude players: they are interaction targets.
 export const ENTITY_LIST_RADIUS = 16
@@ -421,7 +421,8 @@ export class BedrockSession extends EventEmitter {
     const target = this.#entityTarget({ runtimeId, type })
     const distance = this.#eyeDistance(target)
     const center = { x: target.position.x, y: target.position.y + 0.5, z: target.position.z }
-    const eye = { x: this.position.x, y: this.position.y + EYE_HEIGHT, z: this.position.z }
+    // The runtime position is already at eye height (Bedrock player positions are).
+    const eye = this.position
     const yaw = Math.atan2(-(center.x - eye.x), center.z - eye.z) * 180 / Math.PI
     const pitch = -Math.atan2(center.y - eye.y, Math.hypot(center.x - eye.x, center.z - eye.z)) * 180 / Math.PI
     this.inputs?.setLook(yaw, pitch)
@@ -475,7 +476,7 @@ export class BedrockSession extends EventEmitter {
   }
 
   #eyeDistance (entity) {
-    return Math.hypot(entity.position.x - this.position.x, entity.position.y + 0.5 - (this.position.y + EYE_HEIGHT),
+    return Math.hypot(entity.position.x - this.position.x, entity.position.y + 0.5 - this.position.y,
       entity.position.z - this.position.z)
   }
 

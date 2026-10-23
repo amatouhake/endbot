@@ -20,6 +20,62 @@
       "prefix": []
     }
   ],
+  "target": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "block": [
+    {
+      "positional": [
+        [
+          "x",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "y",
+          {
+            "type": "coordinate"
+          }
+        ],
+        [
+          "z",
+          {
+            "type": "coordinate"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
+  "blocks": [
+    {
+      "positional": [
+        [
+          "type",
+          {
+            "type": "string"
+          }
+        ]
+      ],
+      "options": {
+        "radius": {
+          "type": "integer",
+          "clause": "radius"
+        },
+        "limit": {
+          "type": "integer",
+          "clause": "limit"
+        }
+      },
+      "prefix": []
+    }
+  ],
   "resume": [
     {
       "positional": [],

@@ -250,6 +250,16 @@ hotbar `slots`; `bot:entities().data.entities` lists up to 10 nearby non-player 
 `{runtimeId, type, distance, position, health, maxHealth, nameTag}` (health is nil for non-mobs). Pass a
 `runtimeId` to `:interact(id)`.
 
+World queries read BDS on the server thread and count as operations:
+
+| Call | `data` |
+| --- | --- |
+| `bot:target()` | `kind` (`"block"`, `"entity"` or nil), `distance`, and `block = {x, y, z, face, type}` or `entity = {runtimeId, type}`: the nearer hit within 6 blocks of the Bot's eyes, ignoring players |
+| `bot:block(x, y, z)` | `{x, y, z, type, states}`; `"~"`/`"~-1"` strings are relative to the Bot; any loaded position |
+| `bot:blocks("oak_log", {radius=8, limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance}` nearest first, only blocks with a face open to air, water or plants (no x-ray); radius 1-12, limit 1-64 |
+
+A radius-12 search took about 23 ms of server-thread time in the live check (2026-10-24).
+
 `bot:waitMining{timeout=1200}` and `group:waitMining{timeout=1200}` wait only for destroy/mining jobs.
 They return `{ok=boolean, reason=string, results={...}}`. Each result has `name`, `identityId`, `ok`,
 `reason`, and `mining` (the fields above). The group waits for all current members, pinning membership
@@ -288,6 +298,9 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:status()` | none | none |
 | `:inventory()` | none | none |
 | `:entities()` | none | none |
+| `:target()` | none | none |
+| `:block()` | x: coordinate, y: coordinate, z: coordinate | none |
+| `:blocks()` | type: string | radius: integer, limit: integer |
 | `:resume()` | none | none |
 | `:reconnect()` | none | none |
 | `:despawn()` | none | none |

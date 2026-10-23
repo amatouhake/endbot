@@ -270,9 +270,15 @@ def bot_screen(
                     Button(label("Use item..."), Show(action_screen(name, "use", lang))),
                     Button(label("Destroy blocks..."), Show(destroy_screen(name, lang))),
                     Button(label("Interact with block..."), Show(interact_modal(name, lang))),
-                    Button(label("List nearby entities"), run((name, "entities"))),
                     Button(label("Interact with entity..."), Show(entity_modal(name, lang))),
                     Button(label("Dismount"), run((name, "dismount"))),
+                    Button(label("Look around..."), category(
+                        "look around",
+                        Button(label("Looking at"), run((name, "target"))),
+                        Button(label("List nearby entities"), run((name, "entities"))),
+                        Button(label("Block info..."), Show(block_modal(name, lang))),
+                        Button(label("Find blocks..."), Show(find_blocks_modal(name, lang))),
+                    )),
                 ),
             ),
             Button(
@@ -384,6 +390,28 @@ def entity_modal(name: str, lang: str = "en") -> ModalScreen:
     return ModalScreen(f"{name}: interact", (
         TextInput(tr(lang, "Entity type, nearest or id (from the list)"), "cow", "nearest"),
     ), build, tr(lang, "Interact"))
+
+
+def block_modal(name: str, lang: str = "en") -> ModalScreen:
+    def build(values):
+        return ((name, "block", *_coordinates(_text(values[0]))),)
+
+    return ModalScreen(f"{name}: block", (
+        TextInput(tr(lang, "x y z (~ is relative to the Bot)"), "~ ~-1 ~", "~ ~-1 ~"),
+    ), build, tr(lang, "Run"))
+
+
+def find_blocks_modal(name: str, lang: str = "en") -> ModalScreen:
+    def build(values):
+        block_type = _text(values[0]).lower()
+        if not re.fullmatch(r"(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+", block_type):
+            raise FormResponseError("Enter one block type")
+        return ((name, "blocks", block_type, "radius", str(int(values[1]))),)
+
+    return ModalScreen(f"{name}: blocks", (
+        TextInput(tr(lang, "Block type"), "oak_log"),
+        Slider(tr(lang, "Radius"), 1, 12, 1, 8),
+    ), build, tr(lang, "Run"))
 
 
 def look_modal(name: str, observed: dict | None, lang: str = "en") -> ModalScreen:

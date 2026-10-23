@@ -201,6 +201,11 @@ class OperationParityTests(unittest.TestCase):
                 ({"x": 1, "y": 64, "z": 2, "face": "up"}, ["destroy", "1", "64", "2", "up"]),
             ],
             "drop": [({}, ["drop"]), ({"selector": "all"}, ["drop", "all"])],
+            "block": [({"x": 1, "y": "~-1", "z": "~"}, ["block", "1", "~-1", "~"])],
+            "blocks": [
+                ({"type": "oak_log"}, ["blocks", "oak_log"]),
+                ({"type": "oak_log", "radius": 12, "limit": 3}, ["blocks", "oak_log", "radius", "12", "limit", "3"]),
+            ],
             **{
                 op: [({"mode": "continuous", "ticks": 20}, [op, "continuous", "for", "20"])]
                 for op in ("jump", "attack", "use")

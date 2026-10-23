@@ -154,6 +154,15 @@ class ServerThreadWorld:
     def observe(self, identity_id):
         return self._bridge.call(lambda: self._world.observe(identity_id))
 
+    def target(self, identity_id):
+        return self._bridge.call(lambda: self._world.target(identity_id))
+
+    def block_info(self, identity_id, coordinates):
+        return self._bridge.call(lambda: self._world.block_info(identity_id, coordinates))
+
+    def find_blocks(self, identity_id, block_type, radius, limit):
+        return self._bridge.call(lambda: self._world.find_blocks(identity_id, block_type, radius, limit))
+
     def describe_entities(self, identity_id, runtime_ids):
         return self._bridge.call(lambda: self._world.describe_entities(identity_id, runtime_ids))
 

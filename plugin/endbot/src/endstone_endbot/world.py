@@ -74,6 +74,24 @@ def _exit_cells(forward: tuple[int, int], vehicle_type: str) -> list[tuple[int, 
     return order
 
 
+# Read-only queries (BOT-014).
+REACH = 6.0
+SEARCH_RADIUS_MAX = 12
+SEARCH_LIMIT_MAX = 64
+DIMENSION_HEIGHTS = {"Overworld": (-64, 319), "Nether": (0, 127), "TheEnd": (0, 255)}
+FACE_NAMES = ("down", "up", "north", "south", "west", "east")
+NEIGHBOURS = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
+
+
+def _state_value(value):
+    return value if isinstance(value, (bool, int, float, str)) else str(value)
+
+
+def _exposed(dimension, x, y, z) -> bool:
+    """A block a player could see: at least one face touches a passable block."""
+    return any(_passable(str(dimension.get_block_at(x + dx, y + dy, z + dz).type)) for dx, dy, dz in NEIGHBOURS)
+
+
 def _cardinal(yaw: float) -> tuple[int, int]:
     radians = math.radians(round(yaw / 90) * 90)
     return round(-math.sin(radians)), round(math.cos(radians))
@@ -254,6 +272,71 @@ class EndstoneWorld:
             "blockRuntimeId": int(block.data.runtime_id),
             "face": int(parameters["face"]),
         }
+
+    def _bot(self, identity_id: str):
+        bot = self.server.get_player(UUID(identity_id))
+        if bot is None:
+            raise ValueError("Bot is not present in the world")
+        return bot
+
+    def target(self, identity_id: str) -> dict:
+        """What the Bot's crosshair hits within reach: the nearer of a block and a non-player entity."""
+        bot = self._bot(identity_id)
+        location = bot.location
+        eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
+        yaw, pitch = math.radians(float(location.yaw)), math.radians(float(location.pitch))
+        direction = [-math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch)]
+        dimension = location.dimension
+        found = self._ray_block(dimension, eye, direction, REACH)
+        result = {"kind": None, "block": None, "entity": None, "distance": None}
+        if found is not None:
+            cell, block, face = found
+            distance = math.dist(eye, [value + 0.5 for value in cell])
+            result = {"kind": "block", "entity": None, "distance": round(distance, 1),
+                      "block": {"x": cell[0], "y": cell[1], "z": cell[2], "face": FACE_NAMES[face],
+                                "type": str(block.type)}}
+        for actor in dimension.actors:
+            if actor.type == "minecraft:player":
+                continue
+            center = [float(actor.location.x), float(actor.location.y) + 0.6, float(actor.location.z)]
+            offset = [center[index] - eye[index] for index in range(3)]
+            along = sum(offset[index] * direction[index] for index in range(3))
+            if along <= 0 or along > REACH:
+                continue
+            miss = math.dist(offset, [direction[index] * along for index in range(3)])
+            if miss <= 0.6 and (result["distance"] is None or along < result["distance"]):
+                result = {"kind": "entity", "block": None, "distance": round(along, 1),
+                          "entity": {"runtimeId": str(actor.runtime_id), "type": actor.type}}
+        return result
+
+    def block_info(self, identity_id: str, coordinates: list[object]) -> dict:
+        """One block's type and states; `~` is relative to the Bot. Any position is allowed."""
+        bot = self._bot(identity_id)
+        position = [math.floor(value) for value in self._resolve_coordinates(coordinates, bot.location)]
+        block = bot.location.dimension.get_block_at(*position)
+        states = getattr(block.data, "block_states", None) or {}
+        return {"x": position[0], "y": position[1], "z": position[2], "type": str(block.type),
+                "states": {str(key): _state_value(value) for key, value in dict(states).items()}}
+
+    def find_blocks(self, identity_id: str, block_type: str, radius: int, limit: int) -> list[dict]:
+        """Nearest exposed blocks of one type around the Bot; hidden blocks are never reported."""
+        bot = self._bot(identity_id)
+        location = bot.location
+        dimension = location.dimension
+        low, high = DIMENSION_HEIGHTS.get(dimension.name, (-64, 319))
+        origin = [math.floor(float(location.x)), math.floor(float(location.y)), math.floor(float(location.z))]
+        feet = [float(location.x), float(location.y), float(location.z)]
+        found = []
+        for x in range(origin[0] - radius, origin[0] + radius + 1):
+            for y in range(max(low, origin[1] - radius), min(high, origin[1] + radius) + 1):
+                for z in range(origin[2] - radius, origin[2] + radius + 1):
+                    if str(dimension.get_block_at(x, y, z).type) != block_type:
+                        continue
+                    distance = math.dist(feet, (x + 0.5, y + 0.5, z + 0.5))
+                    if distance <= radius and _exposed(dimension, x, y, z):
+                        found.append({"x": x, "y": y, "z": z, "distance": round(distance, 1)})
+        found.sort(key=lambda entry: entry["distance"])
+        return found[:limit]
 
     def resolve_dismount(self, identity_id: str, vehicle_runtime_id: str | None) -> dict[str, float] | None:
         """Pick a vanilla-style exit next to the vehicle, as a feet position.

@@ -609,8 +609,8 @@ pair before product work.
 
 ## BOT-014: Read-only world and Bot queries for scripts
 
-Status: **In progress for 0.4.0** (2026-10-24 JST). Bot state, inventory/hotbar data and entity details are
-implemented; look target, block lookup and block search follow.
+Status: **Implemented for 0.4.0 — Windows RakNet live check passed; human-client forms pending** (2026-10-24 JST).
+Bot state, inventory/hotbar data and entity details (#86); look target, block lookup and exposed-block search.
 
 Scripts could act but hardly observe: `status` carried no position, `inventory`/`hotbar` returned only text, and there
 was no block information, so scripts such as "walk to the tree and cut it" could not be written. The operator chose to

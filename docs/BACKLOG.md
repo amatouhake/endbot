@@ -588,7 +588,7 @@ None of these may be inferred from a green unit build.
 
 ## BOT-012: Interact with entities — feeding, riding and dismounting
 
-Status: **Scoped for 0.4.0 — protocol spike first** (2026-10-24 JST).
+Status: **Implemented — Windows RakNet live check passed; human-client rendering, boats/horses and NetherNet pending** (2026-10-24 JST). See [entities and vehicles](COMMANDS.md#entities-and-vehicles).
 
 Operators could not put a Bot in a minecart or feed animals. Add entity interaction through the vanilla client path
 (no server-side shortcuts), so achievements and BDS authority stay intact:

@@ -125,7 +125,7 @@ def check_locked_endstone() -> dict:
 
 def exercise(
     output: Path, node: str, report: dict, *, mining=False, inventory=False, inventory_stack=False,
-    item_use=False, groups=False, scripting=False,
+    item_use=False, groups=False, scripting=False, entity=False,
     transport="raknet", server: Path | None = None,
 ) -> None:
     scripting_runner = None
@@ -182,6 +182,7 @@ def exercise(
             ROOT / "plugin/endbot/src/endstone_endbot/inventory_sync.py",
             ROOT / "scripts/mining_probe.py",
             ROOT / "scripts/item_use_probe.py",
+            ROOT / "scripts/entity_probe.py",
             ROOT / "plugin/endbot/src/endstone_endbot/plugin.py",
             ROOT / "plugin/endbot/src/endstone_endbot/controller_policy.py",
             ROOT / "plugin/endbot/src/endstone_endbot/dispatch.py",
@@ -296,12 +297,15 @@ def exercise(
         [str(ROOT / "plugin/endbot/src"), str(ROOT / "cli/endbot/src")]
     )
     environment["PYTHONIOENCODING"] = "utf-8"
-    if mining or inventory or item_use or inventory_stack or scripting:
+    if mining or inventory or item_use or inventory_stack or scripting or entity:
         from mining_probe import configure_fixture
         configure_fixture(ROOT, output, environment)
     if item_use:
         from item_use_probe import configure_fixture as configure_item_use
         configure_item_use(ROOT, output, environment)
+    if entity:
+        from entity_probe import configure_fixture as configure_entity
+        configure_entity(ROOT, output, environment)
     if inventory_stack:
         from inventory_stack_probe import configure_fixture as configure_stack
 
@@ -562,6 +566,15 @@ def exercise(
                     output, lambda line: console(bds, line),
                     lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
                     lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
+                )
+            if entity:
+                from entity_probe import exercise_entity
+
+                report["stage"] = "entity interaction"
+                exercise_entity(
+                    output, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report, logtext,
                 )
             if inventory_stack:
                 from inventory_stack_probe import exercise_inventory_stack
@@ -911,6 +924,7 @@ def main() -> int:
     parser.add_argument("--inventory", action="store_true", help="validate natural pickups and hotbar/drop without reconnect")
     parser.add_argument("--inventory-stack", action="store_true", help="record stack requests/responses and authoritative inventory in disposable fixtures")
     parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
+    parser.add_argument("--entity", action="store_true", help="feed a cow and ride/dismount stationary and moving minecarts (BOT-012)")
     parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
     parser.add_argument("--scripting", action="store_true", help="enable scripting only in the disposable instance and validate native runs/stop/budgets with BDS observations")
     parser.add_argument(
@@ -948,7 +962,7 @@ def main() -> int:
     try:
         options = {"mining": args.mining, "inventory": args.inventory, "inventory_stack": args.inventory_stack,
                    "item_use": args.item_use,
-                   "groups": args.groups, "scripting": args.scripting, "transport": args.transport}
+                   "groups": args.groups, "scripting": args.scripting, "entity": args.entity, "transport": args.transport}
         if args.server_dir is None:
             exercise(output, args.node, report, **options)
         else:

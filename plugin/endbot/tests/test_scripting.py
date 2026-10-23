@@ -191,7 +191,11 @@ class OperationParityTests(unittest.TestCase):
             "hold": [({"item": "stone"}, ["hold", "stone"])],
             "hotbar": [({}, ["hotbar"]), ({"slot": 2}, ["hotbar", "2"])],
             "radius": [({}, ["radius"]), ({"value": "default"}, ["radius", "default"])],
-            "interact": [({"x": 1, "y": 64, "z": 2, "face": "up"}, ["interact", "1", "64", "2", "up"])],
+            "interact": [
+                ({"x": 1, "y": 64, "z": 2, "face": "up"}, ["interact", "1", "64", "2", "up"]),
+                ({"entity": "cow"}, ["interact", "entity", "cow"]),
+                ({"entity": 42}, ["interact", "entity", "42"]),
+            ],
             "destroy": [
                 ({"mode": "continuous", "count": 64}, ["destroy", "continuous", "count", "64"]),
                 ({"x": 1, "y": 64, "z": 2, "face": "up"}, ["destroy", "1", "64", "2", "up"]),

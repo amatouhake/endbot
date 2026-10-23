@@ -260,9 +260,25 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     ),
     "interact": HelpTopic(
         "interact",
-        "right-click a block face",
-        ("interact <x> <y> <z> <down|up|north|south|west|east>",),
-        ("BDS decides reach, legality and inventory changes.",),
+        "right-click a block face or an entity",
+        ("interact <x> <y> <z> <down|up|north|south|west|east>", "interact entity <type|nearest|id>"),
+        (
+            "BDS decides reach, legality and inventory changes.",
+            "entity turns to the nearest match within 6 blocks and uses the held item: feed, breed, shear, ride.",
+            "An id comes from entities; players are never targets.",
+        ),
+    ),
+    "entities": HelpTopic(
+        "entities",
+        "list nearby entities",
+        ("entities",),
+        ("Shows up to 10 non-player entities within 16 blocks with their id and distance.",),
+    ),
+    "dismount": HelpTopic(
+        "dismount",
+        "get off a minecart, boat or animal",
+        ("dismount",),
+        ("Riding Bots follow their vehicle; status shows what the Bot is riding.",),
     ),
     "destroy": HelpTopic(
         "destroy",
@@ -339,12 +355,14 @@ HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
     ("move", "look", "jump", "attack", "use", "sprint", "sneak", "stop"),
     ("inventory", "hotbar", "swap", "hold", "interact", "destroy", "drop", "radius", "rename", "forget"),
+    ("entities", "dismount"),
 )
 
 HELP_PAGE_TITLES = (
     "lifecycle, status and teleport",
     "movement and actions",
     "inventory, blocks and Bot settings",
+    "entities and vehicles",
 )
 
 
@@ -626,7 +644,7 @@ def parse_command(arguments: list[str]) -> BotCommand:
     if operation not in OPERATIONS:
         raise CommandSyntaxError("Unknown or invalid Bot action: {operation}", operation=operation)
     if operation in {
-        "status", "inventory", "resume", "reconnect", "despawn", "forget", "stop", "menu"
+        "status", "inventory", "entities", "resume", "reconnect", "despawn", "forget", "stop", "menu", "dismount"
     } and not remaining:
         return BotCommand(operation, name)
     if operation == "spawn":
@@ -695,6 +713,18 @@ def parse_command(arguments: list[str]) -> BotCommand:
         if not 2 <= radius <= 32:
             raise CommandSyntaxError("Chunk radius must be from 2 to 32")
         return BotCommand(operation, name, {"value": radius})
+    if operation == "interact" and remaining and remaining[0].lower() == "entity":
+        if len(remaining) != 2:
+            raise CommandSyntaxError("Use interact entity <type|nearest|id>")
+        selector = remaining[1].lower()
+        if selector == "nearest":
+            return BotCommand(operation, name, {"entity": "nearest"})
+        if selector.isascii() and selector.isdecimal() and len(selector) <= 19:
+            return BotCommand(operation, name, {"entity": "id", "runtimeId": str(int(selector))})
+        entity_type = selector if ":" in selector else f"minecraft:{selector}"
+        if not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_./-]+", entity_type):
+            raise CommandSyntaxError("Invalid entity type")
+        return BotCommand(operation, name, {"entity": "type", "type": entity_type})
     if operation == "interact" and len(remaining) == 4 and remaining[-1].lower() in BLOCK_FACES:
         target, unused = _position(remaining[:3])
         assert not unused
@@ -1084,6 +1114,28 @@ class BotCommandService:
                 block=target["blockName"],
                 position=position,
             )
+        if command.operation == "entities":
+            result = control.request("entities", name=command.name)
+            entities = result["entities"]
+            data = {"name": result["name"], "identityId": result["identityId"], "entities": entities}
+            if not entities:
+                return CommandResult(True, (reply(tr(lang, "no entities nearby"), result["name"]),), data=data)
+            listed = ", ".join(
+                f"{entity['type'].removeprefix('minecraft:')} {DIM}#{entity['runtimeId']}{RESET} {entity['distance']}m"
+                for entity in entities
+            )
+            return CommandResult(True, (reply(tr(lang, "nearby: {entities}", entities=listed), result["name"]),),
+                                 data=data)
+        if command.operation == "interact" and "entity" in command.parameters:
+            selector = {key: command.parameters[key] for key in ("runtimeId", "type") if key in command.parameters}
+            result = control.request("interactEntity", name=command.name, **selector)
+            entity = result["entity"]
+            return say("interaction with {entity} #{id} requested", result["name"],
+                       entity=entity["type"].removeprefix("minecraft:"), id=entity["runtimeId"])
+        if command.operation == "dismount":
+            result = control.request("dismount", name=command.name)
+            return say("dismount from {vehicle} requested", result["name"],
+                       vehicle=result["vehicle"]["type"].removeprefix("minecraft:"))
         if command.operation == "interact":
             status = control.request("status", name=command.name)
             interaction = self.world.resolve_interaction(status["identityId"], command.parameters, sender)
@@ -1224,6 +1276,9 @@ class BotCommandService:
             fields.append(timed)
         if status.get("mining"):
             fields.append(cls._mining_summary(status["mining"], lang))
+        if status.get("vehicle"):
+            vehicle = str(status["vehicle"].get("type") or "?").removeprefix("minecraft:")
+            fields.append(tr(lang, "riding {vehicle}", vehicle=vehicle))
         return reply(f"{DIM} | {RESET}".join(fields), status["name"])
 
     @staticmethod
@@ -1279,6 +1334,7 @@ class BotCommandService:
         return {
             "name": status["name"], "identityId": status["identityId"],
             "connectionState": status["connectionState"],
+            "vehicle": status.get("vehicle"),
             "mining": {
                 "active": active,
                 "mode": ("continuous" if continuous else "once") if mining else None,

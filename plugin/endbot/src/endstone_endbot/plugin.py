@@ -64,6 +64,8 @@ COMMAND_USAGES = [
     # which hid status/resume/reconnect/despawn/forget/stop from suggestions.
     "/bot <name: string> (status)<operation: EndbotStatus>",
     "/bot <name: string> (inventory)<operation: EndbotInventory>",
+    "/bot <name: string> (entities)<operation: EndbotEntities>",
+    "/bot <name: string> (dismount)<operation: EndbotDismount>",
     "/bot <name: string> (resume)<operation: EndbotResume>",
     "/bot <name: string> (reconnect)<operation: EndbotReconnect>",
     "/bot <name: string> (despawn)<operation: EndbotDespawn>",
@@ -117,6 +119,8 @@ COMMAND_USAGES = [
         "/bot <name: string> (interact)<operation: EndbotInteract> <block: block_pos> "
         "(down|up|north|south|west|east)<face: EndbotBlockFace>"
     ),
+    # A hint ending at an enum; the message overload carries the entity selector.
+    "/bot <name: string> (interact)<operation: EndbotInteractEntity> (entity)<mode: EndbotEntityMode>",
     "/bot <name: string> (drop)<operation: EndbotDropOne>",
     # These are hints ending at enums; the enum-free message overload above
     # carries numeric slots and item/count tails under the pinned BDS rules.

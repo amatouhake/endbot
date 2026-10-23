@@ -157,6 +157,11 @@ JA: dict[str, str] = {
     "Forget {name}? Requires an offline Bot. Its world player data stays intact.":
         "{name} の登録を削除しますか? オフラインの Bot が対象です。ワールド内のプレイヤーデータは残ります。",
     "Interact with block...": "ブロックを操作...",
+    "List nearby entities": "近くのエンティティを一覧表示",
+    "Interact with entity...": "エンティティを操作...",
+    "Dismount": "降りる",
+    "Entity type, nearest or id (from the list)": "エンティティの種類、nearest、または一覧の id",
+    "Enter one entity type, nearest or id": "エンティティの種類、nearest、id のどれかを1つ入力してください",
     "Interact": "操作",
     "Chunk radius (per Bot)": "チャンク半径 (各 Bot に適用)",
     "Bot and Group operation menus share the same controls; Group management uses /botgroup.":
@@ -354,7 +359,34 @@ JA: dict[str, str] = {
     "default restores the shared runtime setting; BDS may clamp the requested range.": (
         "default で共通の runtime 設定に戻します。BDS が値を制限することがあります。"
     ),
-    "right-click a block face": "ブロックの面を右クリックする",
+    "right-click a block face or an entity": "ブロックの面かエンティティを右クリックする",
+    "entity turns to the nearest match within 6 blocks and uses the held item: feed, breed, shear, ride.":
+        "entity は6ブロック以内で一番近い対象の方を向き、手に持ったアイテムを使います。"
+        "エサやり、繁殖、毛刈り、乗車に使えます。",
+    "An id comes from entities; players are never targets.":
+        "id は entities で確認できます。プレイヤーは対象になりません。",
+    "list nearby entities": "近くのエンティティを一覧表示する",
+    "Shows up to 10 non-player entities within 16 blocks with their id and distance.":
+        "16ブロック以内のプレイヤー以外のエンティティを最大10件、id と距離つきで表示します。",
+    "get off a minecart, boat or animal": "トロッコ、ボート、動物から降りる",
+    "Riding Bots follow their vehicle; status shows what the Bot is riding.":
+        "乗っている Bot は乗り物と一緒に動きます。何に乗っているかは status で確認できます。",
+    "entities and vehicles": "エンティティと乗り物",
+    "no entities nearby": "近くにエンティティはいません",
+    "nearby: {entities}": "近く: {entities}",
+    "interaction with {entity} #{id} requested": "{entity} #{id} への操作を要求しました",
+    "dismount from {vehicle} requested": "{vehicle} から降りるよう要求しました",
+    "riding {vehicle}": "{vehicle} に乗車中",
+    "Use interact entity <type|nearest|id>": "interact entity <type|nearest|id> の形で指定してください",
+    "Invalid entity type": "エンティティの種類が正しくありません",
+    "No matching entity within reach": "届く範囲に該当するエンティティがいません",
+    "No entity within reach": "届く範囲にエンティティがいません",
+    "No entity with that ID is in view": "その ID のエンティティが見当たりません",
+    "That entity is out of reach": "そのエンティティには届きません",
+    "Bot is riding; dismount first": "Bot は乗車中です。先に dismount してください",
+    "Bot is not riding": "Bot は何にも乗っていません",
+    "The vehicle is not in view": "乗り物が見当たりません",
+    "An entity interaction is already pending": "エンティティへの操作がすでに待機中です",
     "BDS decides reach, legality and inventory changes.": "届く距離、可否、インベントリの変化は BDS が決めます。",
     "break reachable blocks with the held tool (hold left-click)": (
         "持っている道具で届くブロックを壊す (左クリック長押し)"

@@ -34,6 +34,10 @@ class FakeSession extends EventEmitter {
   }
   stopMining (reason = 'stopped') { if (this.mining) this.mining = { ...this.mining, state: 'canceled', reason } }
   miningStatus () { return this.mining ?? null }
+  nearbyEntities () { return [{ runtimeId: '20', type: 'minecraft:cow', distance: 2 }] }
+  interactEntity (target) { this.entityTarget = target; return { runtimeId: '20', type: 'minecraft:cow', distance: 2 } }
+  vehicleStatus () { return this.vehicle ?? null }
+  dismount () { return { runtimeId: '30', type: 'minecraft:minecart' } }
 }
 
 function fixture (options = {}) {
@@ -69,6 +73,29 @@ test('swap and hold require online sessions and validated control parameters', a
   await lifecycle.despawn('Alice')
   assert.throws(() => lifecycle.swap('Alice', 1, 2))
   assert.throws(() => lifecycle.hold('Alice', 'stone'))
+  await lifecycle.close()
+})
+
+test('entity operations validate selectors and report the vehicle in status', async () => {
+  const { lifecycle, sessions } = fixture()
+  await lifecycle.spawn('Alice')
+  await turn()
+  assert.equal(lifecycle.entities('Alice').entities[0].type, 'minecraft:cow')
+  assert.equal(lifecycle.interactEntity('Alice', { type: 'cow' }).entity.runtimeId, '20')
+  assert.deepEqual(sessions[0].entityTarget, { runtimeId: undefined, type: 'cow' })
+  lifecycle.interactEntity('Alice', { runtimeId: '20' })
+  assert.deepEqual(sessions[0].entityTarget, { runtimeId: '20', type: undefined })
+  for (const selector of [{ runtimeId: 20 }, { runtimeId: '-1' }, { type: 'Cow' }, { type: 'a b' },
+    { runtimeId: '20', type: 'cow' }]) {
+    assert.throws(() => lifecycle.interactEntity('Alice', selector))
+  }
+  assert.equal(lifecycle.status('Alice').vehicle, null)
+  sessions[0].vehicle = { type: 'minecraft:minecart', runtimeId: '30' }
+  assert.equal(lifecycle.status('Alice').vehicle.type, 'minecraft:minecart')
+  assert.equal(lifecycle.dismount('Alice').vehicle.runtimeId, '30')
+  await lifecycle.despawn('Alice')
+  assert.throws(() => lifecycle.entities('Alice'))
+  assert.equal(lifecycle.status('Alice').vehicle, null)
   await lifecycle.close()
 })
 

@@ -268,7 +268,7 @@ class JapaneseServiceTests(unittest.TestCase):
 class JapaneseHelpTests(unittest.TestCase):
     def test_help_pages_translate_descriptions_but_not_syntax(self):
         lines = [strip_colors(line) for line in help_page(1, "ja")]
-        self.assertEqual(lines[0], "--- Endbot ヘルプ 1/3: 接続と状態、テレポート ---")
+        self.assertEqual(lines[0], "--- Endbot ヘルプ 1/4: 接続と状態、テレポート ---")
         self.assertIn("/bot <name> spawn - Bot を作成または接続する", lines)
         self.assertEqual(lines[-1], "次のページ: /bot help 2 - 詳細: /bot help <command>")
 

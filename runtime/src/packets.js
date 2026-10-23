@@ -194,7 +194,7 @@ export function createReleaseTransaction ({ hotbarSlot, heldItem, position }) {
   }
 }
 
-export function createAttackTransaction ({ runtimeId, hotbarSlot, heldItem, position, clickPosition }) {
+export function createAttackTransaction ({ runtimeId, hotbarSlot, heldItem, position, clickPosition, actionType = 'attack' }) {
   return {
     transaction: {
       legacy: { legacy_request_id: 0 },
@@ -202,7 +202,7 @@ export function createAttackTransaction ({ runtimeId, hotbarSlot, heldItem, posi
       actions: [],
       transaction_data: {
         entity_runtime_id: runtimeId,
-        action_type: 'attack',
+        action_type: actionType,
         hotbar_slot: hotbarSlot,
         held_item: heldItem,
         player_pos: { ...position },
@@ -210,6 +210,16 @@ export function createAttackTransaction ({ runtimeId, hotbarSlot, heldItem, posi
       }
     }
   }
+}
+
+// Right-click on an entity: feeding, breeding, shearing, name tags and mounting.
+export function createEntityInteractTransaction (options) {
+  return createAttackTransaction({ ...options, actionType: 'interact' })
+}
+
+// The vanilla client leaves a vehicle with this interact action.
+export function createLeaveVehicle (vehicleRuntimeId) {
+  return { action_id: 'leave_vehicle', target_entity_id: vehicleRuntimeId, has_position: false }
 }
 
 export function createEntityMouseOver (runtimeId) {

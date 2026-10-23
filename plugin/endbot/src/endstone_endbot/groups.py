@@ -541,7 +541,7 @@ class GroupCommandService(BotCommandService):
                                      operation=command.operation)
             if not members:
                 raise ValueError("Group has no members")
-            query = command.operation in {"status", "inventory"} or (
+            query = command.operation in {"status", "inventory", "entities"} or (
                 command.operation in {"hotbar", "radius"} and not command.parameters)
             if not indexed and command.operation in GROUP_INPUT_OPERATIONS:
                 rows = self._execute_inputs(command, sender, members)

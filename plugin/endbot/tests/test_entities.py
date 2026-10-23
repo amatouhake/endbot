@@ -133,9 +133,10 @@ class EntityFormTests(unittest.TestCase):
         around = gameplay.items[6].action.screen
         self.assertEqual([item.action.commands for item in around.items[:2]],
                          [(("Alice", "target"),), (("Alice", "entities"),)])
-        self.assertEqual(modal_commands(around.items[2].action.screen, '["~ ~-1 ~"]'),
+        self.assertEqual(modal_commands(around.items[2].action.screen, '["Sheep"]'), (("Alice", "entity", "sheep"),))
+        self.assertEqual(modal_commands(around.items[3].action.screen, '["~ ~-1 ~"]'),
                          (("Alice", "block", "~", "~-1", "~"),))
-        self.assertEqual(modal_commands(around.items[3].action.screen, '["oak_log", 5]'),
+        self.assertEqual(modal_commands(around.items[4].action.screen, '["oak_log", 5]'),
                          (("Alice", "blocks", "oak_log", "radius", "5"),))
         modal = gameplay.items[4].action
         self.assertIsInstance(modal, Show)

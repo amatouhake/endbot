@@ -391,10 +391,13 @@ export class BedrockSession extends EventEmitter {
     }
   }
 
-  nearbyEntities () {
+  nearbyEntities ({ runtimeId, type } = {}) {
     if (!this.position) return []
+    const wanted = type === undefined ? undefined : (String(type).includes(':') ? String(type) : `minecraft:${type}`)
     return [...this.entities.values()]
       .filter(entity => entity.type !== 'minecraft:player')
+      .filter(entity => (runtimeId === undefined || String(entity.runtimeId) === String(runtimeId)) &&
+        (wanted === undefined || entity.type === wanted))
       .map(entity => ({ entity, distance: this.#eyeDistance(entity) }))
       .filter(({ distance }) => distance <= ENTITY_LIST_RADIUS)
       .sort((a, b) => a.distance - b.distance)

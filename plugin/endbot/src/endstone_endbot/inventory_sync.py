@@ -33,10 +33,20 @@ def inventory_snapshot(player) -> list[dict]:
     slots = [(str(slot + 1), inventory.get_item(slot)) for slot in range(36)]
     slots.extend((label, getattr(inventory, attribute)) for label, attribute in EQUIPMENT_SLOTS)
     return [
-        {"slot": label, "name": item.type.id, "count": item.amount}
+        {"slot": label, **item_summary(item)}
         for label, item in slots
         if item is not None and item.amount > 0 and item.type.id != "minecraft:air"
     ]
+
+
+def item_summary(item) -> dict:
+    """Name and count, plus remaining/max durability for damageable items."""
+    summary = {"name": item.type.id, "count": item.amount}
+    maximum = int(getattr(item.type, "max_durability", 0) or 0)
+    if maximum > 0:
+        damage = int(item.item_meta.damage) if item.item_meta is not None else 0
+        summary["durability"] = {"remaining": max(0, maximum - damage), "max": maximum}
+    return summary
 
 
 def typed_nbt(tag):

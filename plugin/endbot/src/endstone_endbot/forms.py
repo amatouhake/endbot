@@ -276,6 +276,7 @@ def bot_screen(
                         "look around",
                         Button(label("Looking at"), run((name, "target"))),
                         Button(label("List nearby entities"), run((name, "entities"))),
+                        Button(label("Entity details..."), Show(entity_details_modal(name, lang))),
                         Button(label("Block info..."), Show(block_modal(name, lang))),
                         Button(label("Find blocks..."), Show(find_blocks_modal(name, lang))),
                     )),
@@ -390,6 +391,18 @@ def entity_modal(name: str, lang: str = "en") -> ModalScreen:
     return ModalScreen(f"{name}: interact", (
         TextInput(tr(lang, "Entity type, nearest or id (from the list)"), "cow", "nearest"),
     ), build, tr(lang, "Interact"))
+
+
+def entity_details_modal(name: str, lang: str = "en") -> ModalScreen:
+    def build(values):
+        selector = _text(values[0]).lower()
+        if not re.fullmatch(r"nearest|[0-9]{1,19}|(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+", selector):
+            raise FormResponseError("Enter one entity type, nearest or id")
+        return ((name, "entity", selector),)
+
+    return ModalScreen(f"{name}: entity", (
+        TextInput(tr(lang, "Entity type, nearest or id (from the list)"), "cow", "nearest"),
+    ), build, tr(lang, "Run"))
 
 
 def block_modal(name: str, lang: str = "en") -> ModalScreen:

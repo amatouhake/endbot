@@ -120,6 +120,7 @@ class PluginAdapterTests(unittest.TestCase):
                 "status",
                 "inventory",
                 "entities",
+                "entity",
                 "dismount",
                 "target",
                 "block",

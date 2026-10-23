@@ -67,6 +67,7 @@ COMMAND_USAGES = [
     "/bot <name: string> (entities)<operation: EndbotEntities>",
     "/bot <name: string> (dismount)<operation: EndbotDismount>",
     "/bot <name: string> (target)<operation: EndbotTarget>",
+    "/bot <name: string> (entity)<operation: EndbotEntity>",
     "/bot <name: string> (block)<operation: EndbotBlockInfo> <position: pos>",
     "/bot <name: string> (blocks)<operation: EndbotBlocks> <type: string>",
     "/bot <name: string> (resume)<operation: EndbotResume>",

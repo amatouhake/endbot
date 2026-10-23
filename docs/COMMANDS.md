@@ -346,6 +346,7 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice hold <item>
 /bot Alice interact <x> <y> <z> <down|up|north|south|west|east>
 /bot Alice entities
+/bot Alice entity [type|nearest|id]
 /bot Alice target
 /bot Alice block <x> <y> <z>
 /bot Alice blocks <type> [radius <1-12>] [limit <1-64>]
@@ -500,9 +501,15 @@ container-to-world path with exact observed item data (see the inventory/drop gr
 
 ### Looking around
 
+Coordinates anywhere in `/bot` accept vanilla's compact relative form: `~~-1~` is `~ ~-1 ~`. `inventory` and
+`hotbar` list items with remaining/maximum durability for tools and armor, for example `iron_pickaxe x1 (210/250)`;
+`hotbar` also lists the hotbar items, not only the selected slot. `entity [type|nearest|id]` shows one entity within 16
+blocks in detail (id, distance, position, health, name tag); without an argument it is the nearest.
+
 `target` shows what the Bot's crosshair hits within 6 blocks: the nearer of a block (position, face, type) and a
 non-player entity. `block <x> <y> <z>` shows one block's type and states; `~` is relative to the Bot. `blocks <type>`
-lists the nearest blocks of that type within a radius (default 8, at most 12), up to `limit` (default 10, at most 64),
+lists the nearest blocks of that type, as `x y z (distance)`, within a radius (default 8, at most 12), up to `limit`
+(default 10, at most 64),
 counting only blocks with a face open to air, water or plants, so it does not reveal buried ores. All three read BDS
 through the Endstone SDK, never change anything, and return data to scripts; Group targets print every member's
 result like `status`. The Gameplay form's **Look around...** offers them with the nearby-entity list.

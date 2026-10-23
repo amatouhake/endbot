@@ -274,6 +274,12 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ("entities",),
         ("Shows up to 10 non-player entities within 16 blocks with their id and distance.",),
     ),
+    "entity": HelpTopic(
+        "entity",
+        "show one nearby entity in detail",
+        ("entity [type|nearest|id]",),
+        ("Position, distance, health and name tag of the nearest match within 16 blocks; players are excluded.",),
+    ),
     "target": HelpTopic(
         "target",
         "show the block or entity the Bot is looking at",
@@ -379,7 +385,7 @@ HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
     ("move", "look", "jump", "attack", "use", "sprint", "sneak", "stop"),
     ("inventory", "hotbar", "swap", "hold", "interact", "destroy", "drop", "radius", "rename", "forget"),
-    ("entities", "target", "block", "blocks", "dismount"),
+    ("entities", "entity", "target", "block", "blocks", "dismount"),
 )
 
 HELP_PAGE_TITLES = (
@@ -483,11 +489,17 @@ MINING_REASONS = {
 EXPECTED_MINING_ENDS = {"duration elapsed", "block count reached"}
 
 
+COMPACT_RELATIVE = re.compile(r"(?:~[-+]?(?:\d+(?:\.\d*)?|\.\d+)?){2,3}")
+RELATIVE_PART = re.compile(r"~[-+]?(?:\d+(?:\.\d*)?|\.\d+)?")
+
+
 def _tokens(arguments: list[str]) -> list[str]:
     tokens: list[str] = []
     for argument in arguments:
         tokens.extend(shlex.split(argument) if any(character.isspace() for character in argument) else [argument])
-    return tokens
+    # Like vanilla commands, `~~-1~` is three relative coordinates.
+    return [part for token in tokens
+            for part in (RELATIVE_PART.findall(token) if COMPACT_RELATIVE.fullmatch(token) else [token])]
 
 
 def _number(value: str, label: str) -> float:
@@ -504,6 +516,24 @@ def _coordinate(value: str) -> float | tuple[str, float]:
     if value.startswith("~"):
         return ("relative", _number(value[1:] or "0", Text("relative coordinate")))
     return _number(value, Text("coordinate"))
+
+
+def _entity_selector(raw: str) -> dict[str, object]:
+    selector = raw.lower()
+    if selector == "nearest":
+        return {"entity": "nearest"}
+    if selector.isascii() and selector.isdecimal() and len(selector) <= 19:
+        return {"entity": "id", "runtimeId": str(int(selector))}
+    entity_type = selector if ":" in selector else f"minecraft:{selector}"
+    if not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_./-]+", entity_type):
+        raise CommandSyntaxError("Invalid entity type")
+    return {"entity": "type", "type": entity_type}
+
+
+def _item_text(item: dict) -> str:
+    text = f"{item['name'].removeprefix('minecraft:')} x{item['count']}"
+    durability = item.get("durability")
+    return text + (f" ({durability['remaining']}/{durability['max']})" if durability else "")
 
 
 def _position(tokens: list[str]) -> tuple[dict[str, object], list[str]]:
@@ -668,8 +698,8 @@ def parse_command(arguments: list[str]) -> BotCommand:
     if operation not in OPERATIONS:
         raise CommandSyntaxError("Unknown or invalid Bot action: {operation}", operation=operation)
     if operation in {
-        "status", "inventory", "entities", "target", "resume", "reconnect", "despawn", "forget", "stop", "menu",
-        "dismount",
+        "status", "inventory", "entities", "entity", "target", "resume", "reconnect", "despawn", "forget", "stop",
+        "menu", "dismount",
     } and not remaining:
         return BotCommand(operation, name)
     if operation == "spawn":
@@ -768,16 +798,8 @@ def parse_command(arguments: list[str]) -> BotCommand:
         return BotCommand(operation, name, parameters)
     # Like tp, the argument shape picks the target: one token is an entity,
     # coordinates and a face are a block.
-    if operation == "interact" and len(remaining) == 1:
-        selector = remaining[0].lower()
-        if selector == "nearest":
-            return BotCommand(operation, name, {"entity": "nearest"})
-        if selector.isascii() and selector.isdecimal() and len(selector) <= 19:
-            return BotCommand(operation, name, {"entity": "id", "runtimeId": str(int(selector))})
-        entity_type = selector if ":" in selector else f"minecraft:{selector}"
-        if not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_./-]+", entity_type):
-            raise CommandSyntaxError("Invalid entity type")
-        return BotCommand(operation, name, {"entity": "type", "type": entity_type})
+    if operation in {"interact", "entity"} and len(remaining) == 1:
+        return BotCommand(operation, name, _entity_selector(remaining[0]))
     if operation == "interact" and len(remaining) == 4 and remaining[-1].lower() in BLOCK_FACES:
         target, unused = _position(remaining[:3])
         assert not unused
@@ -1054,7 +1076,7 @@ class BotCommandService:
             snapshot = self.world.inventory(command.name, identity)
             data = {"name": snapshot["name"], "slots": snapshot["slots"]}
             entries = [
-                f"{tr(lang, slot['slot'])}: {slot['name'].removeprefix('minecraft:')} x{slot['count']}"
+                f"{tr(lang, slot['slot'])}: {_item_text(slot)}"
                 for slot in snapshot["slots"]
             ]
             text = (tr(lang, "inventory: {items}", items=", ".join(entries)) if entries
@@ -1186,6 +1208,28 @@ class BotCommandService:
             )
             return CommandResult(True, (reply(tr(lang, "nearby: {entities}", entities=listed), result["name"]),),
                                  data=data)
+        if command.operation == "entity":
+            selector = {key: command.parameters[key] for key in ("runtimeId", "type") if key in command.parameters}
+            result = control.request("entities", name=command.name, **selector)
+            entities = result["entities"]
+            if not entities:
+                raise LocalizedError("No matching entity within 16 blocks")
+            entity = entities[0]
+            if self.world is not None:
+                entity = {**entity, **self.world.describe_entities(result["identityId"], [entity["runtimeId"]]).get(
+                    entity["runtimeId"], {})}
+            fields = [f"{entity['type'].removeprefix('minecraft:')} {DIM}(id {entity['runtimeId']}){RESET}",
+                      f"{entity['distance']}m"]
+            position = entity.get("position")
+            if position:
+                fields.append(f"{position['x']:.1f} {position['y']:.1f} {position['z']:.1f}")
+            if entity.get("health") is not None:
+                fields.append(tr(lang, "health {health}/{max}", health=f"{entity['health']:g}",
+                                 max=f"{entity['maxHealth']:g}"))
+            if entity.get("nameTag"):
+                fields.append(tr(lang, "named {name}", name=entity["nameTag"]))
+            return CommandResult(True, (reply(f"{DIM} | {RESET}".join(fields), result["name"]),),
+                                 data={"name": result["name"], "entity": entity})
         if command.operation == "interact" and "entity" in command.parameters:
             selector = {key: command.parameters[key] for key in ("runtimeId", "type") if key in command.parameters}
             result = control.request("interactEntity", name=command.name, **selector)
@@ -1223,7 +1267,7 @@ class BotCommandService:
                 data = {"type": parameters["type"], "radius": parameters["radius"], "blocks": found}
                 block_name = parameters["type"].removeprefix("minecraft:")
                 if found:
-                    listed = ", ".join(f"{entry['x']} {entry['y']} {entry['z']} {DIM}{entry['distance']}m{RESET}"
+                    listed = ", ".join(f"{entry['x']} {entry['y']} {entry['z']} {DIM}({entry['distance']}m){RESET}"
                                        for entry in found[:10])
                     more = "" if len(found) <= 10 else f" (+{len(found) - 10})"
                     text = tr(lang, "{block}: {positions}", block=block_name, positions=listed) + more
@@ -1256,6 +1300,8 @@ class BotCommandService:
                     slots = None
                 if slots is not None:
                     data["slots"] = [slot for slot in slots if slot["slot"].isdecimal() and int(slot["slot"]) <= 9]
+                    items = ", ".join(f"{slot['slot']}: {_item_text(slot)}" for slot in data["slots"])
+                    text += ": " + (items or tr(lang, "empty"))
             return CommandResult(True, (reply(text, result["name"]),), data=data)
         elif command.operation == "swap":
             result = control.request("swap", name=command.name, **command.parameters)

@@ -20,6 +20,25 @@
       "prefix": []
     }
   ],
+  "entity": [
+    {
+      "positional": [],
+      "options": {},
+      "prefix": []
+    },
+    {
+      "positional": [
+        [
+          "entity",
+          {
+            "type": "stringOrInteger"
+          }
+        ]
+      ],
+      "options": {},
+      "prefix": []
+    }
+  ],
   "target": [
     {
       "positional": [],

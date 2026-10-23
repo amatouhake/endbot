@@ -9,6 +9,17 @@ import { ProfileError, validateBotName } from './profile-store.js'
 
 const ACTIVE_STATES = new Set(['connecting', 'online', 'reconnecting'])
 
+function entitySelector ({ runtimeId, type } = {}) {
+  if (runtimeId !== undefined && !(typeof runtimeId === 'string' && /^\d{1,19}$/.test(runtimeId))) {
+    throw new Error('Invalid entity ID')
+  }
+  if (type !== undefined && !(typeof type === 'string' && /^(?:minecraft:)?[a-z0-9_./-]+$/.test(type))) {
+    throw new Error('Invalid entity type')
+  }
+  if (runtimeId !== undefined && type !== undefined) throw new Error('Choose an entity ID or a type, not both')
+  return { runtimeId, type }
+}
+
 export class BotLifecycle extends EventEmitter {
   constructor ({ store, sessionFactory, chunkRadius, reconnect = {}, timers = globalThis }) {
     super()
@@ -259,19 +270,14 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
-  entities (name) {
+  entities (name, selector = {}) {
+    const filter = entitySelector(selector)
     const { profile, state } = this.#requireOnline(name)
-    return { ...this.#status(profile), entities: state.session.nearbyEntities() }
+    return { ...this.#status(profile), entities: state.session.nearbyEntities(filter) }
   }
 
-  interactEntity (name, { runtimeId, type } = {}) {
-    if (runtimeId !== undefined && !(typeof runtimeId === 'string' && /^\d{1,19}$/.test(runtimeId))) {
-      throw new Error('Invalid entity ID')
-    }
-    if (type !== undefined && !(typeof type === 'string' && /^(?:minecraft:)?[a-z0-9_./-]+$/.test(type))) {
-      throw new Error('Invalid entity type')
-    }
-    if (runtimeId !== undefined && type !== undefined) throw new Error('Choose an entity ID or a type, not both')
+  interactEntity (name, selector = {}) {
+    const { runtimeId, type } = entitySelector(selector)
     const { profile, state } = this.#requireOnline(name)
     return { ...this.#status(profile), entity: state.session.interactEntity({ runtimeId, type }) }
   }

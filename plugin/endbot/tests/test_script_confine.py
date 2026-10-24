@@ -26,7 +26,7 @@ class ConfigTests(unittest.TestCase):
         config = ScriptConfig.from_config({})
         self.assertTrue(config.os_confinement)
         self.assertEqual(config.process_memory_bytes, 256 * MIB)
-        self.assertEqual(config.cpu_seconds, 0)
+        self.assertEqual(config.cpu_seconds, 60)
         for settings in (
             {"os-confinement": False}, {"process-memory-bytes": 0}, {"cpu-seconds": 0},
             {"process-memory-bytes": config.memory_bytes + PROCESS_HEADROOM}, {"cpu-seconds": 1},
@@ -46,7 +46,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(limits["memoryBytes"], 32 * MIB)
         self.assertEqual(limits["processMemoryBytes"], 256 * MIB)
         self.assertTrue(limits["osConfinement"])
-        self.assertEqual(limits["cpuSeconds"], 0)
+        self.assertEqual(limits["cpuSeconds"], 60)
 
 
 class WindowsJobTests(unittest.TestCase):
@@ -273,7 +273,7 @@ class LaunchTests(unittest.TestCase):
     def test_runner_confinement_error_fails_closed_and_is_localized(self):
         for event in (
             {"type": "error", "phase": "confinement", "message": "setrlimit denied"},
-            {"type": "error", "message": "confinement failed: parent PID changed"},
+            {"type": "error", "phase": "confinement", "message": "confinement failed: parent PID changed"},
         ):
             with (self.subTest(event=event), patch.object(confine.sys, "platform", "linux"),
                   patch("endstone_endbot.script_process.subprocess.Popen") as popen,

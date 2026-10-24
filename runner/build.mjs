@@ -50,6 +50,12 @@ if (!path.resolve(source).startsWith(path.resolve(deps) + path.sep)) throw new E
 await rm(source, { recursive: true, force: true });
 command('tar', ['-xzf', path.relative(root, archive), '-C', path.relative(root, deps)]);
 const cmake = process.env.CMAKE || 'cmake';
+// A changed lock (new Luau or json.hpp) must not reuse objects built from the old sources.
+const lockHash = createHash('sha256').update(JSON.stringify(lock)).digest('hex');
+const stamp = path.join(root, '.build/native/endbot-lock.sha256');
+let built;
+try { built = (await readFile(stamp, 'utf8')).trim(); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+if (built !== lockHash) await rm(path.join(root, '.build/native'), { recursive: true, force: true });
 // Ninja works with MSVC's developer environment and with Linux GCC/Clang.
 // An explicit -G remains available for local toolchains; don't reuse a build tree across generators.
 const generator = cmakeArgs.some(arg => arg === '-G' || arg.startsWith('-G')) ? [] : ['-G', 'Ninja'];
@@ -57,6 +63,7 @@ command(cmake, ['-S', '.', '-B', '.build/native', ...generator, ...cmakeArgs, '-
   '-DLUAU_BUILD_CLI=OFF', '-DLUAU_BUILD_TESTS=OFF', '-DLUAU_STATIC_CRT=ON',
   `-DLUAU_SOURCE_DIR=${source}`]);
 command(cmake, ['--build', '.build/native', '--config', 'Release', '--target', 'endbot-luau-runner', '--parallel', '2']);
+await writeFile(stamp, lockHash);
 // Install the trusted sidecar beside the binary; plugin bundles use this layout too.
 await copyFile(path.join(root, 'api.luau'), path.join(bin, 'api.luau'));
 await mkdir(stage, { recursive: true });

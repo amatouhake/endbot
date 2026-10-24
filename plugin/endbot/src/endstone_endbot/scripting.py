@@ -17,6 +17,17 @@ from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
 from endstone_endbot.script_store import Script
 
+# Per-run log budget: logs past it are dropped (one notice), so a script cannot
+# fill the server log at the IPC rate for hours.
+LOG_LINES = 2000
+LOG_BYTES = 512 * 1024
+SCRIPT_TARGET = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
+
+
+def _clean(text, limit):
+    """Script-controlled text for one log/chat line: no colors, control characters (CR/LF/ESC) or overflow."""
+    return re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", strip_colors(str(text)))[:limit]
+
 
 @dataclass
 class ScriptRun:
@@ -31,6 +42,9 @@ class ScriptRun:
     thread: object = None
     parameter_targets: dict = field(default_factory=dict)
     bot_pins: dict = field(default_factory=dict)
+    log_lines: int = 0
+    log_bytes: int = 0
+    log_dropped: bool = False
 
 
 class ScriptService:
@@ -42,6 +56,7 @@ class ScriptService:
         self.authorize, self.process_factory = authorize, process_factory
         self.bootstrap = bootstrap
         self._runs = {}
+        self._inspecting = {}  # controller -> declaration checks holding a run slot
         self._lock = threading.RLock()
         self._open = True
         self.ordered = None
@@ -80,7 +95,7 @@ class ScriptService:
     def _schema(self, process, source, canceled, deadline):
         event = process.receive(deadline, canceled, lambda: self._check(source))
         if event.get("type") != "params" or event.get("id") != 1:
-            message = str(event.get("message", event.get("type")))
+            message = _clean(event.get("message", event.get("type")), 1024)
             match = re.fullmatch(r"(script:\d+): (.*)", message)
             if match and match[2] in {
                 "Script parameters must be an array", "Invalid script parameter declarations",
@@ -97,17 +112,33 @@ class ScriptService:
         declarations(schema)
         return schema
 
+    def _reserve(self, source):
+        """Check the concurrency limits; the caller holds the lock and then takes the slot."""
+        controller = self._controller(source)
+        running = len(self._runs) + sum(self._inspecting.values())
+        mine = len(self.active(source)) + self._inspecting.get(controller, 0)
+        if running >= self.config.server_runs or mine >= self.config.controller_runs:
+            raise LocalizedError("Script concurrency limit reached")
+        return controller
+
     def inspect(self, script, source):
         # Inspection executes only up to params and never accepts body operations.
+        # It holds a run slot meanwhile, so concurrent checks cannot exceed the limits.
         with self._lock:
-            if len(self._runs) >= self.config.server_runs or len(self.active(source)) >= self.config.controller_runs:
-                raise LocalizedError("Script concurrency limit reached")
-        seconds = min(5, self.config.wall_seconds or 5)
-        process = self._process(script.source, seconds)
+            controller = self._reserve(source)
+            self._inspecting[controller] = self._inspecting.get(controller, 0) + 1
         try:
-            return self._schema(process, source, threading.Event(), time.monotonic() + seconds)
+            seconds = min(5, self.config.wall_seconds or 5)
+            process = self._process(script.source, seconds)
+            try:
+                return self._schema(process, source, threading.Event(), time.monotonic() + seconds)
+            finally:
+                process.close()
         finally:
-            process.close()
+            with self._lock:
+                self._inspecting[controller] -= 1
+                if not self._inspecting[controller]:
+                    del self._inspecting[controller]
 
     def active(self, source=None, name=None):
         with self._lock:
@@ -122,14 +153,24 @@ class ScriptService:
     def _controller(source):
         return source.player_id or "console"
 
+    def visible(self, source):
+        """Runs a source may list and stop: its own, or every run for the console (the operator)."""
+        return self.active() if source.player_id is None else self.active(source)
+
+    @staticmethod
+    def _who(source):
+        return source.name or ("console" if source.player_id is None else source.player_id)
+
+    def _owner(self, run):
+        return self._who(run.source)
+
     def start(self, script, values, source, targets=None):
         self._enabled()
         self._check(source)
         if len(script.source.encode("utf-8")) > self.config.max_script_bytes:
             raise LocalizedError("Script source is empty or too large")
         with self._lock:
-            if len(self._runs) >= self.config.server_runs or len(self.active(source)) >= self.config.controller_runs:
-                raise LocalizedError("Script concurrency limit reached")
+            self._reserve(source)
             identity = uuid4().hex[:12]
             source = replace(source, script_run_id=identity, group_guard=None)
             run = ScriptRun(
@@ -195,6 +236,8 @@ class ScriptService:
                     raise LocalizedError("Invalid script group target")
                 return {"count": len(guard.members)}
             if event["type"] == "waitOnline":
+                if not isinstance(target, str) or not SCRIPT_TARGET.fullmatch(target):
+                    raise LocalizedError("Invalid script target")
                 if guard is not None:
                     _, members, _ = self.service._store().select(target)
                     profiles = self.service._profiles(source)
@@ -301,19 +344,17 @@ class ScriptService:
                 if kind == "done":
                     break
                 if kind == "error":
-                    raise LocalizedError("Script runner failed: {error}", error=str(event.get("message", ""))[:1024])
+                    raise LocalizedError("Script runner failed: {error}", error=_clean(event.get("message", ""), 1024))
                 if kind == "log":
-                    if self.notify:
-                        text = strip_colors(str(event.get("text", "")))[:4096].replace("\r", " ").replace("\n", " ")
-                        self.notify(
-                            run.source,
-                            CommandResult(
-                                True,
-                                (),
-                                log_level="info",
-                                log_messages=(f"Endbot script {run.identity}: {text}",),
-                            ),
-                        )
+                    text = _clean(event.get("text", ""), 4096)
+                    run.log_lines += 1
+                    run.log_bytes += len(text.encode("utf-8"))
+                    over = run.log_lines > LOG_LINES or run.log_bytes > LOG_BYTES
+                    if self.notify and not (over and run.log_dropped):
+                        line = (f"Endbot script {run.identity}: log limit reached; further logs are dropped" if over
+                                else f"Endbot script {run.identity}: {text}")
+                        run.log_dropped = over
+                        self.notify(run.source, CommandResult(True, (), log_level="info", log_messages=(line,)))
                     continue
                 if type(event.get("id")) is not int or event["id"] != next_id:
                     raise LocalizedError("Invalid script runner request")
@@ -378,15 +419,18 @@ class ScriptService:
                         ),
                         log_level="info",
                         log_messages=(
-                            f"Endbot script {run.identity} {run.name} ended: {outcome_en}",
+                            f"Endbot script {run.identity} {run.name} of {self._owner(run)} ended: {outcome_en}",
                             f"Endbot script {run.identity}: input cleanup {'completed' if cleanup_ok else 'failed'}",
                         ),
                     ),
                 )
 
     def stop(self, source, selector):
+        """Stop runs by id, script name or `all`; the console may stop any controller's runs."""
         selected = [
-            run for run in self.active(source) if run.identity == selector or run.name.casefold() == selector.casefold()
+            run for run in self.visible(source)
+            if not run.canceled.is_set()
+            and selector.casefold() in {"all", run.identity, run.name.casefold()}
         ]
         for run in selected:
             run.canceled.set()
@@ -422,7 +466,7 @@ class ScriptService:
                             tr(
                                 lang,
                                 "Script help: list | show <name> [page] | run <name> [args...] "
-                                "| runs | stop <id|name> | delete <name> | menu",
+                                "| runs | stop <id|name|all> | delete <name> | menu",
                             )
                         ),
                         reply(
@@ -438,13 +482,17 @@ class ScriptService:
                 text = ", ".join(s.name for s in self.store.list()) or tr(lang, "No stored scripts")
                 return CommandResult(True, (reply(text),))
             if operation == "runs" and not tail:
-                text = ", ".join(f"{r.identity} {r.name}" for r in self.active(source)) or tr(
-                    lang, "No active script runs"
-                )
+                # The console sees every controller's runs, with their owners, to stop them.
+                text = ", ".join(
+                    f"{r.identity} {r.name}" + (f" ({self._owner(r)})" if source.player_id is None else "")
+                    for r in self.visible(source)
+                ) or tr(lang, "No active script runs")
                 return CommandResult(True, (reply(text),))
             if operation == "stop" and len(tail) == 1:
+                count = self.stop(source, tail[0])
                 return CommandResult(
-                    True, (reply(tr(lang, "Stopping {count} script runs", count=self.stop(source, tail[0]))),)
+                    True, (reply(tr(lang, "Stopping {count} script runs", count=count)),), log_level="info",
+                    log_messages=(f"Endbot script stop {_clean(tail[0], 64)} by {self._who(source)}: {count} runs",),
                 )
             if (
                 operation == "save"
@@ -462,7 +510,8 @@ class ScriptService:
                 self.inspect(Script(tail[0], tail[1], "draft"), source)
                 self._check(source)
                 self.store.save(tail[0], tail[1], guard.revision)
-                return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),))
+                return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
+                                     log_messages=(f"Endbot script {tail[0]} saved by {self._who(source)}",))
             if operation == "menu" and not tail:
                 self._player(source)
                 return CommandResult(True, view=script_forms.list_screen(self.store.list(), lang))
@@ -484,7 +533,9 @@ class ScriptService:
                 return CommandResult(True, (reply(f"{script.name} ({page}/{total})\n{text}"),))
             if operation == "delete" and len(tail) == 1:
                 self.store.delete(script.name, script.revision)
-                return CommandResult(True, (reply(tr(lang, "Script {name} deleted", name=script.name)),))
+                return CommandResult(True, (reply(tr(lang, "Script {name} deleted", name=script.name)),),
+                                     log_level="info",
+                                     log_messages=(f"Endbot script {script.name} deleted by {self._who(source)}",))
             if operation == "run":
                 # Native message tails arrive in one argument. Forms carry a JSON object in their guard.
                 values = (
@@ -495,7 +546,9 @@ class ScriptService:
                 targets = guard.targets if isinstance(guard, script_forms.ScriptGuard) else None
                 run = self.start(script, values, source, targets)
                 return CommandResult(
-                    True, (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),)
+                    True, (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),),
+                    log_level="info",
+                    log_messages=(f"Endbot script {run} {script.name} started by {self._who(source)}",),
                 )
             if operation in {"menu", "edit", "parameters"} and len(tail) == 1:
                 self._player(source)

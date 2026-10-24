@@ -239,7 +239,7 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
     for key, value, default in (
         ("os-confinement", config.scripting.os_confinement, True),
         ("process-memory-bytes", config.scripting.process_memory_bytes, 268435456),
-        ("cpu-seconds", config.scripting.cpu_seconds, 0),
+        ("cpu-seconds", config.scripting.cpu_seconds, 60),
     ):
         if value != default:
             scripting[key] = value

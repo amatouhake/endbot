@@ -228,7 +228,7 @@ static int exchange(lua_State* L)
     try {
         run.pending = fromLua(L, 1);
         run.pending["id"] = ++run.nextId;
-        if (run.pending.dump().size() > MaxFrame) throw std::runtime_error("API frame too large");
+        if (run.pending.dump().size() >= MaxFrame) throw std::runtime_error("API frame too large");
     } catch (const std::exception& e) { luaL_error(L, "%s", e.what()); }
     return lua_yield(L, 0);
 }

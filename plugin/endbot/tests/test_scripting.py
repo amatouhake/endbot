@@ -409,6 +409,76 @@ class LifecycleTests(unittest.TestCase):
         logs = [line for result in self.notifications for line in result.log_messages or ()]
         self.assertTrue(any("rate limit" in line for line in logs))
 
+    def logs(self):
+        return [line for result in self.notifications for line in result.log_messages or ()]
+
+    def test_script_text_in_logs_and_errors_cannot_forge_lines_or_drive_a_terminal(self):
+        self.start([{"type": "log", "text": "ok\r\n[12:00 INFO]: forged \x1b[2J\u00a7cred"},
+                    {"type": "error", "message": "boom\nline\x1b]0;title\x07"}])
+        self.wait_finished()
+        deadline = time.monotonic() + 2
+        while not any("ended" in line for line in self.logs()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        for line in self.logs():
+            self.assertNotRegex(line, r"[\x00-\x1f\x7f]")
+            self.assertNotIn("\u00a7", line)
+        self.assertTrue(any("forged" in line for line in self.logs()))
+
+    def test_log_budget_drops_logs_past_the_limit_with_one_notice(self):
+        self.host.config = replace(self.config, operations_per_second=100000)
+        with patch("endstone_endbot.scripting.LOG_LINES", 3):
+            self.start([*({"type": "log", "text": f"line {i}"} for i in range(6)), {"type": "done"}])
+            self.wait_finished()
+        logs = [line for line in self.logs() if "line " in line or "log limit" in line]
+        self.assertEqual(len([line for line in logs if "line " in line]), 3)
+        self.assertEqual(len([line for line in logs if "log limit" in line]), 1)
+
+    def test_console_lists_and_stops_every_controllers_runs_and_actions_are_audited(self):
+        console = CommandSource()
+        other = CommandSource(player_id="other", name="Other", grant_revision=1)
+        self.store.save("loop", "params {}", None)
+        first = self.start([{"type": "wait", "id": 2, "ticks": 100000}])
+        self.runner = FakeRunner([{"type": "wait", "id": 2, "ticks": 100000}])
+        self.host.start(Script("loop", "params {}", "r1"), [], other)
+        self.assertEqual(len(self.host.visible(self.source)), 1)
+        listing = self.host.execute(["runs"], console)
+        self.assertIn(f"{first} test (Caller)", listing.messages[0])
+        self.assertIn("(Other)", listing.messages[0])
+        self.assertEqual(self.host.execute(["stop", "all"], self.source).log_messages,
+                         ("Endbot script stop all by Caller: 1 runs",))
+        stopped = self.host.execute(["stop", "all"], console)
+        self.assertEqual(stopped.log_messages, ("Endbot script stop all by console: 1 runs",))
+        deadline = time.monotonic() + 4
+        while self.host.active() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(self.host.active(), ())
+        self.assertTrue(any("of Other ended" in line for line in self.logs()))
+
+    def test_wait_online_rejects_an_invalid_target(self):
+        self.start([{"type": "waitOnline", "id": 2, "target": "x" * 5000}])
+        self.wait_finished()
+        self.assertTrue(any("Invalid script target" in line for line in self.logs()))
+
+    def test_inspection_holds_a_run_slot_while_it_runs(self):
+        self.host.config = replace(self.config, controller_runs=1)
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow(*args):
+            started.set()
+            release.wait(2)
+            return self.runner
+
+        with patch.object(self.host, "_process", side_effect=slow):
+            worker = threading.Thread(target=self.host.inspect, args=(Script("d", "params {}", "r1"), self.source))
+            worker.start()
+            started.wait(2)
+            with self.assertRaisesRegex(ValueError, "concurrency"):
+                self.host.inspect(Script("d", "params {}", "r1"), self.source)
+            release.set()
+            worker.join(2)
+        self.assertEqual(self.host._inspecting, {})
+
     def test_status_structured_runtime_job_and_group_member_payload(self):
         identity = self.raw.request("status", name="Alice")["identityId"]
         self.service.groups.create("miners")

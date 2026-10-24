@@ -117,7 +117,7 @@ class ConfigTests(unittest.TestCase):
         config = load_config(self.path).scripting
         self.assertTrue(config.os_confinement)
         self.assertEqual(config.process_memory_bytes, 268435456)
-        self.assertEqual(config.cpu_seconds, 0)
+        self.assertEqual(config.cpu_seconds, 60)
         self.write(base + "os-confinement=false\nprocess-memory-bytes=0\ncpu-seconds=2\n")
         config = load_config(self.path).scripting
         self.assertFalse(config.os_confinement)

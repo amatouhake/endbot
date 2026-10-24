@@ -90,7 +90,7 @@ class ConfigStorageParamsTests(unittest.TestCase):
                 store.delete("test", "stale")
             store.delete("test", script.revision)
             self.assertEqual(store.list(), ())
-            self.assertEqual(json.loads(path.read_text())["version"], 1)
+            self.assertEqual(json.loads(path.read_text())["version"], 2)
 
     def test_all_param_types_relative_positions_and_declaration_order(self):
         groups = type("Groups", (), {"get": lambda self, name: type("G", (), {"name": name})()})()
@@ -445,14 +445,14 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn(f"{first} test (Caller)", listing.messages[0])
         self.assertIn("(Other)", listing.messages[0])
         self.assertEqual(self.host.execute(["stop", "all"], self.source).log_messages,
-                         ("Endbot script stop all by Caller: 1 runs",))
+                         ("Stopping 1 script runs (all) by Caller",))
         stopped = self.host.execute(["stop", "all"], console)
-        self.assertEqual(stopped.log_messages, ("Endbot script stop all by console: 1 runs",))
+        self.assertEqual(stopped.log_messages, ("Stopping 1 script runs (all) by console",))
         deadline = time.monotonic() + 4
         while self.host.active() and time.monotonic() < deadline:
             time.sleep(0.01)
         self.assertEqual(self.host.active(), ())
-        self.assertTrue(any("of Other ended" in line for line in self.logs()))
+        self.assertTrue(any("(controller Other)" in line for line in self.logs()))
 
     def test_wait_online_rejects_an_invalid_target(self):
         self.start([{"type": "waitOnline", "id": 2, "target": "x" * 5000}])
@@ -825,11 +825,103 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.runner.replies, [])
 
 
+class OwnershipTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.path = Path(directory.name) / "scripts.json"
+        self.config = ScriptConfig(enabled=True)
+        self.store = ScriptStore(self.path, self.config)
+        self.host = ScriptService(self.config, self.store, None, None, Path(directory.name), lambda source: True,
+                                  process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
+        self.alice = CommandSource(player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
+        self.bob = CommandSource(player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
+        self.console = CommandSource()
+
+    def save(self, source, name, text, revision=None):
+        guard = script_forms.ScriptGuard(revision, None if revision is None else name, edit=True)
+        return self.host.execute(["save", name, text], replace(source, group_guard=guard))
+
+    def text(self, result):
+        return " ".join(result.messages)
+
+    def test_owner_visibility_copy_history_and_restore(self):
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v1").accepted)
+        script = self.store.get("mine")
+        self.assertEqual((script.owner, script.owner_name, script.visibility), ("xuid:111", "Alice", "private"))
+        # Private: hidden from Bob, who cannot run, show, edit or delete it.
+        self.assertNotIn("mine", self.text(self.host.execute(["list"], self.bob)))
+        for argv in (["show", "mine"], ["run", "mine"], ["delete", "mine"], ["copy", "mine", "x"]):
+            self.assertIn("does not exist", self.text(self.host.execute(argv, self.bob)), argv)
+        self.assertIn("mine (yours, private)", self.text(self.host.execute(["list"], self.alice)))
+        self.assertTrue(self.host.execute(["share", "mine"], self.alice).accepted)
+        # Shared: Bob may run, show and copy, never change.
+        self.assertIn("mine (Alice, shared)", self.text(self.host.execute(["list"], self.bob)))
+        self.assertTrue(self.host.execute(["show", "mine"], self.bob).accepted)
+        for argv in (["delete", "mine"], ["private", "mine"], ["restore", "mine", "1"]):
+            self.assertIn("Only the owner Alice", self.text(self.host.execute(argv, self.bob)), argv)
+        stale = self.store.get("mine").revision
+        self.assertIn("Only the owner", self.text(self.save(self.bob, "mine", "params {}\n-- bob", stale)))
+        self.assertTrue(self.host.execute(["copy", "mine", "bobs"], self.bob).accepted)
+        copy = self.store.get("bobs")
+        self.assertEqual((copy.owner, copy.visibility, copy.source), ("xuid:222", "private", "params {}\n-- v1"))
+        self.assertIn("already exists", self.text(self.host.execute(["copy", "mine", "bobs"], self.bob)))
+        # History: each save keeps the previous source; restore brings it back as a new revision.
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v2", stale).accepted)
+        self.assertEqual([r.source for r in self.store.get("mine").history], ["params {}\n-- v1"])
+        self.assertIn("1: ", self.text(self.host.execute(["history", "mine"], self.alice)))
+        self.assertTrue(self.host.execute(["restore", "mine", "1"], self.alice).accepted)
+        restored = self.store.get("mine")
+        self.assertEqual(restored.source, "params {}\n-- v1")
+        self.assertEqual([r.source for r in restored.history], ["params {}\n-- v2", "params {}\n-- v1"])
+        self.assertIn("out of range", self.text(self.host.execute(["restore", "mine", "9"], self.alice)))
+        # The console is the operator: it sees and changes every script.
+        self.assertTrue(self.host.execute(["private", "bobs"], self.console).accepted)
+        self.assertIn("bobs (Bob, private)", self.text(self.host.execute(["list"], self.console)))
+        reloaded = ScriptStore(self.path, self.config).get("mine")
+        self.assertEqual(reloaded, restored)
+
+    def test_history_is_bounded_and_legacy_scripts_are_claimed_by_their_next_editor(self):
+        self.path.write_text(json.dumps({"version": 1, "scripts": [
+            {"name": "old", "source": "params {}", "revision": "r0"}]}), encoding="utf-8")
+        store = ScriptStore(self.path, self.config)
+        self.host.store = store
+        legacy = store.get("old")
+        self.assertEqual((legacy.owner, legacy.visibility), (None, "shared"))
+        self.assertIn("old (unowned, shared)", self.text(self.host.execute(["list"], self.bob)))
+        revision = "r0"
+        for index in range(12):
+            self.assertTrue(self.save(self.bob, "old", f"params {{}}\n-- {index}", revision).accepted)
+            revision = store.get("old").revision
+        claimed = store.get("old")
+        self.assertEqual((claimed.owner, claimed.owner_name, claimed.visibility), ("xuid:222", "Bob", "shared"))
+        self.assertEqual(len(claimed.history), 10)
+        self.assertIn("Only the owner Bob", self.text(self.save(self.alice, "old", "params {}", revision)))
+
+    def test_menus_offer_owner_actions_only_to_the_owner(self):
+        self.save(self.alice, "mine", "params {}\n")
+        script = self.store.get("mine")
+        own = [button.text for button in script_forms.script_screen(script, "en", True).items]
+        other = [button.text for button in script_forms.script_screen(script, "en", False).items]
+        self.assertIn("Edit source...", own)
+        self.assertIn("Share with controllers", own)
+        self.assertNotIn("Edit source...", other)
+        self.assertNotIn("Delete", other)
+        self.assertIn("Copy and edit...", other)
+        copy = next(button for button in script_forms.script_screen(script, "en", False).items
+                    if button.text == "Copy and edit...").action.screen
+        self.assertEqual(copy.controls[0].default_value, "mine_copy")
+        self.assertIsNone(copy.guard.revision)
+
+
 class ScriptFormTests(unittest.TestCase):
     def test_paste_preserves_source_and_guards_stale_edit(self):
         script = Script("sample", "params {}\n", "r1")
         screen = script_forms.edit_screen(script)
-        self.assertEqual(screen.controls[0].default_value, script.source)
+        self.assertEqual(screen.controls[-1].default_value, script.source)
+        self.assertEqual(screen.controls[0].text, "Current source:\n1: params {}")
+        # A client that leaves the label out of the response, and one that sends null for it.
+        self.assertEqual(forms.modal_commands(screen, json.dumps([None, "x"])), (("save", "sample", "x"),))
         self.assertEqual(
             forms.modal_commands(screen, json.dumps(["\nparams {}\n"])), (("save", "sample", "\nparams {}\n"),)
         )

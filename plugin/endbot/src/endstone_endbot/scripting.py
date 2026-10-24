@@ -165,6 +165,40 @@ class ScriptService:
     def _owner(self, run):
         return self._who(run.source)
 
+    @staticmethod
+    def owner_key(source):
+        """The stable owner identity of a controller: XUID when known, else the player UUID."""
+        if source.player_id is None:
+            return "console"
+        return f"xuid:{source.xuid}" if source.xuid else f"player:{source.player_id}"
+
+    def can_edit(self, script, source):
+        """The owner or the console; an unowned (pre-ownership) script is claimed by its next editor."""
+        return source.player_id is None or script.owner is None or script.owner == self.owner_key(source)
+
+    def can_run(self, script, source):
+        return script.visibility == "shared" or self.can_edit(script, source)
+
+    def _visible(self, source):
+        return tuple(script for script in self.store.list() if self.can_run(script, source))
+
+    def _script(self, name, source, *, edit=False):
+        script = self.store.get(name)
+        if not self.can_run(script, source):
+            # A private script of another controller is indistinguishable from a missing one.
+            raise LocalizedError("Script {name} does not exist", name=name)
+        if edit and not self.can_edit(script, source):
+            raise LocalizedError("Only the owner {owner} may change script {name}; use Copy and edit",
+                                 owner=script.owner_name or "?", name=script.name)
+        return script
+
+    def _new_name(self, name):
+        try:
+            self.store.get(name)
+        except LocalizedError:
+            return
+        raise LocalizedError("Script {name} already exists", name=name)
+
     def start(self, script, values, source, targets=None):
         self._enabled()
         self._check(source)
@@ -420,7 +454,8 @@ class ScriptService:
                         ),
                         log_level="info",
                         log_messages=(
-                            f"Endbot script {run.identity} {run.name} of {self._owner(run)} ended: {outcome_en}",
+                            (f"Endbot script {run.identity} {run.name} ended: {outcome_en} "
+                             f"(controller {self._owner(run)})"),
                             f"Endbot script {run.identity}: input cleanup {'completed' if cleanup_ok else 'failed'}",
                         ),
                     ),
@@ -467,7 +502,8 @@ class ScriptService:
                             tr(
                                 lang,
                                 "Script help: list | show <name> [page] | run <name> [args...] "
-                                "| runs | stop <id|name|all> | delete <name> | menu",
+                                "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
+                                "| share|private <name> | history <name> | restore <name> <n> | menu",
                             )
                         ),
                         reply(
@@ -480,8 +516,9 @@ class ScriptService:
                     ),
                 )
             if operation == "list" and not tail:
-                text = ", ".join(s.name for s in self.store.list()) or tr(lang, "No stored scripts")
-                return CommandResult(True, (reply(text),))
+                text = ", ".join(script_forms.label(script, script.owner == self.owner_key(source), lang)
+                                 for script in self._visible(source))
+                return CommandResult(True, (reply(text or tr(lang, "No stored scripts")),))
             if operation == "runs" and not tail:
                 # The console sees every controller's runs, with their owners, to stop them.
                 text = ", ".join(
@@ -493,7 +530,7 @@ class ScriptService:
                 count = self.stop(source, tail[0])
                 return CommandResult(
                     True, (reply(tr(lang, "Stopping {count} script runs", count=count)),), log_level="info",
-                    log_messages=(f"Endbot script stop {_clean(tail[0], 64)} by {self._who(source)}: {count} runs",),
+                    log_messages=(f"Stopping {count} script runs ({_clean(tail[0], 64)}) by {self._who(source)}",),
                 )
             if (
                 operation == "save"
@@ -508,17 +545,32 @@ class ScriptService:
                     or len(tail[1].encode("utf-8")) > self.config.max_script_bytes
                 ):
                     raise LocalizedError("Script source is empty or too large")
+                if guard.revision is None:
+                    self._new_name(tail[0])
+                else:
+                    self._script(tail[0], source, edit=True)
                 self.inspect(Script(tail[0], tail[1], "draft"), source)
                 self._check(source)
-                self.store.save(tail[0], tail[1], guard.revision)
+                self.store.save(tail[0], tail[1], guard.revision, self.owner_key(source), self._who(source))
                 return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
-                                     log_messages=(f"Endbot script {tail[0]} saved by {self._who(source)}",))
+                                     log_messages=(f"Script {tail[0]} saved by {self._who(source)}",))
             if operation == "menu" and not tail:
                 self._player(source)
-                return CommandResult(True, view=script_forms.list_screen(self.store.list(), lang))
+                return CommandResult(True, view=script_forms.list_screen(
+                    self._visible(source), lang, own=lambda script: script.owner == self.owner_key(source)))
             if not tail:
                 raise LocalizedError("Use /botscript help")
-            script = self.store.get(tail[0])
+            if operation == "copy" and len(tail) == 2:
+                # Copies start private and belong to the copier; the original is untouched.
+                original = self._script(tail[0], source)
+                self._new_name(tail[1])
+                self._check(source)
+                self.store.save(tail[1], original.source, None, self.owner_key(source), self._who(source))
+                return CommandResult(
+                    True, (reply(tr(lang, "Script {name} copied to {copy}", name=original.name, copy=tail[1])),),
+                    log_level="info",
+                    log_messages=(f"Script {original.name} copied to {tail[1]} by {self._who(source)}",))
+            script = self._script(tail[0], source, edit=operation in {"delete", "edit", "share", "private", "restore"})
             if isinstance(guard, script_forms.ScriptGuard) and guard.revision != script.revision:
                 raise LocalizedError("Script changed; reopen the menu")
             if operation in {"show", "source"} and len(tail) <= 2:
@@ -532,11 +584,37 @@ class ScriptService:
                     return CommandResult(True, view=script_forms.source_screen(script, page, lang))
                 text = pages[page - 1]
                 return CommandResult(True, (reply(f"{script.name} ({page}/{total})\n{text}"),))
+            if operation in {"share", "private"} and len(tail) == 1:
+                visibility = "shared" if operation == "share" else "private"
+                self.store.set_visibility(script.name, visibility, script.revision)
+                return CommandResult(
+                    True, (reply(tr(lang, "Script {name} is now {visibility}", name=script.name,
+                                    visibility=Text(visibility))),),
+                    log_level="info",
+                    log_messages=(f"Script {script.name} is now {visibility} by {self._who(source)}",))
+            if operation == "history" and len(tail) == 1:
+                if source.player_id is not None and isinstance(guard, script_forms.ScriptGuard):
+                    return CommandResult(True, view=script_forms.history_screen(
+                        script, self.can_edit(script, source), lang))
+                lines = [script_forms.revision_line(i, r, lang) for i, r in enumerate(script.history, start=1)]
+                return CommandResult(True, (reply(f"{script.name}: " + ("; ".join(lines) or tr(
+                    lang, "no earlier revisions"))),))
+            if operation == "restore" and len(tail) == 2:
+                if not tail[1].isascii() or not tail[1].isdecimal() or len(tail[1]) > 3:
+                    raise LocalizedError("Script revision is out of range")
+                self._check(source)
+                self.store.restore(script.name, int(tail[1]), script.revision)
+                return CommandResult(
+                    True, (reply(tr(lang, "Script {name} restored to revision {index}", name=script.name,
+                                    index=int(tail[1]))),),
+                    log_level="info",
+                    log_messages=(
+                        f"Script {script.name} restored to revision {int(tail[1])} by {self._who(source)}",))
             if operation == "delete" and len(tail) == 1:
                 self.store.delete(script.name, script.revision)
                 return CommandResult(True, (reply(tr(lang, "Script {name} deleted", name=script.name)),),
                                      log_level="info",
-                                     log_messages=(f"Endbot script {script.name} deleted by {self._who(source)}",))
+                                     log_messages=(f"Script {script.name} deleted by {self._who(source)}",))
             if operation == "run":
                 # Native message tails arrive in one argument. Forms carry a JSON object in their guard.
                 values = (
@@ -549,7 +627,7 @@ class ScriptService:
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),),
                     log_level="info",
-                    log_messages=(f"Endbot script {run} {script.name} started by {self._who(source)}",),
+                    log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
                 )
             if operation in {"menu", "edit", "parameters"} and len(tail) == 1:
                 self._player(source)
@@ -561,7 +639,7 @@ class ScriptService:
                     groups = self.service.groups.groups if self.service.groups else ()
                     view = script_forms.run_screen(script, schema, groups, bots, source.script_origin, lang)
                 else:
-                    view = script_forms.script_screen(script, lang)
+                    view = script_forms.script_screen(script, lang, self.can_edit(script, source))
                 return CommandResult(True, view=view)
             raise LocalizedError("Use /botscript help")
         except (ValueError, RuntimeError, OSError) as error:

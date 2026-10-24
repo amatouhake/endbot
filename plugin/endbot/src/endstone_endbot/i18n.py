@@ -826,13 +826,42 @@ JA.update({
     "Invalid script group target": "スクリプトのグループ対象が正しくありません",
     "Invalid script runner request": "スクリプト実行プログラムからの要求が正しくありません",
     "Groups could not be saved; see the server log": "グループを保存できませんでした。サーバーのログを確認してください",
+    "Only the owner {owner} may change script {name}; use Copy and edit":
+        "スクリプト {name} を変更できるのは持ち主の {owner} だけです。コピーして編集を使ってください",
+    "Script {name} already exists": "スクリプト {name} はすでにあります",
+    "Script {name} copied to {copy}": "スクリプト {name} を {copy} にコピーしました",
+    "Script {name} is now {visibility}": "スクリプト {name} を{visibility}にしました",
+    "no earlier revisions": "以前の版はありません",
+    "Script {name} restored to revision {index}": "スクリプト {name} を版 {index} に戻しました",
+    "private": "非公開",
+    "shared": "共有",
+    "Script revision is out of range": "スクリプトの版の番号が範囲外です",
+    "Script visibility must be private or shared": "公開範囲は private か shared です",
+    "yours": "自分",
+    "unowned": "持ち主なし",
+    "Make private": "非公開にする",
+    "Share with controllers": "操作者に共有する",
+    "Earlier revisions...": "以前の版...",
+    "Copy and edit...": "コピーして編集...",
+    "Your script ({visibility}).": "自分のスクリプトです (公開範囲: {visibility})。",
+    "Shared by {owner}. Run it, or copy it to edit your own.":
+        "{owner} が共有しています。実行するか、コピーして自分用に編集できます。",
+    "Current source:": "今のソース:",
+    "{index}: {saved}, {lines} lines": "{index}: {saved}、{lines} 行",
+    "Restore revision": "版を戻す",
+    "Restore {name} to revision {line}? The current source stays in the history.":
+        "{name} を版 {line} に戻しますか? 今のソースは履歴に残ります。",
+    "Restore": "戻す",
+    "Earlier revisions, newest first.": "以前の版 (新しい順)。",
     "Invalid script wait": "スクリプトの待機時間が正しくありません",
     "Invalid script target": "スクリプトの対象が正しくありません",
     "Script input cleanup failed; use /bot stop": "スクリプトの入力停止に失敗しました。/bot stop を使ってください",
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
-    "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> | menu":
+    "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "
+    "| copy <name> <new> | share|private <name> | history <name> | restore <name> <n> | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
-        "| delete <name> | menu",
+        "| delete <name> | copy <name> <new> | share|private <name> | history <name> "
+        "| restore <name> <n> | menu",
     "Arguments follow parameter declaration order; quote positions. Create/edit by menu paste only.":
         "引数は宣言順です。座標は引用符で囲みます。作成と編集はメニューへの貼り付けで行います。",
     "No stored scripts": "保存されたスクリプトはありません",

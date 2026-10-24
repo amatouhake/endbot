@@ -1,8 +1,8 @@
 # Luau scripting (MVP)
 
 Scripting runs in the **Endbot plugin**, in one native child process per run. The Node Bedrock runtime is
-unchanged. Scripts are shared by controllers; each run uses its invoker's authenticated identity and grant
-revision. Scripting is optional and **off by default**. No process starts merely because it is enabled.
+unchanged. Each script belongs to the controller who created it (see [ownership](#ownership-visibility-and-revisions));
+each run uses its invoker's authenticated identity and grant revision. Scripting is optional and **off by default**. No process starts merely because it is enabled.
 
 ## Install and enable
 
@@ -151,17 +151,38 @@ retain the pinned BDS baseline's completion limitations.
 /botscript runs
 /botscript stop <run-id|name|all>
 /botscript delete <name>
+/botscript copy <name> <new-name>
+/botscript share <name>
+/botscript private <name>
+/botscript history <name>
+/botscript restore <name> <n>
 /botscript help
 /botscript menu
 ```
 
-`runs`/`stop` address the invoking controller's runs. The console is the operator: its `runs` lists every controller's runs with their owner, and its `stop <id|name|all>` stops any of them, so a run left behind by a controller who logged out can be ended without revoking that controller. Start, stop, save and delete are logged with the controller's name, and so is each run's end. Deleting shared source
+`runs`/`stop` address the invoking controller's runs. The console is the operator: its `runs` lists every controller's runs with their owner, and its `stop <id|name|all>` stops any of them, so a run left behind by a controller who logged out can be ended without revoking that controller. Start, stop, save and delete are logged with the controller's name, and so is each run's end. Deleting a script
 does not cancel running copies. Show displays numbered, bounded pages and wraps long lines without dropping
 source. Source is never loaded from a user-supplied filesystem path.
 
-When enabled, `/bot menu` includes **Scripts...**. A script opens Run, Show source (paged), Stop runs,
-Delete (confirmation), and Edit source. Create offers **Group row**, **Simple patrol**, **Mine at spots**, and a blank script.
-Editing uses one paste field with current source as default. Save compiles the complete source and inspects
+### Ownership, visibility and revisions
+
+Each script records its creator as owner (by XUID, else player UUID). Only the owner, or the console, may edit,
+delete, restore or change its visibility; everyone else gets "only the owner may change" and is pointed to
+**Copy and edit**. A script is `private` (only the owner sees and runs it; to others it does not exist) or
+`shared` (every controller may list, show, run and copy it). New scripts and copies start `private`;
+`share`/`private` switch it. `copy <name> <new-name>` makes a private copy owned by the copier. Every save keeps
+the previous source in a history of the last 10 revisions; `history` lists them (newest first, with time and
+line count) and `restore <name> <n>` makes revision `n` current as a new save, keeping the replaced source in the
+history. Runs still use the invoker's authority, whoever owns the script. Scripts saved before ownership (file
+version 1) have no owner and stay shared; the first controller to edit one becomes its owner. Lists show
+`name (owner, visibility)` with `yours` for your own. Not implemented: separate run/author permissions
+(`endbot.script.run`/`endbot.script.author`); every controller may still author.
+
+When enabled, `/bot menu` includes **Scripts...**. A script opens Run, Show source (paged), Stop runs and
+Copy and edit; its owner also gets Edit source, Share/Make private, Earlier revisions (restore with a
+confirmation that shows that revision's source) and Delete (confirmation). Create offers **Group row**, **Simple patrol**, **Mine at spots**, and a blank script.
+Editing uses one paste field with current source as default; the client draws that field only about two lines
+tall, so a read-only label above it shows the whole current source with line numbers. Save compiles the complete source and inspects
 its declaration without accepting the body. `save` is an internal form action; typing it cannot update source.
 Stale edit/delete/run forms reject source revision changes. Canceling does not save; drafts are not persisted.
 

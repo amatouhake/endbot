@@ -116,6 +116,14 @@ DOCUMENTED_ROOT_FORMS = [
 ]
 
 DOCUMENTED_NAMED_FORMS = [
+    # The shared target grammar (BOT-015) and read-only queries (BOT-014).
+    *[[target, *tail] for target in ("Alice", "#miners", "#miners[1]")
+      for tail in (("attack", "@zombie"), ("attack", "@cow", "count", "3"), ("interact",), ("interact", "@cow"),
+                   ("interact", "@9"), ("interact", "@cow", "count", "3"), ("interact", "chest"),
+                   ("interact", "~", "~-1", "~"), ("interact", "1", "64", "2", "up"), ("interact", "stop"),
+                   ("destroy", "oak_log"), ("destroy", "oak_log", "count", "5"), ("entity", "@cow"),
+                   ("entities",), ("target",), ("block", "~", "~-1", "~"), ("blocks", "diamond_ore"),
+                   ("blocks", "diamond_ore", "radius", "12", "limit", "5"), ("dismount",))],
     *[[target, *tail] for target in ("Alice", "#miners", "#miners[1]")
       for tail in (("swap", "10", "2"), ("swap", "1", "36"), ("swap", "1", "1"),
                    ("hold", "diamond_pickaxe"), ("hold", "minecraft:stone"), ("hold", "Stone"))],

@@ -965,3 +965,26 @@ test('targeted attack continuous re-aims and skips triggers with nothing in reac
   assert.throws(() => inputs.setAction('attack', 'once', undefined, undefined, undefined, { type: 'cow' }, 2), /Count/)
   client.emit('remove_entity', { entity_id_self: -90n })
 })
+
+test('a dismount BDS never confirms stops counting as riding, and @nearest skips drops', async t => {
+  const queued = []
+  const { session, client, add } = await entitySession(t, queued)
+  add(60n, 'minecraft:boat', { x: 0, y: 64, z: 1 })
+  add(61n, 'minecraft:item', { x: 0, y: 64, z: 0.5 })
+  add(62n, 'minecraft:cow', { x: 0, y: 64, z: 3 })
+  assert.equal(session.nearbyEntities()[0].type, 'minecraft:item')  // listed, but never the nearest target
+  assert.equal(session.interactEntity({}).type, 'minecraft:boat')
+  await nextTick()
+  client.emit('set_entity_link', { link: { type: 1, ridden_entity_id: -60n, rider_entity_id: -5n } })
+  assert.equal(session.vehicleStatus().type, 'minecraft:boat')
+  session.dismount()
+  assert.throws(() => session.dismount(), /already pending/)
+  assert.equal(queued.filter(entry => entry.name === 'interact' && entry.packet.action_id === 'leave_vehicle').length, 1)
+  await new Promise(resolve => setTimeout(resolve, 3200))
+  assert.equal(session.vehicleStatus(), null)
+})
+
+test('drop all before BDS sent the inventory is an error, not an empty success', async t => {
+  const { session } = await entitySession(t, [])
+  assert.throws(() => session.drop({ selector: 'all' }), /not synchronized/)
+})

@@ -14,7 +14,6 @@ from endstone_endbot.inventory_sync import (
     full_inventory_snapshot,
     hotbar_snapshot,
     observation_payloads,
-    publish_hotbar,
     sync_settings,
     typed_nbt,
 )
@@ -143,7 +142,8 @@ class InventorySyncTests(unittest.TestCase):
             send_packet=lambda *packet: packets.append(packet),
         )
         server = SimpleNamespace(create_block_data=non_block)
-        publish_hotbar(player, server)
+        for payload in observation_payloads(full_inventory_snapshot(player, server), 1):
+            player.send_packet(PACKET_ID, payload)
         packet_id, payload = packets[0]
         name, offset = string_at(payload)
         data, end = string_at(payload, offset)

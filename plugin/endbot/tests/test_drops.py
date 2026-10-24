@@ -35,7 +35,11 @@ class DropTests(unittest.TestCase):
         self.assertEqual(parse_command(["Alice", "drop", "stack"]).parameters, {"stack": True})
         for selector in (*map(str, range(1, 37)), "offhand", "head", "chest", "legs", "feet", "all"):
             self.assertEqual(parse_command(["Alice", "drop", selector]).parameters, {"selector": selector})
-        for token in ("stone", "minecraft:stone", "minecraft:head", "minecraft:all", "37"):
+        for token in ("0", "37", "99999"):
+            # A number outside the slots is a typo, never an item called "37".
+            with self.assertRaisesRegex(ValueError, "Drop slots are 1 to 36"):
+                parse_command(["Alice", "drop", token])
+        for token in ("stone", "minecraft:stone", "minecraft:head", "minecraft:all", "minecraft:37"):
             selector = token if ":" in token else f"minecraft:{token}"
             self.assertEqual(parse_command(["Alice", "drop", token]).parameters, {"selector": selector})
             self.assertEqual(parse_command(["Alice", "drop", token, "7"]).parameters,
@@ -75,7 +79,7 @@ class DropTests(unittest.TestCase):
 
         control.request = empty_request
         self.assertIn("slot is empty", service.execute(["Alice", "drop", "12"]).message)
-        self.assertIn("stone x0 requested", service.execute(["Alice", "drop", "stone", "99"]).message)
+        self.assertIn("No stone in the inventory", service.execute(["Alice", "drop", "stone", "99"]).message)
 
     def test_form_commands_match_typed_inputs_and_drop_all_requires_confirmation(self):
         for name in ("Alice", "#miners", "#miners[1]"):

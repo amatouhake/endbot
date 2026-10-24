@@ -382,6 +382,8 @@ HELP_TOPICS: dict[str, HelpTopic] = {
 
 HELP_TOPIC_ALIASES = {"tp": "teleport"}
 
+INTERACT_USAGE = ("Use interact, interact <x> <y> <z> [face], interact <block type>, "
+                  "or interact @<entity> [continuous|interval <ticks>] [for <ticks>] [count <n>]")
 TARGET_REPEAT_USAGE = "Repeat {action} @<entity> with continuous, interval <ticks>, for <ticks> or count <n>"
 
 BLOCKS_USAGE = "Use blocks <type> [radius <1-12>] [limit <1-64>]"
@@ -899,6 +901,8 @@ def parse_command(arguments: list[str]) -> BotCommand:
             name,
             {**target, "face": BLOCK_FACES[remaining[-1].lower()], "faceName": remaining[-1].lower()},
         )
+    if operation == "interact":
+        raise CommandSyntaxError(INTERACT_USAGE)
     if operation == "destroy":
         modes = [value.lower() for value in remaining]
         if not remaining or modes == ["once"]:
@@ -961,6 +965,9 @@ def parse_command(arguments: list[str]) -> BotCommand:
             return BotCommand(operation, name, {"selector": selector})
         if selector == "stack":
             raise CommandSyntaxError("A slot or all does not accept a count")
+        if selector.isascii() and selector.isdecimal():
+            # `drop 0` or `drop 37` is a slot typo, never an item called "0".
+            raise CommandSyntaxError("Drop slots are 1 to 36, offhand, head, chest, legs or feet")
         item = selector if ":" in selector else f"minecraft:{selector}"
         if not re.fullmatch(r"minecraft:[a-z0-9_./-]+", item):
             raise CommandSyntaxError("Invalid drop item identifier")
@@ -1464,6 +1471,8 @@ class BotCommandService:
             if selector == "all":
                 return say("drop all requested for {slots} slots", result["name"], slots=result["droppedSlots"])
             if selector.startswith("minecraft:"):
+                if not result["droppedCount"]:
+                    raise LocalizedError("No {item} in the inventory", item=selector.removeprefix("minecraft:"))
                 if "count" in command.parameters:
                     return say("drop {item} x{count} requested (asked for {asked})", result["name"],
                                item=selector.removeprefix("minecraft:"), count=result["droppedCount"],

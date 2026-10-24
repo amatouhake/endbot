@@ -196,3 +196,22 @@ serializer/prediction tests establish neither BDS acceptance nor achievement pre
 native command hints, forms and echoed commands, group partial failures, real-client equipment rendering and
 protection/cancellation remain live/manual gates. World achievement history and actual Xbox achievement unlocks
 remain explicit manual/E2E gates; no new compatibility claim is made.
+
+## Behaviour notes (2026-10-24 review)
+
+- **Rejected requests converge on the next observation.** The runtime predicts a drop or swap in its cache. When BDS
+  rejects one, the cache is corrected by the next changed observation, at most `hotbar-sync-interval-ticks`
+  later (default 4). An unchanged inventory is re-sent every `hotbar-sync-resend-ticks` (default 20). Both
+  settings accept up to 1200 and 72000 ticks, which bound the worst case.
+- **Native and observed items compare by item, not bookkeeping.** Stack network ids and the block runtime id are
+  ignored. Wheat shares the crop's block name, so the plugin cannot tell its wire block id (0). Native NBT longs
+  (`[high, low]`) equal the observed BigInt. An equal observation therefore never replaces the native item and its
+  stack id. A changed count keeps the native block runtime id.
+- **Stack ids in transactions.** Drop and swap send legacy `inventory_transaction`s without stack ids (the spike
+  showed BDS rejects them otherwise). Use, attack and release keep the native held item as BDS sent it, stack id
+  included; that path is validated live and left unchanged.
+- **Non-finite NBT floats** (`NaN`, `±Infinity`) are spelled out as strings in the observation and restored by the
+  runtime, so one odd tag no longer stops the whole observation.
+- `drop all`, `drop <slot>` and `drop <item>` before BDS sent the inventory fail with "not synchronized yet" instead
+  of reporting zero drops; `drop <item>` with no match fails with "No <item> in the inventory"; `drop 0`/`drop 37`
+  are slot typos, not item names.

@@ -29,8 +29,9 @@ export function dropPlan ({ selector = 'selected', stack = false, count } = {}, 
         : selector !== 'all' && entry.label !== selector) continue
     const amount = Math.min(Number(entry.item.count), selector === 'selected' && !stack ? 1 : budget)
     if (amount <= 0) break
-    const itemId = [...palette].find(([, id]) => id === entry.item.network_id)?.[0]
-    if (!itemId) throw new Error('Unknown drop item')
+    // The name only labels the reply; an item missing from the palette still drops.
+    const itemId = [...palette].find(([, id]) => id === entry.item.network_id)?.[0] ??
+      `unknown:${entry.item.network_id}`
     plan.push({ ...entry, itemId, count: amount })
     budget -= amount
   }

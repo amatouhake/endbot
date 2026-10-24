@@ -32,6 +32,9 @@ function nbtTag (tag, depth = 0) {
     return { type, value }
   }
   if (type === 'float' || type === 'double') {
+    // The observation spells non-finite values out; JSON cannot carry them.
+    const special = { NaN, Infinity, '-Infinity': -Infinity }
+    if (typeof value === 'string' && Object.hasOwn(special, value)) return { type, value: special[value] }
     if (!Number.isFinite(value) || (type === 'float' && Math.abs(value) > 3.4028234663852886e38)) throw new Error('Invalid NBT number')
     return { type, value }
   }
@@ -45,15 +48,6 @@ function nbtTag (tag, depth = 0) {
     return { type, value: value.map(number => nbtTag({ type: scalar, value: number }, depth + 1).value) }
   }
   throw new Error('Unsupported inventory NBT')
-}
-
-export function decodeHotbar (data, identityId, itemPalette) {
-  if (typeof data !== 'string' || Buffer.byteLength(data) > 60 * 1024) throw new Error('Invalid hotbar observation')
-  const snapshot = JSON.parse(data)
-  if (snapshot.identityId !== identityId || !Array.isArray(snapshot.slots) || snapshot.slots.length !== 9) {
-    throw new Error('Hotbar observation does not match this Bot')
-  }
-  return snapshot.slots.map(slot => decodeItem(slot, itemPalette))
 }
 
 function decodeItem (slot, itemPalette) {

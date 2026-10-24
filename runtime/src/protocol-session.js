@@ -48,6 +48,15 @@ const EXIT_LEAD_TICKS = 2
 // (wheat eaten, sword worn); a stale held item makes BDS reject the click.
 // No change within this many ticks (a mob's hurt cooldown) means none is coming.
 const CLICK_SETTLE_TICKS = 10n
+// A sent leave-vehicle that BDS never confirms (no unlink) stops counting as riding after this.
+const LEAVE_TIMEOUT_TICKS = 40n
+// `@nearest` skips what nobody clicks on purpose: drops, orbs, projectiles and effects.
+const NON_TARGETS = new Set(['minecraft:item', 'minecraft:xp_orb', 'minecraft:arrow', 'minecraft:thrown_trident',
+  'minecraft:snowball', 'minecraft:egg', 'minecraft:ender_pearl', 'minecraft:fireball', 'minecraft:small_fireball',
+  'minecraft:wither_skull', 'minecraft:dragon_fireball', 'minecraft:shulker_bullet', 'minecraft:llama_spit',
+  'minecraft:splash_potion', 'minecraft:lingering_potion', 'minecraft:xp_bottle', 'minecraft:fishing_hook',
+  'minecraft:falling_block', 'minecraft:lightning_bolt', 'minecraft:area_effect_cloud', 'minecraft:evocation_fang',
+  'minecraft:wind_charge_projectile', 'minecraft:breeze_wind_charge_projectile', 'minecraft:tnt'])
 
 export class BedrockSession extends EventEmitter {
   constructor (profile, options) {
@@ -485,13 +494,18 @@ export class BedrockSession extends EventEmitter {
     if (!this.vehicle) throw new Error('Bot is not riding')
     const entity = this.#entityByUniqueId(this.vehicle.uniqueId)
     if (!entity) throw new Error('The vehicle is not in view')
-    if (this.vehicle.exit) throw new Error('A dismount is already pending')
+    if (this.vehicle.exit || this.vehicle.leaving) throw new Error('A dismount is already pending')
     if (exit && this.position && Math.hypot(exit.x - this.position.x, exit.z - this.position.z) > MAX_EXIT_DISTANCE) {
       throw new Error('The dismount exit is too far from the vehicle')
     }
     if (exit) this.vehicle.exit = { position: { x: exit.x, y: exit.y + EYE_HEIGHT, z: exit.z }, ticks: EXIT_LEAD_TICKS }
-    else this.client.queue('interact', createLeaveVehicle(entity.runtimeId))
+    else this.#sendLeave(entity)
     return { type: entity.type, runtimeId: String(entity.runtimeId) }
+  }
+
+  #sendLeave (entity) {
+    this.client.queue('interact', createLeaveVehicle(entity.runtimeId))
+    this.vehicle.leaving = this.tick + LEAVE_TIMEOUT_TICKS
   }
 
   // `used` lists runtime ids already clicked, oldest first; fresh entities win.
@@ -506,6 +520,7 @@ export class BedrockSession extends EventEmitter {
     let best
     for (const entity of this.entities.values()) {
       if (entity.type === 'minecraft:player' || (wanted && entity.type !== wanted)) continue
+      if (!wanted && NON_TARGETS.has(entity.type)) continue
       // A rider does not pick its own vehicle as the nearest target.
       if (this.vehicle && String(entity.uniqueId) === this.vehicle.uniqueId) continue
       const distance = this.#eyeDistance(entity)
@@ -610,12 +625,17 @@ export class BedrockSession extends EventEmitter {
 
   drop (options = {}) {
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
+    if (!this.inventoryKnown && (options.selector ?? 'selected') !== 'selected') {
+      // Before BDS sent the inventory, an empty cache would report "dropped 0" as success.
+      throw new Error('Bot inventory is not synchronized yet; try again')
+    }
     const plan = dropPlan(options, this.inventory, this.equipment, this.hotbarSlot, this.itemPalette)
     if (!plan.length && (options.selector ?? 'selected') === 'selected') throw new Error('Selected hotbar slot is empty')
+    // Build every packet first: a rejected entry must not leave earlier ones already sent.
+    const packets = plan.map(entry => [entry, createDropTransaction({ ...entry, heldItem: entry.item })])
     this.inputs?.cancelTimedUse()
     this.#releaseItemUse()
-    for (const entry of plan) {
-      const packet = createDropTransaction({ ...entry, heldItem: entry.item })
+    for (const [entry, packet] of packets) {
       this.client.queue('inventory_transaction', packet)
       const cache = entry.windowId === 0 ? this.inventory : this.equipment
       const index = entry.windowId === 120 ? entry.slot + 1 : entry.slot
@@ -682,6 +702,7 @@ export class BedrockSession extends EventEmitter {
         const snapshot = this.inventoryObservation.accept(packet.event_data, this.profile.identityId, this.itemPalette)
         if (!snapshot) return
         const { slots, equipment } = snapshot
+        this.inventoryKnown = true
         for (let slot = 0; slot < slots.length; slot++) {
           const native = this.inventory[slot]
           if (sameItem(native, slots[slot])) continue
@@ -852,6 +873,7 @@ export class BedrockSession extends EventEmitter {
     this.client.on('inventory_content', packet => {
       if (!this.#isPlayerInventory(packet.window_id)) return
       this.inventory = packet.input
+      this.inventoryKnown = true
       this.#selectHeldItem()
       this.#announceHeldItem()
     })
@@ -1088,9 +1110,8 @@ export class BedrockSession extends EventEmitter {
       raw_move_vector: move
     })
     if (this.pendingEntityInteraction) this.#sendEntityInteraction()
-    if (vehicle && this.vehicle.exit && --this.vehicle.exit.ticks === 0) {
-      this.client.queue('interact', createLeaveVehicle(vehicle.runtimeId))
-    }
+    if (vehicle && this.vehicle.exit && !this.vehicle.leaving && --this.vehicle.exit.ticks === 0) this.#sendLeave(vehicle)
+    else if (this.vehicle?.leaving !== undefined && this.tick >= this.vehicle.leaving) this.#leaveVehicle()
     this.tick += 1n
   }
 

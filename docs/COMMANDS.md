@@ -541,8 +541,10 @@ Coordinates anywhere in `/bot` accept vanilla's compact relative form: `~~-1~` i
 blocks in detail (id, distance, position, health, name tag); without an argument it is the nearest.
 
 `target` shows what the Bot's crosshair hits within 6 blocks: the nearer of a block (position, face, type) and a
-non-player entity. `block <x> <y> <z>` shows one block's type and states; `~` is relative to the Bot. `blocks <type>`
-lists the nearest blocks of that type, as `x y z (distance)`, within a radius (default 8, at most 12), up to `limit`
+non-player entity. `block <x> <y> <z>` shows one block's type and states; `~` is relative to the Bot, and coordinates beyond
+30000000 are refused. `blocks <type>`
+lists the nearest blocks of that type, as `x y z (distance)`, nearest cells first (it stops reading once `limit`
+matches are certain), within a radius (default 8, at most 12), up to `limit`
 (default 10, at most 64),
 counting only blocks with a face open to air, water or plants, so it does not reveal buried ores. All three read BDS
 through the Endstone SDK, never change anything, and return data to scripts; Group targets print every member's
@@ -553,7 +555,8 @@ result like `status`. The Gameplay form's **Look around...** offers them with th
 `entities` lists up to 10 non-player entities within 16 blocks of the Bot, nearest first, as
 `<type> @<id> (<distance>m)`. A Group target is a query like `status`: every member's list is printed, with no
 history or audit entry. `interact @<type|nearest|id>` picks the nearest matching non-player entity within 6 blocks
-(`cow` and `minecraft:cow` are the same; `nearest` takes any type; an id comes from `entities`), turns the Bot
+(`cow` and `minecraft:cow` are the same; `nearest` takes any type except dropped items, orbs, projectiles and
+effects; an id comes from `entities`), turns the Bot
 toward it and right-clicks it with the held item on the next input tick. This is the vanilla client path
 (`item_use_on_entity` with action `interact`): feeding and breeding consume the held item, shears shear, a name tag
 names, and an empty hand on a minecart, boat or rideable animal mounts it. BDS decides every outcome; the reply
@@ -577,7 +580,8 @@ plugin now checks every hotbar-sync interval whether a Bot standing on a block t
 box and, if not, tells the runtime to start falling; BDS then corrects the landing. Fractional heights (slabs, carpets),
 water, flight and standing on a boat or shulker are never reported. BDS ignores a rider's reported position but corrects a sideways
 jump right after the link ends, so the Bot reports the exit spot for two ticks while still riding and then sends the
-leave action; its first free input then does not move. Live check (2026-10-24): switching from a minecart to a boat
+leave action; its first free input then does not move. A second `dismount` while one is pending is refused, and if
+BDS never confirms the leave within 40 ticks the Bot stops counting as riding. Live check (2026-10-24): switching from a minecart to a boat
 without dismounting, a boat exit in the look direction and a moving-minecart side exit, each with no correction. Steering horses or
 boats is not implemented. Live check (2026-10-24, Windows RakNet, locked pair): feeding a cow consumed wheat,
 the Bot boarded a minecart by id, rode a powered minecart about 12 blocks with BDS keeping its position on the

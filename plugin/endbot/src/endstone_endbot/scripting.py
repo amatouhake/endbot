@@ -454,7 +454,7 @@ class ScriptService:
                         ),
                         log_level="info",
                         log_messages=(
-                            f"Endbot script {run.identity} {run.name} of {self._owner(run)} ended: {outcome_en}",
+                            f"Endbot script {run.identity} {run.name} ended: {outcome_en} (controller {self._owner(run)})",
                             f"Endbot script {run.identity}: input cleanup {'completed' if cleanup_ok else 'failed'}",
                         ),
                     ),
@@ -529,7 +529,7 @@ class ScriptService:
                 count = self.stop(source, tail[0])
                 return CommandResult(
                     True, (reply(tr(lang, "Stopping {count} script runs", count=count)),), log_level="info",
-                    log_messages=(f"Endbot script stop {_clean(tail[0], 64)} by {self._who(source)}: {count} runs",),
+                    log_messages=(f"Stopping {count} script runs ({_clean(tail[0], 64)}) by {self._who(source)}",),
                 )
             if (
                 operation == "save"
@@ -552,7 +552,7 @@ class ScriptService:
                 self._check(source)
                 self.store.save(tail[0], tail[1], guard.revision, self.owner_key(source), self._who(source))
                 return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
-                                     log_messages=(f"Endbot script {tail[0]} saved by {self._who(source)}",))
+                                     log_messages=(f"Script {tail[0]} saved by {self._who(source)}",))
             if operation == "menu" and not tail:
                 self._player(source)
                 return CommandResult(True, view=script_forms.list_screen(
@@ -568,7 +568,7 @@ class ScriptService:
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} copied to {copy}", name=original.name, copy=tail[1])),),
                     log_level="info",
-                    log_messages=(f"Endbot script {original.name} copied to {tail[1]} by {self._who(source)}",))
+                    log_messages=(f"Script {original.name} copied to {tail[1]} by {self._who(source)}",))
             script = self._script(tail[0], source, edit=operation in {"delete", "edit", "share", "private", "restore"})
             if isinstance(guard, script_forms.ScriptGuard) and guard.revision != script.revision:
                 raise LocalizedError("Script changed; reopen the menu")
@@ -590,7 +590,7 @@ class ScriptService:
                     True, (reply(tr(lang, "Script {name} is now {visibility}", name=script.name,
                                     visibility=Text(visibility))),),
                     log_level="info",
-                    log_messages=(f"Endbot script {script.name} made {visibility} by {self._who(source)}",))
+                    log_messages=(f"Script {script.name} is now {visibility} by {self._who(source)}",))
             if operation == "history" and len(tail) == 1:
                 if source.player_id is not None and isinstance(guard, script_forms.ScriptGuard):
                     return CommandResult(True, view=script_forms.history_screen(
@@ -608,12 +608,12 @@ class ScriptService:
                                     index=int(tail[1]))),),
                     log_level="info",
                     log_messages=(
-                        f"Endbot script {script.name} restored to revision {int(tail[1])} by {self._who(source)}",))
+                        f"Script {script.name} restored to revision {int(tail[1])} by {self._who(source)}",))
             if operation == "delete" and len(tail) == 1:
                 self.store.delete(script.name, script.revision)
                 return CommandResult(True, (reply(tr(lang, "Script {name} deleted", name=script.name)),),
                                      log_level="info",
-                                     log_messages=(f"Endbot script {script.name} deleted by {self._who(source)}",))
+                                     log_messages=(f"Script {script.name} deleted by {self._who(source)}",))
             if operation == "run":
                 # Native message tails arrive in one argument. Forms carry a JSON object in their guard.
                 values = (
@@ -626,7 +626,7 @@ class ScriptService:
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),),
                     log_level="info",
-                    log_messages=(f"Endbot script {run} {script.name} started by {self._who(source)}",),
+                    log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
                 )
             if operation in {"menu", "edit", "parameters"} and len(tail) == 1:
                 self._player(source)

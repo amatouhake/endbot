@@ -445,14 +445,14 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn(f"{first} test (Caller)", listing.messages[0])
         self.assertIn("(Other)", listing.messages[0])
         self.assertEqual(self.host.execute(["stop", "all"], self.source).log_messages,
-                         ("Endbot script stop all by Caller: 1 runs",))
+                         ("Stopping 1 script runs (all) by Caller",))
         stopped = self.host.execute(["stop", "all"], console)
-        self.assertEqual(stopped.log_messages, ("Endbot script stop all by console: 1 runs",))
+        self.assertEqual(stopped.log_messages, ("Stopping 1 script runs (all) by console",))
         deadline = time.monotonic() + 4
         while self.host.active() and time.monotonic() < deadline:
             time.sleep(0.01)
         self.assertEqual(self.host.active(), ())
-        self.assertTrue(any("of Other ended" in line for line in self.logs()))
+        self.assertTrue(any("(controller Other)" in line for line in self.logs()))
 
     def test_wait_online_rejects_an_invalid_target(self):
         self.start([{"type": "waitOnline", "id": 2, "target": "x" * 5000}])

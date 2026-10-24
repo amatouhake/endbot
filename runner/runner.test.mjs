@@ -219,6 +219,20 @@ group(a.group):destroy{mode="continuous",count=64}`;
   assert.deepEqual(events[3].params, {mode:'continuous',count:64});
 });
 
+test('positions are vectors that operations expand, and choices are validated', async () => {
+  const events = [];
+  const source = `local a=params {param.pos("origin","1 64 2"),param.choice("mode",{"once","continuous"},"once")}
+assert(type(a.origin)=="vector" and a.origin.x==1 and a.mode=="continuous")
+bot("Alice"):tp(a.origin + vector.create(2, 0, 0) * 3)
+bot("Alice"):tp(a.origin, {yaw=90, pitch=0})`;
+  const run = startRun(source, { mode: 'continuous' }, { onOperation: e => { events.push(e); return { ok: true }; } });
+  assert.equal((await run.done).type, 'done');
+  assert.deepEqual(events.map(e => e.params), [{x:7,y:64,z:2}, {x:1,y:64,z:2,yaw:90,pitch:0}]);
+  assert.equal(run.events[0].schema[1].type, 'choice');
+  assert.deepEqual(run.events[0].schema[1].choices, ['once', 'continuous']);
+  assert.throws(() => parameters(run.events[0].schema, { mode: 'twice' }), /invalid argument: mode/);
+});
+
 test('typed API rejects surplus options, bad types and command-string escape attempts before IPC', async () => {
   for (const call of ['bot("A"):move("forward",{raw="stop"})', 'bot("A"):look(true,0)',
     'bot("A"):tp("Player",{raw="stop"})', 'bot("A"):command("stop")']) {
@@ -299,6 +313,11 @@ test('declaration errors retain params call line and never reach the body', asyn
     ['{{name="x",type="command"}}', 'Unknown script parameter type'],
     ['{param.number("x",true)}', 'Invalid script parameter default'],
     ['{param.number("x",0/0)}', 'Invalid script parameter default'],
+    ['{param.choice("m",{})}', 'Invalid script parameter declarations'],
+    ['{param.choice("m",{"a","a"})}', 'Invalid script parameter declarations'],
+    ['{param.choice("m",{"a",2})}', 'Invalid script parameter declarations'],
+    ['{param.choice("m",{"a"},"b")}', 'Invalid script parameter default'],
+    ['{{name="x",type="number",choices={"a"}}}', 'Invalid script parameter declarations'],
   ]) {
     const run = startRun(`local x = 1\nlocal a = params(${schema})\nlog("wrong")`);
     const result = await run.done;

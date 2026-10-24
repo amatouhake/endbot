@@ -894,13 +894,22 @@ JA.update({
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "
     "| copy <name> <new> | share|private <name> | history <name> | restore <name> <n> "
-    "| import <name> | export <name> | menu":
+    "| rename <name> <new> | import <name> | export <name> | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
         "| delete <name> | copy <name> <new> | share|private <name> | history <name> "
-        "| restore <name> <n> | import <name> | export <name> | menu",
-    "Arguments follow parameter declaration order; quote positions. "
-    "Create/edit in the menu, or import from a held book and quill.":
-        "引数は宣言順です。座標は引用符で囲みます。作成と編集はメニューか、手に持った本と羽根ペンからの取り込みで行います。",
+        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> | menu",
+    "Arguments follow declaration order, then name=value for any parameter; "
+    "quote positions. Create/edit in the menu, or import from a held book and quill.":
+        "引数は宣言順で、その後に name=値 で任意の引数を指定できます。座標は引用符で囲みます。"
+        "作成と編集はメニューか、手に持った本と羽根ペンからの取り込みで行います。",
+    "Rename...": "名前を変更...",
+    "Rename script": "スクリプトの名前を変更",
+    "New name": "新しい名前",
+    "Rename": "変更",
+    "Script {name} renamed to {new}": "スクリプト {name} の名前を {new} に変更しました",
+    "Script argument {name} is given twice": "スクリプトの引数 {name} が2回指定されています",
+    "Positional script arguments must come before name=value arguments":
+        "順番どおりの引数は name=値 の引数より前に書いてください",
     "Import from a book": "本から取り込む",
     "Import": "取り込む",
     "From held book...": "手に持った本から...",

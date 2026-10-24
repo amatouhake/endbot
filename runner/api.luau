@@ -17,7 +17,15 @@ for _, kind in {"group", "bot", "pos", "number", "boolean", "string"} do
         return table.freeze(descriptor)
     end
 end
+-- One of fixed strings: `param.choice("mode", {"once", "continuous"}, "once")`; forms show a dropdown.
+param.choice = function(parameterName, choices, default)
+    local descriptor = {name = parameterName, type = "choice", choices = choices}
+    if type(choices) == "table" then descriptor.choices = table.freeze(table.clone(choices)) end
+    if default ~= nil then descriptor.default = default end
+    return table.freeze(descriptor)
+end
 table.freeze(param)
+local KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice"}
 
 function params(schema)
     if declared then error("declare params exactly once", 2) end
@@ -39,23 +47,47 @@ function params(schema)
         end
         if names[name] then error("Duplicate script parameter name", 2) end
         names[name] = true
-        if not table.find({"group", "bot", "pos", "number", "boolean", "string"}, spec.type) then
+        if not table.find(KINDS, spec.type) then
             error("Unknown script parameter type", 2)
         end
         for key in spec do
-            if key ~= "name" and key ~= "type" and key ~= "default" then
+            if key ~= "name" and key ~= "type" and key ~= "default" and not (key == "choices" and spec.type == "choice") then
                 error("Invalid script parameter declarations", 2)
             end
         end
+        if spec.type == "choice" then
+            local choices = spec.choices
+            if type(choices) ~= "table" or #choices < 1 or #choices > 32 then
+                error("Invalid script parameter declarations", 2)
+            end
+            local seen, n = {}, 0
+            for key, choice in choices do
+                n += 1
+                if type(key) ~= "number" or type(choice) ~= "string" or #choice < 1 or #choice > 64 or seen[choice] then
+                    error("Invalid script parameter declarations", 2)
+                end
+                seen[choice] = true
+            end
+            if n ~= #choices then error("Invalid script parameter declarations", 2) end
+        end
         if spec.default ~= nil then
             local expected = if spec.type == "number" then "number" elseif spec.type == "boolean" then "boolean" else "string"
-            if type(spec.default) ~= expected or (expected == "number" and (spec.default ~= spec.default or math.abs(spec.default) == math.huge)) then
+            if type(spec.default) ~= expected or (expected == "number" and (spec.default ~= spec.default or math.abs(spec.default) == math.huge))
+                or (spec.type == "choice" and not table.find(spec.choices, spec.default)) then
                 error("Invalid script parameter default", 2)
             end
         end
     end
     declared = true
-    return request({type = "params", schema = schema}).args
+    local args = request({type = "params", schema = schema}).args
+    -- Positions arrive as {x, y, z}; vectors add and scale (`a.origin + vector.create(2, 0, 0)`).
+    for _, spec in schema do
+        local value = args[spec.name]
+        if spec.type == "pos" and type(value) == "table" then
+            args[spec.name] = vector.create(value.x, value.y, value.z)
+        end
+    end
+    return args
 end
 local function ready() assert(declared, "declare params{} before running") end
 function wait(ticks)
@@ -81,7 +113,18 @@ local function valid(value, spec)
     return true
 end
 local function arguments(variants, ...)
-    local input = table.pack(...)
+    -- A vector stands for three coordinates: `bot:tp(a.origin)` is `bot:tp(x, y, z)`.
+    local input = {n = 0}
+    for index = 1, select("#", ...) do
+        local value = select(index, ...)
+        if type(value) == "vector" then
+            input[input.n + 1], input[input.n + 2], input[input.n + 3] = value.x, value.y, value.z
+            input.n += 3
+        else
+            input.n += 1
+            input[input.n] = value
+        end
+    end
     for _, shape in variants do
         local count, named = #shape.positional, {}
         local ok = input.n == count or (input.n == count + 1 and type(input[count + 1]) == "table")

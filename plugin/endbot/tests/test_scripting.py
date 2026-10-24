@@ -1105,3 +1105,71 @@ class BookTests(unittest.TestCase):
         runner.events.put({"type": "done"})
         host.process_factory = lambda *args: runner
         self.assertIn("params {}", self.text(host.execute(["import", "noparams"], self.alice)))
+
+
+SYNTAX_SCHEMA = ({"name": "group", "type": "group"}, {"name": "origin", "type": "pos", "default": "~ ~ ~"},
+                 {"name": "spacing", "type": "number", "default": 2},
+                 {"name": "mode", "type": "choice", "choices": ["once", "continuous"], "default": "once"})
+
+
+class SyntaxTests(unittest.TestCase):
+    def args(self, values):
+        groups = Mock(get=lambda name: type("G", (), {"name": name})())
+        return arguments(list(SYNTAX_SCHEMA), values, groups=groups, bots=[], origin={"x": 1, "y": 64, "z": 2})
+
+    def test_named_arguments_follow_positional_ones(self):
+        result = self.args(["#miners", "spacing=3"])
+        self.assertEqual((result["origin"], result["spacing"], result["mode"]), ({"x": 1, "y": 64, "z": 2}, 3, "once"))
+        moved = self.args(["#miners", "mode=continuous", "origin=0 70 0"])
+        self.assertEqual(moved["origin"], {"x": 0, "y": 70, "z": 0})
+        for values, message in ((["#miners", "spacing=3", "~ ~ ~"], "must come before"),
+                                (["#miners", "group=#x"], "given twice"),
+                                (["#miners", "spacing=1", "spacing=2"], "given twice"),
+                                (["#miners", "mode=twice"], "Invalid script argument: mode"),
+                                (["#miners", "~ ~ ~", "1", "once", "extra"], "Too many")):
+            with self.subTest(values=values), self.assertRaisesRegex(LocalizedError, message):
+                self.args(values)
+        # An undeclared name=value is an ordinary positional value.
+        self.assertEqual(arguments([{"name": "text", "type": "string"}], ["note=hi"], groups=None, bots=[]),
+                         {"text": "note=hi"})
+
+    def test_choice_declarations(self):
+        self.assertEqual(declarations(list(SYNTAX_SCHEMA))["mode"]["choices"], ["once", "continuous"])
+        for spec, message in (({"choices": []}, "declarations"), ({"choices": ["a", "a"]}, "declarations"),
+                              ({"choices": ["a", 1]}, "declarations"), ({"choices": ["a"], "default": "b"}, "default"),
+                              ({}, "declarations")):
+            with self.subTest(spec=spec), self.assertRaisesRegex(LocalizedError, message):
+                declarations([{"name": "m", "type": "choice", **spec}])
+        with self.assertRaisesRegex(LocalizedError, "declarations"):
+            declarations([{"name": "n", "type": "number", "choices": ["a"]}])
+
+    def test_choice_is_a_dropdown_in_the_run_form(self):
+        screen = script_forms.run_screen(Script("s", "params {}", "r1"), list(SYNTAX_SCHEMA[2:]), [], [], None)
+        self.assertIsInstance(screen.controls[1], forms.Dropdown)
+        self.assertEqual(screen.controls[1].options, ("once", "continuous"))
+        forms.modal_commands(screen, json.dumps(["5", 1]))
+        self.assertEqual(screen.guard.values, {"spacing": "5", "mode": "continuous"})
+
+    def test_rename_keeps_history_and_ownership(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        config = ScriptConfig(enabled=True)
+        store = ScriptStore(Path(directory.name) / "scripts.json", config)
+        host = ScriptService(config, store, None, None, Path(directory.name), lambda source: True,
+                             process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
+        alice = CommandSource(player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
+        bob = CommandSource(player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
+        store.save("row", "params {}\n-- 1", None, "xuid:111", "Alice")
+        store.save("row", "params {}\n-- 2", store.get("row").revision, "xuid:111", "Alice")
+        store.save("other", "params {}", None, "xuid:111", "Alice")
+        store.set_visibility("row", "shared", store.get("row").revision)
+        self.assertIn("Only the owner", " ".join(host.execute(["rename", "row", "bobrow"], bob).messages))
+        self.assertIn("already exists", " ".join(host.execute(["rename", "row", "OTHER"], alice).messages))
+        self.assertTrue(host.execute(["rename", "row", "line"], alice).accepted)
+        renamed = store.get("line")
+        self.assertEqual((renamed.name, renamed.owner, renamed.visibility, len(renamed.history)),
+                         ("line", "xuid:111", "shared", 1))
+        self.assertTrue(host.execute(["rename", "line", "Line"], alice).accepted)
+        self.assertEqual(store.get("line").name, "Line")
+        with self.assertRaises(LocalizedError):
+            store.get("row")

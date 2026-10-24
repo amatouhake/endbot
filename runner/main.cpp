@@ -194,7 +194,8 @@ static Json fromLua(lua_State* L, int index, int depth = 0, bool array = false)
             if (lua_type(L, -2) != LUA_TSTRING) throw std::runtime_error("API object keys must be strings");
             if (result.size() >= 128) throw std::runtime_error("API object too large");
             std::string key = lua_tostring(L, -2);
-            result[key] = fromLua(L, -1, depth + 1, depth == 0 && key == "schema");
+            // The params schema and each choice declaration's options are the only API arrays.
+            result[key] = fromLua(L, -1, depth + 1, (depth == 0 && key == "schema") || (depth == 2 && key == "choices"));
             lua_pop(L, 1);
         }
         return result;

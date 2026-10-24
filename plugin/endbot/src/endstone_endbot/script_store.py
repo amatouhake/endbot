@@ -152,6 +152,18 @@ class ScriptStore:
             # Visibility is not a source change: keep the revision so open menus stay valid.
             self._save({**self._scripts, name.casefold(): replace(script, visibility=visibility)})
 
+    def rename(self, name, new_name, expected):
+        """Rename keeping owner, visibility, revision and history; a case-only change is allowed."""
+        group_name(new_name)
+        with self._lock:
+            script = self.get(name)
+            if script.revision != expected:
+                raise LocalizedError("Script changed; reopen the menu")
+            if new_name.casefold() != name.casefold() and new_name.casefold() in self._scripts:
+                raise LocalizedError("Script {name} already exists", name=new_name)
+            scripts = {k: v for k, v in self._scripts.items() if k != name.casefold()}
+            self._save({**scripts, new_name.casefold(): replace(script, name=new_name)})
+
     def delete(self, name, expected):
         with self._lock:
             script = self.get(name)

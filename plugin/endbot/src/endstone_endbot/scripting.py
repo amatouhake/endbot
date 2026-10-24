@@ -508,14 +508,14 @@ class ScriptService:
                                 "Script help: list | show <name> [page] | run <name> [args...] "
                                 "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
                                 "| share|private <name> | history <name> | restore <name> <n> "
-                                "| import <name> | export <name> | menu",
+                                "| rename <name> <new> | import <name> | export <name> | menu",
                             )
                         ),
                         reply(
                             tr(
                                 lang,
-                                "Arguments follow parameter declaration order; quote positions. "
-                                "Create/edit in the menu, or import from a held book and quill.",
+                                "Arguments follow declaration order, then name=value for any parameter; "
+                                "quote positions. Create/edit in the menu, or import from a held book and quill.",
                             )
                         ),
                     ),
@@ -597,7 +597,8 @@ class ScriptService:
                     True, (reply(tr(lang, "Script {name} copied to {copy}", name=original.name, copy=tail[1])),),
                     log_level="info",
                     log_messages=(f"Script {original.name} copied to {tail[1]} by {self._who(source)}",))
-            script = self._script(tail[0], source, edit=operation in {"delete", "edit", "share", "private", "restore"})
+            script = self._script(tail[0], source,
+                                  edit=operation in {"delete", "edit", "share", "private", "restore", "rename"})
             if isinstance(guard, script_forms.ScriptGuard) and guard.revision != script.revision:
                 raise LocalizedError("Script changed; reopen the menu")
             if operation in {"show", "source"} and len(tail) <= 2:
@@ -648,6 +649,14 @@ class ScriptService:
                     log_level="info",
                     log_messages=(
                         f"Script {script.name} restored to revision {int(tail[1])} by {self._who(source)}",))
+            if operation == "rename" and len(tail) == 2:
+                # Running copies keep their old name in `runs`; the revision stays, so open menus remain valid.
+                self._check(source)
+                self.store.rename(script.name, tail[1], script.revision)
+                return CommandResult(
+                    True, (reply(tr(lang, "Script {name} renamed to {new}", name=script.name, new=tail[1])),),
+                    log_level="info",
+                    log_messages=(f"Script {script.name} renamed to {tail[1]} by {self._who(source)}",))
             if operation == "delete" and len(tail) == 1:
                 self.store.delete(script.name, script.revision)
                 return CommandResult(True, (reply(tr(lang, "Script {name} deleted", name=script.name)),),

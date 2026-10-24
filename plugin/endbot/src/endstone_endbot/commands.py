@@ -464,6 +464,9 @@ BLOCK_FACES = {"down": 0, "up": 1, "north": 2, "south": 3, "west": 4, "east": 5}
 # Polls (every 4 ticks) a loop may fail to reach the runtime before it ends:
 # about one 200-tick runtime lease.
 UNREACHABLE_POLL_LIMIT = 50
+# Polls a loop may wait for a target before it tells the operator once (about 2 seconds);
+# the short gap after each broken block never reaches it.
+WAITING_NOTICE_POLLS = 10
 
 # Mining ends caused by a command; their reply already told the operator.
 COMMANDED_MINING_STOPS = {"stopped", "continuous mining restarted", "target changed"}
@@ -1000,6 +1003,8 @@ class BotCommandService:
         self._mining_lock = threading.Lock()
         # Consecutive polls that could not reach the runtime, per loop entry.
         self._mining_unreachable = {}
+        # Consecutive polls a loop found nothing to break, per loop entry.
+        self._mining_waiting = {}
 
     def poll_mining(self, authorize) -> list[tuple[object, str, str, str]]:
         """Renew/retarget loops; return (source, level, message, log message) notices.
@@ -1030,7 +1035,9 @@ class BotCommandService:
                 elif mining.get("loopId") != loop_id:
                     reason = self._mining_end_reason(status, mining)
                 else:
-                    self._continue_mining_loop(name, identity, loop_id, source, mining, position)
+                    waiting = self._continue_mining_loop(name, identity, loop_id, source, mining, position)
+                    if self._waited(key, entry, waiting) == WAITING_NOTICE_POLLS:
+                        notices.append(self._waiting_notice(entry))
                     continue
                 if reason is False:
                     continue  # still breaking
@@ -1063,13 +1070,36 @@ class BotCommandService:
 
         return (source, level, render(_language(source)), render("en"))
 
+    @staticmethod
+    def _waiting_notice(entry) -> tuple[object, str, str, str]:
+        """A one-time notice that a loop is idle because nothing breakable is in sight."""
+        name, _, _, source, block_type = entry
+
+        def render(lang: str) -> str:
+            if block_type:
+                text = tr(lang, "destroy is waiting: no {block} in sight within 5 blocks; move the Bot closer",
+                          block=block_type.removeprefix("minecraft:"))
+            else:
+                text = tr(lang, "destroy continuous is waiting: no block in sight within 5 blocks")
+            return reply(text, name, "")
+
+        return (source, "info", render(_language(source)), render("en"))
+
+    def _waited(self, key, entry, waiting) -> int:
+        """Consecutive waiting polls of this loop entry; any target resets it."""
+        previous, count = self._mining_waiting.get(key, (None, 0))
+        count = count + 1 if waiting and previous is entry else int(bool(waiting))
+        self._mining_waiting[key] = (entry, count)
+        return count
+
     def _unreachable(self, key, entry) -> int:
         previous, count = self._mining_unreachable.get(key, (None, 0))
         count = count + 1 if previous is entry else 1
         self._mining_unreachable[key] = (entry, count)
         return count
 
-    def _continue_mining_loop(self, name, identity, loop_id, source, mining, block_type=None) -> None:
+    def _continue_mining_loop(self, name, identity, loop_id, source, mining, block_type=None) -> bool:
+        """Renew the loop's lease and retarget it; True when it has nothing to break."""
         target = None
         if mining.get("state") != "active":
             # Sight retargeting needs no controller; it may have logged off.
@@ -1092,6 +1122,8 @@ class BotCommandService:
             # position. A rejected target means nothing is mineable yet:
             # keep the lease and retarget on the next poll.
             self.control.request("mine", name=name, mode="continue", loopId=loop_id)
+            return True
+        return mining.get("state") != "active" and target is None
 
     @staticmethod
     def _mining_end_reason(status, mining) -> str | None:

@@ -156,6 +156,8 @@ retain the pinned BDS baseline's completion limitations.
 /botscript private <name>
 /botscript history <name>
 /botscript restore <name> <n>
+/botscript import <name>
+/botscript export <name>
 /botscript help
 /botscript menu
 ```
@@ -181,10 +183,28 @@ version 1) have no owner and stay shared; the first controller to edit one becom
 When enabled, `/bot menu` includes **Scripts...**. A script opens Run, Show source (paged), Stop runs and
 Copy and edit; its owner also gets Edit source, Share/Make private, Earlier revisions (restore with a
 confirmation that shows that revision's source) and Delete (confirmation). Create offers **Group row**, **Simple patrol**, **Mine at spots**, and a blank script.
-Editing uses one paste field with current source as default; the client draws that field only about two lines
-tall, so a read-only label above it shows the whole current source with line numbers. Save compiles the complete source and inspects
+Editing uses an **empty** paste field (the client draws it about two lines tall and cannot select all, so a
+prefilled field could not be cleared) under a read-only label with the whole current source and line numbers.
+A **Change** dropdown picks Replace all, Append at end, Replace lines (`from`, optional `to`), Insert after line
+(`0` = top) or Delete lines; pasted text replaces whole lines and Windows line breaks are normalized. An empty paste
+never wipes a script: it is refused, except that a new script from a template or Copy and edit keeps the shown source. Save compiles the complete source and inspects
 its declaration without accepting the body. `save` is an internal form action; typing it cannot update source.
 Stale edit/delete/run forms reject source revision changes. Canceling does not save; drafts are not persisted.
+
+### Books
+
+A book and quill is the comfortable in-game editor: it keeps line breaks and supports Ctrl+A/C/X/V on Windows.
+`import <name>` (menu: **From held book...** for a new script, **Replace from held book** for your own) reads the
+book and quill or written book in the main hand. Pages are joined with a line break unless a page already ends with
+one; trailing blank pages are ignored. A new name creates a private script; an existing name saves a new revision
+through the same compile, declaration and owner checks as the menu. The book is only read.
+
+`export <name>` (menu: **Write into held book**) writes a script you can run into the **empty** book and quill in
+your main hand, so you can edit it there and import it again (for someone else's shared script, import under a new
+name). Pages hold whole lines: up to 256 characters per page and 50 pages, so a longer line or script is refused.
+No item is created, but because the plugin edits a held item, export is off unless the operator sets
+`[scripting] book-export = true`. The page and character limits are conservative; real-client limits are recorded
+with the human-client checks.
 
 Scripts are stored atomically in versioned `scripts.json` in the plugin data folder. Names are case-insensitive
 and follow Groups (1–16 ASCII letters/digits/underscores, starting with a letter/underscore). Disk write errors

@@ -24,6 +24,7 @@ class ScriptConfig:
     os_confinement: bool = True
     process_memory_bytes: int = 256 * 1024 * 1024
     cpu_seconds: int = 60
+    book_export: bool = False
 
     @classmethod
     def from_config(cls, config):
@@ -37,10 +38,10 @@ class ScriptConfig:
             raise ValueError("Unknown scripting setting")
         result = cls(**values)
         if (type(result.enabled) is not bool or type(result.os_confinement) is not bool
-                or not isinstance(result.runner, str)):
-            raise ValueError("Invalid scripting enabled/os-confinement/runner setting")
+                or type(result.book_export) is not bool or not isinstance(result.runner, str)):
+            raise ValueError("Invalid scripting enabled/os-confinement/book-export/runner setting")
         for f in fields(cls):
-            if f.name in {"enabled", "runner", "os_confinement"}:
+            if f.name in {"enabled", "runner", "os_confinement", "book_export"}:
                 continue
             value = getattr(result, f.name)
             minimum = 0 if f.name in {"wall_seconds", "cpu_seconds", "process_memory_bytes"} else 1

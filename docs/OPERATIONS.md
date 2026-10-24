@@ -69,6 +69,9 @@ Bundles ship the runner, so enabling it requires no build or toolchain. On each 
 and the absolute path of the running app version's runner into the generated plugin config. An optional
 `[scripting] runner = 'path'` overrides that path (relative paths resolve from the plugin data folder).
 Manual plugin installations set `[scripting]` directly in their plugin config. See [SCRIPTING.md](SCRIPTING.md).
+`[scripting] book-export = true` lets controllers write a script into the empty book and quill they hold
+(`/botscript export`); it is off by default because the plugin edits a held item. Importing from a book is always
+available while scripting is enabled.
 
 `[ui].language` sets the language of player-facing replies, help and forms. `auto` (the default, also when omitted)
 gives Japanese clients Japanese and every other client English; `en` or `ja` fixes one language for everyone. Command

@@ -787,6 +787,25 @@ JA.update({
     "Run or edit this shared script.": "この共有スクリプトを実行または編集します。",
     "Script name": "スクリプト名",
     "Luau source (paste multiple lines)": "Luau ソース (複数行を貼り付け)",
+    "Change": "変更内容",
+    "Replace all": "全体を置き換え",
+    "Append at end": "末尾に追記",
+    "Replace lines": "行を置き換え",
+    "Insert after line": "行の後に挿入",
+    "Delete lines": "行を削除",
+    "From line": "開始行",
+    "To line": "終了行",
+    "From line (insert: 0 = top)": "開始行 (挿入: 0 = 先頭)",
+    "To line (optional)": "終了行 (省略可)",
+    "Leave empty to keep the source above.": "空のままなら上のソースをそのまま保存します。",
+    "Paste the new source; nothing was changed": "新しいソースを貼り付けてください。何も変更していません",
+    "Paste the lines to add; nothing was changed": "追加する行を貼り付けてください。何も変更していません",
+    "Enter a line number (0 = top) and paste the lines to insert":
+        "行番号 (0 = 先頭) を入力し、挿入する行を貼り付けてください",
+    "Enter the first line to change": "変更する最初の行番号を入力してください",
+    "Paste the replacement lines, or choose Delete lines": "置き換える行を貼り付けるか、'行を削除' を選んでください",
+    "The script has no lines yet": "スクリプトにまだ行がありません",
+    "{field} must be a line number from {low} to {high}": "{field} は {low} から {high} の行番号で指定してください",
     "Edit script": "スクリプトを編集",
     "Save": "保存",
     "{name} ({kind})": "{name} ({kind})",
@@ -825,6 +844,8 @@ JA.update({
     "Scripts are unavailable; see the server log": "スクリプトを利用できません。サーバーログを確認してください",
     "Script authority was revoked": "スクリプトの操作権限が取り消されました",
     "Script declaration failed: {error}": "スクリプトの引数宣言に失敗: {error}",
+    "Start the script with params {} (or params { param... }) before other code":
+        "スクリプトの最初に params {} (引数があれば params { param... }) を書いてください",
     "Script concurrency limit reached": "同時実行できるスクリプト数の上限に達しました",
     "Script operation rate limit reached": "スクリプトの操作頻度が上限を超えました",
     "Invalid script group target": "スクリプトのグループ対象が正しくありません",
@@ -872,12 +893,34 @@ JA.update({
     "Script input cleanup failed; use /bot stop": "スクリプトの入力停止に失敗しました。/bot stop を使ってください",
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "
-    "| copy <name> <new> | share|private <name> | history <name> | restore <name> <n> | menu":
+    "| copy <name> <new> | share|private <name> | history <name> | restore <name> <n> "
+    "| import <name> | export <name> | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
         "| delete <name> | copy <name> <new> | share|private <name> | history <name> "
-        "| restore <name> <n> | menu",
-    "Arguments follow parameter declaration order; quote positions. Create/edit by menu paste only.":
-        "引数は宣言順です。座標は引用符で囲みます。作成と編集はメニューへの貼り付けで行います。",
+        "| restore <name> <n> | import <name> | export <name> | menu",
+    "Arguments follow parameter declaration order; quote positions. "
+    "Create/edit in the menu, or import from a held book and quill.":
+        "引数は宣言順です。座標は引用符で囲みます。作成と編集はメニューか、手に持った本と羽根ペンからの取り込みで行います。",
+    "Import from a book": "本から取り込む",
+    "Import": "取り込む",
+    "From held book...": "手に持った本から...",
+    "Replace from held book": "手に持った本で置き換え",
+    "Write into held book": "手に持った本に書き出す",
+    "Hold the book in your main hand. Pages are joined with line breaks.":
+        "本を利き手に持ってください。ページは改行でつながります。",
+    "Script {name} imported from the book ({lines} lines)": "スクリプト {name} を本から取り込みました ({lines} 行)",
+    "Script {name} written into the book ({pages} pages)": "スクリプト {name} を本に書き出しました ({pages} ページ)",
+    "Book export is disabled on this server": "このサーバーでは本への書き出しは無効です",
+    "Books are unavailable without the world adapter": "ワールドに接続できないため本を使えません",
+    "The book is empty": "本が空です",
+    "The script is empty": "スクリプトが空です",
+    "Line {line} is longer than a book page ({limit} characters)":
+        "{line} 行目が本の1ページ ({limit} 文字) より長いです",
+    "The script does not fit in one book ({pages} of {limit} pages)":
+        "スクリプトが本1冊に収まりません ({pages} ページ / 上限 {limit} ページ)",
+    "Hold a book and quill or a written book in your main hand": "本と羽根ペンか署名済みの本を利き手に持ってください",
+    "Hold an empty book and quill in your main hand": "空の本と羽根ペンを利き手に持ってください",
+    "The book and quill is not empty; hold an empty one": "本と羽根ペンが空ではありません。空のものを持ってください",
     "No stored scripts": "保存されたスクリプトはありません",
     "No active script runs": "実行中のスクリプトはありません",
     "Stopping {count} script runs": "スクリプト {count} 件を停止します",

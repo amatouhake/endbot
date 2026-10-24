@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 
 from endstone_endbot import forms as f
-from endstone_endbot.i18n import tr
+from endstone_endbot.i18n import Text, tr
 from endstone_endbot.script_params import declarations
 
 
@@ -90,13 +90,27 @@ def list_screen(scripts, lang="en", own=lambda script: False):
     return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
 
 
-def script_screen(script, lang="en", editable=True):
+def import_screen(lang="en"):
+    """Name a new script and read it from the book and quill (or written book) in the main hand."""
+
+    def build(values):
+        return (("import", f._text(values[-1])),)
+
+    return f.ModalScreen(tr(lang, "Import from a book"),
+                         (f.Label(tr(lang, "Hold the book in your main hand. Pages are joined with line breaks.")),
+                          f.TextInput(tr(lang, "Script name"))),
+                         build, submit=tr(lang, "Import"), command="botscript")
+
+
+def script_screen(script, lang="en", editable=True, book_export=False):
     guard = ScriptGuard(script.revision, script.name)
     items = [
         f.Button(tr(lang, "Run"), run("parameters", script.name, guard=guard)),
         f.Button(tr(lang, "Show source"), run("source", script.name, guard=guard)),
         f.Button(tr(lang, "Stop runs"), run("stop", script.name, guard=guard)),
     ]
+    if book_export:
+        items.append(f.Button(tr(lang, "Write into held book"), run("export", script.name, guard=guard)))
     if editable:
         delete = f.ConfirmScreen(
             tr(lang, "Delete script"),
@@ -108,6 +122,7 @@ def script_screen(script, lang="en", editable=True):
         visibility = "private" if script.visibility == "shared" else "share"
         items += [
             f.Button(tr(lang, "Edit source..."), run("edit", script.name, guard=guard)),
+            f.Button(tr(lang, "Replace from held book"), run("import", script.name, guard=guard)),
             f.Button(tr(lang, "Make private") if visibility == "private" else tr(lang, "Share with controllers"),
                      run(visibility, script.name, guard=guard)),
             f.Button(tr(lang, "Earlier revisions..."), run("history", script.name, guard=guard)),
@@ -128,21 +143,81 @@ def numbered(source):
     return "\n".join(f"{index}: {line}" for index, line in enumerate(source.splitlines(), start=1))
 
 
+# Edit modes in dropdown order. Line modes take "from" and an optional "to" line number.
+EDIT_MODES = ("Replace all", "Append at end", "Replace lines", "Insert after line", "Delete lines")
+
+
+def _line_number(value, low, high, label):
+    text = f._text(value)
+    if not text:
+        return None
+    if not text.isascii() or not text.isdecimal() or not low <= int(text) <= high:
+        raise f.FormResponseError("{field} must be a line number from {low} to {high}", field=Text(label), low=low,
+                                  high=high)
+    return int(text)
+
+
+def apply_edit(source, mode, pasted, first, last):
+    """The source after one edit; ``first``/``last`` are 1-based line numbers (strings from the form).
+
+    Pasted text replaces whole lines, so a trailing newline in it adds nothing.
+    """
+    lines = source.splitlines()
+    pasted = pasted.replace("\r\n", "\n").replace("\r", "\n")
+    new = pasted.removesuffix("\n").split("\n") if pasted.strip() else []
+    if mode == "Replace all":
+        if not new:
+            raise f.FormResponseError("Paste the new source; nothing was changed")
+        result = new
+    elif mode == "Append at end":
+        if not new:
+            raise f.FormResponseError("Paste the lines to add; nothing was changed")
+        result = lines + new
+    elif mode == "Insert after line":
+        at = _line_number(first, 0, len(lines), "From line")
+        if at is None or not new:
+            raise f.FormResponseError("Enter a line number (0 = top) and paste the lines to insert")
+        result = lines[:at] + new + lines[at:]
+    else:
+        if not lines:
+            raise f.FormResponseError("The script has no lines yet")
+        start = _line_number(first, 1, len(lines), "From line")
+        if start is None:
+            raise f.FormResponseError("Enter the first line to change")
+        end = _line_number(last, start, len(lines), "To line") or start
+        if mode == "Replace lines" and not new:
+            raise f.FormResponseError("Paste the replacement lines, or choose Delete lines")
+        result = lines[: start - 1] + (new if mode == "Replace lines" else []) + lines[end:]
+    return "\n".join(result) + "\n"
+
+
 def edit_screen(script, lang="en", source="", name=""):
+    """Edit by pasting into an empty field: replace all, append, or replace/insert/delete numbered lines.
+
+    A new script (template or copy) starts from ``source``; leaving the field empty keeps it as is.
+    """
     guard = ScriptGuard(script.revision if script else None, script.name if script else None, edit=True)
     text = script.source if script else source
 
     def build(values):
         name = script.name if script else f._text(values[0])
-        text = values[-1]
-        if not isinstance(text, str):
+        mode = f._option(EDIT_MODES, values[-4])
+        pasted = values[-1]
+        if not isinstance(pasted, str):
             raise f.FormResponseError("the form response was not understood")
-        return (("save", name, text),)
+        if script is None and mode == "Replace all" and not pasted.strip():
+            return (("save", name, text),)
+        return (("save", name, apply_edit(text, mode, pasted, values[-3], values[-2])),)
 
-    # The client's text input is about two lines tall; the label shows the whole source with line numbers.
+    # The client's text input is about two lines tall and cannot select all, so it starts empty;
+    # the label shows the whole source with line numbers for the line modes.
     preview = (f.Label(tr(lang, "Current source:") + "\n" + numbered(text)),) if text.strip() else ()
+    hint = tr(lang, "Leave empty to keep the source above.") if script is None and text.strip() else ""
     controls = (() if script else (f.TextInput(tr(lang, "Script name"), default_value=name),)) + preview + (
-        f.TextInput(tr(lang, "Luau source (paste multiple lines)"), default_value=text),
+        f.Dropdown(tr(lang, "Change"), tuple(tr(lang, mode) for mode in EDIT_MODES)),
+        f.TextInput(tr(lang, "From line (insert: 0 = top)")),
+        f.TextInput(tr(lang, "To line (optional)")),
+        f.TextInput((tr(lang, "Luau source (paste multiple lines)") + " " + hint).strip()),
     )
     return f.ModalScreen(
         tr(lang, "Edit script"), controls, build, submit=tr(lang, "Save"), command="botscript", guard=guard

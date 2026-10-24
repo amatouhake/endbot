@@ -156,6 +156,9 @@ SCRIPT_USAGES = [
     "/botscript (share|private)<action: EndbotScriptVisibility> <name: string>",
     "/botscript (history)<action: EndbotScriptHistory> <name: string>",
     "/botscript (restore)<action: EndbotScriptRestore> <name: string> <revision: int>",
+    "/botscript (rename)<action: EndbotScriptRename> <name: string> <new: string>",
+    "/botscript (import)<action: EndbotScriptImport> <name: string>",
+    "/botscript (export)<action: EndbotScriptExport> <name: string>",
 ]
 
 
@@ -167,7 +170,7 @@ class EndbotPlugin(Plugin):
 
     commands: ClassVar[dict[str, dict[str, object]]] = {
         "botscript": {
-            "description": "Run shared Luau scripts.", "usages": SCRIPT_USAGES,
+            "description": "Write and run controller Luau scripts.", "usages": SCRIPT_USAGES,
             "permissions": ["endbot.command.control"],
         },
         "bot": {

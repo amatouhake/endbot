@@ -17,14 +17,19 @@ export function parameters(schema, args) {
   const names = new Set();
   for (const spec of schema) {
     if (!spec || typeof spec !== 'object' || Array.isArray(spec)
-      || Object.keys(spec).some(key => !['name', 'type', 'default'].includes(key))) throw new Error('Invalid script parameter declarations');
+      || Object.keys(spec).some(key => !['name', 'type', 'default'].includes(key)
+        && !(key === 'choices' && spec.type === 'choice'))) throw new Error('Invalid script parameter declarations');
     if (typeof spec.name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,31}$/.test(spec.name)) throw new Error('Invalid script parameter name');
     if (names.has(spec.name)) throw new Error('Duplicate script parameter name');
     names.add(spec.name);
-    if (!['string', 'number', 'boolean', 'bot', 'group', 'pos'].includes(spec.type)) throw new Error('Unknown script parameter type');
+    if (!['string', 'number', 'boolean', 'bot', 'group', 'pos', 'choice'].includes(spec.type)) throw new Error('Unknown script parameter type');
+    if (spec.type === 'choice' && (!Array.isArray(spec.choices) || spec.choices.length < 1 || spec.choices.length > 32
+      || spec.choices.some(c => typeof c !== 'string' || c.length < 1 || c.length > 64)
+      || new Set(spec.choices).size !== spec.choices.length)) throw new Error('Invalid script parameter declarations');
     const expected = ['number', 'boolean'].includes(spec.type) ? spec.type : 'string';
     if (Object.hasOwn(spec, 'default') && (typeof spec.default !== expected
-      || (expected === 'number' && !Number.isFinite(spec.default)))) throw new Error('Invalid script parameter default');
+      || (expected === 'number' && !Number.isFinite(spec.default))
+      || (spec.type === 'choice' && !spec.choices.includes(spec.default)))) throw new Error('Invalid script parameter default');
   }
   if (Array.isArray(args)) {
     if (args.length > schema.length) throw new Error('Too many script arguments');
@@ -39,6 +44,8 @@ export function parameters(schema, args) {
       const coordinates = typeof value === 'string' ? value.split(/\s+/).map(Number) : [];
       if (coordinates.length !== 3 || coordinates.some(v => !Number.isFinite(v))) throw new Error(`invalid argument: ${key}`);
       value = Object.fromEntries(['x', 'y', 'z'].map((axis, i) => [axis, coordinates[i]]));
+    } else if (descriptor.type === 'choice') {
+      if (!descriptor.choices.includes(value)) throw new Error(`invalid argument: ${key}`);
     } else if (typeof value !== (['bot', 'group'].includes(descriptor.type) ? 'string' : descriptor.type)
       || (typeof value === 'number' && !Number.isFinite(value))) throw new Error(`invalid argument: ${key}`);
     Object.defineProperty(result, key, { value, enumerable: true });

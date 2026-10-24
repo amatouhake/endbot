@@ -30,28 +30,28 @@ assert(a.blocks >= 1 and a.blocks % 1 == 0, "blocks must be a positive integer")
 local miner = bot(a.name)
 waitOnline(miner)
 for i = 1, a.spots do
-    local r = miner:tp(a.start.x + (i - 1) * a.step, a.start.y, a.start.z, {yaw = 0, pitch = 0})
-    if not r.ok then error(r.reason or "placement rejected") end
+    local r = miner:tp(a.start + vector.create((i - 1) * a.step, 0, 0), {yaw = 0, pitch = 0})
+    assert(r.ok, r.reason)
     r = miner:destroy{mode = "continuous", count = a.blocks}
-    if not r.ok then error(r.reason or "destroy rejected") end
+    assert(r.ok, r.reason)
     r = miner:waitMining{timeout = 1200}
     log("spot " .. i .. ": " .. r.reason)
-    if not r.ok then error(r.reason) end
+    assert(r.ok, r.reason)
 end
 """,
     "Group row": """local a = params { param.group "group", param.pos("origin", "~ ~ ~"), param.number("spacing", 2) }
 for i, member in group(a.group):members() do
-    local r = member:tp(a.origin.x + (i - 1) * a.spacing, a.origin.y, a.origin.z)
-    if not r.ok then error(r.reason or "placement rejected") end
+    local r = member:tp(a.origin + vector.create((i - 1) * a.spacing, 0, 0))
+    assert(r.ok, r.reason)
 end
 """,
     "Simple patrol": """local a = params { param.bot "name", param.number("ticks", 40) }
-waitOnline(bot(a.name))
+local walker = bot(a.name)
+waitOnline(walker)
 for i = 1, 4 do
-    local r = bot(a.name):move("forward", {ticks = a.ticks})
-    if not r.ok then error(r.reason or "move rejected") end
+    assert(walker:move("forward", {ticks = a.ticks}).ok, "move rejected")
     wait(a.ticks)
-    bot(a.name):look(i * 90, 0)
+    walker:look(i * 90, 0)
 end
 """,
 }
@@ -102,6 +102,14 @@ def import_screen(lang="en"):
                          build, submit=tr(lang, "Import"), command="botscript")
 
 
+def rename_screen(script, guard, lang="en"):
+    def build(values):
+        return (("rename", script.name, f._text(values[-1])),)
+
+    return f.ModalScreen(tr(lang, "Rename script"), (f.TextInput(tr(lang, "New name"), default_value=script.name),),
+                         build, submit=tr(lang, "Rename"), command="botscript", guard=guard)
+
+
 def script_screen(script, lang="en", editable=True, book_export=False):
     guard = ScriptGuard(script.revision, script.name)
     items = [
@@ -123,6 +131,7 @@ def script_screen(script, lang="en", editable=True, book_export=False):
         items += [
             f.Button(tr(lang, "Edit source..."), run("edit", script.name, guard=guard)),
             f.Button(tr(lang, "Replace from held book"), run("import", script.name, guard=guard)),
+            f.Button(tr(lang, "Rename..."), f.Show(rename_screen(script, guard, lang))),
             f.Button(tr(lang, "Make private") if visibility == "private" else tr(lang, "Share with controllers"),
                      run(visibility, script.name, guard=guard)),
             f.Button(tr(lang, "Earlier revisions..."), run("history", script.name, guard=guard)),
@@ -256,8 +265,9 @@ def run_screen(script, schema, groups, bots, origin, lang="en"):
     for name, spec in schema.items():
         kind, default = spec["type"], spec.get("default", "")
         label = tr(lang, "{name} ({kind})", name=name, kind=kind)
-        if kind in {"group", "bot"}:
-            options = tuple("#" + g.name for g in groups) if kind == "group" else tuple(b["name"] for b in bots)
+        if kind in {"group", "bot", "choice"}:
+            options = (tuple("#" + g.name for g in groups) if kind == "group" else tuple(b["name"] for b in bots)
+                       if kind == "bot" else tuple(spec["choices"]))
             if not options:
                 raise f.FormResponseError("No targets available for script parameters")
             choices[name] = options
@@ -280,7 +290,7 @@ def run_screen(script, schema, groups, bots, origin, lang="en"):
                 if spec["type"] == "group":
                     selected = next(group for group in groups if "#" + group.name == value)
                     targets[name] = ("group", value, selected.identity, selected.members)
-                else:
+                elif spec["type"] == "bot":
                     selected = next(bot for bot in bots if bot["name"] == value)
                     targets[name] = ("bot", value, selected["identityId"])
             values[name] = value

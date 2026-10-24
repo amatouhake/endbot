@@ -392,6 +392,18 @@ Decisions after the first human-client look (2026-10-24 JST):
   `allow-cheats=false`, no-operator model. Book and quill is an unverified in-game multiline candidate.
 - **Web editing** is the preferred long-term authoring experience; see BOT-013.
 
+Decisions after the second human-client look (2026-10-24 JST):
+
+- **Permissions stay as they are for 0.4.0.** Ownership/visibility, the invoker's authority and the console as
+  operator are enough; the run/author split and an in-game administrator tier wait until a real need appears.
+- **Editing:** the paste field starts empty and a Change dropdown offers replace all, append, and replace/insert/delete
+  of numbered lines (the client's two-line field cannot select all, so a prefilled field could not be cleared).
+- **Book and quill:** the client's book editor keeps line breaks and supports Ctrl+A/C/X/V on Windows (no visible
+  selection). `/botscript import <name>` reads the held book; `/botscript export <name>` fills an empty held book and
+  quill without creating an item, behind `[scripting] book-export` (default off). One book is the size limit.
+- **Syntax:** `name=value` run arguments after the positional ones, positions as Luau vectors accepted wherever an
+  operation takes `x, y, z`, `param.choice`, `rename`, and templates using `assert(r.ok, r.reason)`.
+
 This records the agreed scripting direction only. Scripts, a Luau API and editing/import behavior are not yet available;
 the independent Group feature implementation is tracked under BOT-010. Implementation and real-client editing, permission,
 cancellation, Bot behavior and achievement validation must be recorded separately; no release version or completion is
@@ -643,6 +655,15 @@ required for entities everywhere (no bare ids, also in Luau; listings print `@id
 targets combine with repetition: `attack`/`interact @… continuous|interval|for|count`, `destroy <type> continuous|for|count`.
 See
 [targets](COMMANDS.md#targets-crosshair-coordinates-block-types-and--entities).
+
+## BOT-016: Completion waits beyond mining
+
+Status: **after 0.4.0 — not started** (2026-10-24 JST).
+
+Scripts can wait for mining jobs (`waitMining`) and for Bots to come online, but a timed `move`, `use hold`, `attack`
+or `interact` repetition, and a teleport's arrival, are only covered by guessing with `wait(ticks)`. Add waits that end
+when those continuing inputs finish (or report why they stopped), with the same timeout, authority recheck and
+Group/identity pinning as `waitMining`. This needs runtime-side completion state for each input channel.
 
 ## BOT-013: Web script editor
 

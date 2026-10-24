@@ -147,7 +147,7 @@ retain the pinned BDS baseline's completion limitations.
 ```text
 /botscript list
 /botscript show <name> [page]
-/botscript run <name> [positional arguments...]
+/botscript run <name> [positional arguments...] [name=value...]
 /botscript runs
 /botscript stop <run-id|name|all>
 /botscript delete <name>
@@ -156,6 +156,7 @@ retain the pinned BDS baseline's completion limitations.
 /botscript private <name>
 /botscript history <name>
 /botscript restore <name> <n>
+/botscript rename <name> <new-name>
 /botscript import <name>
 /botscript export <name>
 /botscript help
@@ -172,7 +173,8 @@ Each script records its creator as owner (by XUID, else player UUID). Only the o
 delete, restore or change its visibility; everyone else gets "only the owner may change" and is pointed to
 **Copy and edit**. A script is `private` (only the owner sees and runs it; to others it does not exist) or
 `shared` (every controller may list, show, run and copy it). New scripts and copies start `private`;
-`share`/`private` switch it. `copy <name> <new-name>` makes a private copy owned by the copier. Every save keeps
+`share`/`private` switch it. `copy <name> <new-name>` makes a private copy owned by the copier, and the owner's
+`rename <name> <new-name>` keeps the owner, visibility and history (running copies keep the old name). Every save keeps
 the previous source in a history of the last 10 revisions; `history` lists them (newest first, with time and
 line count) and `restore <name> <n>` makes revision `n` current as a new save, keeping the replaced source in the
 history. Runs still use the invoker's authority, whoever owns the script. Scripts saved before ownership (file
@@ -181,14 +183,14 @@ version 1) have no owner and stay shared; the first controller to edit one becom
 (`endbot.script.run`/`endbot.script.author`); every controller may still author.
 
 When enabled, `/bot menu` includes **Scripts...**. A script opens Run, Show source (paged), Stop runs and
-Copy and edit; its owner also gets Edit source, Share/Make private, Earlier revisions (restore with a
+Copy and edit; its owner also gets Edit source, Replace from held book, Rename, Share/Make private, Earlier revisions (restore with a
 confirmation that shows that revision's source) and Delete (confirmation). Create offers **Group row**, **Simple patrol**, **Mine at spots**, and a blank script.
 Editing uses an **empty** paste field (the client draws it about two lines tall and cannot select all, so a
 prefilled field could not be cleared) under a read-only label with the whole current source and line numbers.
 A **Change** dropdown picks Replace all, Append at end, Replace lines (`from`, optional `to`), Insert after line
 (`0` = top) or Delete lines; pasted text replaces whole lines and Windows line breaks are normalized. An empty paste
-never wipes a script: it is refused, except that a new script from a template or Copy and edit keeps the shown source. Save compiles the complete source and inspects
-its declaration without accepting the body. `save` is an internal form action; typing it cannot update source.
+never wipes a script: it is refused, except that a new script from a template or Copy and edit keeps the shown
+source. Save compiles the complete source and inspects its declaration without accepting the body. `save` is an internal form action; typing it cannot update source.
 Stale edit/delete/run forms reject source revision changes. Canceling does not save; drafts are not persisted.
 
 ### Books
@@ -217,8 +219,8 @@ local a = params {
     param.number("spacing", 2),
 }
 for i, member in group(a.group):members() do
-    local result = member:tp(a.origin.x + (i - 1) * a.spacing, a.origin.y, a.origin.z)
-    if not result.ok then error(result.reason or "placement rejected") end
+    local result = member:tp(a.origin + vector.create((i - 1) * a.spacing, 0, 0))
+    assert(result.ok, result.reason)
 end
 ```
 
@@ -226,19 +228,26 @@ Call `params` exactly once before host work, even without arguments (`params {}`
 before the host accepts the body. Inspection executes up to this declaration; code before it has normal budgets
 and cannot call Bot/log/wait functions. Constructors are `param.group(name[, default])`, `param.bot(name[, default])`,
 `param.pos(name[, default])`, `param.number(name[, default])`, `param.bool(name[, default])`,
-`param.string(name[, default])`. Each declaration carries its name; `a.<name>` access is unchanged.
+`param.string(name[, default])` and `param.choice(name, {"a", "b", ...}[, default])` (1–32 distinct strings of
+1–64 characters; the run form shows a dropdown). Each declaration carries its name; `a.<name>` access is unchanged.
 Pass a contiguous array of declarations. Named-key, mixed and sparse tables are rejected, as are duplicate
 names, unknown types and invalid defaults. Names match `[A-Za-z_][A-Za-z0-9_]{0,31}`; at most 32 are allowed.
 Declaration errors show the `params` call's script line where available and are localized for Japanese players.
 The runner/host protocol carries `schema` as a JSON array, including `[]` for no parameters; each entry is
-`{"name":"spacing","type":"number","default":2}`. The plugin validates this array again before forms or execution.
+`{"name":"spacing","type":"number","default":2}` (a choice adds `"choices":[...]`). The plugin validates this array
+again before forms or execution.
 
-**Positional arguments and menu controls follow declaration order.**
-Only trailing arguments can be omitted; earlier defaulted parameters still occupy positions. The example accepts
-`/botscript run row #miners` or `/botscript run row #miners "~ ~ ~" 3`. Quote positions and strings with spaces.
-Positions return `{x,y,z}`; declared `~` coordinates resolve from the player's position captured when submitting
+**Positional arguments and menu controls follow declaration order.** After the positional values, `name=value`
+sets any declared parameter, so earlier defaults can be skipped. The example accepts `/botscript run row #miners`,
+`/botscript run row #miners "~ ~ ~" 3` or `/botscript run row #miners spacing=3`. A positional value may not follow a
+named one, a parameter may be given only once, and `word=...` whose `word` is not a declared parameter stays an
+ordinary positional value. Quote positions and strings with spaces (`origin="0 70 0"`).
+Positions arrive as Luau **vectors**: read `a.origin.x`, add and scale them (`a.origin + vector.create(2, 0, 0) * i`),
+and pass one wherever an operation takes `x, y, z` (`bot:tp(a.origin)`). Declared `~` coordinates resolve from the
+player's position captured when submitting
 the command/form. Console positions must be absolute. Groups/Bots must exist; numbers must be finite;
-booleans accept `true`/`false`. Run forms use that same order with Group/Bot dropdowns, position fields
+booleans accept `true`/`false`; choices accept one of their options. Run forms use that same order with
+Group/Bot/choice dropdowns, position fields
 defaulting to the player, number/text inputs and toggles with declared defaults.
 Form selections also pin Group UUID/order and Bot UUID, rejecting deletion/recreation before submission.
 Declared Bot arguments keep their UUID pin on subsequent requests; explicitly Group-pinned calls retain
@@ -246,11 +255,14 @@ the Group's own identity guard.
 
 日本語: 引数は配列で宣言し、各 `param` の最初の引数に名前を指定します。コマンドの引数と実行フォームは
 宣言順です。上の例は `group`、`origin`、`spacing` の順で、末尾の引数を省略すると宣言した初期値を使います。
+順番どおりの引数の後に `spacing=3` のように `名前=値` で任意の引数を指定できます。位置は vector で、
+`a.origin + vector.create(2, 0, 0)` のように計算でき、`bot:tp(a.origin)` のように座標の代わりに渡せます。
+`param.choice("mode", {"once", "continuous"})` は選択肢から1つを選ぶ引数で、実行フォームではドロップダウンになります。
 引数名の重複、無効な名前、不明な型、名前付きキーや配列との混在はエラーになります。
 
 Ordinary operation calls return **acceptance**, not completion: `{ok=true,messages=...,data=...}` or
 `{ok=false,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
-Handle rejected calls explicitly. Revocation, rate/deadline and protocol errors end the run.
+Handle rejected calls explicitly, for example `assert(r.ok, r.reason)`. Revocation, rate/deadline and protocol errors end the run.
 Use `wait(ticks)` (20 ticks = one wall-clock second) and `waitOnline(bot("Alice"))`, which also accepts a name
 or Group handle. `log(text)` emits bounded log text. Waits recheck authority. No command-string API exists.
 

@@ -5,7 +5,8 @@ import re
 
 from endstone_endbot.i18n import LocalizedError
 
-KINDS = {"group", "bot", "pos", "number", "boolean", "string"}
+KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice"}
+NAMED = re.compile(r"([A-Za-z_][A-Za-z0-9_]{0,31})=(.*)", re.DOTALL)
 
 
 def declarations(schema):
@@ -15,7 +16,10 @@ def declarations(schema):
         raise LocalizedError("Invalid script parameter declarations")
     result = {}
     for spec in schema:
-        if not isinstance(spec, dict) or spec.keys() - {"name", "type", "default"}:
+        if not isinstance(spec, dict):
+            raise LocalizedError("Invalid script parameter declarations")
+        # Only a choice declares its options.
+        if spec.keys() - {"name", "type", "default", *(("choices",) if spec.get("type") == "choice" else ())}:
             raise LocalizedError("Invalid script parameter declarations")
         name = spec.get("name")
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,31}", name):
@@ -24,12 +28,19 @@ def declarations(schema):
             raise LocalizedError("Duplicate script parameter name")
         if not isinstance(spec.get("type"), str) or spec["type"] not in KINDS:
             raise LocalizedError("Unknown script parameter type")
+        if spec["type"] == "choice":
+            choices = spec.get("choices")
+            if (not isinstance(choices, list) or not 1 <= len(choices) <= 32
+                    or any(not isinstance(choice, str) or not 1 <= len(choice) <= 64 for choice in choices)
+                    or len(set(choices)) != len(choices)):
+                raise LocalizedError("Invalid script parameter declarations")
         if "default" in spec:
             default, kind = spec["default"], spec["type"]
             valid = (
                 (kind == "number" and type(default) in (int, float) and math.isfinite(default))
                 or (kind == "boolean" and type(default) is bool)
                 or (kind in {"group", "bot", "pos", "string"} and isinstance(default, str))
+                or (kind == "choice" and default in spec["choices"])
             )
             if not valid:
                 raise LocalizedError("Invalid script parameter default")
@@ -37,12 +48,31 @@ def declarations(schema):
     return result
 
 
+def split_named(schema, values):
+    """Command arguments: positional values first, then `name=value` for declared parameters in any order."""
+    positional, named = [], {}
+    for value in values:
+        match = NAMED.fullmatch(value) if isinstance(value, str) else None
+        if match and match[1] in schema:
+            if match[1] in named:
+                raise LocalizedError("Script argument {name} is given twice", name=match[1])
+            named[match[1]] = match[2]
+        elif named:
+            raise LocalizedError("Positional script arguments must come before name=value arguments")
+        else:
+            positional.append(value)
+    if len(positional) > len(schema):
+        raise LocalizedError("Too many script arguments")
+    for name in list(schema)[: len(positional)]:
+        if name in named:
+            raise LocalizedError("Script argument {name} is given twice", name=name)
+    return {**dict(zip(schema, positional)), **named}
+
+
 def arguments(schema, supplied, *, groups, bots, origin=None):
     schema = declarations(schema)
     if isinstance(supplied, (list, tuple)):
-        if len(supplied) > len(schema):
-            raise LocalizedError("Too many script arguments")
-        supplied = dict(zip(schema, supplied))
+        supplied = split_named(schema, supplied)
     if not isinstance(supplied, dict) or supplied.keys() - schema.keys():
         raise LocalizedError("Unknown script argument")
     result = {}
@@ -84,6 +114,9 @@ def arguments(schema, supplied, *, groups, bots, origin=None):
                         raise ValueError()
                     value = value.lower() == "true"
                 if type(value) is not bool:
+                    raise ValueError()
+            elif kind == "choice":
+                if value not in spec["choices"]:
                     raise ValueError()
             elif not isinstance(value, str) or len(value.encode("utf-8")) > 4096:
                 raise ValueError()

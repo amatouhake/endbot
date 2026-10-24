@@ -227,7 +227,8 @@ python scripts\raknet_spike.py --server-dir $env:USERPROFILE\endbot-dev\sandbox\
 another version. Before every run it deletes what earlier runs created (worlds, plugin data, Endstone config, logs) and
 restores pristine `server.properties`, `allowlist.json` and `permissions.json`. Run artifacts, keys and the report
 still go to the fresh `--output`. Only a directory created this way (it carries `.endbot-sandbox`) is reset; any other
-non-empty directory is refused, and one run may hold a sandbox at a time. For a manual session, prepare or reset the
+non-empty directory is refused, and one `raknet_spike.py --server-dir` run may hold a sandbox at a time (the
+lock covers that run; `scripts/sandbox_server.py` itself only holds it while it resets). For a manual session, prepare or reset the
 same directory with `python scripts\sandbox_server.py <dir>`, then configure and start it as above. Never point it at
 an operator instance or a world that matters. RakNet Bots and a same-machine client use loopback, which Windows
 Firewall does not filter.

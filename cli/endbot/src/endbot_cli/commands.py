@@ -104,7 +104,8 @@ def run_start(
     server = config.server.resolve(paths.root)
     try:
         generated = generate_all(config, paths, server)
-    except ConfigGenerationError as error:
+    except (ConfigGenerationError, ToolchainError) as error:
+        # ToolchainError: an unreadable or empty app/current while locating the bundled runner.
         return _fail(f"FAIL start: {error}")
     for message in generated.messages:
         _print(message)

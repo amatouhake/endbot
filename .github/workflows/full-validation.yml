@@ -40,23 +40,23 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
       - name: Restore validated Endstone wheel
         id: endstone-wheel-cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: dist/endstone/
           key: endstone-wheel-v1-linux-x64-cpy312-llvm20-cibw3.4.1-${{ hashFiles('endstone.lock', 'patches/endstone/**', 'scripts/prepare_endstone.py', 'scripts/build_endstone_wheel.py', '.github/workflows/full-validation.yml') }}
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "24"
           cache: npm
@@ -70,6 +70,8 @@ jobs:
           sudo apt-get update -y -q
           sudo apt-get install -y -q build-essential lsb-release wget software-properties-common gnupg
           wget https://apt.llvm.org/llvm.sh
+          # Pinned: a changed installer must be reviewed before it runs with sudo.
+          echo "03878e08f47b66cc95bc4b544b0db3c6d9ce8d60e6cf2492ae357984330a9eae  llvm.sh" | sha256sum -c -
           chmod +x llvm.sh
           sudo ./llvm.sh "$LLVM_VERSION"
           sudo apt-get install -y -q libc++-20-dev libc++abi-20-dev clang-tools-20 ccache
@@ -105,7 +107,7 @@ jobs:
       - name: Restore Conan package cache
         if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
         id: conan-cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: build/endstone-patched/.conan2/p
           key: conan2-v2-linux-x64-llvm20-${{ hashFiles('endstone.lock', 'patches/endstone/**') }}
@@ -113,7 +115,7 @@ jobs:
 
       - name: Restore compiler cache
         if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/ccache
           key: ccache-v1-linux-x64-llvm20-${{ github.run_id }}
@@ -137,7 +139,7 @@ jobs:
           steps.endstone-wheel-cache.outputs.cache-hit != 'true'
           && steps.conan-cache.outputs.cache-hit != 'true'
           && github.event_name != 'pull_request'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: build/endstone-patched/.conan2/p
           key: conan2-v2-linux-x64-llvm20-${{ hashFiles('endstone.lock', 'patches/endstone/**') }}
@@ -160,7 +162,7 @@ jobs:
         if: >-
           steps.endstone-wheel-cache.outputs.cache-hit != 'true'
           && github.event_name != 'pull_request'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/ccache
           key: ccache-v1-linux-x64-llvm20-${{ github.run_id }}
@@ -193,14 +195,14 @@ jobs:
           docker run --rm
           --volume "${PWD}:/workspace:ro"
           --workdir /workspace
-          python:3.12-slim-bookworm
+          python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70
           python scripts/test_package_install.py
           --endstone-wheel-dir dist/endstone
           --plugin-wheel-dir dist/plugin
 
       - name: Save validated Endstone wheel
         if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: dist/endstone/
           key: endstone-wheel-v1-linux-x64-cpy312-llvm20-cibw3.4.1-${{ hashFiles('endstone.lock', 'patches/endstone/**', 'scripts/prepare_endstone.py', 'scripts/build_endstone_wheel.py', '.github/workflows/full-validation.yml') }}

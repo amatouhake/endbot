@@ -179,6 +179,23 @@ class ReleaseWheelContractTests(unittest.TestCase):
         self.assertIn("does not match runtime package version", rejected.stderr)
 
 
+class SupplyChainContractTests(unittest.TestCase):
+    def test_third_party_actions_images_and_installers_are_pinned(self):
+        """Tags and `latest` can move; a full commit SHA, an image digest and a checksum cannot."""
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if "uses:" in line and "./.github/" not in line:
+                    with self.subTest(workflow=path.name, line=line.strip()):
+                        self.assertRegex(line, r"uses: [\w.-]+/[\w./-]+@[0-9a-f]{40} # v\S+$")
+                if "python:3.12-slim-bookworm" in line:
+                    with self.subTest(workflow=path.name, image=line.strip()):
+                        self.assertRegex(line, r"@sha256:[0-9a-f]{64}$")
+            if "llvm.sh" in text:
+                with self.subTest(workflow=path.name, installer="llvm.sh"):
+                    self.assertRegex(text, r'echo "[0-9a-f]{64}  llvm.sh" \| sha256sum -c -\n\s+chmod \+x llvm.sh')
+
+
 class CICacheContractTests(unittest.TestCase):
     def test_fast_ci_skips_endstone_preparation_but_keeps_coverage(self) -> None:
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -214,8 +231,8 @@ class CICacheContractTests(unittest.TestCase):
 
     def test_endstone_cache_uses_exact_matching(self) -> None:
         workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
-        self.assertIn("actions/cache/restore@v6", workflow)
-        self.assertIn("actions/cache/save@v6", workflow)
+        self.assertIn("actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6", workflow)
+        self.assertIn("actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6", workflow)
         # The wheel cache must never fall back to another key; build
         # accelerators (Conan, ccache) may, because they never replace a build.
         for marker in ("Restore validated Endstone wheel", "Save validated Endstone wheel"):
@@ -367,15 +384,15 @@ class WindowsWheelContractTests(unittest.TestCase):
             "python -m build --wheel --outdir dist/plugin plugin/endbot", blocks["windows"]
         )
         self.assertNotIn("python -m build", blocks["assemble"])
-        self.assertIn("actions/download-artifact@v4", blocks["assemble"])
+        self.assertIn("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4", blocks["assemble"])
         self.assertIn("endstone-linux-wheel", workflow)
         self.assertIn("endstone-windows-wheel", workflow)
         self.assertIn("endbot-${{ inputs.version }}-candidate", blocks["assemble"])
 
     def test_windows_job_mirrors_upstream_toolchain_without_secrets(self) -> None:
         blocks = _release_job_blocks()
-        self.assertIn("ilammy/msvc-dev-cmd@v1", blocks["windows"])
-        self.assertIn("lukka/get-cmake@latest", blocks["windows"])
+        self.assertIn("ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1", blocks["windows"])
+        self.assertIn("lukka/get-cmake@fffaaafeea488556c2c12dad60690008bc1caacb # v4.4.2", blocks["windows"])
         self.assertIn("cibuildwheel==3.4.1", blocks["windows"])
         # No secret is passed to any step (the workflow comment may name the
         # token it deliberately omits, so match secret references, not words).
@@ -660,7 +677,7 @@ class ProvenanceContractTests(unittest.TestCase):
         assemble = _release_job_blocks()["assemble"]
         self.assertIn("id-token: write", assemble)
         self.assertIn("attestations: write", assemble)
-        attest = assemble.index("actions/attest-build-provenance@v2")
+        attest = assemble.index("actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2")
         self.assertIn("subject-path: dist/*", assemble)
         # Attest after SHA256SUMS exists so it is covered too, and before upload.
         self.assertLess(assemble.index("sha256sum ./* > SHA256SUMS"), attest)
@@ -845,10 +862,11 @@ class RunnerBundleTests(unittest.TestCase):
             self.assertIn("node --test", workflow)
             self.assertIn("--runner-dir build/runner-stage", workflow)
             # Staging is bundled, never uploaded as an extra loose artifact.
-            for block in workflow.split("uses: actions/upload-artifact@v4")[1:]:
+            upload = "uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+            for block in workflow.split(upload)[1:]:
                 self.assertNotIn("runner-stage", block)
-        self.assertIn("ilammy/msvc-dev-cmd@v1", blocks["windows"])
-        self.assertIn("lukka/get-cmake@latest", blocks["windows"])
+        self.assertIn("ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1", blocks["windows"])
+        self.assertIn("lukka/get-cmake@fffaaafeea488556c2c12dad60690008bc1caacb # v4.4.2", blocks["windows"])
 
 
 class BinShimPruneTests(unittest.TestCase):

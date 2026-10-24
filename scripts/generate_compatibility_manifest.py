@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,8 +36,12 @@ def patch_revision() -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--endbot-version", default="0.3.1")
+    # Default: the plugin package version, so a forgotten flag never stamps a stale release.
+    parser.add_argument("--endbot-version")
     args = parser.parse_args()
+    if args.endbot_version is None:
+        pyproject = (ROOT / "plugin/endbot/pyproject.toml").read_text(encoding="utf-8")
+        args.endbot_version = tomllib.loads(pyproject)["project"]["version"]
 
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     # Current-artifact safety state must not inherit historical human/Xbox

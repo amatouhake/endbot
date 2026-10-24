@@ -21,7 +21,11 @@ NETHERNET_DISCOVERY_PORT = 7551
 
 
 def windows_udp_port_owners(port: int) -> list[int]:
-    """Return the PIDs of IPv4 UDP sockets bound to ``port`` (Windows only)."""
+    """Return the PIDs of IPv4 and IPv6 UDP sockets bound to ``port`` (Windows only).
+
+    A dual-stack ``[::]`` socket (IPV6_V6ONLY off) also takes IPv4 discovery,
+    and it appears only in the IPv6 table, so both tables are read.
+    """
 
     import ctypes
     from ctypes import wintypes
@@ -36,19 +40,30 @@ def windows_udp_port_owners(port: int) -> list[int]:
             ("owning_pid", wintypes.DWORD),
         ]
 
+    class Row6(ctypes.Structure):
+        _fields_ = [
+            ("local_address", ctypes.c_ubyte * 16),
+            ("local_scope_id", wintypes.DWORD),
+            ("local_port", wintypes.DWORD),
+            ("owning_pid", wintypes.DWORD),
+        ]
+
     function = ctypes.windll.iphlpapi.GetExtendedUdpTable
-    size = wintypes.DWORD(0)
-    result = insufficient_buffer
-    buffer = None
-    while result == insufficient_buffer:
-        buffer = ctypes.create_string_buffer(size.value or 4)
-        result = function(buffer, ctypes.byref(size), False, socket.AF_INET, udp_table_owner_pid, 0)
-    if result != no_error:
-        raise OSError(result, "GetExtendedUdpTable failed")
-    count = wintypes.DWORD.from_buffer(buffer).value
-    rows = (Row * count).from_buffer(buffer, ctypes.sizeof(wintypes.DWORD))
-    # The port is stored in network byte order in the low 16 bits.
-    return [row.owning_pid for row in rows if socket.ntohs(row.local_port & 0xFFFF) == port]
+    owners = []
+    for family, row_type in ((socket.AF_INET, Row), (socket.AF_INET6, Row6)):
+        size = wintypes.DWORD(0)
+        result = insufficient_buffer
+        buffer = None
+        while result == insufficient_buffer:
+            buffer = ctypes.create_string_buffer(size.value or 4)
+            result = function(buffer, ctypes.byref(size), False, family, udp_table_owner_pid, 0)
+        if result != no_error:
+            raise OSError(result, "GetExtendedUdpTable failed")
+        count = wintypes.DWORD.from_buffer(buffer).value
+        rows = (row_type * count).from_buffer(buffer, ctypes.sizeof(wintypes.DWORD))
+        # The port is stored in network byte order in the low 16 bits.
+        owners += [row.owning_pid for row in rows if socket.ntohs(row.local_port & 0xFFFF) == port]
+    return owners
 
 
 def _problem(port: int, detail: str) -> str:
@@ -75,9 +90,9 @@ def lan_discovery_port_problem(
         if owners:
             return _problem(port, "process " + ", ".join(str(pid) for pid in sorted(set(owners))))
         if owners is not None and os.name == "nt":
-            # The Windows table lists every IPv4 UDP socket, LAN-address ones
-            # included. Skipping the wildcard trial bind avoids a Windows
-            # Firewall prompt for each Python install that runs this check.
+            # The Windows tables list every IPv4 and IPv6 UDP socket, LAN-address
+            # and dual-stack ones included. Skipping the wildcard trial bind avoids
+            # a Windows Firewall prompt for each Python install that runs this check.
             return None
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:

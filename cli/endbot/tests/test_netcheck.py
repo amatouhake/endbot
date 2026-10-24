@@ -77,6 +77,16 @@ class LanDiscoveryPortTests(unittest.TestCase):
         holder.close()
         self.assertNotIn(os.getpid(), windows_udp_port_owners(port))
 
+    @unittest.skipUnless(os.name == "nt" and socket.has_ipv6, "Windows UDP table")
+    def test_the_windows_udp_table_lists_a_dual_stack_ipv6_socket(self) -> None:
+        # A [::] socket with IPV6_V6ONLY off also takes IPv4 discovery; it is only in the IPv6 table.
+        holder = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        self.addCleanup(holder.close)
+        holder.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        holder.bind(("::1", 0))
+        port = holder.getsockname()[1]
+        self.assertIn(os.getpid(), windows_udp_port_owners(port))
+
 
 def free_udp_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:

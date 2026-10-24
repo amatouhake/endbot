@@ -454,7 +454,8 @@ class ScriptService:
                         ),
                         log_level="info",
                         log_messages=(
-                            f"Endbot script {run.identity} {run.name} ended: {outcome_en} (controller {self._owner(run)})",
+                            f"Endbot script {run.identity} {run.name} ended: {outcome_en} "
+                            f"(controller {self._owner(run)})",
                             f"Endbot script {run.identity}: input cleanup {'completed' if cleanup_ok else 'failed'}",
                         ),
                     ),

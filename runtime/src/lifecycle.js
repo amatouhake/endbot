@@ -231,9 +231,11 @@ export class BotLifecycle extends EventEmitter {
     return this.#status(profile)
   }
 
-  action (name, action, mode, intervalTicks, durationTicks, holdTicks) {
+  action (name, action, mode, intervalTicks, durationTicks, holdTicks, target = undefined, count = undefined) {
+    const selector = target === undefined ? undefined : entitySelector(target)
     const { profile, state } = this.#requireOnline(name)
-    state.inputs.setAction(action, mode, intervalTicks, durationTicks, holdTicks)
+    state.inputs.setAction(action, mode, intervalTicks, durationTicks, holdTicks,
+      selector && Object.fromEntries(Object.entries(selector).filter(([, value]) => value !== undefined)), count)
     state.session.applyInputs(state.inputs)
     return this.#status(profile)
   }
@@ -303,8 +305,13 @@ export class BotLifecycle extends EventEmitter {
       if (parameters.loopId === undefined || state.session.miningStatus()?.loopId === parameters.loopId) state.session.stopMining()
     } else if (parameters.mode === 'continue') {
       // A canceled/replaced session cannot be restarted by a delayed target.
-      // Preserve the current sight direction throughout a continuous run.
-      state.session.continueMining(parameters)
+      // Sight loops keep their direction; a block-type loop turns to each block.
+      const { turn, ...target } = parameters
+      if (turn && target.blockPosition !== undefined && Number.isFinite(target.yaw) && Number.isFinite(target.pitch)) {
+        state.inputs.setLook(target.yaw, target.pitch)
+        state.session.applyInputs(state.inputs)
+      }
+      state.session.continueMining(target)
     } else {
       if (parameters.mode !== undefined && parameters.mode !== 'start') throw new Error('Invalid destroy mode')
       if ((parameters.yaw !== undefined || parameters.pitch !== undefined) &&

@@ -429,19 +429,39 @@ export class BedrockSession extends EventEmitter {
     return this.#aimAtEntity({ runtimeId, type }, 'attack', ATTACK_REACH)
   }
 
+  // A repeated targeted action: re-aim at the nearest match each trigger,
+  // preferring another entity than the last one for interact (feed a herd).
+  #aimRepeated (action, inputs) {
+    const target = inputs.actionTarget(action)
+    if (!target) return false
+    const reach = action === 'attack' ? ATTACK_REACH : ENTITY_REACH
+    let chosen
+    try {
+      chosen = this.#entityTarget(target, reach, action === 'interact' ? this.lastInteracted : undefined)
+    } catch {
+      return false  // nothing in reach this time; keep trying while the action lasts
+    }
+    this.#aimAt(chosen, action === 'attack' ? 'attack' : 'interact', inputs.actionRevision(action), action)
+    return true
+  }
+
+  #aimAt (target, actionType, revision = undefined, action = undefined) {
+    const center = { x: target.position.x, y: target.position.y + 0.5, z: target.position.z }
+    const eye = this.position
+    const yaw = Math.atan2(-(center.x - eye.x), center.z - eye.z) * 180 / Math.PI
+    const pitch = -Math.atan2(center.y - eye.y, Math.hypot(center.x - eye.x, center.z - eye.z)) * 180 / Math.PI
+    this.inputs?.setLook(yaw, pitch)
+    this.pendingEntityInteraction = { runtimeId: String(target.runtimeId), actionType, revision, action }
+  }
+
   #aimAtEntity ({ runtimeId, type }, actionType, reach) {
     if (!this.position) throw new Error('Bot position is not initialized')
     if (!this.client || this.transportClosed || this.client.status !== 4) throw new Error('Bot is not online')
     if (this.pendingEntityInteraction) throw new Error('An entity interaction is already pending')
     const target = this.#entityTarget({ runtimeId, type }, reach)
     const distance = this.#eyeDistance(target)
-    const center = { x: target.position.x, y: target.position.y + 0.5, z: target.position.z }
     // The runtime position is already at eye height (Bedrock player positions are).
-    const eye = this.position
-    const yaw = Math.atan2(-(center.x - eye.x), center.z - eye.z) * 180 / Math.PI
-    const pitch = -Math.atan2(center.y - eye.y, Math.hypot(center.x - eye.x, center.z - eye.z)) * 180 / Math.PI
-    this.inputs?.setLook(yaw, pitch)
-    this.pendingEntityInteraction = { runtimeId: String(target.runtimeId), actionType }
+    this.#aimAt(target, actionType)
     return this.#describeEntity(target, distance)
   }
 
@@ -463,7 +483,7 @@ export class BedrockSession extends EventEmitter {
     return { type: entity.type, runtimeId: String(entity.runtimeId) }
   }
 
-  #entityTarget ({ runtimeId, type }, reach = ENTITY_REACH) {
+  #entityTarget ({ runtimeId, type }, reach = ENTITY_REACH, avoid = undefined) {
     if (runtimeId !== undefined) {
       const entity = this.entities.get(String(runtimeId))
       if (!entity || entity.type === 'minecraft:player') throw new Error('No entity with that ID is in view')
@@ -472,13 +492,20 @@ export class BedrockSession extends EventEmitter {
     }
     const wanted = type === undefined ? undefined : (String(type).includes(':') ? String(type) : `minecraft:${type}`)
     let best
+    let avoided
     for (const entity of this.entities.values()) {
       if (entity.type === 'minecraft:player' || (wanted && entity.type !== wanted)) continue
       // A rider does not pick its own vehicle as the nearest target.
       if (this.vehicle && String(entity.uniqueId) === this.vehicle.uniqueId) continue
       const distance = this.#eyeDistance(entity)
-      if (distance <= reach && (!best || distance < best.distance)) best = { entity, distance }
+      if (distance > reach) continue
+      if (avoid !== undefined && String(entity.runtimeId) === avoid) {
+        avoided = entity
+        continue
+      }
+      if (!best || distance < best.distance) best = { entity, distance }
     }
+    if (!best && avoided) return avoided  // the only match: use it again
     if (!best) throw new Error(wanted ? 'No matching entity within reach' : 'No entity within reach')
     return best.entity
   }
@@ -523,6 +550,8 @@ export class BedrockSession extends EventEmitter {
     this.pendingEntityInteraction = undefined
     const target = pending && this.entities.get(pending.runtimeId)
     if (!target) return
+    if (pending.actionType === 'interact') this.lastInteracted = pending.runtimeId
+    if (pending.action !== undefined) this.inputs?.countHit(pending.action, pending.revision)
     this.client.queue('interact', createEntityMouseOver(target.runtimeId))
     this.client.queue('inventory_transaction', createAttackTransaction({
       runtimeId: target.runtimeId,
@@ -984,7 +1013,8 @@ export class BedrockSession extends EventEmitter {
       transaction = interaction.transaction
       this.interactionStopNextTick = interaction.stopAction
     }
-    if (state.triggered.includes('attack')) this.#attack(inputData, state)
+    if (state.triggered.includes('attack') && !this.#aimRepeated('attack', this.inputs)) this.#attack(inputData, state)
+    if (state.triggered.includes('interact')) this.#aimRepeated('interact', this.inputs)
     if (state.triggered.includes('use') && !this.activeItemUse && hasUsableHeldItem(this.heldItem)) {
       const mode = this.inputs.actionMode('use') ?? 'once'
       // Block interaction and air use share one packed transaction per tick.

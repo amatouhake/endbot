@@ -117,7 +117,7 @@ export class ControlServer {
       case 'move': return this.lifecycle.move(params.name, params.direction, params.durationTicks)
       case 'look': return this.lifecycle.look(params.name, params.yaw, params.pitch)
       case 'action': return this.lifecycle.action(params.name, params.action, params.mode, params.intervalTicks, params.durationTicks,
-        params.holdTicks)
+        params.holdTicks, params.target, params.count)
       case 'flag': return this.lifecycle.flag(params.name, params.flag, params.value)
       case 'hotbar': return this.lifecycle.hotbar(params.name, params.slot)
       case 'swap': return this.lifecycle.swap(params.name, params.a, params.b)

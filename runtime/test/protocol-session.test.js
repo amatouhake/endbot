@@ -869,3 +869,35 @@ test('attack @selector turns to the entity and left-clicks it within melee reach
   assert.equal(transaction.packet.transaction.transaction_data.action_type, 'attack')
   assert.equal(transaction.packet.transaction.transaction_data.entity_runtime_id, 70n)
 })
+
+test('a counted targeted interact alternates between matches and stops after the count', async t => {
+  const queued = []
+  const { session, inputs, add } = await entitySession(t, queued)
+  add(80n, 'minecraft:cow', { x: 0, y: 64, z: 2 })
+  add(81n, 'minecraft:cow', { x: 0, y: 64, z: 3 })
+  inputs.setAction('interact', 'interval', 2, undefined, undefined, { type: 'minecraft:cow' }, 3)
+  session.applyInputs(inputs)
+  await new Promise(resolve => setTimeout(resolve, 600))
+  const clicks = queued.filter(entry => entry.name === 'inventory_transaction' &&
+    entry.packet.transaction.transaction_type === 'item_use_on_entity')
+    .map(entry => String(entry.packet.transaction.transaction_data.entity_runtime_id))
+  assert.deepEqual(clicks, ['80', '81', '80'])
+  assert.equal(inputs.snapshot().actions.interact, undefined)
+})
+
+test('targeted attack continuous re-aims and skips triggers with nothing in reach', async t => {
+  const queued = []
+  const { session, inputs, client, add } = await entitySession(t, queued)
+  inputs.setAction('attack', 'interval', 2, 10, undefined, { type: 'minecraft:zombie' })
+  session.applyInputs(inputs)
+  await new Promise(resolve => setTimeout(resolve, 200))
+  assert.equal(queued.some(entry => entry.packet?.transaction?.transaction_type === 'item_use_on_entity'), false)
+  add(90n, 'minecraft:zombie', { x: 0, y: 64, z: 2 })
+  await new Promise(resolve => setTimeout(resolve, 300))
+  const attack = queued.find(entry => entry.packet?.transaction?.transaction_type === 'item_use_on_entity')
+  assert.equal(attack.packet.transaction.transaction_data.action_type, 'attack')
+  assert.throws(() => inputs.setAction('interact', 'continuous'), /entity target/)
+  assert.throws(() => inputs.setAction('jump', 'continuous', undefined, undefined, undefined, { type: 'cow' }), /attack and interact/)
+  assert.throws(() => inputs.setAction('attack', 'once', undefined, undefined, undefined, { type: 'cow' }, 2), /Count/)
+  client.emit('remove_entity', { entity_id_self: -90n })
+})

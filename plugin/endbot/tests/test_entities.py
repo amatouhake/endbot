@@ -60,8 +60,9 @@ class EntityCommandTests(unittest.TestCase):
     def test_entities_lists_with_ids_and_returns_script_data(self):
         control = EntityControl()
         result = PlainCommandService(control).execute(["Alice", "entities"])
-        self.assertEqual(result.messages, ("Endbot: Alice: nearby: cow (id 20) 2.1m",))
+        self.assertEqual(result.messages, ("Endbot: Alice: nearby: cow @20 (2.1m)",))
         self.assertEqual(result.data["entities"][0]["runtimeId"], "20")
+        self.assertEqual(result.data["entities"][0]["selector"], "@20")
         empty = PlainCommandService(EntityControl(entities=[])).execute(["Alice", "entities"])
         self.assertEqual(empty.messages, ("Endbot: Alice: no entities nearby",))
 
@@ -69,7 +70,7 @@ class EntityCommandTests(unittest.TestCase):
         control = EntityControl()
         service = PlainCommandService(control)
         self.assertEqual(service.execute(["Alice", "interact", "@cow"]).messages,
-                         ("Endbot: Alice: interaction with cow (id 20) requested",))
+                         ("Endbot: Alice: interaction with cow @20 requested",))
         service.execute(["Alice", "interact", "@20"])
         service.execute(["Alice", "interact", "@nearest"])
         self.assertEqual([params for method, params in control.calls if method == "interactEntity"], [
@@ -90,7 +91,7 @@ class EntityCommandTests(unittest.TestCase):
             language = "ja"
 
         result = PlainCommandService(EntityControl()).execute(["Alice", "interact", "@cow"], Japanese())
-        self.assertEqual(result.messages, ("Endbot: Alice: cow (id 20) への操作を要求しました",))
+        self.assertEqual(result.messages, ("Endbot: Alice: cow @20 への操作を要求しました",))
 
 
 class EntityGroupControl(GroupControl):
@@ -117,8 +118,8 @@ class EntityGroupTests(unittest.TestCase):
         result = service.execute(["#herd", "entities"])
         lines = [strip_colors(message) for message in result.messages]
         self.assertEqual(len(lines), 2)
-        self.assertIn("#herd[1] Alice: nearby: cow (id 20) 2.0m", lines[0])
-        self.assertIn("#herd[2] Bob: nearby: cow (id 20) 2.0m", lines[1])
+        self.assertIn("#herd[1] Alice: nearby: cow @20 (2.0m)", lines[0])
+        self.assertIn("#herd[2] Bob: nearby: cow @20 (2.0m)", lines[1])
         self.assertIsNone(result.log_level)
         self.assertEqual(len(service.results.records), 0)
 

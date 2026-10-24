@@ -107,7 +107,7 @@ class QueryCommandTests(unittest.TestCase):
         queries = FakeQueries()
         service = PlainCommandService(Control(), queries)
         target = service.execute(["Alice", "target"])
-        self.assertEqual(target.messages, ("Endbot: Alice: looking at cow (id 9) (2.0m)",))
+        self.assertEqual(target.messages, ("Endbot: Alice: looking at cow @9 (2.0m)",))
         self.assertEqual(target.data["entity"]["runtimeId"], "9")
         block = service.execute(["Alice", "block", "~", "~-1", "~"])
         self.assertEqual(block.messages, ("Endbot: Alice: block at 0 63 0: wheat [growth=7]",))
@@ -168,9 +168,9 @@ class FeedbackTests(unittest.TestCase):
 
         control = Control()
         service = PlainCommandService(control, World())
-        result = service.execute(["Alice", "entity", "cow"])
+        result = service.execute(["Alice", "entity", "@cow"])
         self.assertEqual(result.messages,
-                         ("Endbot: Alice: cow (id 9) | 2.0m | 1.0 64.0 2.5 | health 8/10 | named Bessie",))
+                         ("Endbot: Alice: cow @9 | 2.0m | 1.0 64.0 2.5 | health 8/10 | named Bessie",))
         self.assertEqual(control.calls[-1], ("entities", {"name": "Alice", "type": "minecraft:cow"}))
         self.assertEqual(result.data["entity"]["nameTag"], "Bessie")
         hotbar = service.execute(["Alice", "hotbar"])
@@ -185,7 +185,6 @@ class SelectorTests(unittest.TestCase):
             ("interact",): {"crosshair": True},
             ("interact", "@cow"): {"entity": "type", "type": "minecraft:cow"},
             ("interact", "@9"): {"entity": "id", "runtimeId": "9"},
-            ("interact", "9"): {"entity": "id", "runtimeId": "9"},
             ("interact", "@nearest"): {"entity": "nearest"},
             ("interact", "Chest"): {"blockType": "minecraft:chest"},
             ("attack", "@zombie"): {"entity": "type", "type": "minecraft:zombie"},
@@ -257,7 +256,7 @@ class SelectorCommandTests(unittest.TestCase):
                        "distance": 2.0}
         service = PlainCommandService(control, self.World(entity_view))
         self.assertEqual(service.execute(["Alice", "attack", "@zombie"]).messages,
-                         ("Endbot: Alice: attack on zombie (id 9) requested",))
+                         ("Endbot: Alice: attack on zombie @9 requested",))
         self.assertEqual(control.calls[-1], ("attackEntity", {"name": "Alice", "type": "minecraft:zombie"}))
         service.execute(["Alice", "interact"])
         self.assertEqual(control.calls[-1], ("interactEntity", {"name": "Alice", "runtimeId": "9"}))
@@ -276,3 +275,41 @@ class SelectorCommandTests(unittest.TestCase):
         service.execute(["Alice", "destroy", "oak_log"])
         self.assertEqual(world_view.reach, ("minecraft:oak_log", 5.0))
         self.assertEqual(world_view.mining, {"coordinates": [1, 64, 2]})
+
+
+class RepetitionTests(unittest.TestCase):
+    def test_targeted_repetition_and_strict_at(self):
+        from endstone_endbot.commands import CommandSyntaxError
+
+        attack = parse_command(["Alice", "attack", "@zombie", "interval", "20", "for", "200"])
+        self.assertEqual(attack.operation, "action")
+        self.assertEqual(attack.parameters, {"action": "attack", "mode": "interval", "intervalTicks": 20,
+                                             "durationTicks": 200, "target": {"type": "minecraft:zombie"}})
+        feed = parse_command(["Alice", "interact", "@cow", "count", "5"])
+        self.assertEqual((feed.parameters["mode"], feed.parameters["count"], feed.parameters["target"]),
+                         ("continuous", 5, {"type": "minecraft:cow"}))
+        self.assertEqual(parse_command(["Alice", "interact", "@nearest", "interval", "10"]).parameters["target"], {})
+        self.assertEqual(parse_command(["Alice", "interact", "stop"]).parameters,
+                         {"action": "interact", "mode": "stop"})
+        mining = parse_command(["Alice", "destroy", "oak_log", "count", "10"])
+        self.assertEqual(mining.parameters, {"mode": "continuous", "blockCount": 10, "blockType": "minecraft:oak_log"})
+        self.assertEqual(parse_command(["Alice", "destroy", "oak_log", "continuous"]).parameters,
+                         {"mode": "continuous", "blockType": "minecraft:oak_log"})
+        self.assertIn("coordinates", parse_command(["Alice", "destroy", "~", "~-1", "~"]).parameters)
+        for arguments in (["interact", "9"], ["entity", "cow"], ["attack", "@cow", "once", "count", "2"],
+                          ["attack", "@cow", "stop"], ["interact", "@cow", "count", "0"],
+                          ["destroy", "oak_log", "stop"]):
+            with self.subTest(arguments=arguments), self.assertRaises(CommandSyntaxError):
+                parse_command(["Alice", *arguments])
+
+    def test_repetition_reply_names_target_and_count(self):
+        class Control:
+            def request(self, method, **params):
+                self.params = params
+                return {**BOT, "connectionState": "online"}
+
+        control = Control()
+        result = PlainCommandService(control).execute(["Alice", "interact", "@cow", "interval", "20", "count", "3"])
+        self.assertIn("interact @cow started every 20 ticks", result.messages[0])
+        self.assertIn("up to 3 times", result.messages[0])
+        self.assertEqual((control.params["target"], control.params["count"]), ({"type": "minecraft:cow"}, 3))

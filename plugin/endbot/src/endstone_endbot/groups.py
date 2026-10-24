@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import tempfile
@@ -20,14 +21,16 @@ from endstone_endbot.commands import (
     reply,
     strip_colors,
 )
-from endstone_endbot.control import RuntimeControlError
+from endstone_endbot.control import RuntimeControlError, bot_profiles
 from endstone_endbot.forms import BotListView, BotView, GroupTarget, Run, menu_argv
 from endstone_endbot.group_forms import GroupGuard, GroupListView, GroupView, ResultView
 from endstone_endbot.group_results import PAGE_SIZE, MemberResult, ResultStore
 from endstone_endbot.i18n import LocalizedError, localize_error, tr
 
 GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}\Z")
-GROUP_TARGET = re.compile(r"#([A-Za-z_][A-Za-z0-9_]{0,15})(?:\[([1-9][0-9]*)\])?\Z")
+# Indexes stay under 10 digits: a larger number is never a member and must not reach int().
+GROUP_TARGET = re.compile(r"#([A-Za-z_][A-Za-z0-9_]{0,15})(?:\[([1-9][0-9]{0,8})\])?\Z")
+LOGGER = logging.getLogger(__name__)
 GROUP_INPUT_OPERATIONS = frozenset({"move", "look", "action", "flag", "stop", "hotbar", "drop", "swap", "hold"})
 HISTORY_ERROR = "Result history must be a positive integer (1 = latest)"
 PAGE_ERROR = "Page must be a positive integer"
@@ -149,6 +152,7 @@ class GroupStore:
 
     def remove(self, name: str, identity: str) -> None:
         group = self.get(name)
+        identity = str(UUID(identity))
         if identity not in group.members:
             raise ValueError("Bot is not a group member")
         self._replace(replace(group, members=tuple(member for member in group.members if member != identity)))
@@ -241,7 +245,7 @@ class GroupCommandService(BotCommandService):
         if len(tail) <= index:
             return 1
         value = tail[index]
-        if not value.isascii() or not value.isdecimal() or int(value) < 1:
+        if not value.isascii() or not value.isdecimal() or len(value) > 9 or int(value) < 1:
             raise LocalizedError(message)
         return int(value)
 
@@ -320,7 +324,7 @@ class GroupCommandService(BotCommandService):
                 or (batch and capabilities.get("groupInputBatch") is not True)):
             raise LocalizedError("Groups require the matching updated Endbot runtime")
         self._check(sender)
-        profiles = {bot["identityId"]: bot for bot in self.control.request("list")}
+        profiles = {bot["identityId"]: bot for bot in bot_profiles(self.control)}
         self._check(sender)
         return profiles
 
@@ -401,7 +405,11 @@ class GroupCommandService(BotCommandService):
                 template = "add: {target}" if operation == "add" else "remove: {target}"
                 return CommandResult(True, (reply(tr(lang, template, target=target), f"#{group.name}"),))
             raise ValueError("Invalid group command; use /botgroup help")
-        except (RuntimeError, ValueError, OSError) as error:
+        except OSError as error:
+            # The full error names an absolute server path; players get a fixed message.
+            LOGGER.error("Endbot groups.json could not be written: %s", error)
+            return self._error(LocalizedError("Groups could not be saved; see the server log"), lang=lang)
+        except (RuntimeError, ValueError) as error:
             return self._error(error, lang=lang)
 
     @staticmethod
@@ -494,6 +502,9 @@ class GroupCommandService(BotCommandService):
         if indexed:
             actor += f" {rows[0].name}"
         logs = tuple(reply(f"{actor}: {line}", target) for line in record.summary("en"))
+        if indexed:
+            # The console sees only the log; keep the member's own reply there too.
+            logs += (reply(strip_colors(rows[0].detail), f"{target} {rows[0].name}"),)
         return CommandResult(True, messages, log_level="info", log_messages=logs,
                              accepted=all(row.outcome == "accepted" for row in rows),
                              data={"accepted": sum(row.outcome == "accepted" for row in rows),

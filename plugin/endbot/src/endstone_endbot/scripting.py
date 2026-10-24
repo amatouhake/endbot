@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from endstone_endbot import script_forms
 from endstone_endbot.commands import ERROR, CommandResult, _language, parse_command, reply, strip_colors
+from endstone_endbot.control import bot_profiles
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.operations import OPERATIONS, operation_argv
@@ -190,7 +191,7 @@ class ScriptService:
     def _prepare(self, run, schema, values):
         self._alive(run)
         with self.inputs.scope(run.identity, lambda: self._alive(run)):
-            bots = self.inputs.request("list")
+            bots = bot_profiles(self.inputs)
         for target in run.parameter_targets.values():
             kind, name, identity, *members = target
             if kind == "group":
@@ -556,7 +557,7 @@ class ScriptService:
                     view = script_forms.edit_screen(script, lang)
                 elif operation == "parameters":
                     schema = self.inspect(script, source)
-                    bots = self.inputs.request("list")
+                    bots = bot_profiles(self.inputs)
                     groups = self.service.groups.groups if self.service.groups else ()
                     view = script_forms.run_screen(script, schema, groups, bots, source.script_origin, lang)
                 else:

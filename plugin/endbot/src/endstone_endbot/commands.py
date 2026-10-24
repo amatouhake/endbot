@@ -8,7 +8,7 @@ import shlex
 import threading
 from dataclasses import dataclass, field
 
-from endstone_endbot.control import RuntimeControlError
+from endstone_endbot.control import RuntimeControlError, bot_profiles
 from endstone_endbot.forms import BotListView, BotView
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.operations import ALIASES, OPERATIONS
@@ -1197,14 +1197,14 @@ class BotCommandService:
             raise RuntimeError("runtime control is not configured")
         if command.operation == "menu":
             if command.name is None:
-                return CommandResult(True, view=BotListView(tuple(control.request("list"))))
+                return CommandResult(True, view=BotListView(tuple(bot_profiles(control))))
             status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
             return CommandResult(
                 True, view=BotView(status["name"], self._status_reply(status, observed, lang), status, observed)
             )
         if command.operation == "list":
-            bots = control.request("list")
+            bots = bot_profiles(control)
             if not bots:
                 return say("no Bot profiles")
             summary = ", ".join(f"{bot['name']} {DIM}[{tr(lang, bot['connectionState'])}]{RESET}" for bot in bots)

@@ -825,6 +825,7 @@ JA.update({
     "Script operation rate limit reached": "スクリプトの操作頻度が上限を超えました",
     "Invalid script group target": "スクリプトのグループ対象が正しくありません",
     "Invalid script runner request": "スクリプト実行プログラムからの要求が正しくありません",
+    "Groups could not be saved; see the server log": "グループを保存できませんでした。サーバーのログを確認してください",
     "Invalid script wait": "スクリプトの待機時間が正しくありません",
     "Invalid script target": "スクリプトの対象が正しくありません",
     "Script input cleanup failed; use /bot stop": "スクリプトの入力停止に失敗しました。/bot stop を使ってください",

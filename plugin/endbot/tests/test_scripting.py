@@ -242,7 +242,7 @@ class FakeControl:
         self.calls.append((method, params))
         status = {"name": "Alice", "identityId": "11111111-1111-4111-8111-111111111111",
                   "connectionState": "online", "desiredState": "online"}
-        if method == "list":
+        if method in {"list", "profiles"}:
             return [status]
         if method == "capabilities":
             return {"identityPinnedRequests": True, "groupInputBatch": True}

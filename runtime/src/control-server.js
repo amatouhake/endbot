@@ -4,7 +4,8 @@
 import crypto from 'node:crypto'
 import net from 'node:net'
 
-const MAX_REQUEST_BYTES = 64 * 1024
+// A group batch for hundreds of members fits; the plugin bounds responses the same way.
+const MAX_REQUEST_BYTES = 1024 * 1024
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
 const GROUP_INPUT_METHODS = new Set(['move', 'look', 'action', 'flag', 'stop', 'hotbar', 'drop', 'swap', 'hold'])
 
@@ -103,10 +104,11 @@ export class ControlServer {
     }
     switch (method) {
       case 'ping': return { runtime: 'endbot', protocolVersion: 1 }
-      case 'capabilities': return { identityPinnedRequests: true, groupInputBatch: true }
+      case 'capabilities': return { identityPinnedRequests: true, groupInputBatch: true, profiles: true }
       case 'groupInputBatch': return this.#groupInputBatch(params)
       case 'shutdown': return { stopping: true }
       case 'list': return this.lifecycle.list()
+      case 'profiles': return this.lifecycle.profiles()
       case 'status': return this.lifecycle.status(params.name)
       case 'spawn': return this.lifecycle.spawn(params.name)
       case 'resume': return this.lifecycle.resume(params.name)
@@ -151,7 +153,7 @@ export class ControlServer {
           const result = this.#dispatch(method, params)
           // Batch replies only need the fields used by immediate-input replies;
           // avoid multiplying full inventories/mining status by the group size.
-          return { ok: true, result: { name: result.name, connectionState: result.connectionState,
+          return { ok: true, result: { name: result.name, identityId: result.identityId, connectionState: result.connectionState,
             ...(method === 'hotbar' ? { selectedHotbarSlot: result.selectedHotbarSlot } : {}),
             ...(method === 'hold' ? { found: result.found, sourceSlot: result.sourceSlot, selectedHotbarSlot: result.selectedHotbarSlot } : {}),
             ...(method === 'drop' ? { droppedCount: result.droppedCount, droppedSlots: result.droppedSlots,

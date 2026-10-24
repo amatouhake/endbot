@@ -87,8 +87,10 @@ def install_probe(plugin_class):
                     target = Location(dimension, x + 0.5, 200.1, z + 2.5, 0, 0)
                 dimension.spawn_actor(target, request["entity"])
                 if request.get("ores"):
-                    # A dirt block beside the Bot for `destroy dirt`.
+                    # Two dirt blocks beside the Bot for `destroy dirt count 2`, and a second cow.
                     dimension.get_block_at(x - 1, 200, z + 1).set_type("minecraft:dirt")
+                    dimension.get_block_at(x - 2, 200, z + 1).set_type("minecraft:dirt")
+                    dimension.spawn_actor(Location(dimension, x + 1.5, 200, z + 2.5, 0, 0), "minecraft:cow")
                     # One exposed ore on the platform and one sealed in stone below it.
                     dimension.get_block_at(x + 3, 200, z).set_type("minecraft:diamond_ore")
                     for dx, dy, dz in ((0, 0, 0), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
@@ -132,7 +134,7 @@ def install_probe(plugin_class):
             state = {
                 **self._entity_probe,
                 "player": [loc.x, loc.y, loc.z],
-                "dirt": str(loc.dimension.get_block_at(x0 - 1, 200, z0 + 1).type),
+                "dirt": [str(loc.dimension.get_block_at(x0 - dx, 200, z0 + 1).type) for dx in (1, 2)],
                 "exits": exits,
                 "searches": searches,
                 "actors": actors,
@@ -208,18 +210,18 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     command("status", " food ")  # BDS health from the SDK and hunger from runtime attributes
     command("hotbar", ": 1: wheat x5, 3: iron_pickaxe x1 (250/250)")
     command("inventory", "1: wheat x5")
-    listing = command("entities", "nearby: cow (id ")
-    command("interact @cow", "interaction with cow (id ")
+    listing = command("entities", "nearby: cow @")
+    command("interact @cow count 2", "interact @cow continuous started up to 2 times")
     time.sleep(0.5)
-    command("target", "looking at cow (id ")
-    command("interact", "interaction with cow (id ")  # the crosshair target
+    command("target", "looking at cow @")
+    command("interact", "interaction with cow @")  # the crosshair target
     cow_health = next(actor["health"] for actor in state()["actors"] if actor["type"] == "minecraft:cow")
-    command("attack @cow", "attack on cow (id ")
+    command("attack @cow", "attack on cow @")
     wait("BDS damaged the cow", lambda: any(actor["type"] == "minecraft:cow" and actor["health"] < cow_health
                                            for actor in state()["actors"]), 10)
-    command("destroy dirt", "destroying minecraft:dirt at ")
-    wait("BDS broke the nearest visible dirt", lambda: state()["dirt"] == "minecraft:air", 15)
-    command("entity cow", "cow (id ")
+    command("destroy dirt count 2", "destroy continuous started dirt")
+    wait("BDS broke both dirt blocks by type", lambda: state()["dirt"] == ["minecraft:air", "minecraft:air"], 30)
+    command("entity @cow", "cow @")
     command("block ~~-1~", ": stone")
     start = time.monotonic()
     found = command("blocks diamond_ore radius 12", "diamond_ore: ")
@@ -229,7 +231,7 @@ def exercise_entity(output: Path, console, control, wait, report, log):
         raise RuntimeError(f"block search reported a hidden ore or extra blocks: {ore_line}")
     results["queries"] = {"blocks_line": ore_line[-120:], "radius_12_reply_seconds": search_seconds,
                           "server_thread": state().get("searches")}
-    wait("BDS consumed one wheat", lambda: (state()["hotbar"][0] or {}).get("count") == 4, 10)
+    wait("BDS fed two different cows (two wheat)", lambda: (state()["hotbar"][0] or {}).get("count") == 3, 10)
     results["feed_cow"] = {"listing": listing.strip().splitlines()[-1][-160:], "hotbar": state()["hotbar"][0]}
 
     def beside(vehicle_type):
@@ -243,10 +245,10 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     prepare("ride-minecart", "minecraft:minecart", boat=True)
     command("hotbar 2", "hotbar slot 2 selected")
     cart = next(entry for entry in control("entities")["entities"] if entry["type"] == "minecraft:minecart")
-    command(f"interact @{cart['runtimeId']}", f"interaction with minecart (id {cart['runtimeId']})")
+    command(f"interact @{cart['runtimeId']}", f"interaction with minecart @{cart['runtimeId']}")
     wait("BDS linked the Bot to the minecart", lambda: (riding() or {}).get("type") == "minecraft:minecart", 10)
     command("status", "riding minecart")
-    command("interact @boat", "interaction with boat (id ")
+    command("interact @boat", "interaction with boat @")
     wait("BDS moved the rider from the minecart to the boat", lambda: (riding() or {}).get("type") == "minecraft:boat", 10)
     command("dismount", "dismount from boat requested")
     wait("BDS removed the vehicle link", lambda: riding() is None, 10)
@@ -273,7 +275,7 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     wait("low boarding fixture", lambda: state().get("id") == "board-low", 10)
     time.sleep(1.5)
     command("hotbar 2", "hotbar slot 2")
-    command("interact @boat", "interaction with boat (id ")
+    command("interact @boat", "interaction with boat @")
     wait("BDS linked the Bot to the boat from below", lambda: riding() is not None, 10)
     heights = []
     for _ in range(30):
@@ -288,7 +290,7 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     # A moving minecart: board while stationary, then power the track.
     prepare("ride-powered", "minecraft:minecart", track=True)
     command("hotbar 2", "hotbar slot 2 selected")
-    command("interact @minecart", "interaction with minecart (id ")
+    command("interact @minecart", "interaction with minecart @")
     wait("BDS linked the Bot to the launch minecart", lambda: riding() is not None, 10)
     start = list(state()["player"])
     samples = []

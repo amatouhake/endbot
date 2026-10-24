@@ -382,6 +382,8 @@ HELP_TOPICS: dict[str, HelpTopic] = {
 
 HELP_TOPIC_ALIASES = {"tp": "teleport"}
 
+TARGET_REPEAT_USAGE = "Repeat {action} @<entity> with continuous, interval <ticks>, for <ticks> or count <n>"
+
 BLOCKS_USAGE = "Use blocks <type> [radius <1-12>] [limit <1-64>]"
 BLOCKS_CLAUSES = {"radius": (1, 12), "limit": (1, 64)}
 
@@ -530,12 +532,57 @@ def _block_type(raw: str) -> str:
 
 
 def _target_token(raw: str) -> dict[str, object]:
-    """`@<type|id|nearest>` is an entity; a bare id stays an entity; anything else is a block type."""
+    """`@<type|id|nearest>` is an entity; anything else is a block type."""
     if raw.startswith("@"):
         return _entity_selector(raw[1:])
     if raw.isascii() and raw.isdecimal():
-        return _entity_selector(raw)
+        raise CommandSyntaxError("Entities take @: use @{id}", id=raw)
     return {"blockType": _block_type(raw)}
+
+
+def _selector_text(parameters: dict[str, object]) -> str:
+    """The `@` form a selector was typed as, for replies."""
+    if "runtimeId" in parameters:
+        return f"@{parameters['runtimeId']}"
+    if "type" in parameters:
+        return "@" + str(parameters["type"]).removeprefix("minecraft:")
+    return "@nearest"
+
+
+def _runtime_selector(parameters: dict[str, object]) -> dict[str, object]:
+    return {key: parameters[key] for key in ("runtimeId", "type") if key in parameters}
+
+
+def _entity_view(entity: dict) -> dict:
+    """An entity entry with the `@` selector a command or script passes back."""
+    return {**entity, "selector": f"@{entity['runtimeId']}"}
+
+
+def _targeted_action(name: str, operation: str, remaining: list[str]) -> BotCommand:
+    """`attack|interact @<sel> [once|continuous|interval <ticks>] [for <ticks>] [count <n>]`."""
+    selector = _entity_selector(remaining[0][1:])
+    tokens = list(remaining[1:])
+    if not tokens:
+        return BotCommand(operation, name, selector)
+    count = None
+    lowered = [token.lower() for token in tokens]
+    if "count" in lowered:
+        index = lowered.index("count")
+        if index + 1 >= len(tokens) or "count" in lowered[index + 1:]:
+            raise CommandSyntaxError(TARGET_REPEAT_USAGE, action=operation)
+        value = tokens[index + 1]
+        if not value.isascii() or not value.isdecimal() or not 1 <= int(value) <= 10000:
+            raise CommandSyntaxError("Count must be an integer from 1 to 10000")
+        count = int(value)
+        del tokens[index:index + 2]
+    if count is not None and (not tokens or tokens == ["once"]):
+        tokens = ["continuous"] if not tokens else tokens
+    command = _action(name, operation, tokens)
+    if command.parameters["mode"] in {"once", "stop"}:
+        raise CommandSyntaxError(TARGET_REPEAT_USAGE, action=operation)
+    target = _runtime_selector(selector)
+    return BotCommand("action", name, {**command.parameters, "target": target,
+                                       **({} if count is None else {"count": count})})
 
 
 def _entity_selector(raw: str) -> dict[str, object]:
@@ -554,6 +601,10 @@ def _item_text(item: dict) -> str:
     text = f"{item['name'].removeprefix('minecraft:')} x{item['count']}"
     durability = item.get("durability")
     return text + (f" ({durability['remaining']}/{durability['max']})" if durability else "")
+
+
+def _is_coordinate(value: str) -> bool:
+    return bool(re.fullmatch(r"~?[-+]?(?:\d+(?:\.\d*)?|\.\d+)?", value)) and value not in {"", "+", "-"}
 
 
 def _position(tokens: list[str]) -> tuple[dict[str, object], list[str]]:
@@ -822,17 +873,21 @@ def parse_command(arguments: list[str]) -> BotCommand:
     # `<x> <y> <z> [face]` a block, a bare type the nearest visible block and
     # `@<type|id|nearest>` an entity.
     if operation == "entity" and len(remaining) == 1:
-        return BotCommand(operation, name, _entity_selector(remaining[0].removeprefix("@")))
+        if not remaining[0].startswith("@"):
+            raise CommandSyntaxError("Use entity @<type|id|nearest>")
+        return BotCommand(operation, name, _entity_selector(remaining[0][1:]))
     if operation == "interact" and not remaining:
         return BotCommand(operation, name, {"crosshair": True})
+    if operation == "interact" and [value.lower() for value in remaining] == ["stop"]:
+        return BotCommand("action", name, {"action": "interact", "mode": "stop"})
+    if operation in {"attack", "interact"} and remaining and remaining[0].startswith("@"):
+        return _targeted_action(name, operation, remaining)
     if operation == "interact" and len(remaining) == 1:
         return BotCommand(operation, name, _target_token(remaining[0]))
     if operation == "interact" and len(remaining) == 3:
         target, unused = _position(remaining)
         assert not unused
         return BotCommand(operation, name, target)
-    if operation == "attack" and len(remaining) == 1 and remaining[0].startswith("@"):
-        return BotCommand(operation, name, _entity_selector(remaining[0][1:]))
     if operation == "interact" and len(remaining) == 4 and remaining[-1].lower() in BLOCK_FACES:
         target, unused = _position(remaining[:3])
         assert not unused
@@ -847,8 +902,15 @@ def parse_command(arguments: list[str]) -> BotCommand:
             return BotCommand(operation, name)
         if len(remaining) == 1 and remaining[0].startswith("@"):
             raise CommandSyntaxError("destroy breaks blocks; use attack @<entity>")
-        if len(remaining) == 1 and modes[0] not in {"once", "continuous", "stop", "interval", *DESTROY_CLAUSES}:
-            return BotCommand(operation, name, {"blockType": _block_type(remaining[0])})
+        if modes[0] not in {"once", "continuous", "stop", "interval", *DESTROY_CLAUSES} and not (
+                len(remaining) in {3, 4} and _is_coordinate(remaining[0])):
+            block_type = _block_type(remaining[0])
+            if len(remaining) == 1:
+                return BotCommand(operation, name, {"blockType": block_type})
+            loop = parse_command([name, "destroy", *remaining[1:]])
+            if loop.parameters.get("mode") != "continuous":
+                raise CommandSyntaxError("Use destroy <block type> [continuous] [for <ticks>] [count <blocks>]")
+            return BotCommand(operation, name, {**loop.parameters, "blockType": block_type})
         if modes in (["continuous"], ["stop"]):
             return BotCommand(operation, name, {"mode": modes[0]})
         if modes and modes[0] == "interval":
@@ -958,7 +1020,7 @@ class BotCommandService:
                 elif mining.get("loopId") != loop_id:
                     reason = self._mining_end_reason(status, mining)
                 else:
-                    self._continue_mining_loop(name, identity, loop_id, source, mining)
+                    self._continue_mining_loop(name, identity, loop_id, source, mining, position)
                     continue
                 if reason is False:
                     continue  # still breaking
@@ -997,11 +1059,20 @@ class BotCommandService:
         self._mining_unreachable[key] = (entry, count)
         return count
 
-    def _continue_mining_loop(self, name, identity, loop_id, source, mining) -> None:
+    def _continue_mining_loop(self, name, identity, loop_id, source, mining, block_type=None) -> None:
         target = None
         if mining.get("state") != "active":
             # Sight retargeting needs no controller; it may have logged off.
-            target = self.world.resolve_mining(identity, {"continuous": True}, None)
+            if block_type:
+                # A typed loop turns to the nearest visible block of its type; none in
+                # reach means waiting, like an empty sight.
+                try:
+                    cell = self.world.reachable_block(identity, block_type, 5.0)
+                    target = {**self.world.resolve_mining(identity, {"coordinates": cell}, None), "turn": True}
+                except ValueError:
+                    target = None
+            else:
+                target = self.world.resolve_mining(identity, {"continuous": True}, None)
         try:
             self.control.request("mine", name=name, mode="continue", loopId=loop_id, **(target or {}))
         except RuntimeControlError as error:
@@ -1198,12 +1269,13 @@ class BotCommandService:
             with self._mining_lock:
                 self._mining_loops.pop(key, None)
                 if mode == "continuous":
+                    # The last slot is the block type a typed loop retargets to (None: sight).
                     self._mining_loops[key] = (
                         result["name"],
                         result["identityId"],
                         result["mining"]["loopId"],
                         sender,
-                        None,
+                        command.parameters.get("blockType"),
                     )
                 elif mode != "stop":
                     self._mining_loops[key] = (
@@ -1219,7 +1291,8 @@ class BotCommandService:
                     lambda lang: tr(
                         lang,
                         "destroy continuous started{duration}{count}; destroy stop to cancel",
-                        duration=_for_suffix(command.parameters, lang),
+                        duration=(f" {command.parameters['blockType'].removeprefix('minecraft:')}"
+                                  if "blockType" in command.parameters else "") + _for_suffix(command.parameters, lang),
                         count=_count_suffix(command.parameters, lang),
                     ),
                 )
@@ -1239,12 +1312,13 @@ class BotCommandService:
                 ids = [entity["runtimeId"] for entity in entities]
                 details = self.world.describe_entities(result["identityId"], ids)
                 entities = [{**entity, **details.get(entity["runtimeId"], {})} for entity in entities]
+            entities = [_entity_view(entity) for entity in entities]
             data = {"name": result["name"], "identityId": result["identityId"], "entities": entities}
             if not entities:
                 return CommandResult(True, (reply(tr(lang, "no entities nearby"), result["name"]),), data=data)
             listed = ", ".join(
-                f"{entity['type'].removeprefix('minecraft:')} {DIM}(id {entity['runtimeId']}){RESET} "
-                f"{entity['distance']}m"
+                f"{entity['type'].removeprefix('minecraft:')} @{entity['runtimeId']} "
+                f"{DIM}({entity['distance']}m){RESET}"
                 for entity in entities
             )
             return CommandResult(True, (reply(tr(lang, "nearby: {entities}", entities=listed), result["name"]),),
@@ -1255,11 +1329,11 @@ class BotCommandService:
             entities = result["entities"]
             if not entities:
                 raise LocalizedError("No matching entity within 16 blocks")
-            entity = entities[0]
+            entity = _entity_view(entities[0])
             if self.world is not None:
                 entity = {**entity, **self.world.describe_entities(result["identityId"], [entity["runtimeId"]]).get(
                     entity["runtimeId"], {})}
-            fields = [f"{entity['type'].removeprefix('minecraft:')} {DIM}(id {entity['runtimeId']}){RESET}",
+            fields = [f"{entity['type'].removeprefix('minecraft:')} @{entity['runtimeId']}",
                       f"{entity['distance']}m"]
             position = entity.get("position")
             if position:
@@ -1290,8 +1364,8 @@ class BotCommandService:
             method = "attackEntity" if command.operation == "attack" else "interactEntity"
             result = control.request(method, name=command.name, **selector)
             entity = result["entity"]
-            template = ("attack on {entity} (id {id}) requested" if command.operation == "attack"
-                        else "interaction with {entity} (id {id}) requested")
+            template = ("attack on {entity} @{id} requested" if command.operation == "attack"
+                        else "interaction with {entity} @{id} requested")
             return say(template, result["name"], entity=entity["type"].removeprefix("minecraft:"),
                        id=entity["runtimeId"])
         if command.operation == "interact" and "blockType" in command.parameters:
@@ -1314,7 +1388,8 @@ class BotCommandService:
                               position=f"{block['x']} {block['y']} {block['z']}", distance=data["distance"])
                 elif data["kind"] == "entity":
                     entity = data["entity"]
-                    text = tr(lang, "looking at {entity} (id {id}) ({distance}m)", id=entity["runtimeId"],
+                    data["entity"] = _entity_view(entity)
+                    text = tr(lang, "looking at {entity} @{id} ({distance}m)", id=entity["runtimeId"],
                               entity=entity["type"].removeprefix("minecraft:"), distance=data["distance"])
                 else:
                     text = tr(lang, "looking at nothing within 6 blocks")
@@ -1433,6 +1508,10 @@ class BotCommandService:
             return say("look set to yaw={yaw} pitch={pitch}", name, yaw=f"{yaw:.1f}", pitch=f"{pitch:.1f}")
         if command.operation == "action":
             action, mode = parameters["action"], parameters["mode"]
+            if "target" in parameters:
+                action = f"{action} {_selector_text(parameters['target'])}"
+            if "count" in parameters:
+                duration += tr(lang, " up to {count} times", count=parameters["count"])
             hold = (
                 tr(lang, ": hold {ticks} ticks, then release", ticks=parameters["holdTicks"])
                 if "holdTicks" in parameters

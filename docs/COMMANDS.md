@@ -345,8 +345,10 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice swap <a> <b>
 /bot Alice hold <item>
 /bot Alice interact [<x> <y> <z> [face] | <block type> | @<type|id|nearest>]
-/bot Alice attack @<type|id|nearest>
-/bot Alice destroy <block type>
+/bot Alice attack @<type|id|nearest> [continuous|interval <ticks>] [for <ticks>] [count <n>]
+/bot Alice interact @<type|id|nearest> [continuous|interval <ticks>] [for <ticks>] [count <n>]
+/bot Alice interact stop
+/bot Alice destroy <block type> [continuous] [for <ticks>] [count <blocks>]
 /bot Alice entities
 /bot Alice entity [type|nearest|id]
 /bot Alice target
@@ -513,8 +515,15 @@ Left- and right-click verbs stay separate (`attack`/`destroy`, `use`/`interact`)
 | `<block type>` | the nearest block of that type the Bot can see (`interact` within 6 blocks, `destroy` within 5) | `interact chest`, `destroy oak_log` |
 | `@<type\|id\|nearest>` | the nearest matching non-player entity (`interact` within 6 blocks, `attack` within 4.5) | `interact @cow`, `attack @zombie`, `interact @9` |
 
-`@` follows vanilla's entity-selector sign; `entity` also accepts it (`entity @cow`). A bare id still means an entity,
-so script calls such as `:interact(entity.runtimeId)` keep working. Unknown block types are reported as such, and
+`@` follows vanilla's entity-selector sign and is required for every entity, including `entity @cow` and ids
+(`interact @9`); listings show ids in that form (`cow @9 (3.4m)`), and script data carries it as `selector`.
+
+Targets combine with repetition. `attack @zombie continuous|interval <ticks>|for <ticks>` re-aims at the nearest match
+on every trigger and does nothing while none is in reach. `interact @cow count 5` (or `interval`/`for`) right-clicks a
+different matching entity than the previous one when another is in reach, so a herd is fed one by one; `count` counts
+right- or left-clicks that reached an entity, and `interact stop` or `stop` ends it. `destroy oak_log count 10` (or
+`continuous`/`for`) is a continuous mining loop that turns to the nearest visible block of that type for each block and
+waits while none is in reach; it never walks. Unknown block types are reported as such, and
 `destroy @…` points to `attack`. In Luau: `bot:interact("@cow")`, `bot:interact("chest")`, `bot:destroy("oak_log")`,
 `bot:attack("@zombie")`. Live check (2026-10-24, Windows RakNet, console): `interact @cow` fed the cow, the crosshair
 `interact` reached it, `attack @cow` damaged it and `destroy dirt` broke the nearest dirt block.

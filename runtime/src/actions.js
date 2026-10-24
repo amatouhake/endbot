@@ -1,7 +1,9 @@
 // Copyright 2026 amatouhake and Endbot contributors
 // SPDX-License-Identifier: Apache-2.0
 
-const ACTIONS = new Set(['jump', 'attack', 'use'])
+const ACTIONS = new Set(['jump', 'attack', 'use', 'interact'])
+// Actions that can aim at a chosen entity instead of the crosshair.
+const TARGETED_ACTIONS = new Set(['attack', 'interact'])
 const DIRECTIONS = new Set(['forward', 'backward', 'left', 'right'])
 
 function validTicks (value) {
@@ -26,8 +28,19 @@ export class InputState {
   // `use continuous`: that legacy timed use starts at its first air use so a
   // deferred press cannot eat the charge. holdTicks presses use for that many
   // transactions per trigger; the session releases it and calls finishHold.
-  setAction (action, mode = 'once', intervalTicks = undefined, durationTicks = undefined, holdTicks = undefined) {
+  // `target` ({runtimeId} or {type}) re-aims every trigger at the nearest match;
+  // `count` ends the action after that many triggers reached an entity.
+  setAction (action, mode = 'once', intervalTicks = undefined, durationTicks = undefined, holdTicks = undefined,
+    target = undefined, count = undefined) {
     if (!ACTIONS.has(action)) throw new Error(`Unsupported action: ${action}`)
+    if (action === 'interact' && mode !== 'stop' && target === undefined) {
+      throw new Error('Repeated interact needs an entity target')
+    }
+    if (target !== undefined && !TARGETED_ACTIONS.has(action)) throw new Error('Only attack and interact take a target')
+    if (count !== undefined && (target === undefined || mode === 'once' || mode === 'stop' ||
+        !Number.isSafeInteger(count) || count < 1 || count > 10_000)) {
+      throw new Error('Count requires a target, continuous or interval, and an integer from 1 to 10000')
+    }
     if (!['once', 'continuous', 'interval', 'stop'].includes(mode)) throw new Error(`Unsupported action mode: ${mode}`)
     if (durationTicks !== undefined && (mode === 'once' || mode === 'stop' || !validTicks(durationTicks))) {
       throw new Error('Duration requires continuous or interval and an integer from 1 to 72000 ticks')
@@ -54,7 +67,19 @@ export class InputState {
     this.actions.set(action, { mode, interval, nextTick: this.tick + 1, revision: ++this.actionSequence,
       ...(legacyTimedUse ? { durationTicks } : {}),
       ...(durationTicks !== undefined && !legacyTimedUse ? { endTick: this.tick + 1 + durationTicks } : {}),
-      ...(holdTicks === undefined ? {} : { holdTicks }) })
+      ...(holdTicks === undefined ? {} : { holdTicks }),
+      ...(target === undefined ? {} : { target: { ...target } }),
+      ...(count === undefined ? {} : { remaining: count }) })
+  }
+
+  actionTarget (action) { return this.actions.get(action)?.target }
+
+  // One trigger reached an entity; a counted action ends at zero.
+  countHit (action, revision) {
+    const state = this.actions.get(action)
+    if (!state || state.revision !== revision || state.remaining === undefined) return
+    state.remaining -= 1
+    if (state.remaining <= 0) this.actions.delete(action)
   }
 
   actionMode (action) {
@@ -172,6 +197,8 @@ export class InputState {
       actions: Object.fromEntries([...this.actions].map(([name, state]) => [name, {
         mode: state.mode, intervalTicks: state.interval || null,
         ...(state.holdTicks === undefined ? {} : { holdTicks: state.holdTicks }),
+        ...(state.target === undefined ? {} : { target: state.target }),
+        ...(state.remaining === undefined ? {} : { remainingCount: state.remaining }),
         ...(state.durationTicks === undefined && state.endTick === undefined ? {} : {
           remainingTicks: state.endTick === undefined ? state.durationTicks : state.endTick - this.tick - 1
         })

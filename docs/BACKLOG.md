@@ -637,7 +637,10 @@ that `interact` mixed blocks and entities. Decision (2026-10-24 JST, "plan B"): 
 (`attack`/`destroy`, `use`/`interact`) and give them one target syntax: no argument is the crosshair target,
 `<x> <y> <z> [face]` a block, a bare `<block type>` the nearest visible block of that type, and `@<type|id|nearest>` an
 entity (vanilla's selector sign). The alternative of separate right-click verbs for blocks ("plan A") was rejected:
-right-clicking a block opens, toggles, places or tills, so no verb name fits. See
+right-clicking a block opens, toggles, places or tills, so no verb name fits. Follow-up (2026-10-24 JST): `@` is
+required for entities everywhere (no bare ids, also in Luau; listings print `@id` and data carries `selector`), and
+targets combine with repetition: `attack`/`interact @… continuous|interval|for|count`, `destroy <type> continuous|for|count`.
+See
 [targets](COMMANDS.md#targets-crosshair-coordinates-block-types-and--entities).
 
 ## BOT-013: Web script editor

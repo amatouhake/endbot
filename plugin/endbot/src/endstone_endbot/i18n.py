@@ -368,7 +368,7 @@ JA: dict[str, str] = {
     "entities and vehicles": "エンティティと乗り物",
     "no entities nearby": "近くにエンティティはいません",
     "nearby: {entities}": "近く: {entities}",
-    "interaction with {entity} (id {id}) requested": "{entity} (id {id}) への操作を要求しました",
+    "interaction with {entity} @{id} requested": "{entity} @{id} への操作を要求しました",
     "dismount from {vehicle} requested": "{vehicle} から降りるよう要求しました",
     "riding {vehicle}": "{vehicle} に乗車中",
     "right-click a block or an entity": "ブロックかエンティティを右クリックする",
@@ -384,11 +384,19 @@ JA: dict[str, str] = {
         "@ は4.5ブロック以内で一番近い該当エンティティの方を向き、1回攻撃します。プレイヤーは対象外です。",
     "A block type breaks the nearest one the Bot can see within 5 blocks.":
         "ブロックの種類を指定すると、5ブロック以内で Bot に見えている一番近いものを壊します。",
+    "Entities take @: use @{id}": "エンティティには @ を付けてください: @{id}",
+    "Use entity @<type|id|nearest>": "entity @<type|id|nearest> の形で指定してください",
+    "Repeat {action} @<entity> with continuous, interval <ticks>, for <ticks> or count <n>":
+        "{action} @<entity> の繰り返しには continuous、interval <ticks>、for <ticks>、count <n> を使います",
+    "Count must be an integer from 1 to 10000": "count は 1 から 10000 の整数で指定してください",
+    "Use destroy <block type> [continuous] [for <ticks>] [count <blocks>]":
+        "destroy <block type> [continuous] [for <ticks>] [count <blocks>] の形で指定してください",
+    " up to {count} times": " (最大 {count} 回)",
     "Unknown block type: {block}": "不明なブロックの種類です: {block}",
     "No {block} in sight within {reach} blocks": "{reach}ブロック以内に見えている {block} はありません",
     "destroy breaks blocks; use attack @<entity>":
         "destroy はブロックを壊します。エンティティには attack @<entity> を使ってください",
-    "attack on {entity} (id {id}) requested": "{entity} (id {id}) への攻撃を要求しました",
+    "attack on {entity} @{id} requested": "{entity} @{id} への攻撃を要求しました",
     "show one nearby entity in detail": "近くのエンティティ1体の詳細を表示する",
     "Position, distance, health and name tag of the nearest match within 16 blocks; players are excluded.":
         "16ブロック以内で一番近い該当エンティティの位置、距離、体力、名前を表示します。プレイヤーは対象外です。",
@@ -410,7 +418,7 @@ JA: dict[str, str] = {
     "looking around, entities and vehicles": "周囲の確認、エンティティと乗り物",
     "looking at {block} at {position} face {face} ({distance}m)":
         "{position} の {block} の面 {face} を見ています ({distance}m)",
-    "looking at {entity} (id {id}) ({distance}m)": "{entity} (id {id}) を見ています ({distance}m)",
+    "looking at {entity} @{id} ({distance}m)": "{entity} @{id} を見ています ({distance}m)",
     "looking at nothing within 6 blocks": "6ブロック以内に見ているものはありません",
     "block at {position}: {block}": "{position} のブロック: {block}",
     "{block}: {positions}": "{block}: {positions}",

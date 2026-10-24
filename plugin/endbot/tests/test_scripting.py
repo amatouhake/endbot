@@ -197,7 +197,7 @@ class OperationParityTests(unittest.TestCase):
                 ({"x": 1, "y": 64, "z": 2}, ["interact", "1", "64", "2"]),
                 ({"target": "@cow"}, ["interact", "@cow"]),
                 ({"target": "chest"}, ["interact", "chest"]),
-                ({"target": 42}, ["interact", "42"]),
+                ({"target": "@42"}, ["interact", "@42"]),
             ],
             "destroy": [
                 ({"mode": "continuous", "count": 64}, ["destroy", "continuous", "count", "64"]),

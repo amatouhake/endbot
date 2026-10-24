@@ -248,8 +248,10 @@ Other queries also return data: `bot:inventory().data.slots` lists non-empty slo
 (slots `"1"`-`"36"`, `offhand`, `head`, `chest`, `legs`, `feet`); `bot:hotbar().data` has `selectedSlot` and the
 hotbar `slots`; `bot:entities().data.entities` lists up to 10 nearby non-player entities, nearest first, as
 `{runtimeId, type, distance, position, health, maxHealth, nameTag}` (health is nil for non-mobs). Pass a
-`runtimeId` to `:interact(id)`. `bot:entity("cow")` (or an id, `"nearest"`, or no argument) returns `data.entity`, one
-such entry within 16 blocks. Inventory, hotbar and `held` items carry `durability = {remaining, max}` for damageable
+`selector` (`"@9"`) to `:interact(e.selector)` or `:attack(e.selector)`; entities always take `@`.
+`bot:entity("@cow")` (or `"@9"`, `"@nearest"`, or no argument) returns `data.entity`, one such entry within 16 blocks.
+Repetition uses the final options table: `bot:interact("@cow", {count=5})`, `bot:attack("@zombie", {interval=20,
+ticks=200})`, `bot:destroy("oak_log", {count=10})`. Inventory, hotbar and `held` items carry `durability = {remaining, max}` for damageable
 items such as tools and armor.
 
 World queries read BDS on the server thread and count as operations:
@@ -301,7 +303,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:inventory()` | none | none |
 | `:entities()` | none | none |
 | `:entity()` | none | none |
-| `:entity()` | target: stringOrInteger | none |
+| `:entity()` | target: string | none |
 | `:target()` | none | none |
 | `:block()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:blocks()` | type: string | radius: integer, limit: integer |
@@ -329,15 +331,15 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:interact()` | none | none |
 | `:interact()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:interact()` | x: coordinate, y: coordinate, z: coordinate, face: down / up / north / south / west / east | none |
-| `:interact()` | target: stringOrInteger | none |
+| `:interact()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer |
 | `:destroy()` | none | mode: once / continuous / stop, ticks: integer, count: integer |
 | `:destroy()` | x: coordinate, y: coordinate, z: coordinate | face: down / up / north / south / west / east |
-| `:destroy()` | type: string | none |
+| `:destroy()` | type: string | mode: continuous, ticks: integer, count: integer |
 | `:drop()` | none | none |
 | `:drop()` | selector: stringOrInteger | count: integer |
 | `:jump()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |
 | `:attack()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |
-| `:attack()` | target: string | none |
+| `:attack()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer |
 | `:use()` | none | mode: once / continuous / stop, interval: integer, hold: integer, ticks: integer |
 | `:sprint()` | value: boolean | none |
 | `:sneak()` | value: boolean | none |

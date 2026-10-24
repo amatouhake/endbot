@@ -296,11 +296,25 @@ class RepetitionTests(unittest.TestCase):
         self.assertEqual(parse_command(["Alice", "destroy", "oak_log", "continuous"]).parameters,
                          {"mode": "continuous", "blockType": "minecraft:oak_log"})
         self.assertIn("coordinates", parse_command(["Alice", "destroy", "~", "~-1", "~"]).parameters)
+        # once and stop match the Luau table: one click, or stop the repeated action.
+        once = parse_command(["Alice", "attack", "@cow", "once"])
+        self.assertEqual((once.operation, once.parameters), ("attack", {"entity": "type", "type": "minecraft:cow"}))
+        self.assertEqual(parse_command(["Alice", "attack", "@cow", "stop"]).parameters,
+                         {"action": "attack", "mode": "stop"})
         for arguments in (["interact", "9"], ["entity", "cow"], ["attack", "@cow", "once", "count", "2"],
-                          ["attack", "@cow", "stop"], ["interact", "@cow", "count", "0"],
+                          ["interact", "@cow", "count", "0"],
                           ["destroy", "oak_log", "stop"]):
             with self.subTest(arguments=arguments), self.assertRaises(CommandSyntaxError):
                 parse_command(["Alice", *arguments])
+
+    def test_status_shows_a_targeted_repetition_and_its_remaining_count(self):
+        summary = PlainCommandService._timed_inputs_summary({"actions": {
+            "interact": {"mode": "continuous", "intervalTicks": None, "target": {"type": "minecraft:cow"},
+                         "remainingCount": 2},
+            "jump": {"mode": "continuous", "intervalTicks": None}}})
+        self.assertEqual(summary, "timed: interact @cow continuous 2 left")
+        self.assertIn("残り 2 回", PlainCommandService._timed_inputs_summary({"actions": {
+            "attack": {"mode": "continuous", "target": {"runtimeId": "42"}, "remainingCount": 2}}}, "ja"))
 
     def test_repetition_reply_names_target_and_count(self):
         class Control:

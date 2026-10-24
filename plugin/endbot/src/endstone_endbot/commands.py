@@ -562,8 +562,11 @@ def _targeted_action(name: str, operation: str, remaining: list[str]) -> BotComm
     """`attack|interact @<sel> [once|continuous|interval <ticks>] [for <ticks>] [count <n>]`."""
     selector = _entity_selector(remaining[0][1:])
     tokens = list(remaining[1:])
-    if not tokens:
+    modes = [token.lower() for token in tokens]
+    if not tokens or modes == ["once"]:
         return BotCommand(operation, name, selector)
+    if modes == ["stop"]:
+        return BotCommand("action", name, {"action": operation, "mode": "stop"})
     count = None
     lowered = [token.lower() for token in tokens]
     if "count" in lowered:
@@ -1617,11 +1620,17 @@ class BotCommandService:
                 )
             )
         for action, state in (inputs.get("actions") or {}).items():
-            if state.get("remainingTicks") is None and state.get("holdTicks") is None:
+            target = state.get("target")
+            if state.get("remainingTicks") is None and state.get("holdTicks") is None and target is None:
                 continue
-            words = [action, str(state.get("mode"))]
+            words = [action]
+            if target is not None:
+                words.append(_selector_text(target))
+            words.append(str(state.get("mode")))
             if state.get("mode") == "interval":
                 words.append(str(state.get("intervalTicks")))
+            if state.get("remainingCount") is not None:
+                words.append(tr(lang, "{count} left", count=state["remainingCount"]))
             if state.get("holdTicks") is not None:
                 words.append(f"hold {state['holdTicks']}")
             if state.get("remainingTicks") is not None:

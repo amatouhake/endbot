@@ -330,8 +330,8 @@ class EndstoneWorld:
         bot = self.server.get_player(UUID(identity_id))
         if bot is None:
             raise ValueError("Bot is not present in the world")
-        reference = self._snapshot(sender.location) if self._is_player(sender) else None
-        coordinates = self._resolve_coordinates(parameters["coordinates"], reference)
+        # `~` is relative to the Bot, as for destroy and block.
+        coordinates = self._resolve_coordinates(parameters["coordinates"], bot.location)
         block_position = [math.floor(value) for value in coordinates]
         block = bot.location.dimension.get_block_at(*block_position)
         face = parameters.get("face")

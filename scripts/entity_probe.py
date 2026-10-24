@@ -87,10 +87,14 @@ def install_probe(plugin_class):
                     target = Location(dimension, x + 0.5, 200.1, z + 2.5, 0, 0)
                 dimension.spawn_actor(target, request["entity"])
                 if request.get("ores"):
-                    # Two dirt blocks beside the Bot for `destroy dirt count 2`, and a second cow.
+                    # Two dirt blocks beside the Bot for `destroy dirt count 2`.
                     dimension.get_block_at(x - 1, 200, z + 1).set_type("minecraft:dirt")
                     dimension.get_block_at(x - 2, 200, z + 1).set_type("minecraft:dirt")
-                    dimension.spawn_actor(Location(dimension, x + 1.5, 200, z + 2.5, 0, 0), "minecraft:cow")
+                    # Three cows apart for `interact @cow count 3` (one each), a trunk for `destroy oak_log count 5`.
+                    dimension.spawn_actor(Location(dimension, x + 2.5, 200, z + 1.5, 0, 0), "minecraft:cow")
+                    dimension.spawn_actor(Location(dimension, x - 1.5, 200, z + 3.5, 0, 0), "minecraft:cow")
+                    for y in range(200, 205):
+                        dimension.get_block_at(x - 2, y, z - 1).set_type("minecraft:oak_log")
                     # One exposed ore on the platform and one sealed in stone below it.
                     dimension.get_block_at(x + 3, 200, z).set_type("minecraft:diamond_ore")
                     for dx, dy, dz in ((0, 0, 0), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
@@ -135,6 +139,7 @@ def install_probe(plugin_class):
                 **self._entity_probe,
                 "player": [loc.x, loc.y, loc.z],
                 "dirt": [str(loc.dimension.get_block_at(x0 - dx, 200, z0 + 1).type) for dx in (1, 2)],
+                "logs": [str(loc.dimension.get_block_at(x0 - 2, y, z0 - 1).type) for y in range(200, 205)],
                 "exits": exits,
                 "searches": searches,
                 "actors": actors,
@@ -211,8 +216,9 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     command("hotbar", ": 1: wheat x5, 3: iron_pickaxe x1 (250/250)")
     command("inventory", "1: wheat x5")
     listing = command("entities", "nearby: cow @")
-    command("interact @cow count 2", "interact @cow continuous started up to 2 times")
-    time.sleep(0.5)
+    command("interact @cow count 3", "interact @cow continuous started up to 3 times")
+    wait("BDS fed three different cows (three wheat)", lambda: (state()["hotbar"][0] or {}).get("count") == 2, 10)
+    command("interact @cow", "interaction with cow @")  # one-shot: turns to a cow (fed cows wander)
     command("target", "looking at cow @")
     command("interact", "interaction with cow @")  # the crosshair target
     cow_health = next(actor["health"] for actor in state()["actors"] if actor["type"] == "minecraft:cow")
@@ -221,6 +227,9 @@ def exercise_entity(output: Path, console, control, wait, report, log):
                                            for actor in state()["actors"]), 10)
     command("destroy dirt count 2", "destroy continuous started dirt")
     wait("BDS broke both dirt blocks by type", lambda: state()["dirt"] == ["minecraft:air", "minecraft:air"], 30)
+    command("hotbar 3", "hotbar slot 3 selected")
+    command("destroy oak_log count 5", "destroy continuous started oak_log")
+    wait("BDS broke the whole trunk by type", lambda: state()["logs"] == ["minecraft:air"] * 5, 60)
     command("entity @cow", "cow @")
     command("block ~~-1~", ": stone")
     start = time.monotonic()
@@ -231,7 +240,6 @@ def exercise_entity(output: Path, console, control, wait, report, log):
         raise RuntimeError(f"block search reported a hidden ore or extra blocks: {ore_line}")
     results["queries"] = {"blocks_line": ore_line[-120:], "radius_12_reply_seconds": search_seconds,
                           "server_thread": state().get("searches")}
-    wait("BDS fed two different cows (two wheat)", lambda: (state()["hotbar"][0] or {}).get("count") == 3, 10)
     results["feed_cow"] = {"listing": listing.strip().splitlines()[-1][-160:], "hotbar": state()["hotbar"][0]}
 
     def beside(vehicle_type):

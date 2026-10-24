@@ -233,7 +233,12 @@ class EndbotPlugin(Plugin):
 
     def on_load(self) -> None:
         self.save_default_config()
-        self._script_config = ScriptConfig.from_config(self.config.get("scripting", {}))
+        try:
+            self._script_config = ScriptConfig.from_config(self.config.get("scripting", {}))
+        except (TypeError, ValueError) as error:
+            # A scripting typo must not take /bot down with it; scripts stay off.
+            self._script_config = ScriptConfig()
+            self.logger.warning(f"Invalid [scripting] config: {error}; scripting is disabled")
         try:
             self._language_setting = language_setting((self.config.get("ui") or {}).get("language"))
         except ValueError as error:

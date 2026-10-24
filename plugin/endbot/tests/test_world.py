@@ -227,13 +227,15 @@ class WorldTests(unittest.TestCase):
         self.assertAlmostEqual(location.yaw, expected[0])
         self.assertAlmostEqual(location.pitch, expected[1])
 
-    def test_interaction_uses_bot_dimension_and_public_block_runtime_id(self):
-        result = self.world.resolve_interaction(
-            str(self.alice.unique_id),
-            {"coordinates": [("relative", 1), 64.9, -2.1], "face": 1},
-            self.steve,
-        )
-        self.assertEqual(result, {"blockPosition": [9, 64, -3], "blockRuntimeId": 42, "face": 1})
+    def test_interaction_is_relative_to_the_bot_in_its_dimension_with_public_block_runtime_id(self):
+        # `~` follows the Bot (as destroy and block do), not the sender, and needs no player sender.
+        for sender in (self.steve, None):
+            result = self.world.resolve_interaction(
+                str(self.alice.unique_id),
+                {"coordinates": [("relative", 1), 64.9, -2.1], "face": 1},
+                sender,
+            )
+            self.assertEqual(result, {"blockPosition": [1, 64, -3], "blockRuntimeId": 42, "face": 1})
 
     def test_look_at_resolves_the_bot_uuid_not_the_duplicate_name_ghost(self):
         overworld = self.server.dimensions["Overworld"]

@@ -74,6 +74,12 @@ export class InputState {
 
   actionTarget (action) { return this.actions.get(action)?.target }
 
+  look () { return { yaw: this.yaw, pitch: this.pitch } }
+
+  stopTargeted () {
+    for (const [action, state] of this.actions) if (state.target !== undefined) this.actions.delete(action)
+  }
+
   // One trigger reached an entity; a counted action ends at zero.
   countHit (action, revision) {
     const state = this.actions.get(action)

@@ -345,16 +345,15 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice swap <a> <b>
 /bot Alice hold <item>
 /bot Alice interact [<x> <y> <z> [face] | <block type> | @<type|id|nearest>]
-/bot Alice attack @<type|id|nearest> [continuous|interval <ticks>] [for <ticks>] [count <n>]
-/bot Alice interact @<type|id|nearest> [continuous|interval <ticks>] [for <ticks>] [count <n>]
+/bot Alice attack @<type|id|nearest> [once|continuous|interval <ticks>|stop] [for <ticks>] [count <n>]
+/bot Alice interact @<type|id|nearest> [once|continuous|interval <ticks>|stop] [for <ticks>] [count <n>]
 /bot Alice interact stop
 /bot Alice destroy <block type> [continuous] [for <ticks>] [count <blocks>]
 /bot Alice entities
-/bot Alice entity [type|nearest|id]
+/bot Alice entity [@<type|id|nearest>]
 /bot Alice target
 /bot Alice block <x> <y> <z>
 /bot Alice blocks <type> [radius <1-12>] [limit <1-64>]
-/bot Alice interact <type|nearest|id>
 /bot Alice dismount
 /bot Alice drop
 /bot Alice drop stack
@@ -511,7 +510,7 @@ Left- and right-click verbs stay separate (`attack`/`destroy`, `use`/`interact`)
 | Form | Target | Examples |
 | --- | --- | --- |
 | none | what the Bot is looking at | `interact`, `destroy`, `attack` |
-| `<x> <y> <z> [face]` | that block; without a face, the side facing the Bot | `interact ~~-1~`, `destroy 1 64 2 up` |
+| `<x> <y> <z> [face]` | that block; `~` is relative to the Bot; without a face, the side facing the Bot | `interact ~~-1~`, `destroy 1 64 2 up` |
 | `<block type>` | the nearest block of that type the Bot can see (`interact` within 6 blocks, `destroy` within 5) | `interact chest`, `destroy oak_log` |
 | `@<type\|id\|nearest>` | the nearest matching non-player entity (`interact` within 6 blocks, `attack` within 4.5) | `interact @cow`, `attack @zombie`, `interact @9` |
 
@@ -519,20 +518,26 @@ Left- and right-click verbs stay separate (`attack`/`destroy`, `use`/`interact`)
 (`interact @9`); listings show ids in that form (`cow @9 (3.4m)`), and script data carries it as `selector`.
 
 Targets combine with repetition. `attack @zombie continuous|interval <ticks>|for <ticks>` re-aims at the nearest match
-on every trigger and does nothing while none is in reach. `interact @cow count 5` (or `interval`/`for`) right-clicks a
-different matching entity than the previous one when another is in reach, so a herd is fed one by one; `count` counts
-right- or left-clicks that reached an entity, and `interact stop` or `stop` ends it. `destroy oak_log count 10` (or
+on every trigger and does nothing while none is in reach; it never falls back to the crosshair, so a player there is
+never hit. `interact @cow count 5` (or `interval`/`for`) right-clicks a matching entity it has not clicked yet in this
+run while one is in reach, then the one clicked longest ago, so a herd is fed one by one. `count` counts right- or
+left-clicks sent to an entity; BDS still decides the outcome (a cow already in love eats nothing). After each click the
+next waits until BDS reports the held item it changed (wheat eaten, a sword worn), or at most 10 ticks: a click with a
+stale held item is rejected. `once` is a single click, and `attack @cow stop`, `interact stop` or `stop` ends it;
+`status` shows the running target and the clicks left, for example `interact @cow continuous 2 left`. `destroy oak_log count 10` (or
 `continuous`/`for`) is a continuous mining loop that turns to the nearest visible block of that type for each block and
 waits while none is in reach; it never walks. Unknown block types are reported as such, and
 `destroy @…` points to `attack`. In Luau: `bot:interact("@cow")`, `bot:interact("chest")`, `bot:destroy("oak_log")`,
 `bot:attack("@zombie")`. Live check (2026-10-24, Windows RakNet, console): `interact @cow` fed the cow, the crosshair
-`interact` reached it, `attack @cow` damaged it and `destroy dirt` broke the nearest dirt block.
+`interact` reached it, `attack @cow` damaged it and `destroy dirt` broke the nearest dirt block. Live fix check
+(2026-10-24): `interact @cow count 3` fed three different cows (three wheat) and `destroy oak_log count 5` broke a
+five-log trunk; before the held-item wait, rapid clicks after the first were rejected by BDS.
 
 ### Looking around
 
 Coordinates anywhere in `/bot` accept vanilla's compact relative form: `~~-1~` is `~ ~-1 ~`. `inventory` and
 `hotbar` list items with remaining/maximum durability for tools and armor, for example `iron_pickaxe x1 (210/250)`;
-`hotbar` also lists the hotbar items, not only the selected slot. `entity [type|nearest|id]` shows one entity within 16
+`hotbar` also lists the hotbar items, not only the selected slot. `entity [@<type|id|nearest>]` shows one entity within 16
 blocks in detail (id, distance, position, health, name tag); without an argument it is the nearest.
 
 `target` shows what the Bot's crosshair hits within 6 blocks: the nearer of a block (position, face, type) and a
@@ -546,7 +551,7 @@ result like `status`. The Gameplay form's **Look around...** offers them with th
 ### Entities and vehicles
 
 `entities` lists up to 10 non-player entities within 16 blocks of the Bot, nearest first, as
-`<type> (id <id>) <distance>m`. A Group target is a query like `status`: every member's list is printed, with no
+`<type> @<id> (<distance>m)`. A Group target is a query like `status`: every member's list is printed, with no
 history or audit entry. `interact @<type|nearest|id>` picks the nearest matching non-player entity within 6 blocks
 (`cow` and `minecraft:cow` are the same; `nearest` takes any type; an id comes from `entities`), turns the Bot
 toward it and right-clicks it with the held item on the next input tick. This is the vanilla client path
@@ -576,7 +581,7 @@ leave action; its first free input then does not move. Live check (2026-10-24): 
 without dismounting, a boat exit in the look direction and a moving-minecart side exit, each with no correction. Steering horses or
 boats is not implemented. Live check (2026-10-24, Windows RakNet, locked pair): feeding a cow consumed wheat,
 the Bot boarded a minecart by id, rode a powered minecart about 12 blocks with BDS keeping its position on the
-cart, refused interaction while riding, and walked normally after leaving both a stationary and a moving cart
+cart, refused interaction while riding (before vehicle switching), and walked normally after leaving both a stationary and a moving cart
 (`scripts/raknet_spike.py --entity`).
 
 The command declaration separates parseability from completion because live BDS overload matching proved three

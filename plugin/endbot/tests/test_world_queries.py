@@ -75,6 +75,46 @@ class WorldQueryTests(unittest.TestCase):
         self.assertEqual(len(world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 8, 1)), 1)
 
 
+    def test_find_blocks_stops_early_but_keeps_the_nearest_matches(self):
+        ore = Block("minecraft:diamond_ore")
+        blocks = {(x, 64, 0): ore for x in range(-6, 7) if x}
+        reads = []
+        dimension_get = Dimension.get_block_at
+
+        def counting(self, x, y, z):
+            reads.append((x, y, z))
+            return dimension_get(self, x, y, z)
+
+        Dimension.get_block_at = counting
+        try:
+            found = world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 12, 2)
+        finally:
+            Dimension.get_block_at = dimension_get
+        self.assertEqual(sorted((entry["x"], entry["distance"]) for entry in found), [(-1, 1.1), (1, 1.1)])
+        self.assertLess(len(reads), 2000)  # a full radius-12 scan reads over 7000 cells
+
+    def test_an_entity_behind_the_block_is_not_the_target_and_mushroom_stems_hide_ores(self):
+        log = {(0, 65, 2): Block("minecraft:oak_log")}
+        cow = actor(9, "minecraft:cow", 0.5, 65.0, 2.4)  # past the log face (1.5) but before its centre (2.0)
+        self.assertEqual(world(log, [cow]).target(BOT["identityId"])["kind"], "block")
+        ore = Block("minecraft:diamond_ore")
+        stem = Block("minecraft:mushroom_stem")
+        blocks = {(0, 60, 5): ore}
+        for dx, dy, dz in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+            blocks[(dx, 60 + dy, 5 + dz)] = stem
+        self.assertEqual(world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 8, 10), [])
+
+    def test_rafts_and_wood_boats_are_standable_and_coordinates_stay_in_the_world(self):
+        from endstone_endbot.world import _standable_half_width
+
+        for kind in ("minecraft:oak_boat", "minecraft:bamboo_raft", "minecraft:cherry_chest_boat", "minecraft:boat"):
+            self.assertEqual(_standable_half_width(kind), 0.7, kind)
+        self.assertIsNone(_standable_half_width("minecraft:cow"))
+        for coordinates in ([30_000_001, 64, 0], [float("inf"), 64, 0], [1e308, 64, 0]):
+            with self.assertRaisesRegex(ValueError, "within the world"):
+                world({}).block_info(BOT["identityId"], coordinates)
+
+
 class Control:
     def request(self, method, **params):
         return BOT

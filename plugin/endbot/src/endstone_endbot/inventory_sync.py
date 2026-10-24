@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import time
 
 EVENT_NAME = "endbot:inventory-v2"
@@ -66,6 +67,9 @@ def typed_nbt(tag):
     }
     if kind in scalars:
         value = str(tag.value) if kind == "LongTag" else tag.value
+        if kind in {"FloatTag", "DoubleTag"} and not math.isfinite(value):
+            # JSON has no NaN/Infinity; one odd tag must not stop the whole observation.
+            value = "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
         return {"type": scalars[kind], "value": value}
     if kind == "CompoundTag":
         return {"type": "compound", "value": {key: typed_nbt(value) for key, value in tag.items()}}
@@ -132,11 +136,6 @@ def hotbar_snapshot(player, server, block_ids: dict | None = None, *, full: bool
 
 def full_inventory_snapshot(player, server, block_ids: dict | None = None) -> dict:
     return hotbar_snapshot(player, server, block_ids, full=True)
-
-
-def publish_hotbar(player, server) -> None:
-    for payload in observation_payloads(full_inventory_snapshot(player, server), time.time_ns() // 1_000_000):
-        player.send_packet(PACKET_ID, payload)
 
 
 def _payload(snapshot) -> bytes:

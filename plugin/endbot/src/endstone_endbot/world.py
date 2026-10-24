@@ -40,10 +40,11 @@ PASSABLE_BLOCKS = {
     "minecraft:kelp", "minecraft:vine", "minecraft:glow_lichen", "minecraft:snow_layer", "minecraft:reeds",
     "minecraft:sweet_berry_bush", "minecraft:wheat", "minecraft:carrots", "minecraft:potatoes",
     "minecraft:beetroot", "minecraft:redstone_wire", "minecraft:tripwire", "minecraft:pink_petals",
+    "minecraft:red_mushroom", "minecraft:brown_mushroom",
 }
 PASSABLE_PARTS = ("rail", "torch", "button", "lever", "pressure_plate", "sapling", "_sign", "banner", "carpet",
                   "flower", "tulip", "dandelion", "poppy", "orchid", "allium", "bluet", "daisy", "lily_of_the_valley",
-                  "rose", "lilac", "peony", "mushroom")
+                  "rose", "lilac", "peony")  # Not "mushroom": mushroom_stem is a solid block.
 NON_FLOOR_BLOCKS = {"minecraft:water", "minecraft:flowing_water", "minecraft:lava", "minecraft:flowing_lava"}
 HAZARD_BLOCKS = {"minecraft:lava", "minecraft:flowing_lava", "minecraft:fire", "minecraft:soul_fire"}
 
@@ -87,6 +88,37 @@ def _state_value(value):
     return value if isinstance(value, (bool, int, float, str)) else str(value)
 
 
+# Vanilla's world border; larger coordinates are typos, and floats near 1e308 break block math.
+WORLD_LIMIT = 30_000_000
+# A cell's distance from the Bot's feet differs from its offset length by at most half a cell diagonal.
+CELL_SLACK = math.sqrt(3) / 2
+_OFFSETS = {}
+
+
+def _search_offsets(radius: int) -> list[tuple[float, int, int, int]]:
+    """Cell offsets within ``radius`` (plus slack), nearest first; cached per radius."""
+    if radius not in _OFFSETS:
+        span = range(-radius - 1, radius + 2)
+        _OFFSETS[radius] = sorted(
+            (math.sqrt(dx * dx + dy * dy + dz * dz), dx, dy, dz)
+            for dx in span for dy in span for dz in span
+            if math.sqrt(dx * dx + dy * dy + dz * dz) <= radius + CELL_SLACK
+        )
+    return _OFFSETS[radius]
+
+
+def _ray_entry(eye, direction, cell) -> float:
+    """Distance along the ray where it enters the unit cell (slab method)."""
+    entry = 0.0
+    for axis in range(3):
+        if abs(direction[axis]) < 1e-12:
+            continue
+        near = (cell[axis] - eye[axis]) / direction[axis]
+        far = (cell[axis] + 1 - eye[axis]) / direction[axis]
+        entry = max(entry, min(near, far))
+    return entry
+
+
 def _exposed(dimension, x, y, z) -> bool:
     """A block a player could see: at least one face touches a passable block."""
     return any(_passable(str(dimension.get_block_at(x + dx, y + dy, z + dz).type)) for dx, dy, dz in NEIGHBOURS)
@@ -126,6 +158,13 @@ def _clear_of_vehicle(cell: tuple[int, int], vehicle: tuple[float, float], half:
 STANDABLE_HALF_WIDTHS = {"minecraft:boat": 0.7, "minecraft:chest_boat": 0.7, "minecraft:shulker": 0.5}
 
 
+def _standable_half_width(actor_type: str) -> float | None:
+    """Every boat and raft variant (oak_boat, bamboo_raft, *_chest_boat) is standable like a boat."""
+    if actor_type in STANDABLE_HALF_WIDTHS:
+        return STANDABLE_HALF_WIDTHS[actor_type]
+    return 0.7 if actor_type.endswith(("_boat", "_raft")) else None
+
+
 def unsupported(player) -> bool:
     """True when a Bot standing exactly on a block top has no solid block under its feet box.
 
@@ -145,7 +184,7 @@ def unsupported(player) -> bool:
         if not _passable(floor) and floor not in NON_FLOOR_BLOCKS:
             return False
     for actor in dimension.actors:
-        half = STANDABLE_HALF_WIDTHS.get(actor.type)
+        half = _standable_half_width(actor.type)
         if half is None:
             continue
         actor_location = actor.location
@@ -387,8 +426,11 @@ class EndstoneWorld:
         dimension = location.dimension
         found = self._ray_block(dimension, eye, direction, REACH)
         result = {"kind": None, "block": None, "entity": None, "distance": None}
+        nearest = None
         if found is not None:
             cell, block, face = found
+            # Where the ray enters the block, so an entity behind it never wins.
+            nearest = _ray_entry(eye, direction, cell)
             distance = math.dist(eye, [value + 0.5 for value in cell])
             result = {"kind": "block", "entity": None, "distance": round(distance, 1),
                       "block": {"x": cell[0], "y": cell[1], "z": cell[2], "face": FACE_NAMES[face],
@@ -402,7 +444,8 @@ class EndstoneWorld:
             if along <= 0 or along > REACH:
                 continue
             miss = math.dist(offset, [direction[index] * along for index in range(3)])
-            if miss <= 0.6 and (result["distance"] is None or along < result["distance"]):
+            if miss <= 0.6 and (nearest is None or along < nearest):
+                nearest = along
                 result = {"kind": "entity", "block": None, "distance": round(along, 1),
                           "entity": {"runtimeId": str(actor.runtime_id), "type": actor.type}}
         return result
@@ -432,16 +475,18 @@ class EndstoneWorld:
         origin = [math.floor(float(location.x)), math.floor(float(location.y)), math.floor(float(location.z))]
         feet = [float(location.x), float(location.y), float(location.z)]
         found = []
-        for x in range(origin[0] - radius, origin[0] + radius + 1):
-            for y in range(max(low, origin[1] - radius), min(high, origin[1] + radius) + 1):
-                for z in range(origin[2] - radius, origin[2] + radius + 1):
-                    if str(dimension.get_block_at(x, y, z).type) != block_type:
-                        continue
-                    distance = math.dist(feet, (x + 0.5, y + 0.5, z + 0.5))
-                    if distance <= radius and _exposed(dimension, x, y, z):
-                        found.append({"x": x, "y": y, "z": z, "distance": round(distance, 1)})
-        found.sort(key=lambda entry: entry["distance"])
-        return found[:limit]
+        # Nearest cells first; stop once no farther cell can beat the limit-th match.
+        for cell_distance, dx, dy, dz in _search_offsets(radius):
+            if len(found) >= limit and cell_distance - CELL_SLACK > found[limit - 1]["exact"]:
+                break
+            x, y, z = origin[0] + dx, origin[1] + dy, origin[2] + dz
+            if not low <= y <= high or str(dimension.get_block_at(x, y, z).type) != block_type:
+                continue
+            distance = math.dist(feet, (x + 0.5, y + 0.5, z + 0.5))
+            if distance <= radius and _exposed(dimension, x, y, z):
+                found.append({"x": x, "y": y, "z": z, "distance": round(distance, 1), "exact": distance})
+                found.sort(key=lambda entry: entry["exact"])
+        return [{key: value for key, value in entry.items() if key != "exact"} for entry in found[:limit]]
 
     def resolve_dismount(self, identity_id: str, vehicle_runtime_id: str | None) -> dict[str, float] | None:
         """Pick a vanilla-style exit next to the vehicle, as a feet position.
@@ -592,6 +637,8 @@ class EndstoneWorld:
                 resolved.append(current[index] + float(value[1]))
             else:
                 resolved.append(float(value))
+        if not all(math.isfinite(value) and abs(value) <= WORLD_LIMIT for value in resolved):
+            raise LocalizedError("Coordinates must be within the world (at most 30000000 from 0)")
         return resolved
 
     @staticmethod

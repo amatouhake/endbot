@@ -853,6 +853,16 @@ JA.update({
         "{name} を版 {line} に戻しますか? 今のソースは履歴に残ります。",
     "Restore": "戻す",
     "Earlier revisions, newest first.": "以前の版 (新しい順)。",
+    "Drop slots are 1 to 36, offhand, head, chest, legs or feet":
+        "落とすスロットは 1 から 36、offhand、head、chest、legs、feet です",
+    "No {item} in the inventory": "持ち物に {item} はありません",
+    "Coordinates must be within the world (at most 30000000 from 0)":
+        "座標はワールドの範囲内 (0 から 30000000 以内) にしてください",
+    "Bot inventory is not synchronized yet; try again": "Bot の持ち物がまだ同期されていません。もう一度試してください",
+    "Use interact, interact <x> <y> <z> [face], interact <block type>, "
+    "or interact @<entity> [continuous|interval <ticks>] [for <ticks>] [count <n>]":
+        "interact、interact <x> <y> <z> [face]、interact <block type>、"
+        "interact @<entity> [continuous|interval <ticks>] [for <ticks>] [count <n>] のどれかを使ってください",
     "Invalid script wait": "スクリプトの待機時間が正しくありません",
     "Invalid script target": "スクリプトの対象が正しくありません",
     "Script input cleanup failed; use /bot stop": "スクリプトの入力停止に失敗しました。/bot stop を使ってください",

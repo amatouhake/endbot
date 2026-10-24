@@ -14,6 +14,7 @@ from endstone_endbot.control import bot_profiles
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.operations import OPERATIONS, operation_argv
+from endstone_endbot.script_books import pages_to_source, source_to_pages
 from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
 from endstone_endbot.script_store import Script
@@ -503,14 +504,15 @@ class ScriptService:
                                 lang,
                                 "Script help: list | show <name> [page] | run <name> [args...] "
                                 "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
-                                "| share|private <name> | history <name> | restore <name> <n> | menu",
+                                "| share|private <name> | history <name> | restore <name> <n> "
+                                "| import <name> | export <name> | menu",
                             )
                         ),
                         reply(
                             tr(
                                 lang,
                                 "Arguments follow parameter declaration order; quote positions. "
-                                "Create/edit by menu paste only.",
+                                "Create/edit in the menu, or import from a held book and quill.",
                             )
                         ),
                     ),
@@ -560,6 +562,28 @@ class ScriptService:
                     self._visible(source), lang, own=lambda script: script.owner == self.owner_key(source)))
             if not tail:
                 raise LocalizedError("Use /botscript help")
+            if operation == "import" and len(tail) == 1:
+                # A new name creates the script; an existing one gets a new revision (owner only).
+                self._player(source)
+                text = pages_to_source(self._world().held_book_pages(source.player_id))
+                if len(text.encode("utf-8")) > self.config.max_script_bytes:
+                    raise LocalizedError("Script source is empty or too large")
+                try:
+                    revision = self._script(tail[0], source, edit=True).revision
+                except LocalizedError as error:
+                    if error.template != "Script {name} does not exist":
+                        raise
+                    self._new_name(tail[0])
+                    revision = None
+                name = self.store.get(tail[0]).name if revision else tail[0]
+                self.inspect(Script(name, text, "draft"), source)
+                self._check(source)
+                self.store.save(name, text, revision, self.owner_key(source), self._who(source))
+                lines = len(text.splitlines())
+                return CommandResult(
+                    True, (reply(tr(lang, "Script {name} imported from the book ({lines} lines)", name=name,
+                                    lines=lines)),),
+                    log_level="info", log_messages=(f"Script {name} imported from a book by {self._who(source)}",))
             if operation == "copy" and len(tail) == 2:
                 # Copies start private and belong to the copier; the original is untouched.
                 original = self._script(tail[0], source)
@@ -584,6 +608,17 @@ class ScriptService:
                     return CommandResult(True, view=script_forms.source_screen(script, page, lang))
                 text = pages[page - 1]
                 return CommandResult(True, (reply(f"{script.name} ({page}/{total})\n{text}"),))
+            if operation == "export" and len(tail) == 1:
+                self._player(source)
+                if not self.config.book_export:
+                    raise LocalizedError("Book export is disabled on this server")
+                pages = source_to_pages(script.source)
+                self._world().fill_held_book(source.player_id, pages)
+                return CommandResult(
+                    True, (reply(tr(lang, "Script {name} written into the book ({pages} pages)", name=script.name,
+                                    pages=len(pages))),),
+                    log_level="info",
+                    log_messages=(f"Script {script.name} exported to a book by {self._who(source)}",))
             if operation in {"share", "private"} and len(tail) == 1:
                 visibility = "shared" if operation == "share" else "private"
                 self.store.set_visibility(script.name, visibility, script.revision)
@@ -639,7 +674,8 @@ class ScriptService:
                     groups = self.service.groups.groups if self.service.groups else ()
                     view = script_forms.run_screen(script, schema, groups, bots, source.script_origin, lang)
                 else:
-                    view = script_forms.script_screen(script, lang, self.can_edit(script, source))
+                    view = script_forms.script_screen(
+                        script, lang, self.can_edit(script, source), self.config.book_export)
                 return CommandResult(True, view=view)
             raise LocalizedError("Use /botscript help")
         except (ValueError, RuntimeError, OSError) as error:
@@ -649,6 +685,12 @@ class ScriptService:
     def _player(source):
         if source.player_id is None:
             raise LocalizedError("Script menu is available only to players")
+
+    def _world(self):
+        world = getattr(self.service, "world", None)
+        if world is None:
+            raise LocalizedError("Books are unavailable without the world adapter")
+        return world
 
 
 def math_is_integer(value):

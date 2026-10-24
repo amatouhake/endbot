@@ -65,6 +65,7 @@ class ScriptingConfig:
     os_confinement: bool = True
     process_memory_bytes: int = 268435456
     cpu_seconds: int = 60
+    book_export: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,7 +222,8 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     if not isinstance(table, dict):
         raise _fail(path, "scripting", "must be a table", "write it as a [scripting] section")
     _reject_unknown_keys(
-        path, table, "scripting", ("enabled", "runner", "os-confinement", "process-memory-bytes", "cpu-seconds")
+        path, table, "scripting",
+        ("enabled", "runner", "os-confinement", "process-memory-bytes", "cpu-seconds", "book-export"),
     )
     enabled = table.get("enabled", False)
     if type(enabled) is not bool:
@@ -232,6 +234,9 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     confinement = table.get("os-confinement", True)
     if type(confinement) is not bool:
         raise _fail(path, "scripting.os-confinement", "must be a boolean", "use os-confinement = true or false")
+    book_export = table.get("book-export", False)
+    if type(book_export) is not bool:
+        raise _fail(path, "scripting.book-export", "must be a boolean", "use book-export = true or false")
     memory = table.get("process-memory-bytes", 268435456)
     cpu = table.get("cpu-seconds", 60)
     for key, value in (("process-memory-bytes", memory), ("cpu-seconds", cpu)):
@@ -241,7 +246,8 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     if memory and memory < 100663296:
         raise _fail(path, "scripting.process-memory-bytes", "is too small", "use at least 100663296 bytes, or 0")
     return ScriptingConfig(
-        enabled=enabled, runner=runner, os_confinement=confinement, process_memory_bytes=memory, cpu_seconds=cpu
+        enabled=enabled, runner=runner, os_confinement=confinement, process_memory_bytes=memory, cpu_seconds=cpu,
+        book_export=book_export,
     )
 
 

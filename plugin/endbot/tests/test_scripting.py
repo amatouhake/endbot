@@ -6,6 +6,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -915,18 +916,43 @@ class OwnershipTests(unittest.TestCase):
 
 
 class ScriptFormTests(unittest.TestCase):
-    def test_paste_preserves_source_and_guards_stale_edit(self):
+    def test_paste_field_starts_empty_and_guards_stale_edit(self):
         script = Script("sample", "params {}\n", "r1")
         screen = script_forms.edit_screen(script)
-        self.assertEqual(screen.controls[-1].default_value, script.source)
+        self.assertEqual(screen.controls[-1].default_value, "")
         self.assertEqual(screen.controls[0].text, "Current source:\n1: params {}")
-        # A client that leaves the label out of the response, and one that sends null for it.
-        self.assertEqual(forms.modal_commands(screen, json.dumps([None, "x"])), (("save", "sample", "x"),))
+        # A client that sends null for the label, and one that leaves it out of the response.
+        self.assertEqual(forms.modal_commands(screen, json.dumps([None, 0, "", "", "x"])), (("save", "sample", "x\n"),))
         self.assertEqual(
-            forms.modal_commands(screen, json.dumps(["\nparams {}\n"])), (("save", "sample", "\nparams {}\n"),)
+            forms.modal_commands(screen, json.dumps([0, "", "", "\r\nparams {}\r\n"])),
+            (("save", "sample", "\nparams {}\n"),),
         )
+        # An empty paste never wipes the source.
+        with self.assertRaisesRegex(forms.FormResponseError, "nothing was changed"):
+            forms.modal_commands(screen, json.dumps([0, "", "", ""]))
         self.assertEqual(screen.guard.revision, "r1")
         self.assertTrue(screen.guard.edit)
+
+    def test_line_edits(self):
+        source = "a\nb\nc\n"
+        edit = script_forms.apply_edit
+        self.assertEqual(edit(source, "Append at end", "d\n", "", ""), "a\nb\nc\nd\n")
+        self.assertEqual(edit(source, "Replace lines", "B1\nB2", "2", ""), "a\nB1\nB2\nc\n")
+        self.assertEqual(edit(source, "Replace lines", "X", "1", "2"), "X\nc\n")
+        self.assertEqual(edit(source, "Insert after line", "top", "0", ""), "top\na\nb\nc\n")
+        self.assertEqual(edit(source, "Insert after line", "end", "3", ""), "a\nb\nc\nend\n")
+        self.assertEqual(edit(source, "Delete lines", "", "2", "3"), "a\n")
+        for mode, first, last in (("Delete lines", "4", ""), ("Delete lines", "2", "1"), ("Replace lines", "", ""),
+                                  ("Insert after line", "x", ""), ("Replace lines", "1", "")):
+            with self.subTest(mode=mode, first=first, last=last), self.assertRaises(forms.FormResponseError):
+                edit(source, mode, "", first, last)
+
+    def test_new_script_keeps_template_when_paste_is_empty(self):
+        screen = script_forms.edit_screen(None, "en", "params {}\n", "row")
+        self.assertEqual(forms.modal_commands(screen, json.dumps(["row", None, 0, "", "", ""])),
+                         (("save", "row", "params {}\n"),))
+        self.assertEqual(forms.modal_commands(screen, json.dumps(["row", None, 0, "", "", "params {}\nlog'x'"])),
+                         (("save", "row", "params {}\nlog'x'\n"),))
 
     def test_param_controls_and_generated_values(self):
         script = Script("sample", "params {}", "r1")
@@ -968,3 +994,105 @@ class ScriptFormTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeTag:
+    def __init__(self, value):
+        self.value = value
+
+
+class FakeItem:
+    def __init__(self, kind, pages=None):
+        self.type = type("T", (), {"id": kind})()
+        self.nbt = None if pages is None else {"pages": [{"text": FakeTag(page)} for page in pages]}
+
+
+class BookWorld:
+    """Stands in for the server-thread world: one player's main-hand item."""
+
+    def __init__(self, item):
+        self.item, self.written = item, None
+
+    def held_book_pages(self, player_id):
+        from endstone_endbot.script_books import book_pages
+
+        return book_pages(self.item)
+
+    def fill_held_book(self, player_id, pages):
+        from endstone_endbot.script_books import WRITABLE_BOOK
+
+        if self.item is None or self.item.type.id != WRITABLE_BOOK or self.held_book_pages(player_id):
+            raise LocalizedError("The book and quill is not empty; hold an empty one")
+        self.written = pages
+
+
+class BookTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.config = ScriptConfig(enabled=True, book_export=True)
+        self.store = ScriptStore(Path(directory.name) / "scripts.json", self.config)
+        self.world = BookWorld(FakeItem("minecraft:writable_book", ["params {}", "log('a')\n", "", ""]))
+        self.host = ScriptService(self.config, self.store, Mock(world=self.world), None, Path(directory.name),
+                                  lambda source: True, process_factory=lambda *args: FakeRunner([]),
+                                  bootstrap="trusted")
+        self.alice = CommandSource(player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
+        self.bob = CommandSource(player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
+
+    def text(self, result):
+        return " ".join(result.messages)
+
+    def test_pages_round_trip_by_whole_lines(self):
+        from endstone_endbot.script_books import BOOK_PAGE_CHARS, pages_to_source, source_to_pages
+
+        self.assertEqual(pages_to_source(["a\nb", "c\n", "d", "  "]), "a\nb\nc\nd\n")
+        source = "".join(f"line {index} " + "x" * 40 + "\n" for index in range(30))
+        pages = source_to_pages(source)
+        self.assertTrue(all(len(page) <= BOOK_PAGE_CHARS for page in pages))
+        self.assertEqual(pages_to_source(pages), source)
+        with self.assertRaisesRegex(LocalizedError, "Line 2 is longer"):
+            source_to_pages("ok\n" + "y" * (BOOK_PAGE_CHARS + 1))
+        with self.assertRaisesRegex(LocalizedError, "does not fit in one book"):
+            source_to_pages("z" * BOOK_PAGE_CHARS + "\n" + ("z" * BOOK_PAGE_CHARS + "\n") * 50)
+        with self.assertRaisesRegex(LocalizedError, "empty"):
+            pages_to_source(["", " "])
+
+    def test_import_creates_then_revises_and_respects_ownership(self):
+        result = self.host.execute(["import", "fromBook"], self.alice)
+        self.assertIn("imported from the book (2 lines)", self.text(result))
+        script = self.store.get("frombook")
+        self.assertEqual((script.name, script.source, script.owner), ("fromBook", "params {}\nlog('a')\n", "xuid:111"))
+        self.world.item = FakeItem("minecraft:written_book", ["params {}\n-- v2"])
+        self.assertTrue(self.host.execute(["import", "FROMBOOK"], self.alice).accepted)
+        script = self.store.get("frombook")
+        self.assertEqual((script.name, script.source), ("fromBook", "params {}\n-- v2\n"))
+        self.assertEqual(len(script.history), 1)
+        self.host.execute(["share", "fromBook"], self.alice)
+        self.assertIn("Only the owner Alice", self.text(self.host.execute(["import", "fromBook"], self.bob)))
+        self.world.item = FakeItem("minecraft:stick")
+        self.assertIn("Hold a book", self.text(self.host.execute(["import", "other"], self.alice)))
+        self.assertIn("only to players", self.text(self.host.execute(["import", "other"], CommandSource())))
+
+    def test_export_fills_only_an_empty_book_and_can_be_disabled(self):
+        self.host.execute(["import", "mine"], self.alice)
+        self.assertIn("not empty", self.text(self.host.execute(["export", "mine"], self.alice)))
+        self.world.item = FakeItem("minecraft:writable_book")
+        self.assertIn("written into the book (1 pages)", self.text(self.host.execute(["export", "mine"], self.alice)))
+        self.assertEqual(self.world.written, ["params {}\nlog('a')"])
+        # Others may export only scripts they can see.
+        self.assertIn("does not exist", self.text(self.host.execute(["export", "mine"], self.bob)))
+        self.host.config = replace(self.config, book_export=False)
+        self.assertIn("disabled", self.text(self.host.execute(["export", "mine"], self.alice)))
+        self.assertNotIn("Write into held book",
+                         [b.text for b in script_forms.script_screen(self.store.get("mine"), "en", True).items])
+
+    def test_fill_book_writes_pages_into_the_item_tag(self):
+        from endstone_endbot.script_books import fill_book
+
+        nbt = types.ModuleType("endstone.nbt")
+        nbt.CompoundTag, nbt.ListTag, nbt.StringTag = dict, list, FakeTag
+        with patch.dict(sys.modules, {"endstone": types.ModuleType("endstone"), "endstone.nbt": nbt}):
+            item = fill_book(FakeItem("minecraft:writable_book", []), ["a", "b"])
+        self.assertEqual([page["text"].value for page in item.nbt["pages"]], ["a", "b"])
+        with self.assertRaisesRegex(LocalizedError, "empty book and quill"):
+            fill_book(FakeItem("minecraft:written_book", []), ["a"])

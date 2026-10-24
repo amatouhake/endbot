@@ -53,6 +53,9 @@ slice-ms = 100
 interrupt-budget = 1000000
 operations-per-second = 20
 max-script-bytes = 32768
+# `/botscript export` writes a script into the empty book and quill the player
+# holds (no item is created). Off by default because it edits a held item.
+book-export = false
 max-scripts = 64
 memory-bytes = 33554432
 # OS resource limits, applied before sending script data. Setup failure rejects

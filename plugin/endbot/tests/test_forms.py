@@ -449,8 +449,9 @@ class PresenterTests(unittest.TestCase):
         player = FakePlayer()
         screen = edit_screen(Script("example", "params {}\n", "r1"))
         presenter.show_view(player, screen)
-        player.forms[-1].kwargs["on_submit"](player, json.dumps(["params {}\nlog('test')"]))
-        self.assertEqual(submitted[0][0], ["save", "example", "params {}\nlog('test')"])
+        # Append at end: the dropdown, two line fields, then the paste field.
+        player.forms[-1].kwargs["on_submit"](player, json.dumps([1, "", "", "log('test')"]))
+        self.assertEqual(submitted[0][0], ["save", "example", "params {}\nlog('test')\n"])
         self.assertEqual(submitted[0][1]["command"], "botscript")
         self.assertTrue(submitted[0][1]["group_guard"].edit)
         self.assertEqual(player.messages, [])

@@ -170,7 +170,7 @@ class PluginConfigTests(ConfigGenTestCase):
         self.paths.endbot_toml.write_text(
             text.replace("os-confinement=false", "os-confinement=true")
                 .replace("process-memory-bytes=0", "process-memory-bytes=268435456")
-                .replace("cpu-seconds=3", "cpu-seconds=0"),
+                .replace("cpu-seconds=3", "cpu-seconds=60"),
             encoding="utf-8",
         )
         target, _ = generate_plugin_config(self.server, self.paths, self.config())

@@ -826,10 +826,12 @@ JA.update({
     "Invalid script group target": "スクリプトのグループ対象が正しくありません",
     "Invalid script runner request": "スクリプト実行プログラムからの要求が正しくありません",
     "Invalid script wait": "スクリプトの待機時間が正しくありません",
+    "Invalid script target": "スクリプトの対象が正しくありません",
     "Script input cleanup failed; use /bot stop": "スクリプトの入力停止に失敗しました。/bot stop を使ってください",
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
-    "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name> | delete <name> | menu":
-        "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name> | delete <name> | menu",
+    "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> | menu":
+        "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
+        "| delete <name> | menu",
     "Arguments follow parameter declaration order; quote positions. Create/edit by menu paste only.":
         "引数は宣言順です。座標は引用符で囲みます。作成と編集はメニューへの貼り付けで行います。",
     "No stored scripts": "保存されたスクリプトはありません",

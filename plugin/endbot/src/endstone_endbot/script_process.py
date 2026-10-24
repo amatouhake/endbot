@@ -79,10 +79,8 @@ class RunnerProcess:
                 event = json.loads(line)
                 if not isinstance(event, dict):
                     raise ValueError("invalid runner event")  # noqa: TRY004 - protocol validation
-                if event.get("type") == "error" and (
-                    event.get("phase") == "confinement"
-                    or str(event.get("message", "")).startswith("confinement failed:")
-                ):
+                # Only the runner's own phase marks a confinement failure; script text cannot.
+                if event.get("type") == "error" and event.get("phase") == "confinement":
                     self._confinement_error = str(event.get("message", "confinement failed"))
                     LOGGER.error("Endbot runner OS confinement failed: %s", self._confinement_error)
                     raise ValueError(self._confinement_error)

@@ -23,7 +23,7 @@ class ScriptConfig:
     memory_bytes: int = 32 * 1024 * 1024
     os_confinement: bool = True
     process_memory_bytes: int = 256 * 1024 * 1024
-    cpu_seconds: int = 0
+    cpu_seconds: int = 60
 
     @classmethod
     def from_config(cls, config):

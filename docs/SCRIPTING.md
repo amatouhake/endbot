@@ -52,7 +52,7 @@ Startup limits (integers from 1 to 2147483647, except the zero/boolean settings 
 | `memory-bytes` | 33554432 | VM allocator bound, minimum 1 MiB; excludes compiler/process allocations |
 | `os-confinement` | true | Boolean; fail the run if OS confinement cannot be applied; explicit false opts out of OS confinement |
 | `process-memory-bytes` | 268435456 | 256 MiB process cap; 0 disables this cap; nonzero requires at least `memory-bytes + 67108864` (64 MiB native headroom) |
-| `cpu-seconds` | 0 | No cumulative CPU cap; positive values limit CPU consumed per run, independently of wall time and VM slices |
+| `cpu-seconds` | 60 | Cumulative CPU seconds per run, independently of wall time and VM slices; waits use none, so long-waiting macros are unaffected. It is what ends a run stuck inside one C library call (`string.rep`, `string.gsub`), which the per-slice budget cannot interrupt. 0 disables the cap |
 
 Managed instances also accept `os-confinement`, `process-memory-bytes` and `cpu-seconds` in
 `endbot.toml` under `[scripting]`; the CLI forwards overrides into the generated plugin config.
@@ -132,7 +132,10 @@ hit the frame bound earlier. Form/save declaration inspection has a deadline of 
 requires available concurrency capacity. Changes apply on restart. Disabling scripting or lowering storage
 limits retains stored source; oversized stored scripts cannot run until edited or the limit is raised.
 IPC events (including logs and zero waits) are bounded by `4 * operations-per-second` in a sliding
-one-second window, independently of run lifetime. Negative `wall-seconds` values are rejected.
+one-second window, independently of run lifetime. Each run logs at most 2000 lines or 512 KiB; past that one
+notice is logged and further `log` output is dropped. Script text reaching the log or chat (logs and error
+messages) has color codes and control characters (CR, LF, ESC) replaced, so it cannot forge log lines or
+drive a terminal. Negative `wall-seconds` values are rejected.
 With zero, runs still end on completion, `/botscript stop`, authority revocation, or plugin/server shutdown.
 Per-slice interrupt/time, memory, operation rate and concurrency limits always apply.
 
@@ -146,13 +149,13 @@ retain the pinned BDS baseline's completion limitations.
 /botscript show <name> [page]
 /botscript run <name> [positional arguments...]
 /botscript runs
-/botscript stop <run-id|name>
+/botscript stop <run-id|name|all>
 /botscript delete <name>
 /botscript help
 /botscript menu
 ```
 
-`runs`/`stop` address the invoking controller's runs; the console has its own slot. Deleting shared source
+`runs`/`stop` address the invoking controller's runs. The console is the operator: its `runs` lists every controller's runs with their owner, and its `stop <id|name|all>` stops any of them, so a run left behind by a controller who logged out can be ended without revoking that controller. Start, stop, save and delete are logged with the controller's name, and so is each run's end. Deleting shared source
 does not cancel running copies. Show displays numbered, bounded pages and wraps long lines without dropping
 source. Source is never loaded from a user-supplied filesystem path.
 

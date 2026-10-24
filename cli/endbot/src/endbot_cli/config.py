@@ -64,7 +64,7 @@ class ScriptingConfig:
     runner: str = ""
     os_confinement: bool = True
     process_memory_bytes: int = 268435456
-    cpu_seconds: int = 0
+    cpu_seconds: int = 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,7 +233,7 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     if type(confinement) is not bool:
         raise _fail(path, "scripting.os-confinement", "must be a boolean", "use os-confinement = true or false")
     memory = table.get("process-memory-bytes", 268435456)
-    cpu = table.get("cpu-seconds", 0)
+    cpu = table.get("cpu-seconds", 60)
     for key, value in (("process-memory-bytes", memory), ("cpu-seconds", cpu)):
         if type(value) is not int or not 0 <= value <= 2147483647:
             raise _fail(path, f"scripting.{key}", "must be a nonnegative 32-bit integer", "use 0 to disable the cap")

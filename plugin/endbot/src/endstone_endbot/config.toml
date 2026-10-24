@@ -63,7 +63,9 @@ os-confinement = true
 process-memory-bytes = 268435456
 # Cumulative CPU seconds per run (Windows user time, Linux user + system time).
 # 0 disables this cap; waits do not consume CPU time. Priority is also lowered.
-cpu-seconds = 0
+# This is the cap that stops a run stuck inside one C library call (string.rep,
+# string.gsub, table.sort), which the VM's per-slice budget cannot interrupt.
+cpu-seconds = 60
 # Windows: one-process Job Object, kill on job close/parent exit.
 # Linux: SIGKILL on parent/creator-thread death. No per-run child-process ban;
 # RLIMIT_NPROC would affect the whole UID. The trusted runner never spawns.

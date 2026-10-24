@@ -96,6 +96,8 @@ class FormPresenter:
             return form.StepSlider(control.label, list(control.options), control.default_index)
         if isinstance(control, forms.Toggle):
             return form.Toggle(control.label, control.default_value)
+        if isinstance(control, forms.Label):
+            return form.Label(control.text)
         return form.TextInput(control.label, control.placeholder, control.default_value)
 
     def _on_click(self, action, origin=None, guard=None):

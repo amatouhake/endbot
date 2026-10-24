@@ -421,7 +421,7 @@ class FakeFormModule:
                 self.items.append(("button", text, on_click))
 
         self.ActionForm = ActionForm
-        for name in ("MessageForm", "ModalForm", "Dropdown", "Slider", "StepSlider", "Toggle", "TextInput"):
+        for name in ("MessageForm", "ModalForm", "Dropdown", "Slider", "StepSlider", "Toggle", "TextInput", "Label"):
             setattr(module, name, type(name, (Control,), {}))
 
 

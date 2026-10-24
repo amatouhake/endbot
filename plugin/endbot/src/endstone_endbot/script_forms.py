@@ -1,5 +1,6 @@
 """Endstone-free script menus. Save capabilities exist only on paste forms."""
 
+import time
 from dataclasses import dataclass
 
 from endstone_endbot import forms as f
@@ -60,8 +61,15 @@ def run(*argv, guard=None):
     return f.Run((tuple(argv),), command="botscript", guard=guard)
 
 
-def list_screen(scripts, lang="en"):
-    items = [f.Button(s.name, run("menu", s.name, guard=ScriptGuard(s.revision, s.name))) for s in scripts]
+def label(script, own, lang="en"):
+    """`name (owner, private)` as lists show it; your own scripts say so."""
+    owner = tr(lang, "yours") if own else (script.owner_name or tr(lang, "unowned"))
+    return f"{script.name} ({owner}, {tr(lang, script.visibility)})"
+
+
+def list_screen(scripts, lang="en", own=lambda script: False):
+    items = [f.Button(label(s, own(s), lang), run("menu", s.name, guard=ScriptGuard(s.revision, s.name)))
+             for s in scripts]
     templates = [
         f.Button(tr(lang, title), f.Show(edit_screen(None, lang, source))) for title, source in TEMPLATES.items()
     ]
@@ -82,28 +90,47 @@ def list_screen(scripts, lang="en"):
     return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
 
 
-def script_screen(script, lang="en"):
+def script_screen(script, lang="en", editable=True):
     guard = ScriptGuard(script.revision, script.name)
-    delete = f.ConfirmScreen(
-        tr(lang, "Delete script"),
-        tr(lang, "Delete script {name}?", name=script.name),
-        tr(lang, "Delete"),
-        tr(lang, "Cancel"),
-        run("delete", script.name, guard=guard),
-    )
-    items = (
+    items = [
         f.Button(tr(lang, "Run"), run("parameters", script.name, guard=guard)),
         f.Button(tr(lang, "Show source"), run("source", script.name, guard=guard)),
         f.Button(tr(lang, "Stop runs"), run("stop", script.name, guard=guard)),
-        f.Button(tr(lang, "Delete"), f.Show(delete)),
-        f.Button(tr(lang, "Edit source..."), run("edit", script.name, guard=guard)),
+    ]
+    if editable:
+        delete = f.ConfirmScreen(
+            tr(lang, "Delete script"),
+            tr(lang, "Delete script {name}?", name=script.name),
+            tr(lang, "Delete"),
+            tr(lang, "Cancel"),
+            run("delete", script.name, guard=guard),
+        )
+        visibility = "private" if script.visibility == "shared" else "share"
+        items += [
+            f.Button(tr(lang, "Edit source..."), run("edit", script.name, guard=guard)),
+            f.Button(tr(lang, "Make private") if visibility == "private" else tr(lang, "Share with controllers"),
+                     run(visibility, script.name, guard=guard)),
+            f.Button(tr(lang, "Earlier revisions..."), run("history", script.name, guard=guard)),
+            f.Button(tr(lang, "Delete"), f.Show(delete)),
+        ]
+    items += [
+        f.Button(tr(lang, "Copy and edit..."), f.Show(edit_screen(None, lang, script.source, f"{script.name}_copy"))),
         f.Button(tr(lang, "Scripts..."), run("menu")),
-    )
-    return f.ActionScreen(script.name, tr(lang, "Run or edit this shared script."), items)
+    ]
+    content = (tr(lang, "Your script ({visibility}).", visibility=tr(lang, script.visibility)) if editable
+               else tr(lang, "Shared by {owner}. Run it, or copy it to edit your own.",
+                       owner=script.owner_name or tr(lang, "unowned")))
+    return f.ActionScreen(script.name, content, tuple(items))
 
 
-def edit_screen(script, lang="en", source=""):
+def numbered(source):
+    """The whole source with line numbers, for the read-only preview above the paste field."""
+    return "\n".join(f"{index}: {line}" for index, line in enumerate(source.splitlines(), start=1))
+
+
+def edit_screen(script, lang="en", source="", name=""):
     guard = ScriptGuard(script.revision if script else None, script.name if script else None, edit=True)
+    text = script.source if script else source
 
     def build(values):
         name = script.name if script else f._text(values[0])
@@ -112,12 +139,40 @@ def edit_screen(script, lang="en", source=""):
             raise f.FormResponseError("the form response was not understood")
         return (("save", name, text),)
 
-    controls = (() if script else (f.TextInput(tr(lang, "Script name")),)) + (
-        f.TextInput(tr(lang, "Luau source (paste multiple lines)"), default_value=script.source if script else source),
+    # The client's text input is about two lines tall; the label shows the whole source with line numbers.
+    preview = (f.Label(tr(lang, "Current source:") + "\n" + numbered(text)),) if text.strip() else ()
+    controls = (() if script else (f.TextInput(tr(lang, "Script name"), default_value=name),)) + preview + (
+        f.TextInput(tr(lang, "Luau source (paste multiple lines)"), default_value=text),
     )
     return f.ModalScreen(
         tr(lang, "Edit script"), controls, build, submit=tr(lang, "Save"), command="botscript", guard=guard
     )
+
+
+def revision_line(index, revision, lang="en"):
+    saved = time.strftime("%Y-%m-%d %H:%M", time.localtime(revision.saved_at)) if revision.saved_at else "?"
+    return tr(lang, "{index}: {saved}, {lines} lines", index=index, saved=saved,
+              lines=len(revision.source.splitlines()))
+
+
+def history_screen(script, editable, lang="en"):
+    guard = ScriptGuard(script.revision, script.name)
+    items = []
+    for index, revision in enumerate(script.history, start=1):
+        line = revision_line(index, revision, lang)
+        if editable:
+            confirm = f.ConfirmScreen(
+                tr(lang, "Restore revision"),
+                tr(lang, "Restore {name} to revision {line}? The current source stays in the history.",
+                   name=script.name, line=line) + "\n\n" + numbered(revision.source),
+                tr(lang, "Restore"), tr(lang, "Cancel"),
+                run("restore", script.name, str(index), guard=guard))
+            items.append(f.Button(line, f.Show(confirm)))
+        else:
+            items.append(f.Header(line))
+    items.append(f.Button(tr(lang, "Scripts..."), run("menu", script.name, guard=guard)))
+    content = tr(lang, "Earlier revisions, newest first.") if script.history else tr(lang, "no earlier revisions")
+    return f.ActionScreen(script.name, content, tuple(items))
 
 
 def run_screen(script, schema, groups, bots, origin, lang="en"):

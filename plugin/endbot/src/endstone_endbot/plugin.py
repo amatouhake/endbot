@@ -152,6 +152,10 @@ SCRIPT_USAGES = [
     "/botscript (run)<action: EndbotScriptRun> <name: string> [arguments: message]",
     "/botscript (stop)<action: EndbotScriptStop> <run: string>",
     "/botscript (delete)<action: EndbotScriptDelete> <name: string>",
+    "/botscript (copy)<action: EndbotScriptCopy> <name: string> <copy: string>",
+    "/botscript (share|private)<action: EndbotScriptVisibility> <name: string>",
+    "/botscript (history)<action: EndbotScriptHistory> <name: string>",
+    "/botscript (restore)<action: EndbotScriptRestore> <name: string> <revision: int>",
 ]
 
 

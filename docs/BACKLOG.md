@@ -274,7 +274,8 @@ reuse the event-intercept approach and the one-overload-per-first-token finding 
 
 ## BOT-009: Controller-authored Luau scripts and a small in-game editor
 
-Status: **MVP implemented behind `[scripting] enabled` (off by default) — Windows RakNet live probe passed; Linux runner build/bundling, OS resource limits and human-client checks pending** (2026-10-23 JST). Ownership, revisions and a source preview are planned for 0.4.0 (2026-10-24 decisions below). See [scripting](SCRIPTING.md).
+Status: **MVP implemented behind `[scripting] enabled` (off by default) — Windows RakNet live probe passed; Linux runner build/bundling, OS resource limits and human-client checks pending** (2026-10-23 JST). Ownership, private/shared visibility, copy, a 10-revision history with restore and the numbered source preview
+are implemented (2026-10-24 decisions below); the optional run/author permission split is not. See [scripting](SCRIPTING.md).
 
 Controllers should be able to write and run their own Bot scripts without server-filesystem access. Use **Luau** as
 the language baseline. Required use cases include loops, conditions, coordinate arithmetic, and placing multiple Bots

@@ -97,6 +97,9 @@ class ScriptService:
     def _schema(self, process, source, canceled, deadline):
         event = process.receive(deadline, canceled, lambda: self._check(source))
         if event.get("type") != "params" or event.get("id") != 1:
+            if event.get("type") == "done":
+                # The whole script ran without declaring its parameters.
+                raise LocalizedError("Start the script with params {} (or params { param... }) before other code")
             message = _clean(event.get("message", event.get("type")), 1024)
             match = re.fullmatch(r"(script:\d+): (.*)", message)
             if match and match[2] in {

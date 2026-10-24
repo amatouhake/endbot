@@ -1096,3 +1096,12 @@ class BookTests(unittest.TestCase):
         self.assertEqual([page["text"].value for page in item.nbt["pages"]], ["a", "b"])
         with self.assertRaisesRegex(LocalizedError, "empty book and quill"):
             fill_book(FakeItem("minecraft:written_book", []), ["a"])
+
+    def test_a_script_without_params_gets_a_clear_message(self):
+        host = ScriptService(self.config, self.store, Mock(world=self.world), None, Path("."), lambda source: True,
+                             process_factory=lambda *args: FakeRunner.__new__(FakeRunner), bootstrap="trusted")
+        runner = FakeRunner([])
+        runner.events.get()  # drop the params event: the script finished without declaring
+        runner.events.put({"type": "done"})
+        host.process_factory = lambda *args: runner
+        self.assertIn("params {}", self.text(host.execute(["import", "noparams"], self.alice)))

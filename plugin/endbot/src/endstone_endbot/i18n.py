@@ -844,6 +844,8 @@ JA.update({
     "Scripts are unavailable; see the server log": "スクリプトを利用できません。サーバーログを確認してください",
     "Script authority was revoked": "スクリプトの操作権限が取り消されました",
     "Script declaration failed: {error}": "スクリプトの引数宣言に失敗: {error}",
+    "Start the script with params {} (or params { param... }) before other code":
+        "スクリプトの最初に params {} (引数があれば params { param... }) を書いてください",
     "Script concurrency limit reached": "同時実行できるスクリプト数の上限に達しました",
     "Script operation rate limit reached": "スクリプトの操作頻度が上限を超えました",
     "Invalid script group target": "スクリプトのグループ対象が正しくありません",

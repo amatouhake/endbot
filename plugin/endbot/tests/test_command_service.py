@@ -2,7 +2,7 @@ import unittest
 
 from plain_service import PlainCommandService
 
-from endstone_endbot.commands import UNREACHABLE_POLL_LIMIT
+from endstone_endbot.commands import UNREACHABLE_POLL_LIMIT, WAITING_NOTICE_POLLS
 from endstone_endbot.control import RuntimeControlError
 
 
@@ -193,6 +193,32 @@ class CommandServiceTests(unittest.TestCase):
         notices = self.service.poll_mining(lambda _: True)
         self.assertIn("runtime unavailable", notices[0][2])
         self.assertEqual(self.control.calls[-1], ("mine", {"name": "Alice", "mode": "stop", "loopId": loop_id}))
+
+    def test_typed_loop_tells_once_when_nothing_is_in_sight(self):
+        self.service.execute(["Alice", "spawn"])
+        source = object()
+        self.service.execute(["Alice", "destroy", "oak_log", "count", "5"], source)
+        seen = {"cell": None}
+
+        def reachable_block(identity, block_type, reach):
+            if seen["cell"] is None:
+                raise ValueError("No oak_log in sight within 5 blocks")
+            return seen["cell"]
+
+        self.world.reachable_block = reachable_block
+        for _ in range(WAITING_NOTICE_POLLS - 1):
+            self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        notices = self.service.poll_mining(lambda _: True)
+        waiting = "Endbot: Alice: destroy is waiting: no oak_log in sight within 5 blocks; move the Bot closer"
+        self.assertEqual(notices, [(source, "info", waiting)])
+        for _ in range(WAITING_NOTICE_POLLS):
+            self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        # A target ends the wait; the next empty stretch is reported again.
+        seen["cell"] = [1, 64, 2]
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        seen["cell"] = None
+        notices = [notice for _ in range(WAITING_NOTICE_POLLS) for notice in self.service.poll_mining(lambda _: True)]
+        self.assertEqual(len(notices), 1)
 
     def test_continuous_retarget_does_not_need_the_controller(self):
         self.service.execute(["Alice", "spawn"])

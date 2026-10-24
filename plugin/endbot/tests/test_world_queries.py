@@ -253,6 +253,24 @@ class SelectorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unknown block type"):
             world(blocks).find_blocks(BOT["identityId"], "minecraft:start", 8, 10)
 
+    def test_sight_passes_grass_and_sees_a_partly_hidden_side(self):
+        log = Block("minecraft:oak_log")
+        # A log at foot level two blocks ahead; the line from the eyes crosses short grass.
+        grassy = {(0, 64, 3): log, (0, 64, 2): Block("minecraft:short_grass")}
+        self.assertEqual(world(grassy).reachable_block(BOT["identityId"], "minecraft:oak_log", 5.0), [0, 64, 3])
+        target = world(grassy).resolve_mining(BOT["identityId"], {"coordinates": [0, 64, 3]}, None)
+        self.assertEqual((target["blockPosition"], target["face"]), ([0, 64, 3], 2))
+        # Leaves hide the centre of every facing side, but a corner of the north side shows.
+        leafy = {(-2, 65, 4): log, (-1, 65, 3): Block("minecraft:oak_leaves")}
+        self.assertEqual(world(leafy).reachable_block(BOT["identityId"], "minecraft:oak_log", 5.0), [-2, 65, 4])
+        target = world(leafy).resolve_mining(BOT["identityId"], {"coordinates": [-2, 65, 4]}, None)
+        self.assertEqual(target["face"], 2)
+        # Leaves are not see-through: a log boxed in by them stays hidden.
+        boxed = {(0, 65, 3): log, **{(dx, 65 + dy, 3 + dz): Block("minecraft:oak_leaves")
+                                     for dx, dy, dz in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, -1))}}
+        with self.assertRaisesRegex(ValueError, "blocked"):
+            world(boxed).resolve_mining(BOT["identityId"], {"coordinates": [0, 65, 3]}, None)
+
     def test_interaction_face_defaults_toward_the_bot(self):
         w = world({(0, 64, 3): Block("minecraft:chest")})
         interaction = w.resolve_interaction(BOT["identityId"], {"coordinates": [0, 64, 3]}, None)

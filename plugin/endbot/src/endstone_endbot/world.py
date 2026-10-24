@@ -82,6 +82,16 @@ SEARCH_LIMIT_MAX = 64
 DIMENSION_HEIGHTS = {"Overworld": (-64, 319), "Nether": (0, 127), "TheEnd": (0, 255)}
 FACE_NAMES = ("down", "up", "north", "south", "west", "east")
 NEIGHBOURS = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
+# Per face (down, up, north, south, west, east): the axis it is normal to and the cell beyond it.
+FACE_AXES = (1, 1, 2, 2, 0, 0)
+NEIGHBOURS_BY_FACE = ((0, -1, 0), (0, 1, 0), (0, 0, -1), (0, 0, 1), (-1, 0, 0), (1, 0, 0))
+# Where a side is sampled for sight: its centre, then near its four corners.
+FACE_SAMPLES = ((0.0, 0.0), (-0.4, -0.4), (-0.4, 0.4), (0.4, -0.4), (0.4, 0.4))
+
+
+def _see_through(block_type: str) -> bool:
+    """Sight passes air, liquids and thin plants such as grass and flowers; leaves and solids block it."""
+    return block_type in NON_MINING_TARGETS or _passable(block_type)
 
 
 def _state_value(value):
@@ -375,7 +385,10 @@ class EndstoneWorld:
         block = bot.location.dimension.get_block_at(*block_position)
         face = parameters.get("face")
         if face is None:
-            face = self._face_toward(bot.location, block_position)
+            location = bot.location
+            eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
+            visible = self._visible_point(location.dimension, eye, block_position, REACH)
+            face = visible[0] if visible else self._face_toward(location, block_position)
         return {
             "blockPosition": block_position,
             "blockRuntimeId": int(block.data.runtime_id),
@@ -391,7 +404,7 @@ class EndstoneWorld:
         return ((5, 4), (1, 0), (3, 2))[axis][0 if offsets[axis] > 0 else 1]
 
     def reachable_block(self, identity_id: str, block_type: str, reach: float) -> list[int]:
-        """The nearest block of a type the Bot can see and reach (eye to the facing side); x-ray never."""
+        """The nearest block of a type the Bot can see and reach (any part of a facing side); x-ray never."""
         bot = self._bot(identity_id)
         location = bot.location
         eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
@@ -399,16 +412,66 @@ class EndstoneWorld:
         candidates.sort(key=lambda entry: math.dist(eye, (entry["x"] + 0.5, entry["y"] + 0.5, entry["z"] + 0.5)))
         for entry in candidates:
             cell = [entry["x"], entry["y"], entry["z"]]
-            center = [value + 0.5 for value in cell]
-            distance = math.dist(eye, center)
-            if distance > reach + 0.5 or distance < 0.001:
-                continue
-            direction = [(center[index] - eye[index]) / distance for index in range(3)]
-            found = self._ray_block(location.dimension, eye, direction, distance + 0.5)
-            if found is not None and found[0] == cell:
+            if self._visible_point(location.dimension, eye, cell, reach) is not None:
                 return cell
         raise LocalizedError("No {block} in sight within {reach} blocks",
                              block=block_type.removeprefix("minecraft:"), reach=f"{reach:g}")
+
+    @classmethod
+    def _visible_point(cls, dimension, eye, cell, reach, faces=None):
+        """A (face, point) on a side facing the eye that a clear line reaches within ``reach``, or None.
+
+        Each side is sampled at its centre and near its corners, so a block
+        partly hidden by a neighbour still counts, as it would for a player.
+        """
+        facing = []
+        for face in faces if faces is not None else range(6):
+            axis = FACE_AXES[face]
+            plane = cell[axis] + (1 if face % 2 else 0)
+            beyond = eye[axis] - plane if face % 2 else plane - eye[axis]
+            if beyond <= 0:
+                continue  # the eye is behind or level with this side
+            neighbour = [cell[index] + NEIGHBOURS_BY_FACE[face][index] for index in range(3)]
+            if not _see_through(str(dimension.get_block_at(*neighbour).type)):
+                continue  # covered by another block
+            facing.append((beyond, face, axis, plane))
+        for _, face, axis, plane in sorted(facing, reverse=True):
+            tangents = [index for index in range(3) if index != axis]
+            for offsets in FACE_SAMPLES:
+                point = [0.0, 0.0, 0.0]
+                point[axis] = plane
+                for tangent, offset in zip(tangents, offsets):
+                    point[tangent] = cell[tangent] + 0.5 + offset
+                if math.dist(eye, point) <= reach and cls._clear_line(dimension, eye, point, cell):
+                    return face, point
+        return None
+
+    @staticmethod
+    def _clear_line(dimension, origin, point, target) -> bool:
+        """True when the segment from ``origin`` enters ``target`` through see-through cells only."""
+        vector = [point[i] - origin[i] for i in range(3)]
+        distance = math.sqrt(sum(value * value for value in vector))
+        if distance < 0.001:
+            return False
+        direction = [value / distance for value in vector]
+        cell = [math.floor(value) for value in origin]
+        steps = [1 if value > 0 else -1 for value in direction]
+        delta = [abs(1 / value) if value else math.inf for value in direction]
+        crossings = [
+            ((cell[i] + (1 if steps[i] > 0 else 0) - origin[i]) / direction[i]) if direction[i] else math.inf
+            for i in range(3)
+        ]
+        travelled = 0.0
+        while travelled <= distance + 0.01:
+            if cell == target:
+                return True
+            if not _see_through(str(dimension.get_block_at(*cell).type)):
+                return False
+            axis = min(range(3), key=lambda index: crossings[index])
+            travelled = crossings[axis]
+            cell[axis] += steps[axis]
+            crossings[axis] += delta[axis]
+        return False
 
     def _bot(self, identity_id: str):
         bot = self.server.get_player(UUID(identity_id))
@@ -564,24 +627,19 @@ class EndstoneWorld:
         dimension = location.dimension
         if "coordinates" in parameters:
             target = [math.floor(value) for value in self._resolve_coordinates(parameters["coordinates"], location)]
-            center = [value + 0.5 for value in target]
-            offsets = [eye[i] - center[i] for i in range(3)]
-            axis = max(range(3), key=lambda index: abs(offsets[index]))
-            face = int(parameters.get("face", ((5, 4), (1, 0), (3, 2))[axis][0 if offsets[axis] > 0 else 1]))
-            hit = list(center)
-            hit[(1, 1, 2, 2, 0, 0)[face]] += 0.499 if face % 2 else -0.499
-            # Face numbering uses Y, Z, X order; parity is down/north/west versus up/south/east.
-            direction = [hit[i] - eye[i] for i in range(3)]
-            distance = math.sqrt(sum(value * value for value in direction))
-            if distance > 5.0:
+            nearest = [max(target[i], min(eye[i], target[i] + 1)) for i in range(3)]
+            if math.dist(eye, nearest) > 5.0:
                 raise ValueError("Target block is out of reach (maximum 5 blocks)")
-            if distance < 0.001:
+            if nearest == eye:
                 raise ValueError("Target block overlaps the Bot's eye position")
-            direction = [value / distance for value in direction]
-            found = self._ray_block(dimension, eye, direction, distance + 0.01)
-            if found is None or found[0] != target:
+            block = dimension.get_block_at(*target)
+            faces = (int(parameters["face"]),) if "face" in parameters else None
+            # Aim at a visible part of a side toward the Bot; grass and flowers do not hide it.
+            visible = None if block.type in NON_MINING_TARGETS else self._visible_point(
+                dimension, eye, target, 5.0, faces)
+            if visible is None:
                 raise ValueError("Target is air/liquid or blocked by another block")
-            block = found[1]
+            face, hit = visible
         else:
             yaw, pitch = math.radians(location.yaw), math.radians(location.pitch)
             direction = [-math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch)]

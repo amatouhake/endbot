@@ -647,6 +647,10 @@ JA: dict[str, str] = {
     "block count reached": "指定のブロック数に達しました",
     "ended": "終了",
     "{command} stopped: {reason}": "{command} が止まりました: {reason}",
+    "destroy is waiting: no {block} in sight within 5 blocks; move the Bot closer":
+        "destroy は待機中です: 5ブロック以内に見えている {block} がありません。Bot を近づけてください",
+    "destroy continuous is waiting: no block in sight within 5 blocks":
+        "destroy continuous は待機中です: 5ブロック以内に見えているブロックがありません",
     "control permission revoked": "操作権限が取り消されました",
     "Bot was renamed or removed": "Bot の名前が変わったか、削除されました",
     # Dispatch and plugin.

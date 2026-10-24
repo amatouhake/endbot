@@ -14,10 +14,8 @@ from packaging.version import InvalidVersion, Version
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def plugin_module_version() -> str:
-    module = ast.parse(
-        (ROOT / "plugin/endbot/src/endstone_endbot/__init__.py").read_text(encoding="utf-8")
-    )
+def module_version(path: str = "plugin/endbot/src/endstone_endbot/__init__.py") -> str:
+    module = ast.parse((ROOT / path).read_text(encoding="utf-8"))
     for statement in module.body:
         if not isinstance(statement, ast.Assign):
             continue
@@ -25,7 +23,11 @@ def plugin_module_version() -> str:
             value = ast.literal_eval(statement.value)
             if isinstance(value, str):
                 return value
-    raise ValueError("plugin module does not define a string __version__")
+    raise ValueError(f"{path} does not define a string __version__")
+
+
+def plugin_module_version() -> str:
+    return module_version()
 
 
 def validate_release_version(candidate: str) -> None:
@@ -51,6 +53,9 @@ def validate_release_version(candidate: str) -> None:
         errors.append(f"CLI version is not PEP 440 compatible: {error}")
     if module != plugin:
         errors.append(f"plugin module version {module!r} does not match package version {plugin!r}")
+    cli_module = module_version("cli/endbot/src/endbot_cli/__init__.py")
+    if cli_module != cli:
+        errors.append(f"CLI module version {cli_module!r} does not match package version {cli!r}")
     if errors:
         raise ValueError("; ".join(errors))
 

@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -670,28 +671,47 @@ def copy_licenses(bundle_root: Path, python_dir: Path, node_dir: Path, platform:
     shutil.copy2(node_license, target / "NODE_LICENSE")
 
 
+def _source_date_epoch() -> int | None:
+    """Fixed member times for reproducible archives, from the SOURCE_DATE_EPOCH convention."""
+    value = os.environ.get("SOURCE_DATE_EPOCH")
+    if not value:
+        return None
+    if not value.isdecimal():
+        raise BundleError("SOURCE_DATE_EPOCH must be a non-negative integer")
+    # Zip timestamps start in 1980.
+    return max(int(value), 315532800)
+
+
 def archive_bundle(bundle_root: Path, platform: str, version: str, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
+    epoch = _source_date_epoch()
+    # Member order never depends on directory listing order.
+    members = sorted(
+        (Path(directory) / name for directory, _subdirs, files in os.walk(bundle_root) for name in files),
+        key=lambda path: path.relative_to(bundle_root.parent).as_posix(),
+    )
     if platform == "windows-x86_64":
         archive = output_dir / f"endbot-{version}-{platform}.zip"
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
-            for directory, _subdirs, files in os.walk(bundle_root):
-                for name in sorted(files):
-                    full = Path(directory) / name
-                    bundle.write(full, full.relative_to(bundle_root.parent).as_posix())
+            for full in members:
+                arcname = full.relative_to(bundle_root.parent).as_posix()
+                if epoch is None:
+                    bundle.write(full, arcname)
+                    continue
+                info = zipfile.ZipInfo(arcname, time.gmtime(epoch)[:6])
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = (full.stat().st_mode & 0xFFFF) << 16
+                bundle.writestr(info, full.read_bytes(), compresslevel=9)
     else:
         archive = output_dir / f"endbot-{version}-{platform}.tar.gz"
-        members: list[Path] = []
-        for directory, _subdirs, files in os.walk(bundle_root):
-            for name in sorted(files):
-                members.append(Path(directory) / name)
-        members.sort(key=lambda path: path.relative_to(bundle_root.parent).as_posix())
         with open(archive, "wb") as raw, tempfile.TemporaryFile(prefix="endbot-bundle-gzip-") as plain:
             with tarfile.open(fileobj=plain, mode="w") as bundle:
                 for full in members:
                     info = bundle.gettarinfo(str(full), full.relative_to(bundle_root.parent).as_posix())
                     info.uid = info.gid = 0
                     info.uname = info.gname = ""
+                    if epoch is not None:
+                        info.mtime = epoch
                     with full.open("rb") as handle:
                         bundle.addfile(info, handle)
             plain.seek(0)
@@ -702,6 +722,17 @@ def archive_bundle(bundle_root: Path, platform: str, version: str, output_dir: P
     digest = sha256_of(archive)
     print(f"bundle: {archive} sha256={digest}")
     return archive
+
+
+def extract_archive(archive: Path, destination: Path) -> None:
+    """Unpack a bundle archive this script just wrote, keeping tar modes (executable bits)."""
+    destination.mkdir(parents=True)
+    if archive.suffix == ".zip":
+        with zipfile.ZipFile(archive) as bundle:
+            bundle.extractall(destination)
+    else:
+        with tarfile.open(archive) as bundle:
+            bundle.extractall(destination, filter="tar")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -781,14 +812,20 @@ def main(argv: list[str] | None = None) -> int:
             copy_runner(runner_dir, app_version, bundle_root, args.platform)
 
         test_script = ROOT / "scripts" / "test_bundle.py"
-        test_command = [sys.executable, str(test_script), "--bundle-root", str(bundle_root)]
+        options = []
         if args.allow_missing_endstone:
-            test_command.append("--allow-missing-endstone")
+            options.append("--allow-missing-endstone")
         if runner_dir is None:
-            test_command.append("--allow-missing-runner")
-        run(*test_command)
+            print("build-bundle: WARNING: no --runner-dir; this bundle cannot run scripts", file=sys.stderr)
+            options.append("--allow-missing-runner")
+        run(sys.executable, str(test_script), "--bundle-root", str(bundle_root), *options)
 
-        archive_bundle(bundle_root, args.platform, args.version, args.output_dir.resolve())
+        archive = archive_bundle(bundle_root, args.platform, args.version, args.output_dir.resolve())
+        # Test what ships: a file left out of the archive, or a lost executable bit, fails here.
+        extracted = work / "archive-check"
+        shutil.rmtree(extracted, ignore_errors=True)
+        extract_archive(archive, extracted)
+        run(sys.executable, str(test_script), "--bundle-root", str(extracted / bundle_root.name), *options)
     except (BundleError, subprocess.CalledProcessError, OSError) as error:
         import traceback
 

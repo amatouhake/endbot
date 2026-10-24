@@ -16,16 +16,16 @@ jobs:
   foundation:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "24"
           cache: npm
@@ -69,10 +69,41 @@ jobs:
           npm run check --prefix runtime
           npm test --prefix runtime
 
-      - uses: lukka/get-cmake@latest
+      - uses: lukka/get-cmake@fffaaafeea488556c2c12dad60690008bc1caacb # v4.4.2
 
       - name: Cache pinned runner dependencies
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: runner/.deps
+          key: runner-deps-${{ runner.os }}-${{ hashFiles('runner/luau.lock.json') }}
+
+      - name: Build and test Luau runner
+        working-directory: runner
+        run: |
+          node build.mjs
+          node --test
+
+  # The runner has Windows-only code paths (Job Object confinement, pipes);
+  # build and test it with MSVC on every push, not only in release candidates.
+  windows-runner:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24"
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x86_64
+
+      - name: Set up CMake and Ninja
+        uses: lukka/get-cmake@fffaaafeea488556c2c12dad60690008bc1caacb # v4.4.2
+
+      - name: Cache pinned runner dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: runner/.deps
           key: runner-deps-${{ runner.os }}-${{ hashFiles('runner/luau.lock.json') }}

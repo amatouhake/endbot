@@ -1,9 +1,12 @@
 # Shared Bot groups
 
-The Group feature is implemented on `feat/groups`, independently of the future Luau API. It is awaiting review and a
-release assignment. Use the plugin and runtime from the same checkout; an older
-runtime without the required UUID pinning/input-batch capabilities is rejected. No Luau runner, script editor, web
-service or Endstone core change is involved.
+Groups are part of main and planned for 0.4.0. Use the plugin and runtime from the same version; an older runtime
+without the required UUID pinning/input-batch capabilities is rejected. No Endstone core change is involved.
+
+Scale: member lookups read the runtime's light `profiles` list (name, identity and state only), and the control
+protocol bounds each request and response at 1 MiB. That fits a group input batch for several hundred members
+and a profile list for thousands of Bots; the 64 KiB bound before this made every Group operation fail at roughly
+100 to 200 Bot profiles.
 
 ## Try the command flow
 

@@ -7,6 +7,9 @@ import socket
 import uuid
 from pathlib import Path
 
+# Bounds a misbehaving runtime; a light profile list for about 5000 Bots fits.
+MAX_RESPONSE_BYTES = 1024 * 1024
+
 
 class RuntimeControlError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
@@ -45,7 +48,7 @@ class RuntimeControlClient:
                     if not chunk:
                         break
                     response.extend(chunk)
-                    if len(response) > 64 * 1024:
+                    if len(response) > MAX_RESPONSE_BYTES:
                         raise RuntimeControlError("protocol", "runtime response is too large")
         except OSError as error:
             raise RuntimeControlError("unavailable", f"runtime unavailable: {error}") from error
@@ -62,3 +65,16 @@ class RuntimeControlClient:
                 str(detail.get("message", "runtime error")),
             )
         return decoded.get("result")
+
+
+def bot_profiles(control) -> list[dict]:
+    """Every Bot's identityId, name, desiredState and connectionState, without full status.
+
+    An older runtime without `profiles` answers with the full `list`.
+    """
+    try:
+        return control.request("profiles")
+    except RuntimeControlError as error:
+        if error.code != "unknown_method":
+            raise
+        return control.request("list")

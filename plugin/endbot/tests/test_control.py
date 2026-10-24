@@ -5,7 +5,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from endstone_endbot.control import RuntimeControlClient, RuntimeControlError
+from endstone_endbot.control import RuntimeControlClient, RuntimeControlError, bot_profiles
 
 
 class Handler(socketserver.StreamRequestHandler):
@@ -49,6 +49,21 @@ class ControlClientTests(unittest.TestCase):
         client = RuntimeControlClient("127.0.0.1", self.server.server_address[1], self.token_file)
         with self.assertRaisesRegex(RuntimeControlError, "Unauthorized"):
             client.request("list")
+
+    def test_bot_profiles_falls_back_to_list_on_an_older_runtime(self) -> None:
+        class Old:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, **params):
+                self.calls.append(method)
+                if method == "profiles":
+                    raise RuntimeControlError("unknown_method", "Unknown method")
+                return [{"name": "Alice"}]
+
+        old = Old()
+        self.assertEqual(bot_profiles(old), [{"name": "Alice"}])
+        self.assertEqual(old.calls, ["profiles", "list"])
 
     def test_remote_control_host_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "loopback"):

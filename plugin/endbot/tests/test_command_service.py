@@ -14,7 +14,7 @@ class FakeControl:
     def request(self, operation, **parameters):
         self.calls.append((operation, parameters))
         name = parameters.get("name", "")
-        if operation == "list":
+        if operation in {"list", "profiles"}:
             return list(self.bots.values())
         if operation == "status":
             if name not in self.bots:

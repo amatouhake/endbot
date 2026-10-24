@@ -267,3 +267,28 @@ test('unauthorized shutdown never runs the shutdown hook', async () => {
   await new Promise(resolve => setTimeout(resolve, 50))
   assert.equal(hookCalls, 0)
 })
+
+test('light profiles and large group batches fit the control protocol', async t => {
+  const profiles = Array.from({ length: 600 }, (_, i) => ({
+    identityId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `Bot${i}`,
+    desiredState: 'online', connectionState: 'online'
+  }))
+  const lifecycle = {
+    profiles: () => profiles,
+    identityOf: name => profiles.find(profile => profile.name === name).identityId,
+    stop: name => ({ name, identityId: profiles.find(profile => profile.name === name).identityId, connectionState: 'online' })
+  }
+  const token = 'p'.repeat(43)
+  const server = new ControlServer({ token, port: 0, lifecycle })
+  await server.listen()
+  t.after(() => server.close())
+  const capabilities = await request(server.port, { version: 1, id: 'caps', token, method: 'capabilities' })
+  assert.equal(capabilities.result.profiles, true)
+  const listed = await request(server.port, { version: 1, id: 'profiles', token, method: 'profiles' })
+  assert.equal(listed.result.length, 600)
+  // About 100 KiB of requests: beyond the old 64 KiB request bound.
+  const requests = profiles.map(({ name, identityId }) => ({ method: 'stop', params: { name, expectedIdentityId: identityId } }))
+  const batch = await request(server.port, { version: 1, id: 'batch', token, method: 'groupInputBatch', params: { requests } })
+  assert.equal(batch.result.results.length, 600)
+  assert.equal(batch.result.results[5].result.identityId, profiles[5].identityId)
+})

@@ -63,6 +63,16 @@ export class BotLifecycle extends EventEmitter {
 
   list () { return this.store.list().map(profile => this.#status(profile)) }
 
+  // Names and states only: what Group, list and menu callers need, a fraction of the size of `list`.
+  profiles () {
+    return this.store.list().map(profile => ({
+      identityId: profile.identityId,
+      name: profile.name,
+      desiredState: profile.desiredOnline ? 'online' : 'offline',
+      connectionState: (this.sessions.get(profile.identityId) ?? { state: 'offline' }).state
+    }))
+  }
+
   status (name) {
     const profile = this.store.getByName(name)
     if (!profile) throw new ProfileError('not_found', `Bot ${name} does not exist`)

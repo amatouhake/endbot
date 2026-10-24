@@ -101,6 +101,26 @@ class GroupServiceTests(unittest.TestCase):
     def manage(self, *arguments):
         return self.service.execute_group(list(arguments))
 
+    def test_member_lookup_uses_light_profiles_not_full_status(self):
+        self.service.execute(["#miners", "stop"])
+        self.assertIn("profiles", [op for op, _ in self.control.calls])
+        self.assertNotIn("list", [op for op, _ in self.control.calls])
+
+    def test_huge_indexes_uppercase_uuids_and_unwritable_files_fail_cleanly(self):
+        for target in ("#miners[" + "9" * 5000 + "]", "#miners[1000000000]"):
+            with self.subTest(target=target[:20]):
+                self.assertIn("Group target syntax", messages(self.service.execute([target, "stop"])))
+        self.assertIn("positive integer", messages(self.manage("result", "#miners", "9" * 5000)))
+        identity = self.control.bots["Alice"]["identityId"]
+        self.store.remove("miners", identity.upper())
+        self.assertNotIn(identity, self.store.get("miners").members)
+        with patch.object(self.store, "_save", side_effect=PermissionError(13, "denied", r"C:\secret\groups.json")), \
+                self.assertLogs("endstone_endbot.groups", level="ERROR") as logs:
+            text = messages(self.manage("create", "#other"))
+        self.assertIn("Groups could not be saved", text)
+        self.assertNotIn("secret", text)
+        self.assertIn("secret", "\n".join(logs.output))
+
     def test_index_and_rename_follow_uuid_after_service_restart(self):
         identity = self.control.bots["Alice"]["identityId"]
         result = self.service.execute(["#miners[1]", "rename", "Alicia"])
@@ -138,7 +158,7 @@ class GroupServiceTests(unittest.TestCase):
 
     def test_profiles_are_read_once_per_group_operation(self):
         self.service.execute(["#miners", "spawn"])
-        self.assertEqual(sum(op == "list" for op, _ in self.control.calls), 1)
+        self.assertEqual(sum(op == "profiles" for op, _ in self.control.calls), 1)
 
     def test_management_replies_are_localized(self):
         source = SimpleNamespace(language="ja")
@@ -194,7 +214,7 @@ class GroupServiceTests(unittest.TestCase):
         original = self.control.request
         def request(operation, **parameters):
             result = original(operation, **parameters)
-            if operation == "list":
+            if operation == "profiles":
                 self.allowed = False
             return result
         self.control.request = request
@@ -218,7 +238,7 @@ class GroupServiceTests(unittest.TestCase):
                              ["Alice", "Bob"])
             batches = [p for op, p in self.control.calls if op == "groupInputBatch"]
             self.assertEqual(len(batches), 1)
-            self.assertEqual(sum(op == "list" for op, _ in self.control.calls), 1)
+            self.assertEqual(sum(op == "profiles" for op, _ in self.control.calls), 1)
             entries = batches[0]["requests"]
             self.assertEqual([entry["params"]["expectedIdentityId"] for entry in entries],
                              list(self.store.get("miners").members))

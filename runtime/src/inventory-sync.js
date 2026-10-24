@@ -121,13 +121,22 @@ export class InventoryObservation {
   }
 }
 
+// The native NBT decoder yields a long as [high, low] 32-bit words; the
+// observation decodes it as BigInt.
+const wordPair = value => Array.isArray(value) && value.length === 2 && value.every(Number.isInteger)
+const nbtLong = value => wordPair(value) ? BigInt.asIntN(64, (BigInt(value[0]) << 32n) | BigInt(value[1] >>> 0)) : value
+
 // Canonical form for comparing a native item with a synchronized one. The
 // protocol decoder yields numbers where the observation uses booleans
-// (`has_nbt: 0` vs `false`) and 64-bit values as BigInt, so equal items must
-// not differ by representation, key order or absent optional fields.
+// (`has_nbt: 0` vs `false`) and 64-bit values in other shapes, so equal items
+// must not differ by representation, key order or absent optional fields.
 function canonical (value) {
   if (typeof value === 'bigint' || (typeof value === 'number' && Number.isInteger(value))) return `n:${value}`
   if (Array.isArray(value)) return value.map(canonical)
+  if (value?.type === 'long' && wordPair(value.value)) return canonical({ ...value, value: nbtLong(value.value) })
+  if (value?.type === 'list' && value.value?.type === 'long' && value.value.value?.some?.(wordPair)) {
+    return canonical({ ...value, value: { ...value.value, value: value.value.value.map(nbtLong) } })
+  }
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value)
       .filter(([, child]) => child !== undefined)
@@ -139,9 +148,12 @@ function canonical (value) {
 
 export function sameItem (left, right) {
   // Stack network IDs are connection bookkeeping, absent from the read-only
-  // SDK observation. Keep native IDs when the actual item is unchanged.
+  // SDK observation. Keep native IDs when the actual item is unchanged. The
+  // block runtime ID follows from the item: the observation cannot tell a block
+  // item from an item sharing a block's name (wheat, the crop), so it is ignored.
   const comparable = item => {
-    const { has_stack_id: unusedPresence, stack_id: unusedId, extra, ...rest } = item ?? EMPTY_ITEM
+    const { has_stack_id: unusedPresence, stack_id: unusedId, block_runtime_id: unusedBlock, extra, ...rest } =
+      item ?? EMPTY_ITEM
     const normalized = extra && { ...extra, has_nbt: Boolean(extra.has_nbt) }
     return JSON.stringify(canonical({ ...rest, extra: normalized }))
   }

@@ -44,6 +44,10 @@ const EYE_HEIGHT = 1.62
 // An exit is a neighbouring block, possibly one level up or down.
 const MAX_EXIT_DISTANCE = 3
 const EXIT_LEAD_TICKS = 2
+// A repeated entity click waits for BDS to report the held item it changed
+// (wheat eaten, sword worn); a stale held item makes BDS reject the click.
+// No change within this many ticks (a mob's hurt cooldown) means none is coming.
+const CLICK_SETTLE_TICKS = 10n
 
 export class BedrockSession extends EventEmitter {
   constructor (profile, options) {
@@ -429,19 +433,26 @@ export class BedrockSession extends EventEmitter {
     return this.#aimAtEntity({ runtimeId, type }, 'attack', ATTACK_REACH)
   }
 
-  // A repeated targeted action: re-aim at the nearest match each trigger,
-  // preferring another entity than the last one for interact (feed a herd).
+  // A repeated targeted action: re-aim at the nearest match each trigger.
+  // Interact prefers entities this run has not clicked yet, then the one
+  // clicked longest ago, so `interact @cow count 3` feeds three cows.
+  // Returns false only without a target; a targeted action never falls back
+  // to the crosshair (which may be a player).
   #aimRepeated (action, inputs) {
     const target = inputs.actionTarget(action)
     if (!target) return false
+    if (this.clickSettling && this.tick < this.clickSettling.until) return true
+    this.clickSettling = undefined
+    const revision = inputs.actionRevision(action)
+    if (action === 'interact' && this.interacted?.revision !== revision) this.interacted = { revision, order: [] }
     const reach = action === 'attack' ? ATTACK_REACH : ENTITY_REACH
     let chosen
     try {
-      chosen = this.#entityTarget(target, reach, action === 'interact' ? this.lastInteracted : undefined)
+      chosen = this.#entityTarget(target, reach, action === 'interact' ? this.interacted.order : undefined)
     } catch {
-      return false  // nothing in reach this time; keep trying while the action lasts
+      return true  // nothing in reach this time; keep trying while the action lasts
     }
-    this.#aimAt(chosen, action === 'attack' ? 'attack' : 'interact', inputs.actionRevision(action), action)
+    this.#aimAt(chosen, action === 'attack' ? 'attack' : 'interact', revision, action)
     return true
   }
 
@@ -483,7 +494,8 @@ export class BedrockSession extends EventEmitter {
     return { type: entity.type, runtimeId: String(entity.runtimeId) }
   }
 
-  #entityTarget ({ runtimeId, type }, reach = ENTITY_REACH, avoid = undefined) {
+  // `used` lists runtime ids already clicked, oldest first; fresh entities win.
+  #entityTarget ({ runtimeId, type }, reach = ENTITY_REACH, used = []) {
     if (runtimeId !== undefined) {
       const entity = this.entities.get(String(runtimeId))
       if (!entity || entity.type === 'minecraft:player') throw new Error('No entity with that ID is in view')
@@ -492,20 +504,15 @@ export class BedrockSession extends EventEmitter {
     }
     const wanted = type === undefined ? undefined : (String(type).includes(':') ? String(type) : `minecraft:${type}`)
     let best
-    let avoided
     for (const entity of this.entities.values()) {
       if (entity.type === 'minecraft:player' || (wanted && entity.type !== wanted)) continue
       // A rider does not pick its own vehicle as the nearest target.
       if (this.vehicle && String(entity.uniqueId) === this.vehicle.uniqueId) continue
       const distance = this.#eyeDistance(entity)
       if (distance > reach) continue
-      if (avoid !== undefined && String(entity.runtimeId) === avoid) {
-        avoided = entity
-        continue
-      }
-      if (!best || distance < best.distance) best = { entity, distance }
+      const rank = used.indexOf(String(entity.runtimeId))  // -1: not clicked yet
+      if (!best || rank < best.rank || (rank === best.rank && distance < best.distance)) best = { entity, distance, rank }
     }
-    if (!best && avoided) return avoided  // the only match: use it again
     if (!best) throw new Error(wanted ? 'No matching entity within reach' : 'No entity within reach')
     return best.entity
   }
@@ -550,8 +557,15 @@ export class BedrockSession extends EventEmitter {
     this.pendingEntityInteraction = undefined
     const target = pending && this.entities.get(pending.runtimeId)
     if (!target) return
-    if (pending.actionType === 'interact') this.lastInteracted = pending.runtimeId
-    if (pending.action !== undefined) this.inputs?.countHit(pending.action, pending.revision)
+    if (pending.action === 'interact' && this.interacted?.revision === pending.revision) {
+      const order = this.interacted.order.filter(id => id !== pending.runtimeId)
+      order.push(pending.runtimeId)
+      this.interacted.order = order.slice(-ENTITY_LIST_LIMIT * 4)
+    }
+    if (pending.action !== undefined) {
+      this.inputs?.countHit(pending.action, pending.revision)
+      this.clickSettling = { until: this.tick + CLICK_SETTLE_TICKS, item: this.heldItem }
+    }
     this.client.queue('interact', createEntityMouseOver(target.runtimeId))
     this.client.queue('inventory_transaction', createAttackTransaction({
       runtimeId: target.runtimeId,
@@ -669,8 +683,13 @@ export class BedrockSession extends EventEmitter {
         if (!snapshot) return
         const { slots, equipment } = snapshot
         for (let slot = 0; slot < slots.length; slot++) {
-          if (sameItem(this.inventory[slot], slots[slot])) continue
-          this.inventory[slot] = slots[slot]
+          const native = this.inventory[slot]
+          if (sameItem(native, slots[slot])) continue
+          // A count change keeps the wire's block runtime ID for the same item.
+          this.inventory[slot] = native && native.network_id === slots[slot].network_id &&
+            native.metadata === slots[slot].metadata
+            ? { ...slots[slot], block_runtime_id: native.block_runtime_id }
+            : slots[slot]
         }
         for (let slot = 0; slot < equipment.length; slot++) {
           if (!sameItem(this.equipment[slot], equipment[slot])) this.equipment[slot] = equipment[slot]
@@ -709,6 +728,8 @@ export class BedrockSession extends EventEmitter {
       this.pendingInteraction = undefined
       this.interactionStopNextTick = undefined
       this.pendingEntityInteraction = undefined
+      // Entity targets name old-dimension entities; `@type` must not start clicking there.
+      this.inputs?.stopTargeted()
       this.vehicle = undefined
       this.entities.clear()
       this.dimension = packet.dimension
@@ -903,6 +924,8 @@ export class BedrockSession extends EventEmitter {
     this.releaseItemUseNextTick = false
     this.pendingInteraction = undefined
     this.interactionStopNextTick = undefined
+    this.pendingEntityInteraction = undefined
+    this.vehicle = undefined
     this.#sendRespawnAction()
   }
 
@@ -1015,6 +1038,8 @@ export class BedrockSession extends EventEmitter {
     }
     if (state.triggered.includes('attack') && !this.#aimRepeated('attack', this.inputs)) this.#attack(inputData, state)
     if (state.triggered.includes('interact')) this.#aimRepeated('interact', this.inputs)
+    // A repeated aim turned the Bot this tick; the click below must carry that look.
+    if (this.pendingEntityInteraction) Object.assign(state, this.inputs.look())
     if (state.triggered.includes('use') && !this.activeItemUse && hasUsableHeldItem(this.heldItem)) {
       const mode = this.inputs.actionMode('use') ?? 'once'
       // Block interaction and air use share one packed transaction per tick.
@@ -1151,6 +1176,7 @@ export class BedrockSession extends EventEmitter {
     // Pickups into an empty selected slot and broken tools change the held item;
     // BDS restarts break progress for a new tool, so the runtime does too.
     if (Number(this.heldItem.network_id) !== Number(item.network_id)) this.#restartMining()
+    if (this.clickSettling && !sameItem(this.clickSettling.item, item)) this.clickSettling = undefined
     this.heldItem = item
     if (!this.activeItemUse) return
     const use = this.activeItemUse

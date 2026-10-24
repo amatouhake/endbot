@@ -134,7 +134,11 @@ class EntityFormTests(unittest.TestCase):
         around = gameplay.items[6].action.screen
         self.assertEqual([item.action.commands for item in around.items[:2]],
                          [(("Alice", "target"),), (("Alice", "entities"),)])
-        self.assertEqual(modal_commands(around.items[2].action.screen, '["Sheep"]'), (("Alice", "entity", "sheep"),))
+        self.assertEqual(modal_commands(around.items[2].action.screen, '["Sheep"]'), (("Alice", "entity", "@sheep"),))
+        # The form's argv must parse; `@` typed by the player is accepted too.
+        self.assertEqual(modal_commands(around.items[2].action.screen, '["@cow"]'), (("Alice", "entity", "@cow"),))
+        self.assertEqual(parse_command(["Alice", "entity", "@sheep"]).parameters,
+                         {"entity": "type", "type": "minecraft:sheep"})
         self.assertEqual(modal_commands(around.items[3].action.screen, '["~ ~-1 ~"]'),
                          (("Alice", "block", "~", "~-1", "~"),))
         self.assertEqual(modal_commands(around.items[4].action.screen, '["oak_log", 5]'),

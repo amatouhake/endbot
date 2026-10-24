@@ -877,12 +877,76 @@ test('a counted targeted interact alternates between matches and stops after the
   add(81n, 'minecraft:cow', { x: 0, y: 64, z: 3 })
   inputs.setAction('interact', 'interval', 2, undefined, undefined, { type: 'minecraft:cow' }, 3)
   session.applyInputs(inputs)
-  await new Promise(resolve => setTimeout(resolve, 600))
+  await new Promise(resolve => setTimeout(resolve, 1400))
   const clicks = queued.filter(entry => entry.name === 'inventory_transaction' &&
     entry.packet.transaction.transaction_type === 'item_use_on_entity')
     .map(entry => String(entry.packet.transaction.transaction_data.entity_runtime_id))
   assert.deepEqual(clicks, ['80', '81', '80'])
   assert.equal(inputs.snapshot().actions.interact, undefined)
+})
+
+test('a counted targeted interact clicks a different entity each time while fresh ones are in reach', async t => {
+  const queued = []
+  const { session, inputs, add } = await entitySession(t, queued)
+  add(80n, 'minecraft:cow', { x: 0, y: 64, z: 2 })
+  add(81n, 'minecraft:cow', { x: 0, y: 64, z: 3 })
+  add(82n, 'minecraft:cow', { x: 0, y: 64, z: 4 })
+  inputs.setAction('interact', 'continuous', undefined, undefined, undefined, { type: 'minecraft:cow' }, 3)
+  session.applyInputs(inputs)
+  await new Promise(resolve => setTimeout(resolve, 1400))
+  const clicks = queued.filter(entry => entry.name === 'inventory_transaction' &&
+    entry.packet.transaction.transaction_type === 'item_use_on_entity')
+    .map(entry => String(entry.packet.transaction.transaction_data.entity_runtime_id))
+  assert.deepEqual(clicks, ['80', '81', '82'])
+})
+
+test('a repeated entity click waits for BDS to report the held item it changed', async t => {
+  const queued = []
+  const { session, inputs, client, add } = await entitySession(t, queued)
+  const clicks = () => queued.filter(entry => entry.packet?.transaction?.transaction_type === 'item_use_on_entity').length
+  add(80n, 'minecraft:cow', { x: 0, y: 64, z: 2 })
+  add(81n, 'minecraft:cow', { x: 0, y: 64, z: 3 })
+  inputs.setAction('interact', 'continuous', undefined, undefined, undefined, { type: 'minecraft:cow' }, 2)
+  session.applyInputs(inputs)
+  await new Promise(resolve => setTimeout(resolve, 200))
+  assert.equal(clicks(), 1)  // the stale held item would make BDS reject a second click now
+  client.emit('inventory_slot', { window_id: 'inventory', slot: 0, item: { network_id: 7, count: 4, metadata: 0 } })
+  await new Promise(resolve => setTimeout(resolve, 150))
+  assert.equal(clicks(), 2)
+})
+
+test('a repeated targeted click carries its own aim in the same tick input', async t => {
+  const queued = []
+  const { session, inputs, add } = await entitySession(t, queued)
+  add(80n, 'minecraft:cow', { x: 2, y: 64, z: 0 })
+  inputs.setAction('interact', 'continuous', undefined, undefined, undefined, { type: 'minecraft:cow' }, 1)
+  session.applyInputs(inputs)
+  await new Promise(resolve => setTimeout(resolve, 200))
+  const click = queued.findIndex(entry => entry.packet?.transaction?.transaction_type === 'item_use_on_entity')
+  const input = queued.slice(0, click).findLast(entry => entry.name === 'player_auth_input')
+  assert.ok(Math.abs(((input.packet.yaw % 360) + 360) % 360 - 270) < 1, `yaw ${input.packet.yaw}`)
+})
+
+test('a targeted attack with nothing in reach never falls back to the crosshair', async t => {
+  const queued = []
+  const { session, client, inputs } = await entitySession(t, queued)
+  client.emit('add_player', { runtime_id: 23n, unique_id: -23n, position: { x: 0, y: 64, z: 1.5 } })
+  client.emit('add_entity', { runtime_id: 24n, unique_id: -24n, entity_type: 'minecraft:cow', position: { x: 0, y: 64, z: 2.5 } })
+  inputs.setAction('attack', 'continuous', undefined, undefined, undefined, { type: 'minecraft:zombie' })
+  session.applyInputs(inputs)
+  await new Promise(resolve => setTimeout(resolve, 300))
+  assert.equal(queued.some(entry => entry.name === 'inventory_transaction'), false)
+  assert.equal(queued.some(entry => entry.name === 'animate'), false)
+})
+
+test('a dimension change ends targeted actions but keeps untargeted ones', async t => {
+  const { session, client, inputs } = await entitySession(t, [])
+  inputs.setAction('attack', 'continuous', undefined, undefined, undefined, { type: 'minecraft:zombie' })
+  inputs.setAction('jump', 'continuous')
+  session.applyInputs(inputs)
+  client.emit('change_dimension', { dimension: 1, position: { x: 0, y: 64, z: 0 }, respawn: false })
+  assert.equal(inputs.snapshot().actions.attack, undefined)
+  assert.equal(inputs.snapshot().actions.jump.mode, 'continuous')
 })
 
 test('targeted attack continuous re-aims and skips triggers with nothing in reach', async t => {

@@ -376,7 +376,7 @@ def interact_modal(name: str, lang: str = "en") -> ModalScreen:
         return ((name, "interact", *_coordinates(_text(values[0])), _option(FACES, values[1])),)
 
     return ModalScreen(f"{name}: interact", (
-        TextInput(tr(lang, "x y z (coordinates only; ~ is relative to you)"), "~ ~-1 ~"),
+        TextInput(tr(lang, "x y z (~ is relative to the Bot)"), "~ ~-1 ~"),
         Dropdown("face", FACES),
     ), build, tr(lang, "Interact"))
 
@@ -395,10 +395,10 @@ def entity_modal(name: str, lang: str = "en") -> ModalScreen:
 
 def entity_details_modal(name: str, lang: str = "en") -> ModalScreen:
     def build(values):
-        selector = _text(values[0]).lower()
+        selector = _text(values[0]).lower().removeprefix("@")
         if not re.fullmatch(r"nearest|[0-9]{1,19}|(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+", selector):
             raise FormResponseError("Enter one entity type, nearest or id")
-        return ((name, "entity", selector),)
+        return ((name, "entity", "@" + selector),)
 
     return ModalScreen(f"{name}: entity", (
         TextInput(tr(lang, "Entity type, nearest or id (from the list)"), "cow", "nearest"),

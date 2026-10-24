@@ -606,6 +606,7 @@ JA: dict[str, str] = {
     "chunk radius {radius} ({source}); {server}": "チャンク半径 {radius} ({source})、{server}",
     "move {direction} {ticks} ticks left": "move {direction} 残り {ticks} tick",
     "{ticks} ticks left": "残り {ticks} tick",
+    "{count} left": "残り {count} 回",
     "{done} blocks": "{done} ブロック",
     "{done}/{total} blocks": "{done}/{total} ブロック",
     "timed: {inputs}": "時間指定: {inputs}",

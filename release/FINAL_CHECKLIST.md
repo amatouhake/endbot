@@ -306,10 +306,11 @@ new Endstone/BDS compatibility changes in this release.
   Added 2026-10-24: per-script ownership/visibility/copy/revisions for BOT-009 and entity interaction
   (feeding, riding/dismounting, BOT-012). The web script editor (BOT-013) is a 0.5.0 candidate.
   Manual gates for 0.4.0 (2026-10-24; never inferred from green unit or probe runs), each on a Windows client:
-  `@` targets typed in chat; every new form (Look around, Entity details, Interact, script list/edit with the
-  numbered source label, Copy and edit, Earlier revisions); Japanese replies and forms; Group operations and
-  queries at scale; script paste, ownership (a second controller sees shared scripts only and cannot edit them)
-  and console `runs`/`stop all`; repeated `interact @cow count` and `destroy <type> count` on real terrain;
+  `@` targets typed in chat; every new form (Look around, Entity details, Interact, the script screen with its
+  source, Edit lines, Copy and edit, Earlier revisions); Japanese replies and forms; Group operations and
+  queries at scale; script line editing, rename, book import/export (including a book written by hand and the
+  overwrite confirmation), script files with `/botscript reload`, `log()` in chat, the `[limits]` refusal message,
+  ownership (a second controller sees shared scripts only and cannot edit them) and console `runs`/`stop all`; repeated `interact @cow count` and `destroy <type> count` on real terrain;
   boats and horses; NetherNet; Xbox achievement history. Before tagging, update `docs/INSTALL.md`'s artifact
   table and examples, and bump the versions that `scripts/check_release_version.py` checks (runtime, plugin,
   plugin module, CLI, CLI module).

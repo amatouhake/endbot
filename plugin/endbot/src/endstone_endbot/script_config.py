@@ -24,7 +24,7 @@ class ScriptConfig:
     os_confinement: bool = True
     process_memory_bytes: int = 256 * 1024 * 1024
     cpu_seconds: int = 60
-    book_export: bool = False
+    book_export: bool = True
     chat_logs: bool = True
 
     @classmethod

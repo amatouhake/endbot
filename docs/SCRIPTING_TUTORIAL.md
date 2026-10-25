@@ -18,7 +18,7 @@ and it stops if you lose that permission.
 
 **In a PC editor (recommended when you can reach the server's files).** Save `<name>.luau` in
 `server/plugins/endbot/scripts/` (UTF-8, any line endings), then run `/botscript reload` in game or at the console.
-The name is the file name: letters, digits and underscores, up to 16 characters, not starting with a digit.
+The name is the file name: 1 to 16 letters, digits and underscores, starting with a letter or underscore.
 Change the file and `reload` again whenever you edit it. These scripts are shared with every controller and
 read-only in game; see [script files](SCRIPTING.md#script-files).
 
@@ -56,7 +56,8 @@ held back; the console keeps them all.
 
 ## 3. Parameters: one script, many uses
 
-Hard-coding `"Alice"` means editing the script for every Bot. Declare parameters instead:
+Hard-coding `"Alice"` means editing the script for every Bot. Declare parameters instead, and save this as
+`hop.luau`:
 
 ```lua
 local a = params { param.bot "name", param.number("times", 3) }

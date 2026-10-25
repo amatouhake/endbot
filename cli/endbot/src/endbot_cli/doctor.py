@@ -198,7 +198,9 @@ def check_capacity(server: Path, properties: dict[str, str] | None) -> CheckResu
     error, document = _load_plugin_config(server)
     if error is not None:
         return CheckResult(WARN, name, error)
-    limits = (document or {}).get("limits") or {}
+    limits = (document or {}).get("limits", {})
+    if not isinstance(limits, dict):
+        return CheckResult(WARN, name, "[limits] must be a table; Bot capacity is unchecked")
     max_bots = limits.get("max-bots", 0)
     reserved = limits.get("reserved-player-slots", 1)
     if any(isinstance(value, bool) or not isinstance(value, int) for value in (max_bots, reserved)):

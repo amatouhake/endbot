@@ -57,6 +57,16 @@ class Script:
         return self.owner == FILE_OWNER
 
 
+def script_name(value):
+    """A valid script name; scripts follow the Group name rules but say so in their own words."""
+    try:
+        return group_name(value)
+    except ValueError:
+        raise LocalizedError(
+            "Script names must start with a letter/underscore and contain 1-16 letters, digits or underscores"
+        ) from None
+
+
 def _revision(row) -> Revision:
     if (not isinstance(row, dict) or not isinstance(row.get("revision"), str) or not isinstance(row.get("source"), str)
             or type(row.get("savedAt")) is not int):
@@ -79,7 +89,7 @@ def load_files(directory: Path, config):
         if path.suffix.lower() != FILE_SUFFIX:
             continue
         try:
-            name = group_name(path.stem)
+            name = script_name(path.stem)
             if path.is_symlink() or not path.is_file():
                 raise LocalizedError("Script files must be regular files, not links")
             if path.stat().st_size > config.max_script_bytes:
@@ -93,6 +103,9 @@ def load_files(directory: Path, config):
                 raise LocalizedError("Script source is empty or too large")
             if name.casefold() in scripts:
                 raise LocalizedError("Script {name} already exists", name=name)
+            # Bounds the folder like stored scripts, and with it reload's declaration checks.
+            if len(scripts) >= config.max_scripts:
+                raise LocalizedError("Too many script files (at most {limit})", limit=config.max_scripts)
         except (LocalizedError, ValueError, OSError) as error:
             problems.append((path.name, error))
             continue
@@ -132,7 +145,7 @@ class ScriptStore:
                 or not isinstance(row.get("history", []), list)
             ):
                 raise ValueError("Invalid stored script")
-            key = group_name(row["name"]).casefold()
+            key = script_name(row["name"]).casefold()
             if key in self._scripts:
                 raise ValueError("Duplicate stored script")
             self._scripts[key] = Script(
@@ -155,7 +168,7 @@ class ScriptStore:
             return tuple(sorted(self._all().values(), key=lambda s: s.name.casefold()))
 
     def get(self, name):
-        group_name(name)
+        script_name(name)
         with self._lock:
             scripts = self._all()
             if name.casefold() not in scripts:
@@ -176,7 +189,7 @@ class ScriptStore:
         A new script belongs to ``owner``; an unowned (pre-ownership) script is
         claimed by ``owner`` on its first edit. Callers check permissions.
         """
-        group_name(name)
+        script_name(name)
         self._checked(source)
         with self._lock:
             self._stored(name, must_exist=False)
@@ -216,7 +229,7 @@ class ScriptStore:
 
     def rename(self, name, new_name, expected):
         """Rename keeping owner, visibility, revision and history; a case-only change is allowed."""
-        group_name(new_name)
+        script_name(new_name)
         with self._lock:
             script = self._stored(name)
             if script.revision != expected:

@@ -71,7 +71,7 @@ class ScriptingConfig:
     os_confinement: bool = True
     process_memory_bytes: int = 268435456
     cpu_seconds: int = 60
-    book_export: bool = False
+    book_export: bool = True
     chat_logs: bool = True
 
 
@@ -259,7 +259,7 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     confinement = table.get("os-confinement", True)
     if type(confinement) is not bool:
         raise _fail(path, "scripting.os-confinement", "must be a boolean", "use os-confinement = true or false")
-    book_export = table.get("book-export", False)
+    book_export = table.get("book-export", True)
     if type(book_export) is not bool:
         raise _fail(path, "scripting.book-export", "must be a boolean", "use book-export = true or false")
     chat_logs = table.get("chat-logs", True)

@@ -144,7 +144,7 @@ def new_screen(source, name="", lang="en"):
 
     return f.ModalScreen(
         tr(lang, "New script"),
-        (f.Label(source_view(source)),
+        (f.Label(_capped_view(source, lang)),
          f.Label(tr(lang, "Name it and save; then change lines with Edit lines.")),
          f.TextInput(tr(lang, "Script name"), default_value=name)),
         build, submit=tr(lang, "Save"), command="botscript", guard=ScriptGuard(edit=True),
@@ -174,7 +174,9 @@ def rename_screen(script, guard, lang="en"):
 def script_screen(script, lang="en", editable=True, book_export=False):
     """The source itself, then the frequent actions; the owner's other actions are under More."""
     guard = ScriptGuard(script.revision, script.name)
-    copy = f.Button(tr(lang, "Copy and edit..."), f.Show(new_screen(script.source, f"{script.name}_copy", lang)))
+    # Names hold at most 16 characters, so a long name is shortened before the suffix.
+    copy = f.Button(tr(lang, "Copy and edit..."),
+                    f.Show(new_screen(script.source, f"{script.name[:11]}_copy", lang)))
     export = [f.Button(tr(lang, "Write into held book"), run("export", script.name, guard=guard))] if book_export \
         else []
     items = [
@@ -349,7 +351,7 @@ def history_screen(script, editable, lang="en"):
             confirm = f.ConfirmScreen(
                 tr(lang, "Restore revision"),
                 tr(lang, "Restore {name} to revision {line}? The current source stays in the history.",
-                   name=script.name, line=line) + "\n\n" + source_view(revision.source),
+                   name=script.name, line=line) + "\n\n" + _capped_view(revision.source, lang),
                 tr(lang, "Restore"), tr(lang, "Cancel"),
                 run("restore", script.name, str(index), guard=guard))
             items.append(f.Button(line, f.Show(confirm)))

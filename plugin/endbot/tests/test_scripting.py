@@ -1107,6 +1107,41 @@ class FileScriptTests(unittest.TestCase):
         self.host.reload_files()
         self.assertIn("does not exist", self.text(self.host.execute(["show", "a"], self.alice)))
 
+    def test_reload_keeps_files_it_could_not_check(self):
+        # Review A1: busy run slots or a missing runner said nothing about the file but dropped every one.
+        self.write("ok.luau", "params {}\n")
+        for error in ("Script concurrency limit reached", "scripting runner not built/installed"):
+            with self.subTest(error=error), patch.object(self.host, "inspect", side_effect=LocalizedError(error)):
+                result = self.text(self.host.execute(["reload"], self.alice))
+                self.assertIn("Loaded 1 script files", result)
+                self.assertIn("ok.luau: Loaded without a declaration check: " + error, result)
+                self.assertTrue(self.store.get("ok").file)
+        # The file's own fault still drops it.
+        with patch.object(self.host, "inspect", side_effect=LocalizedError(
+                "Script declaration failed: {error}", error="script:1: boom")):
+            self.assertIn("Loaded 0 script files", self.text(self.host.execute(["reload"], self.alice)))
+
+    def test_reload_skips_checks_for_shadowed_files_and_caps_the_folder(self):
+        self.store.save("taken", "params {}\n", None, "xuid:111", "Alice")
+        self.write("taken.luau", "params {}\n")
+        with patch.object(self.host, "inspect") as inspect:
+            self.host.reload_files(self.alice)
+        inspect.assert_not_called()
+        self.host.config = replace(self.config, max_scripts=2)
+        for name in ("a", "b", "c"):
+            self.write(f"{name}.luau", "params {}\n")
+        loaded, problems = self.host.reload_files()
+        self.assertEqual(loaded, ("a", "b"))
+        self.assertIn(("c.luau", "Too many script files (at most 2)"), [(n, str(e)) for n, e in problems])
+
+    def test_bad_script_names_say_script(self):
+        self.write("bad-name.luau", "params {}\n")
+        _, problems = self.host.reload_files()
+        self.assertIn("Script names must", str(problems[0][1]))
+        guard = script_forms.ScriptGuard(edit=True)
+        self.assertIn("Script names must", self.text(
+            self.host.execute(["save", "no good", "params {}\n"], replace(self.alice, group_guard=guard))))
+
     def test_a_folder_that_is_not_a_directory_is_refused(self):
         self.folder.rmdir()
         self.folder.write_text("x", encoding="utf-8")
@@ -1327,6 +1362,21 @@ class BookTests(unittest.TestCase):
 
     def menu(self, source, **guard):
         return replace(source, group_guard=script_forms.ScriptGuard(**guard))
+
+    def test_importing_an_unchanged_book_saves_no_revision(self):
+        self.host.execute(["import", "mine"], self.alice)
+        script = self.store.get("mine")
+        for source in (self.alice, self.menu(self.alice, revision=script.revision, name="mine")):
+            result = self.host.execute(["import", "mine"], source)
+            self.assertIn("already has the book's source", self.text(result))
+            self.assertIsNone(result.view)
+        self.assertEqual(self.store.get("mine").revision, script.revision)
+
+    def test_copy_names_fit_the_name_limit(self):
+        script = Script("sixteen_letters_", "params {}\n", "r1")
+        copy = next(item for item in script_forms.script_screen(script, "en", False).items
+                    if item.text == "Copy and edit...").action.screen
+        self.assertEqual(copy.controls[-1].default_value, "sixteen_let_copy")
 
     def test_menu_replace_from_a_book_shows_the_book_first(self):
         self.host.execute(["import", "mine"], self.alice)

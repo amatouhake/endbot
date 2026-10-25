@@ -210,7 +210,7 @@ class CommandServiceTests(unittest.TestCase):
         for _ in range(WAITING_NOTICE_POLLS - 1):
             self.assertEqual(self.service.poll_mining(lambda _: True), [])
         notices = self.service.poll_mining(lambda _: True)
-        waiting = "Endbot: Alice: destroy is waiting: no oak_log in sight within 5 blocks; move the Bot closer"
+        waiting = "Endbot: Alice: destroy is waiting: no oak_log it can break within 5 blocks; move the Bot closer"
         self.assertEqual(notices, [(source, "info", waiting)])
         for _ in range(WAITING_NOTICE_POLLS):
             self.assertEqual(self.service.poll_mining(lambda _: True), [])

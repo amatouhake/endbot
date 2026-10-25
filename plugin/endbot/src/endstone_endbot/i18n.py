@@ -479,8 +479,8 @@ JA: dict[str, str] = {
     "list every Bot profile": "すべての Bot を一覧表示する",
     "Shows each profile name with its lifecycle state.": "Bot の名前と接続状態を表示します。",
     "open the Bot control forms (players only)": "Bot 操作フォームを開く (プレイヤーのみ)",
-    "/bot or /bot menu lists every Bot; <name> menu opens that Bot's actions directly.": (
-        "/bot か /bot menu で Bot 一覧を、<name> menu でその Bot の操作を開きます。"
+    "/bot or /bot menu lists every Bot; /bot <name> (or <name> menu) opens that Bot's actions directly.": (
+        "/bot か /bot menu で Bot 一覧を、/bot <name> (または <name> menu) でその Bot の操作を開きます。"
     ),
     "Forms run the same /bot commands, so replies and permissions match typed commands.": (
         "フォームは同じ /bot コマンドを実行するので、返信も権限も入力したときと同じです。"
@@ -683,6 +683,7 @@ JA: dict[str, str] = {
     "Pick a Bot.": "Bot を選んでください。",
     "Offline ({count})...": "オフライン ({count})...",
     "+ New Bot here": "+ ここに新しい Bot",
+    "Manage groups...": "グループを管理...",
     "Pick a Bot. (/bot help lists commands)": "Bot を選んでください。(/bot help でコマンド一覧)",
     "No Bot profiles yet. Spawn one to start.": "Bot はまだいません。spawn して始めましょう。",
     "chunk radius {radius}{source}": "チャンク半径 {radius}{source}",

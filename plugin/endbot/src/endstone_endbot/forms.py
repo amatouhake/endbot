@@ -177,7 +177,12 @@ TRANSITIONAL_STATES = {
 
 
 def bot_list_screen(view: BotListView, lang: str = "en") -> ActionScreen:
-    """Online Bots by name; offline ones sit behind one button to keep the list short."""
+    """Targets first: online Bots, offline Bots, groups, a new Bot.
+
+    Two links follow the creation entry: group management (`/botgroup`) and,
+    when enabled, scripts (`/botscript`). `/bot` itself only lists targets its
+    own grammar accepts; the links open the sibling command menus.
+    """
     bots = sorted(view.bots, key=lambda bot: (bot["connectionState"] != "online", str(bot["name"]).lower()))
     offline = [bot for bot in bots if bot["connectionState"] == "offline"]
     items: list[Button | Header] = []
@@ -193,12 +198,13 @@ def bot_list_screen(view: BotListView, lang: str = "en") -> ActionScreen:
         offline_items.append(Button(tr(lang, "Back to Bot list"), run(menu_argv())))
         offline_screen = ActionScreen(tr(lang, "Endbot: offline Bots"), tr(lang, "Pick a Bot."), tuple(offline_items))
         items.append(Button(tr(lang, "Offline ({count})...", count=len(offline)), Show(offline_screen)))
-    items.append(Button(tr(lang, "+ New Bot here"), Show(spawn_modal(lang))))
-    if view.scripting:
-        items.append(Button(tr(lang, "Scripts..."), Run((("menu",),), command="botscript")))
     if view.groups:
         items.extend(Button(f"#{group.name} ({group.count})",
                             Run((menu_argv(f"#{group.name}"),), guard=group.guard)) for group in view.groups)
+    items.append(Button(tr(lang, "+ New Bot here"), Show(spawn_modal(lang))))
+    items.append(Button(tr(lang, "Manage groups..."), Run((("menu",),), command="botgroup")))
+    if view.scripting:
+        items.append(Button(tr(lang, "Scripts..."), Run((("menu",),), command="botscript")))
     content = tr(lang, "Pick a Bot or group. (/bot help lists commands)" if view.groups else
                  "Pick a Bot. (/bot help lists commands)" if bots else "No Bot profiles yet. Spawn one to start.")
     return ActionScreen("Endbot", content, tuple(items))

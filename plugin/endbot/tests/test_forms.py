@@ -66,17 +66,34 @@ class ScreenTests(unittest.TestCase):
         )
         self.assertEqual(
             [strip_colors(i.text) for i in screen.items],
-            ["Alice", "Zed", "FAIL · Cy", "Offline (2)...", "+ New Bot here"],
+            ["Alice", "Zed", "FAIL · Cy", "Offline (2)...", "+ New Bot here", "Manage groups..."],
         )
         actions = buttons(screen)
         self.assertEqual(actions["Alice"], forms.Run((("Alice", "menu"),)))
         self.assertEqual(actions["Bob"], forms.Run((("Bob", "menu"),)))
+        self.assertEqual(actions["Manage groups..."], forms.Run((("menu",),), command="botgroup"))
         offline = next(i.action.screen for i in screen.items if i.text.startswith("Offline"))
         self.assertEqual([i.text for i in offline.items], ["Bob", "Dee", "Back to Bot list"])
         self.assertEqual(submit(actions["+ New Bot here"].screen, " Carol "), (("Carol", "spawn"),))
         empty = forms.bot_list_screen(forms.BotListView(()))
         self.assertIn("No Bot profiles", empty.content)
-        self.assertEqual([i.text for i in empty.items], ["+ New Bot here"])
+        self.assertEqual([i.text for i in empty.items], ["+ New Bot here", "Manage groups..."])
+
+    def test_group_targets_come_before_creation_and_other_commands(self):
+        guard = object()
+        screen = forms.bot_list_screen(
+            forms.BotListView(
+                ({"name": "Alice", "connectionState": "online"},),
+                groups=(forms.GroupTarget("miners", 3, guard),),
+                scripting=True,
+            )
+        )
+        self.assertEqual(
+            [getattr(item, "text", None) for item in screen.items],
+            ["Alice", "#miners (3)", "+ New Bot here", "Manage groups...", "Scripts..."],
+        )
+        self.assertEqual(screen.items[1].action, forms.Run((("#miners", "menu"),), guard=guard))
+        self.assertEqual(screen.items[-1].action, forms.Run((("menu",),), command="botscript"))
 
     def test_main_screen_groups_actions_like_the_game_controls(self):
         screen = self.online_screen()

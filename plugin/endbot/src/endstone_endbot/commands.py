@@ -363,9 +363,9 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "menu": HelpTopic(
         "menu",
         "open the Bot control forms (players only)",
-        ("menu", "<name> menu"),
+        ("menu", "<name>", "<name> menu"),
         (
-            "/bot or /bot menu lists every Bot; <name> menu opens that Bot's actions directly.",
+            "/bot or /bot menu lists every Bot; /bot <name> (or <name> menu) opens that Bot's actions directly.",
             "Forms run the same /bot commands, so replies and permissions match typed commands.",
             "Bot and Group operation menus share the same controls; Group management uses /botgroup.",
         ),
@@ -770,6 +770,10 @@ def parse_command(arguments: list[str]) -> BotCommand:
         return BotCommand("list")
     if first == "menu" and len(tokens) == 1:
         return BotCommand("menu")
+    if len(tokens) == 1:
+        # A bare target opens its menu, matching `/bot` and `/bot menu` for the
+        # list. Group targets reach this parser too (`/bot #miners`).
+        return BotCommand("menu", tokens[0])
     if len(tokens) < 2:
         raise CommandSyntaxError("Expected /bot <name> <action>")
     name, operation, remaining = tokens[0], tokens[1].lower(), tokens[2:]

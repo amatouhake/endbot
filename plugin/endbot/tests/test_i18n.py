@@ -291,7 +291,10 @@ class JapaneseFormTests(unittest.TestCase):
     def test_bot_list_screen(self):
         screen = forms.bot_list_screen(forms.BotListView(({"name": "Alice", "connectionState": "offline"},)), "ja")
         self.assertEqual(screen.content, "Bot を選んでください。(/bot help でコマンド一覧)")
-        self.assertEqual([item.text for item in screen.items], ["オフライン (1)...", "+ ここに新しい Bot"])
+        self.assertEqual(
+            [item.text for item in screen.items],
+            ["オフライン (1)...", "+ ここに新しい Bot", "グループを管理..."],
+        )
 
     def test_bot_screen_translates_labels(self):
         screen = forms.bot_screen(forms.BotView("Alice", "summary", ONLINE), "Steve", ("Steve",), "ja")

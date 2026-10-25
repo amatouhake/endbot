@@ -36,7 +36,9 @@ Every command names its Bot; there is no selected-target state.
 /bot Alice despawn
 ```
 
-For players, `/bot` opens the Bot list, just like `/bot menu`. At the server console, `/bot` still shows help page 1.
+For players, `/bot` opens the Bot list, just like `/bot menu`. `/bot <name>` opens that Bot's menu, just like
+`/bot <name> menu`, and `/bot #group` does the same for group operations. At the server console, `/bot` still shows
+help page 1, and a bare target keeps the player-only menu reply.
 `/bot help` always shows help page 1. `/bot help <page>` (1-3) shows a paginated command summary modeled on
 vanilla Bedrock `/help`, and `/bot help <operation>` (for example `/bot help move`) shows every supported
 syntax for that operation with a concise explanation. `/bot list` summarizes every known profile and
@@ -89,12 +91,14 @@ Players can run the common operations from native Bedrock forms instead of typin
 
 ```text
 /bot               -> Bot and Group target list (players); help page 1 (console)
-/bot menu          -> Bot/Group targets, plus "Spawn a new Bot here"
+/bot menu          -> the same target list
+/bot Alice         -> Alice's menu (same as /bot Alice menu)
 /bot Alice menu    -> Alice's actions and compact state/position summary
+/bot #miners       -> the group operation menu (same as /bot #miners menu)
 /bot #miners menu  -> the same operation menu, applied to #miners
 ```
 
-The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
+The target list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
 Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy, interact, nearby
 entities, interact with entity, dismount),
@@ -103,6 +107,10 @@ Category names follow Minecraft's control settings. An offline Bot offers resume
 category. Individual Bot profile controls offer rename and confirmed forget; forget still requires an offline profile.
 The target list also shows `#group (count)` entries that open this same operation screen directly. Group-wide controls
 remain available with mixed/offline membership and report failures per operation; rename/forget require an individual.
+The list is ordered by what `/bot` itself can address: online Bots, the `Offline (n)...` list, `#group (count)` targets,
+then `+ New Bot here`. Two links follow creation: **Manage groups...** opens `/botgroup menu` and, when scripting is
+enabled, **Scripts...** opens `/botscript menu`. Group management is not a `/bot` operation, so it appears only as that
+link rather than among the targets.
 Input forms use dropdowns, sliders and text fields; closing one (or cancelling the despawn confirmation) returns to the screen it was opened from; coordinate fields accept the same `~` forms as the command, and their
 labels say what `~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot` again to
 continue.
@@ -128,7 +136,8 @@ coordinate spawn, block interaction and individual profile rename/forget have fo
 
 Unit tests cover screen contents, every form response mapping to parser-accepted arguments, malformed responses, and
 view delivery/revocation. Rendering and input on a real client are a manual check: on a normal Microsoft/Xbox client,
-open `/bot`, `/bot menu` and `/bot <name> menu`, submit each input form once, cancel the despawn confirmation, close forms with
+open `/bot`, `/bot menu`, `/bot <name>` and `/bot <name> menu`, submit each input form once, cancel the despawn
+confirmation, close forms with
 Escape, and confirm a revoked controller cannot act from an already open form.
 
 ## Reply language

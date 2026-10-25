@@ -2,10 +2,17 @@ import unittest
 
 from plain_service import PlainCommandService
 
-from endstone_endbot.commands import parse_command
+from endstone_endbot.commands import BotCommand, parse_command
 
 
 class BotCommandServiceTests(unittest.TestCase):
+    def test_a_bare_target_opens_its_menu(self):
+        self.assertEqual(parse_command(["Alice"]), BotCommand("menu", "Alice"))
+        self.assertEqual(parse_command(["#miners"]), BotCommand("menu", "#miners"))
+        self.assertEqual(parse_command(["menu"]), BotCommand("menu"))
+        self.assertEqual(parse_command([]), BotCommand("menu", parameters={"default": True}))
+        self.assertEqual(parse_command(["ping"]).operation, "ping")
+
     def test_timed_use_keeps_its_meaning(self):
         self.assertEqual(
             parse_command(["Alice", "use", "for", "20"]).parameters,

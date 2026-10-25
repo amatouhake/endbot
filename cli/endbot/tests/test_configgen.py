@@ -55,6 +55,16 @@ class RuntimeConfigTests(ConfigGenTestCase):
         target, _ = generate_plugin_config(self.server, self.paths, self.config())
         self.assertEqual(tomllib.loads(target.read_text(encoding="utf-8"))["ui"], {"language": "ja"})
 
+    def test_limits_reach_generated_plugin_config(self):
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        limits = tomllib.loads(target.read_text(encoding="utf-8"))["limits"]
+        self.assertEqual(limits, {"max-bots": 0, "reserved-player-slots": 1})
+        with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
+            config.write("\n[limits]\nmax-bots = 6\nreserved-player-slots = 2\n")
+        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        limits = tomllib.loads(target.read_text(encoding="utf-8"))["limits"]
+        self.assertEqual(limits, {"max-bots": 6, "reserved-player-slots": 2})
+
     def test_chunk_radius_reaches_generated_runtime_config(self) -> None:
         for radius in (2, 6):
             write_endbot_toml(self.root)

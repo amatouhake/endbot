@@ -378,7 +378,8 @@ class DeclarationCoverageTests(unittest.TestCase):
         for usage in usages:
             _parse_usage(usage)
         forms = [[], ["list"], ["help"], ["menu"], ["runs"], ["show", "row", "2"],
-                 ["run", "row", "#miners", "~ ~ ~", "2"], ["stop", "123456789012"], ["delete", "row"]]
+                 ["run", "row", "#miners", "~ ~ ~", "2"], ["stop", "123456789012"], ["delete", "row"],
+                 ["export", "row"], ["export", "row", "overwrite"]]
         for tokens in forms:
             with self.subTest(tokens=tokens):
                 self.assertTrue(any(_match(_parse_usage(usage), tokens, False) for usage in usages))

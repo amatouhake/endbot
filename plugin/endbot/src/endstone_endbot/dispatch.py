@@ -172,11 +172,11 @@ class ServerThreadWorld:
     def inventory(self, name, identity_id=None):
         return self._bridge.call(lambda: self._world.inventory(name, identity_id))
 
-    def held_book_pages(self, player_id):
-        return self._bridge.call(lambda: self._world.held_book_pages(player_id))
+    def held_book_pages(self, player_id, writable=False):
+        return self._bridge.call(lambda: self._world.held_book_pages(player_id, writable))
 
-    def fill_held_book(self, player_id, pages):
-        return self._bridge.call(lambda: self._world.fill_held_book(player_id, pages))
+    def fill_held_book(self, player_id, pages, expected=None):
+        return self._bridge.call(lambda: self._world.fill_held_book(player_id, pages, expected))
 
     def teleport(self, identity_id, parameters, sender):
         return self._bridge.call(lambda: self._world.teleport(identity_id, parameters, self._sender(sender)))

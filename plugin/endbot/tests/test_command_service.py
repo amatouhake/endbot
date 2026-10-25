@@ -4,6 +4,7 @@ from plain_service import PlainCommandService
 
 from endstone_endbot.commands import UNREACHABLE_POLL_LIMIT, WAITING_NOTICE_POLLS
 from endstone_endbot.control import RuntimeControlError
+from endstone_endbot.limits import BotLimits
 
 
 class FakeControl:
@@ -673,6 +674,100 @@ class CommandServiceTests(unittest.TestCase):
         renamed = self.service.execute(["Alice", "rename", "Bob"], object()).message
         self.assertTrue(renamed.startswith("Endbot: Alice: "))
         self.assertEqual(self.service.execute(["help", "nope"]).message.split(":")[0], "Endbot")
+
+
+class SeatLimitTests(unittest.TestCase):
+    """The [limits] budget: Bots must leave the reserved slots for players."""
+
+    def service(self, bots, *, limits, max_players=10, humans=0):
+        control = FakeControl()
+        for index, (name, state) in enumerate(bots.items(), start=1):
+            control.bots[name] = {
+                "identityId": f"00000000-0000-4000-8000-{index:012d}",
+                "name": name,
+                "connectionState": state,
+            }
+        seen = []
+
+        def capacity(bot_ids):
+            seen.append(set(bot_ids))
+            return max_players, humans
+
+        return PlainCommandService(control, FakeWorld(), limits=limits, capacity=capacity), control, seen
+
+    def test_a_bot_that_would_take_the_reserved_slot_is_refused(self):
+        service, control, _ = self.service(
+            {"Alice": "online", "Bob": "online"},
+            limits=BotLimits(max_bots=0, reserved_player_slots=1),
+            max_players=3,
+        )
+        result = service.execute(["Carol", "spawn"], object())
+        self.assertIn("No free slot for another Bot", result.message)
+        self.assertNotIn("spawn", [call[0] for call in control.calls])
+
+    def test_the_reserve_counts_players_already_online(self):
+        service, control, _ = self.service(
+            {"Alice": "online"},
+            limits=BotLimits(max_bots=0, reserved_player_slots=1),
+            max_players=3,
+            humans=1,
+        )
+        result = service.execute(["Bob", "spawn"], object())
+        self.assertIn("No free slot for another Bot", result.message)
+        self.assertNotIn("spawn", [call[0] for call in control.calls])
+
+    def test_a_free_slot_lets_the_bot_join(self):
+        service, control, seen = self.service(
+            {"Alice": "online"},
+            limits=BotLimits(max_bots=0, reserved_player_slots=1),
+            max_players=4,
+        )
+        result = service.execute(["Bob", "spawn"], object())
+        self.assertIn("created and connecting", result.message)
+        self.assertIn("spawn", [call[0] for call in control.calls])
+        self.assertEqual(seen[-1], {"00000000-0000-4000-8000-000000000001"})
+
+    def test_max_bots_counts_online_and_connecting_bots(self):
+        service, control, _ = self.service(
+            {"Alice": "online", "Bob": "connecting"},
+            limits=BotLimits(max_bots=2, reserved_player_slots=0),
+        )
+        result = service.execute(["Carol", "spawn"], object())
+        self.assertIn("Bot limit reached", result.message)
+        self.assertNotIn("spawn", [call[0] for call in control.calls])
+
+    def test_an_already_active_bot_keeps_its_seat(self):
+        service, _, _ = self.service(
+            {"Alice": "online"},
+            limits=BotLimits(max_bots=1, reserved_player_slots=0),
+            max_players=1,
+        )
+        result = service.execute(["Alice", "spawn"], object())
+        self.assertIn("already online", result.message)
+        self.assertNotIn("Bot limit reached", result.message)
+
+    def test_resume_is_budgeted_but_despawn_is_not(self):
+        service, control, _ = self.service(
+            {"Alice": "offline", "Bob": "online"},
+            limits=BotLimits(max_bots=0, reserved_player_slots=1),
+            max_players=2,
+        )
+        refused = service.execute(["Alice", "resume"], object())
+        self.assertIn("No free slot for another Bot", refused.message)
+        self.assertNotIn("resume", [call[0] for call in control.calls])
+        control.bots["Alice"]["connectionState"] = "online"
+        dropped = service.execute(["Alice", "despawn"], object())
+        self.assertNotIn("No free slot", dropped.message)
+
+    def test_zero_limits_keep_the_previous_unlimited_behavior(self):
+        service, control, _ = self.service(
+            {"Alice": "online"},
+            limits=BotLimits(max_bots=0, reserved_player_slots=0),
+            max_players=1,
+        )
+        result = service.execute(["Bob", "spawn"], object())
+        self.assertIn("created and connecting", result.message)
+        self.assertIn("spawn", [call[0] for call in control.calls])
 
 
 if __name__ == "__main__":

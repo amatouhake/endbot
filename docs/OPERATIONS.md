@@ -57,6 +57,10 @@ chunk-radius = 5           # requested Bot chunk radius, integer 2..32
 hotbar-sync-interval-ticks = 4  # server-side hotbar reads, integer 1..1200
 hotbar-sync-resend-ticks = 20   # unchanged corrections, integer 1..72000
 
+[limits]
+max-bots = 0               # Bots online or connecting; 0 = no separate Bot cap, N = cap
+reserved-player-slots = 1  # server slots kept free for human players
+
 [ui]
 language = "auto"          # auto (each player's game language), en, or ja
 
@@ -72,6 +76,14 @@ Manual plugin installations set `[scripting]` directly in their plugin config. S
 `[scripting] book-export = true` lets controllers write a script into the empty book and quill they hold
 (`/botscript export`); it is off by default because the plugin edits a held item. Importing from a book is always
 available while scripting is enabled.
+
+`[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
+(default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value
+caps online-or-connecting Bots. `spawn`, `resume` and `reconnect` are refused — per member for a Group or script — when
+the Bot would take a reserved slot or exceed `max-bots`. Existing Bots are never despawned by the limit;
+`max-bots = 0` with `reserved-player-slots = 0` restores no limit. `endbot doctor` prints the resulting budget and
+warns when it cannot apply. Managed instances write this section into the plugin config on start; manual plugin
+installs edit the same keys there.
 
 `[ui].language` sets the language of player-facing replies, help and forms. `auto` (the default, also when omitted)
 gives Japanese clients Japanese and every other client English; `en` or `ja` fixes one language for everyone. Command

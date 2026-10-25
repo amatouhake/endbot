@@ -18,9 +18,9 @@ The plugin hosts scripts; the Node Bedrock runtime is unchanged. Scripts use the
 /botscript menu
 ```
 
-Enabled `/bot menu` adds **Scripts...** for shared source, paste-only creation/editing, two templates,
-parameter forms, paged source, per-controller stopping and confirmed deletion. Typed `save` cannot author
-source. Positional run arguments follow alphabetical parameter names; quote positions, for example
+Enabled `/bot menu` adds **Scripts...** (after **+ New Bot here**) for shared source, line-by-line and book editing,
+templates, parameter forms, the source on each script's screen, per-controller stopping and confirmed deletion. Typed `save` cannot
+author source. Positional run arguments follow alphabetical parameter names; quote positions, for example
 `/botscript run row #miners "~ ~ ~" 2`. Runs never resume after restart. Disabling scripting retains source.
 
 ## Quick start
@@ -36,7 +36,9 @@ Every command names its Bot; there is no selected-target state.
 /bot Alice despawn
 ```
 
-For players, `/bot` opens the Bot list, just like `/bot menu`. At the server console, `/bot` still shows help page 1.
+For players, `/bot` opens the Bot list, just like `/bot menu`. `/bot <name>` opens that Bot's menu, just like
+`/bot <name> menu`, and `/bot #group` does the same for group operations. At the server console, `/bot` still shows
+help page 1, and a bare target keeps the player-only menu reply.
 `/bot help` always shows help page 1. `/bot help <page>` (1-3) shows a paginated command summary modeled on
 vanilla Bedrock `/help`, and `/bot help <operation>` (for example `/bot help move`) shows every supported
 syntax for that operation with a concise explanation. `/bot list` summarizes every known profile and
@@ -89,12 +91,14 @@ Players can run the common operations from native Bedrock forms instead of typin
 
 ```text
 /bot               -> Bot and Group target list (players); help page 1 (console)
-/bot menu          -> Bot/Group targets, plus "Spawn a new Bot here"
+/bot menu          -> the same target list
+/bot Alice         -> Alice's menu (same as /bot Alice menu)
 /bot Alice menu    -> Alice's actions and compact state/position summary
+/bot #miners       -> the group operation menu (same as /bot #miners menu)
 /bot #miners menu  -> the same operation menu, applied to #miners
 ```
 
-The Bot list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
+The target list shows online Bots by name; connecting, retrying and failed Bots carry a dark-colored `JOIN`, `RETRY` or
 `FAIL` prefix, and offline Bots are behind one `Offline (n)...` button. The online Bot screen has Stop everything,
 Movement (move, jump, sprint / sneak), Look, Teleport, Gameplay (attack, use item, destroy, interact, nearby
 entities, interact with entity, dismount),
@@ -103,6 +107,10 @@ Category names follow Minecraft's control settings. An offline Bot offers resume
 category. Individual Bot profile controls offer rename and confirmed forget; forget still requires an offline profile.
 The target list also shows `#group (count)` entries that open this same operation screen directly. Group-wide controls
 remain available with mixed/offline membership and report failures per operation; rename/forget require an individual.
+The list is ordered by what `/bot` itself can address: online Bots, the `Offline (n)...` list, `#group (count)` targets,
+then `+ New Bot here`. Two links follow creation: **Manage groups...** opens `/botgroup menu` and, when scripting is
+enabled, **Scripts...** opens `/botscript menu`. Group management is not a `/bot` operation, so it appears only as that
+link rather than among the targets.
 Input forms use dropdowns, sliders and text fields; closing one (or cancelling the despawn confirmation) returns to the screen it was opened from; coordinate fields accept the same `~` forms as the command, and their
 labels say what `~` is relative to. Submitting closes the form and the normal chat reply appears; run `/bot` again to
 continue.
@@ -128,7 +136,8 @@ coordinate spawn, block interaction and individual profile rename/forget have fo
 
 Unit tests cover screen contents, every form response mapping to parser-accepted arguments, malformed responses, and
 view delivery/revocation. Rendering and input on a real client are a manual check: on a normal Microsoft/Xbox client,
-open `/bot`, `/bot menu` and `/bot <name> menu`, submit each input form once, cancel the despawn confirmation, close forms with
+open `/bot`, `/bot menu`, `/bot <name>` and `/bot <name> menu`, submit each input form once, cancel the despawn
+confirmation, close forms with
 Escape, and confirm a revoked controller cannot act from an already open form.
 
 ## Reply language
@@ -267,6 +276,11 @@ placement. `resume` reconnects an existing profile without relocation, allowing 
 `reconnect` tears down and reconnects without changing identity or location. `despawn` is intentional offline state and
 cancels automatic reconnect. `forget` requires an offline profile and removes only Endbot registration; it does not
 purge BDS player data. A live rename preserves UUID and reconnects automatically so the login name changes.
+
+`spawn`, `resume` and `reconnect` respect `[limits]` (see [configuration](OPERATIONS.md#2-configuration)): when the Bot
+would take a slot kept for human players, or exceed `max-bots`, the command is refused with the current counts. A Group
+or script fails only the affected members; `despawn` and `forget` are never limited. Existing Bots stay online when the
+limit is lowered.
 
 If a requested spawn never reaches the world, its pending placement is discarded by resume, reconnect, despawn,
 forget, or rename. Those operations therefore never consume an abandoned spawn placement later.
@@ -409,7 +423,8 @@ stack IDs. The runtime predicts both slots until the next authoritative observat
 selected equipment after a changed selection or held stack. **Inventory... / Hold item...** accepts an item ID and
 **Swap slots...** offers two 1-36 dropdowns. These forms echo the equivalent typed command, including any item prefix.
 Group swap/hold use the existing UUID-pinned batch input path with bounded request replies, audit and saved history.
-Live acceptance of these new operations is **pending**; see [the validation record](INVENTORY_VALIDATION.md).
+Live acceptance of swap/hold passed on the locked pair over Windows RakNet (2026-10-22); human-client forms, native
+hints and other-client equipment rendering remain manual gates. See [the validation record](INVENTORY_VALIDATION.md).
 The native `EndbotSwap`/`EndbotHold` typed overloads provide hints; enum-free required message tails continue to carry
 execution under the pinned BDS declaration rules. Native client hints and form rendering still require live checks.
 
@@ -429,7 +444,7 @@ immediately. Group selectors use the same grammar; drops remain mutations with b
 
 The versioned `endbot:inventory-v2` observation carries exact typed item/NBT data in bounded fragments, applied only
 after a full valid snapshot arrives. Existing `hotbar-sync-interval-ticks` and `hotbar-sync-resend-ticks` settings now
-cover the entire inventory. Size bounds and pending live product validation are described in the validation record.
+cover the entire inventory. Size bounds and the remaining live gates are described in the validation record.
 
 `use continuous` holds right-click: its first input tick sends the initial air-use interaction, and later ticks send
 simulation-tick interactions in the same authoritative input stream. `use stop` or global `stop` releases it, for example

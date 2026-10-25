@@ -479,8 +479,8 @@ JA: dict[str, str] = {
     "list every Bot profile": "すべての Bot を一覧表示する",
     "Shows each profile name with its lifecycle state.": "Bot の名前と接続状態を表示します。",
     "open the Bot control forms (players only)": "Bot 操作フォームを開く (プレイヤーのみ)",
-    "/bot or /bot menu lists every Bot; <name> menu opens that Bot's actions directly.": (
-        "/bot か /bot menu で Bot 一覧を、<name> menu でその Bot の操作を開きます。"
+    "/bot or /bot menu lists every Bot; /bot <name> (or <name> menu) opens that Bot's actions directly.": (
+        "/bot か /bot menu で Bot 一覧を、/bot <name> (または <name> menu) でその Bot の操作を開きます。"
     ),
     "Forms run the same /bot commands, so replies and permissions match typed commands.": (
         "フォームは同じ /bot コマンドを実行するので、返信も権限も入力したときと同じです。"
@@ -558,6 +558,16 @@ JA: dict[str, str] = {
     "already reconnecting": "すでに再接続中です",
     "already online": "すでにオンラインです",
     "already active": "すでに動いています",
+    "Bot limit reached: {bots} online or connecting, max-bots is {limit}": (
+        "Bot の上限に達しました: オンラインまたは接続中 {bots} 体、max-bots は {limit}"
+    ),
+    "No Bot can join: all {players} slots are kept for players (reserved-player-slots = {reserved})": (
+        "Bot を参加させられません: {players} 枠すべてをプレイヤー用に確保しています "
+        "(reserved-player-slots = {reserved})"
+    ),
+    "No free slot for another Bot: {used} of {players} slots in use, {reserved} kept for players": (
+        "Bot の空き枠がありません: 全 {players} 枠のうち {used} 使用中、{reserved} 枠はプレイヤー用です"
+    ),
     "created and connecting": "作成して接続中",
     "{verb} ({where})": "{verb} ({where})",
     "at the world spawn": "ワールドのスポーン地点",
@@ -683,6 +693,7 @@ JA: dict[str, str] = {
     "Pick a Bot.": "Bot を選んでください。",
     "Offline ({count})...": "オフライン ({count})...",
     "+ New Bot here": "+ ここに新しい Bot",
+    "Manage groups...": "グループを管理...",
     "Pick a Bot. (/bot help lists commands)": "Bot を選んでください。(/bot help でコマンド一覧)",
     "No Bot profiles yet. Spawn one to start.": "Bot はまだいません。spawn して始めましょう。",
     "chunk radius {radius}{source}": "チャンク半径 {radius}{source}",
@@ -774,39 +785,35 @@ JA.update({
     "Endbot: scripts": "Endbot: スクリプト",
     "Pick a script.": "スクリプトを選んでください。",
     "Script templates": "スクリプトのテンプレート",
-    "Choose a template, then paste or edit source.": "テンプレートを選び、ソースを貼り付けるか編集してください。",
+    "New script": "新しいスクリプト",
     "Group row": "グループを一列に並べる",
     "Simple patrol": "簡単な巡回",
     "Mine at spots": "指定地点で採掘",
     "Blank script": "空のスクリプト",
     "Delete script": "スクリプトを削除",
     "Delete script {name}?": "スクリプト {name} を削除しますか?",
-    "Show source": "ソースを表示",
     "Stop runs": "実行を停止",
-    "Edit source...": "ソースを編集...",
+    "Pick a template to start a new script, or read one from a held book.":
+        "テンプレートを選んで新しいスクリプトを作るか、手に持った本から読み込みます。",
+    "Name it and save; then change lines with Edit lines.": "名前を付けて保存し、行の編集で行を直します。",
+    "... {count} more lines; see /botscript show {name}": "... ほか {count} 行。/botscript show {name} で表示できます",
+    "Edit lines...": "行を編集...",
+    "More...": "その他...",
+    "Back": "戻る",
+    "{name}: line {line}": "{name}: {line} 行目",
+    "Line {line}": "{line} 行目",
+    "Add a line below (optional)": "下に行を追加 (省略可)",
+    "Delete this line": "この行を削除",
+    "Add a first line": "先頭に行を追加",
+    "Add a line at the end": "末尾に行を追加",
+    "+ Add a first line": "+ 先頭に行を追加",
+    "+ Add a line at the end": "+ 末尾に行を追加",
+    "New line": "新しい行",
+    "Replace all from held book": "手に持った本で全体を置き換え",
+    "Tap a line to change or delete it, or to add a line below it.":
+        "行を押すと、その行の変更、削除、下への行の追加ができます。",
     "Run or edit this shared script.": "この共有スクリプトを実行または編集します。",
     "Script name": "スクリプト名",
-    "Luau source (paste multiple lines)": "Luau ソース (複数行を貼り付け)",
-    "Change": "変更内容",
-    "Replace all": "全体を置き換え",
-    "Append at end": "末尾に追記",
-    "Replace lines": "行を置き換え",
-    "Insert after line": "行の後に挿入",
-    "Delete lines": "行を削除",
-    "From line": "開始行",
-    "To line": "終了行",
-    "From line (insert: 0 = top)": "開始行 (挿入: 0 = 先頭)",
-    "To line (optional)": "終了行 (省略可)",
-    "Leave empty to keep the source above.": "空のままなら上のソースをそのまま保存します。",
-    "Paste the new source; nothing was changed": "新しいソースを貼り付けてください。何も変更していません",
-    "Paste the lines to add; nothing was changed": "追加する行を貼り付けてください。何も変更していません",
-    "Enter a line number (0 = top) and paste the lines to insert":
-        "行番号 (0 = 先頭) を入力し、挿入する行を貼り付けてください",
-    "Enter the first line to change": "変更する最初の行番号を入力してください",
-    "Paste the replacement lines, or choose Delete lines": "置き換える行を貼り付けるか、'行を削除' を選んでください",
-    "The script has no lines yet": "スクリプトにまだ行がありません",
-    "{field} must be a line number from {low} to {high}": "{field} は {low} から {high} の行番号で指定してください",
-    "Edit script": "スクリプトを編集",
     "Save": "保存",
     "{name} ({kind})": "{name} ({kind})",
     "Previous page": "前のページ",
@@ -871,7 +878,6 @@ JA.update({
     "Your script ({visibility}).": "自分のスクリプトです (公開範囲: {visibility})。",
     "Shared by {owner}. Run it, or copy it to edit your own.":
         "{owner} が共有しています。実行するか、コピーして自分用に編集できます。",
-    "Current source:": "今のソース:",
     "{index}: {saved}, {lines} lines": "{index}: {saved}、{lines} 行",
     "Restore revision": "版を戻す",
     "Restore {name} to revision {line}? The current source stays in the history.":
@@ -894,10 +900,10 @@ JA.update({
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "
     "| copy <name> <new> | share|private <name> | history <name> | restore <name> <n> "
-    "| rename <name> <new> | import <name> | export <name> | menu":
+    "| rename <name> <new> | import <name> | export <name> [overwrite] | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
         "| delete <name> | copy <name> <new> | share|private <name> | history <name> "
-        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> | menu",
+        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | menu",
     "Arguments follow declaration order, then name=value for any parameter; "
     "quote positions. Create/edit in the menu, or import from a held book and quill.":
         "引数は宣言順で、その後に name=値 で任意の引数を指定できます。座標は引用符で囲みます。"
@@ -913,7 +919,6 @@ JA.update({
     "Import from a book": "本から取り込む",
     "Import": "取り込む",
     "From held book...": "手に持った本から...",
-    "Replace from held book": "手に持った本で置き換え",
     "Write into held book": "手に持った本に書き出す",
     "Hold the book in your main hand. Pages are joined with line breaks.":
         "本を利き手に持ってください。ページは改行でつながります。",
@@ -928,7 +933,22 @@ JA.update({
     "The script does not fit in one book ({pages} of {limit} pages)":
         "スクリプトが本1冊に収まりません ({pages} ページ / 上限 {limit} ページ)",
     "Hold a book and quill or a written book in your main hand": "本と羽根ペンか署名済みの本を利き手に持ってください",
-    "Hold an empty book and quill in your main hand": "空の本と羽根ペンを利き手に持ってください",
+    "Hold a book and quill in your main hand": "本と羽根ペンを利き手に持ってください",
+    "The book changed; check it again": "本の内容が変わりました。もう一度確認してください",
+    "The book and quill is not empty; hold an empty one or add overwrite":
+        "本と羽根ペンが空ではありません。空のものを持つか、overwrite を付けてください",
+    "Replace from book": "本で置き換え",
+    "Replace all of {name} ({old} lines) with the book below ({new} lines)? "
+    "The current source stays in Earlier revisions.":
+        "{name} ({old} 行) の全体を下の本の内容 ({new} 行) で置き換えますか? 今のソースは以前の版に残ります。",
+    "Replace": "置き換える",
+    "Overwrite the book": "本を上書き",
+    "This book and quill already has writing ({pages} pages). Overwrite it with {name}? "
+    "Its current text is lost.":
+        "この本と羽根ペンにはすでに書き込みがあります ({pages} ページ)。"
+        "{name} で上書きしますか? 今の内容は失われます。",
+    "Overwrite": "上書きする",
+    "... {count} more lines": "... ほか {count} 行",
     "The book and quill is not empty; hold an empty one": "本と羽根ペンが空ではありません。空のものを持ってください",
     "No stored scripts": "保存されたスクリプトはありません",
     "No active script runs": "実行中のスクリプトはありません",

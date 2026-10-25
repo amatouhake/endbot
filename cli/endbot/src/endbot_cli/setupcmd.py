@@ -331,6 +331,10 @@ def write_endbot_toml(paths: InstancePaths, plan: SetupPlan) -> Path:
     runtime = tomlkit.table()
     runtime["control-port"] = plan.control_port
     document.add("runtime", runtime)
+    limits = tomlkit.table()
+    limits["max-bots"] = tomlkit.item(0).comment("Bots online or connecting; 0 = no separate Bot cap")
+    limits["reserved-player-slots"] = tomlkit.item(1).comment("server slots kept free for human players")
+    document.add("limits", limits)
     ui = tomlkit.table()
     ui["language"] = DEFAULT_LANGUAGE
     ui["language"].comment("auto follows each player's game language; en or ja fixes it")

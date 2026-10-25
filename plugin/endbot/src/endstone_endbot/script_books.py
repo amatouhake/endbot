@@ -2,7 +2,8 @@
 
 Bedrock books have a per-page character limit and a page limit, so one book
 holds a bounded script. Reading only inspects the held item; writing only fills
-an empty book and quill the player already holds, never creating items.
+a book and quill the player already holds, never creating items, and overwrites
+written pages only when they are the ones the player confirmed.
 """
 
 from endstone_endbot.i18n import LocalizedError
@@ -65,20 +66,29 @@ def _page_list(nbt):
     return None
 
 
-def book_pages(item):
-    """The page texts of a held book and quill or written book."""
+def book_pages(item, writable=False):
+    """The page texts of a held book and quill or (unless ``writable``) written book."""
+    if writable and (item is None or item.type.id != WRITABLE_BOOK):
+        raise LocalizedError("Hold a book and quill in your main hand")
     if item is None or item.type.id not in READABLE_BOOKS:
         raise LocalizedError("Hold a book and quill or a written book in your main hand")
     pages = _page_list(item.nbt)
     return [_value(page["text"]) if "text" in page else "" for page in pages or ()]
 
 
-def fill_book(item, pages):
-    """Write pages into an empty book and quill; returns the updated item for the caller to put back."""
-    if item is None or item.type.id != WRITABLE_BOOK:
-        raise LocalizedError("Hold an empty book and quill in your main hand")
-    if any(page.strip() for page in book_pages(item)):
-        raise LocalizedError("The book and quill is not empty; hold an empty one")
+def written(pages):
+    return any(page.strip() for page in pages)
+
+
+def fill_book(item, pages, expected=None):
+    """Write pages into a book and quill; returns the updated item for the caller to put back.
+
+    A book that already has writing is overwritten only when its pages still equal ``expected``.
+    """
+    current = book_pages(item, writable=True)
+    if written(current) and list(current) != expected:
+        raise LocalizedError("The book and quill is not empty; hold an empty one" if expected is None
+                             else "The book changed; check it again")
     from endstone.nbt import CompoundTag, ListTag, StringTag
 
     nbt = item.nbt if item.nbt is not None else CompoundTag()

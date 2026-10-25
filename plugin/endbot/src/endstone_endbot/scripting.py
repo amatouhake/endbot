@@ -14,7 +14,7 @@ from endstone_endbot.control import bot_profiles
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.operations import OPERATIONS, operation_argv
-from endstone_endbot.script_books import pages_to_source, source_to_pages
+from endstone_endbot.script_books import pages_to_source, source_to_pages, written
 from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
 from endstone_endbot.script_store import Script
@@ -508,7 +508,7 @@ class ScriptService:
                                 "Script help: list | show <name> [page] | run <name> [args...] "
                                 "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
                                 "| share|private <name> | history <name> | restore <name> <n> "
-                                "| rename <name> <new> | import <name> | export <name> | menu",
+                                "| rename <name> <new> | import <name> | export <name> [overwrite] | menu",
                             )
                         ),
                         reply(
@@ -557,8 +557,15 @@ class ScriptService:
                 self.inspect(Script(tail[0], tail[1], "draft"), source)
                 self._check(source)
                 self.store.save(tail[0], tail[1], guard.revision, self.owner_key(source), self._who(source))
+                # Menus continue where the save came from: the line editor page, or the new script.
+                saved = self.store.get(tail[0])
+                view = None
+                if source.player_id is not None:
+                    view = (script_forms.lines_screen(saved, min(guard.page, script_forms.edit_pages(saved)), lang)
+                            if guard.page is not None
+                            else script_forms.script_screen(saved, lang, True, self.config.book_export))
                 return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
-                                     log_messages=(f"Script {tail[0]} saved by {self._who(source)}",))
+                                     log_messages=(f"Script {tail[0]} saved by {self._who(source)}",), view=view)
             if operation == "menu" and not tail:
                 self._player(source)
                 return CommandResult(True, view=script_forms.list_screen(
@@ -567,18 +574,31 @@ class ScriptService:
                 raise LocalizedError("Use /botscript help")
             if operation == "import" and len(tail) == 1:
                 # A new name creates the script; an existing one gets a new revision (owner only).
+                # Menus never replace a script in one tap: the owner first sees the book's source.
                 self._player(source)
+                menu = isinstance(guard, script_forms.ScriptGuard)
                 text = pages_to_source(self._world().held_book_pages(source.player_id))
                 if len(text.encode("utf-8")) > self.config.max_script_bytes:
                     raise LocalizedError("Script source is empty or too large")
                 try:
-                    revision = self._script(tail[0], source, edit=True).revision
+                    existing = self._script(tail[0], source, edit=True)
                 except LocalizedError as error:
                     if error.template != "Script {name} does not exist":
                         raise
                     self._new_name(tail[0])
-                    revision = None
-                name = self.store.get(tail[0]).name if revision else tail[0]
+                    existing = None
+                if existing is not None and menu:
+                    if guard.name is None:
+                        # New script from a book: an existing name is never overwritten.
+                        raise LocalizedError("Script {name} already exists", name=existing.name)
+                    if guard.revision != existing.revision:
+                        raise LocalizedError("Script changed; reopen the menu")
+                    if guard.book is None:
+                        return CommandResult(True, view=script_forms.import_confirm_screen(existing, text, lang))
+                    if guard.book != text:
+                        raise LocalizedError("The book changed; check it again")
+                revision = existing.revision if existing else None
+                name = existing.name if existing else tail[0]
                 self.inspect(Script(name, text, "draft"), source)
                 self._check(source)
                 self.store.save(name, text, revision, self.owner_key(source), self._who(source))
@@ -586,7 +606,9 @@ class ScriptService:
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} imported from the book ({lines} lines)", name=name,
                                     lines=lines)),),
-                    log_level="info", log_messages=(f"Script {name} imported from a book by {self._who(source)}",))
+                    log_level="info", log_messages=(f"Script {name} imported from a book by {self._who(source)}",),
+                    view=script_forms.script_screen(self.store.get(name), lang, True, self.config.book_export)
+                    if isinstance(guard, script_forms.ScriptGuard) else None)
             if operation == "copy" and len(tail) == 2:
                 # Copies start private and belong to the copier; the original is untouched.
                 original = self._script(tail[0], source)
@@ -601,23 +623,36 @@ class ScriptService:
                                   edit=operation in {"delete", "edit", "share", "private", "restore", "rename"})
             if isinstance(guard, script_forms.ScriptGuard) and guard.revision != script.revision:
                 raise LocalizedError("Script changed; reopen the menu")
-            if operation in {"show", "source"} and len(tail) <= 2:
-                page = int(tail[1]) if len(tail) == 2 else 1
-                pages = script_forms.source_pages(script)
-                total = len(pages)
+            if operation in {"show", "edit"} and len(tail) <= 2:
+                total = len(script_forms.source_pages(script)) if operation == "show" else script_forms.edit_pages(
+                    script)
+                page = int(tail[1]) if len(tail) == 2 and tail[1].isascii() and tail[1].isdecimal() else (
+                    1 if len(tail) == 1 else 0)
                 if not 1 <= page <= total:
                     raise LocalizedError("Script source page is out of range")
-                if operation == "source":
+                if operation == "edit":
                     self._player(source)
-                    return CommandResult(True, view=script_forms.source_screen(script, page, lang))
-                text = pages[page - 1]
+                    return CommandResult(True, view=script_forms.lines_screen(script, page, lang))
+                text = script_forms.source_pages(script)[page - 1]
                 return CommandResult(True, (reply(f"{script.name} ({page}/{total})\n{text}"),))
-            if operation == "export" and len(tail) == 1:
+            if operation == "export" and (len(tail) == 1 or len(tail) == 2 and tail[1].lower() == "overwrite"):
                 self._player(source)
                 if not self.config.book_export:
                     raise LocalizedError("Book export is disabled on this server")
                 pages = source_to_pages(script.source)
-                self._world().fill_held_book(source.player_id, pages)
+                # Writing in the book is replaced only with `overwrite`; the menu asks first, showing it,
+                # and its confirmation overwrites only the pages it showed.
+                current = self._world().held_book_pages(source.player_id, writable=True)
+                expected = None
+                if written(current):
+                    if len(tail) == 1:
+                        if isinstance(guard, script_forms.ScriptGuard):
+                            return CommandResult(True, view=script_forms.export_confirm_screen(
+                                script, current, pages_to_source(current), lang))
+                        raise LocalizedError("The book and quill is not empty; hold an empty one or add overwrite")
+                    menu_pages = guard.book if isinstance(guard, script_forms.ScriptGuard) else None
+                    expected = list(menu_pages) if menu_pages is not None else current
+                self._world().fill_held_book(source.player_id, pages, expected)
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} written into the book ({pages} pages)", name=script.name,
                                     pages=len(pages))),),
@@ -676,12 +711,19 @@ class ScriptService:
                     log_level="info",
                     log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
                 )
-            if operation in {"menu", "edit", "parameters"} and len(tail) == 1:
+            if operation in {"menu", "parameters"} and len(tail) == 1:
                 self._player(source)
-                if operation == "edit":
-                    view = script_forms.edit_screen(script, lang)
-                elif operation == "parameters":
+                if operation == "parameters":
                     schema = self.inspect(script, source)
+                    if not schema:
+                        # No parameters: an empty form cannot be submitted, so start the run.
+                        run = self.start(script, [], source, None)
+                        return CommandResult(
+                            True,
+                            (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),),
+                            log_level="info",
+                            log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
+                        )
                     bots = bot_profiles(self.inputs)
                     groups = self.service.groups.groups if self.service.groups else ()
                     view = script_forms.run_screen(script, schema, groups, bots, source.script_origin, lang)

@@ -19,7 +19,7 @@ DEFAULT_CONTROL_PORT = 19142
 DEFAULT_CHUNK_RADIUS = 5
 DEFAULT_TRANSPORT = "nethernet"
 TRANSPORTS = ("nethernet", "raknet")
-SECTIONS = ("server", "controllers", "runtime", "ui", "scripting")
+SECTIONS = ("server", "controllers", "runtime", "limits", "ui", "scripting")
 LANGUAGES = ("auto", "en", "ja")
 DEFAULT_LANGUAGE = "auto"
 
@@ -54,6 +54,12 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LimitsConfig:
+    max_bots: int = 0
+    reserved_player_slots: int = 1
+
+
+@dataclass(frozen=True, slots=True)
 class UiConfig:
     language: str = DEFAULT_LANGUAGE
 
@@ -73,6 +79,7 @@ class EndbotConfig:
     server: ServerConfig
     controllers: ControllersConfig
     runtime: RuntimeConfig
+    limits: LimitsConfig = LimitsConfig()
     ui: UiConfig = UiConfig()
     scripting: ScriptingConfig = ScriptingConfig()
 
@@ -201,6 +208,23 @@ def _load_runtime(path: Path, document: dict[str, Any]) -> RuntimeConfig:
     )
 
 
+def _load_limits(path: Path, document: dict[str, Any]) -> LimitsConfig:
+    table = document.get("limits", {})
+    if not isinstance(table, dict):
+        raise _fail(path, "limits", "must be a table", "write it as a [limits] section")
+    _reject_unknown_keys(path, table, "limits", ("max-bots", "reserved-player-slots"))
+    max_bots = table.get("max-bots", 0)
+    reserved = table.get("reserved-player-slots", 1)
+    for key, value in (("max-bots", max_bots), ("reserved-player-slots", reserved)):
+        if type(value) is not int:
+            raise _fail(path, f"limits.{key}", "must be an integer", "use 0 or a positive integer")
+    if max_bots < 0:
+        raise _fail(path, "limits.max-bots", "must be 0 or a positive integer", "use 0 for no separate Bot cap")
+    if reserved < 0:
+        raise _fail(path, "limits.reserved-player-slots", "must be 0 or more", "use 0 to disable the reserve")
+    return LimitsConfig(max_bots=max_bots, reserved_player_slots=reserved)
+
+
 def _load_ui(path: Path, document: dict[str, Any]) -> UiConfig:
     table = document.get("ui", {})
     if not isinstance(table, dict):
@@ -277,6 +301,7 @@ def load_config(path: Path) -> EndbotConfig:
         server=_load_server(path, document),
         controllers=_load_controllers(path, document),
         runtime=_load_runtime(path, document),
+        limits=_load_limits(path, document),
         ui=_load_ui(path, document),
         scripting=_load_scripting(path, document),
     )

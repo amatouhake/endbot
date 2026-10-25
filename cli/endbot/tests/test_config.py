@@ -33,6 +33,27 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "scripting"):
             load_config(self.path)
 
+    def test_bot_limits_defaults_and_bounds(self):
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base)
+        limits = load_config(self.path).limits
+        self.assertEqual((limits.max_bots, limits.reserved_player_slots), (0, 1))
+        self.write(base + "[limits]\nmax-bots=8\nreserved-player-slots=2\n")
+        limits = load_config(self.path).limits
+        self.assertEqual((limits.max_bots, limits.reserved_player_slots), (8, 2))
+        for setting, key in (
+            ('max-bots="8"', "limits.max-bots"),
+            ("max-bots=-1", "limits.max-bots"),
+            ("max-bots=-2", "limits.max-bots"),
+            ("reserved-player-slots=-1", "limits.reserved-player-slots"),
+            ("reserved-player-slots=true", "limits.reserved-player-slots"),
+            ("max-bot=8", "limits.max-bot"),
+        ):
+            with self.subTest(setting=setting):
+                self.write(base + f"[limits]\n{setting}\n")
+                with self.assertRaisesRegex(ConfigError, key):
+                    load_config(self.path)
+
     def test_hotbar_sync_settings_defaults_and_bounds(self):
         base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
         self.write(base)

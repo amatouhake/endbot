@@ -902,57 +902,105 @@ class OwnershipTests(unittest.TestCase):
     def test_menus_offer_owner_actions_only_to_the_owner(self):
         self.save(self.alice, "mine", "params {}\n")
         script = self.store.get("mine")
-        own = [button.text for button in script_forms.script_screen(script, "en", True).items]
-        other = [button.text for button in script_forms.script_screen(script, "en", False).items]
-        self.assertIn("Edit source...", own)
+        own = button_texts(script_forms.script_screen(script, "en", True))
+        other = button_texts(script_forms.script_screen(script, "en", False))
+        self.assertEqual([button.text for button in script_forms.script_screen(script, "en", True).items],
+                         ["Run", "Stop runs", "Edit lines...", "More...", "Scripts..."])
         self.assertIn("Share with controllers", own)
-        self.assertNotIn("Edit source...", other)
+        self.assertNotIn("Edit lines...", other)
         self.assertNotIn("Delete", other)
         self.assertIn("Copy and edit...", other)
         copy = next(button for button in script_forms.script_screen(script, "en", False).items
                     if button.text == "Copy and edit...").action.screen
-        self.assertEqual(copy.controls[0].default_value, "mine_copy")
+        self.assertEqual(copy.controls[-1].default_value, "mine_copy")
         self.assertIsNone(copy.guard.revision)
+        self.host.execute(["share", "mine"], self.alice)
+        self.assertIn("Only the owner", self.text(self.host.execute(["edit", "mine"], self.bob)))
+
+    def test_saves_from_menus_come_back_to_the_editor_or_the_new_script(self):
+        result = self.save(self.alice, "mine", "params {}\nlog('a')\n")
+        self.assertEqual(result.view.title, "mine")
+        script = self.store.get("mine")
+        guard = script_forms.ScriptGuard(script.revision, "mine", edit=True, page=1)
+        result = self.host.execute(["save", "mine", "params {}\n"], replace(self.alice, group_guard=guard))
+        self.assertTrue(result.accepted)
+        self.assertIn("Tap a line", result.view.content)
+        # Saving with the old revision again is refused instead of overwriting.
+        stale = self.host.execute(["save", "mine", "params {}\n-- x"], replace(self.alice, group_guard=guard))
+        self.assertIn("changed", self.text(stale))
+        self.assertIsNone(self.save(self.console, "other", "params {}\n").view)
+
+
+def button_texts(screen):
+    """Button texts of a screen and of the action screens it opens."""
+    texts = []
+    for item in screen.items:
+        texts.append(item.text)
+        if isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
+            texts += button_texts(item.action.screen)
+    return texts
+
+
+def submit(screen, *values):
+    return forms.modal_commands(screen, json.dumps(list(values)))
 
 
 class ScriptFormTests(unittest.TestCase):
-    def test_paste_field_starts_empty_and_guards_stale_edit(self):
-        script = Script("sample", "params {}\n", "r1")
-        screen = script_forms.edit_screen(script)
-        self.assertEqual(screen.controls[-1].default_value, "")
-        self.assertEqual(screen.controls[0].text, "Current source:\n1: params {}")
-        # A client that sends null for the label, and one that leaves it out of the response.
-        self.assertEqual(forms.modal_commands(screen, json.dumps([None, 0, "", "", "x"])), (("save", "sample", "x\n"),))
-        self.assertEqual(
-            forms.modal_commands(screen, json.dumps([0, "", "", "\r\nparams {}\r\n"])),
-            (("save", "sample", "\nparams {}\n"),),
-        )
-        # An empty paste never wipes the source.
-        with self.assertRaisesRegex(forms.FormResponseError, "nothing was changed"):
-            forms.modal_commands(screen, json.dumps([0, "", "", ""]))
-        self.assertEqual(screen.guard.revision, "r1")
+    def setUp(self):
+        self.script = Script("sample", "params {}\nfor i = 1, 2 do\n    log(i)\nend\n", "r1")
+
+    def test_script_screen_shows_the_source_with_a_colored_gutter(self):
+        content = script_forms.script_screen(self.script, "en", True).content
+        self.assertIn("§71§r params {}\n§72§r for i = 1, 2 do\n§73§r     log(i)", content)
+        long = Script("big", "".join(f"log({index})\n" for index in range(2000)), "r1")
+        content = script_forms.script_screen(long, "en", True).content
+        self.assertLess(len(content), script_forms.VIEW_CHARS + 500)
+        self.assertIn("more lines; see /botscript show big", content)
+
+    def test_line_buttons_open_the_line_filled_in(self):
+        screen = script_forms.lines_screen(self.script, 1)
+        texts = [item.text for item in screen.items]
+        self.assertEqual(texts[:3], ["+ Add a first line", "§81§r params {}", "§82§r for i = 1, 2 do"])
+        self.assertEqual(texts[-3:], ["+ Add a line at the end", "Replace all from held book", "Back"])
+        line = screen.items[3].action.screen
+        self.assertEqual(line.controls[1].default_value, "    log(i)")
+        self.assertEqual(line.guard, script_forms.ScriptGuard("r1", "sample", edit=True, page=1))
+        # A client may send null for the label.
+        self.assertEqual(submit(line, None, "    log(i * 2)", "", False),
+                         (("save", "sample", "params {}\nfor i = 1, 2 do\n    log(i * 2)\nend\n"),))
+        # A new line below takes the edited line's indentation unless it brings its own.
+        self.assertEqual(submit(line, "    log(i)", "wait(1)", False),
+                         (("save", "sample", "params {}\nfor i = 1, 2 do\n    log(i)\n    wait(1)\nend\n"),))
+        self.assertEqual(submit(line, "    log(i)", "  wait(1)", True),
+                         (("save", "sample", "params {}\nfor i = 1, 2 do\n  wait(1)\nend\n"),))
+        # A paste that kept line breaks becomes several lines; nothing changed goes back to the editor.
+        self.assertEqual(submit(line, "    a\r\n    b", "", False),
+                         (("save", "sample", "params {}\nfor i = 1, 2 do\n    a\n    b\nend\n"),))
+        self.assertEqual(submit(line, "    log(i)", "", False), (("edit", "sample", "1"),))
+        with self.assertRaises(forms.FormResponseError):
+            submit(line, "    log(i)", "", "yes")
+
+    def test_lines_are_added_at_the_top_or_end_and_paged(self):
+        screen = script_forms.lines_screen(self.script, 1)
+        top, end = screen.items[0].action.screen, screen.items[-3].action.screen
+        self.assertEqual(submit(top, "-- note"), (("save", "sample", "-- note\n" + self.script.source),))
+        self.assertEqual(submit(end, "log('done')"), (("save", "sample", self.script.source + "log('done')\n"),))
+        self.assertEqual(submit(end, ""), (("edit", "sample", "1"),))
+        long = Script("big", "".join(f"log({index})\n" for index in range(90)), "r1")
+        self.assertEqual(script_forms.edit_pages(long), 3)
+        middle = [item.text for item in script_forms.lines_screen(long, 2).items]
+        self.assertEqual(middle[0], "§841§r log(40)")
+        self.assertIn("Previous page", middle)
+        self.assertIn("Next page", middle)
+        self.assertNotIn("+ Add a first line", middle)
+        self.assertEqual(script_forms.lines_screen(long, 2).items[0].action.screen.guard.page, 2)
+
+    def test_new_script_saves_the_template_under_the_typed_name(self):
+        screen = script_forms.new_screen("params {}\n", "row")
+        self.assertEqual(screen.controls[-1].default_value, "row")
+        self.assertEqual(submit(screen, None, None, " row2 "), (("save", "row2", "params {}\n"),))
         self.assertTrue(screen.guard.edit)
-
-    def test_line_edits(self):
-        source = "a\nb\nc\n"
-        edit = script_forms.apply_edit
-        self.assertEqual(edit(source, "Append at end", "d\n", "", ""), "a\nb\nc\nd\n")
-        self.assertEqual(edit(source, "Replace lines", "B1\nB2", "2", ""), "a\nB1\nB2\nc\n")
-        self.assertEqual(edit(source, "Replace lines", "X", "1", "2"), "X\nc\n")
-        self.assertEqual(edit(source, "Insert after line", "top", "0", ""), "top\na\nb\nc\n")
-        self.assertEqual(edit(source, "Insert after line", "end", "3", ""), "a\nb\nc\nend\n")
-        self.assertEqual(edit(source, "Delete lines", "", "2", "3"), "a\n")
-        for mode, first, last in (("Delete lines", "4", ""), ("Delete lines", "2", "1"), ("Replace lines", "", ""),
-                                  ("Insert after line", "x", ""), ("Replace lines", "1", "")):
-            with self.subTest(mode=mode, first=first, last=last), self.assertRaises(forms.FormResponseError):
-                edit(source, mode, "", first, last)
-
-    def test_new_script_keeps_template_when_paste_is_empty(self):
-        screen = script_forms.edit_screen(None, "en", "params {}\n", "row")
-        self.assertEqual(forms.modal_commands(screen, json.dumps(["row", None, 0, "", "", ""])),
-                         (("save", "row", "params {}\n"),))
-        self.assertEqual(forms.modal_commands(screen, json.dumps(["row", None, 0, "", "", "params {}\nlog'x'"])),
-                         (("save", "row", "params {}\nlog'x'\n"),))
+        self.assertIsNone(screen.guard.revision)
 
     def test_param_controls_and_generated_values(self):
         script = Script("sample", "params {}", "r1")
@@ -1013,16 +1061,19 @@ class BookWorld:
     def __init__(self, item):
         self.item, self.written = item, None
 
-    def held_book_pages(self, player_id):
+    def held_book_pages(self, player_id, writable=False):
         from endstone_endbot.script_books import book_pages
 
-        return book_pages(self.item)
+        return book_pages(self.item, writable)
 
-    def fill_held_book(self, player_id, pages):
-        from endstone_endbot.script_books import WRITABLE_BOOK
+    def fill_held_book(self, player_id, pages, expected=None):
+        # fill_book's checks without the endstone.nbt write.
+        from endstone_endbot.script_books import written
 
-        if self.item is None or self.item.type.id != WRITABLE_BOOK or self.held_book_pages(player_id):
-            raise LocalizedError("The book and quill is not empty; hold an empty one")
+        current = self.held_book_pages(player_id, writable=True)
+        if written(current) and current != expected:
+            raise LocalizedError("The book and quill is not empty; hold an empty one" if expected is None
+                                 else "The book changed; check it again")
         self.written = pages
 
 
@@ -1084,7 +1135,77 @@ class BookTests(unittest.TestCase):
         self.host.config = replace(self.config, book_export=False)
         self.assertIn("disabled", self.text(self.host.execute(["export", "mine"], self.alice)))
         self.assertNotIn("Write into held book",
-                         [b.text for b in script_forms.script_screen(self.store.get("mine"), "en", True).items])
+                         button_texts(script_forms.script_screen(self.store.get("mine"), "en", True)))
+        self.assertIn("Write into held book",
+                      button_texts(script_forms.script_screen(self.store.get("mine"), "en", True, True)))
+
+    def menu(self, source, **guard):
+        return replace(source, group_guard=script_forms.ScriptGuard(**guard))
+
+    def test_menu_replace_from_a_book_shows_the_book_first(self):
+        self.host.execute(["import", "mine"], self.alice)
+        script = self.store.get("mine")
+        self.world.item = FakeItem("minecraft:writable_book", ["params {}\n-- v2"])
+        result = self.host.execute(["import", "mine"], self.menu(self.alice, revision=script.revision, name="mine"))
+        confirm = result.view
+        self.assertIsInstance(confirm, forms.ConfirmScreen)
+        self.assertIn("(2 lines) with the book below (2 lines)", confirm.content)
+        self.assertIn("§72§r -- v2", confirm.content)
+        self.assertEqual(self.store.get("mine").source, "params {}\nlog('a')\n")
+        # The book changed after it was shown: nothing is saved.
+        self.world.item = FakeItem("minecraft:writable_book", ["params {}\n-- v3"])
+        stale = self.host.execute(["import", "mine"], replace(self.alice, group_guard=confirm.action.guard))
+        self.assertIn("The book changed", self.text(stale))
+        self.world.item = FakeItem("minecraft:writable_book", ["params {}\n-- v2"])
+        done = self.host.execute(["import", "mine"], replace(self.alice, group_guard=confirm.action.guard))
+        self.assertIn("imported from the book", self.text(done))
+        self.assertEqual(self.store.get("mine").source, "params {}\n-- v2\n")
+        # A new script from a book never overwrites an existing name.
+        self.assertIn("already exists", self.text(self.host.execute(["import", "mine"], self.menu(self.alice))))
+
+    def test_menu_export_overwrites_a_written_book_after_showing_it(self):
+        self.host.execute(["import", "mine"], self.alice)
+        revision = self.store.get("mine").revision
+        self.world.item = FakeItem("minecraft:writable_book", ["my long draft", ""])
+        self.assertIn("add overwrite", self.text(self.host.execute(["export", "mine"], self.alice)))
+        confirm = self.host.execute(["export", "mine"], self.menu(self.alice, revision=revision, name="mine")).view
+        self.assertIsInstance(confirm, forms.ConfirmScreen)
+        self.assertIn("(2 pages)", confirm.content)
+        self.assertIn("my long draft", confirm.content)
+        self.assertIsNone(self.world.written)
+        self.world.item = FakeItem("minecraft:writable_book", ["other text"])
+        self.assertIn("The book changed", self.text(
+            self.host.execute(list(confirm.action.commands[0]), replace(self.alice, group_guard=confirm.action.guard))))
+        self.world.item = FakeItem("minecraft:writable_book", ["my long draft", ""])
+        self.assertIn("written into the book", self.text(
+            self.host.execute(list(confirm.action.commands[0]), replace(self.alice, group_guard=confirm.action.guard))))
+        self.assertEqual(self.world.written, ["params {}\nlog('a')"])
+        self.world.item = FakeItem("minecraft:written_book", ["signed"])
+        self.assertIn("Hold a book and quill", self.text(
+            self.host.execute(["export", "mine"], self.menu(self.alice, revision=revision, name="mine"))))
+        # The menu's Overwrite is the typed command plus its check that the book is the one shown.
+        self.assertEqual(confirm.action.commands, (("export", "mine", "overwrite"),))
+        self.world.item, self.world.written = FakeItem("minecraft:writable_book", ["another draft"]), None
+        self.assertIn("written into the book", self.text(self.host.execute(["export", "mine", "overwrite"],
+                                                                           self.alice)))
+        self.assertEqual(self.world.written, ["params {}\nlog('a')"])
+        self.world.item = FakeItem("minecraft:written_book", ["signed"])
+        self.assertIn("Hold a book and quill", self.text(self.host.execute(["export", "mine", "overwrite"],
+                                                                           self.alice)))
+
+    def test_a_parameterless_script_starts_from_the_menu(self):
+        self.store.save("plain", "params {}\n")
+        self.host.inspect = lambda script, source: []
+        started = []
+
+        def start(script, values, source, targets):
+            started.append((script.name, values, targets))
+            return "run-9"
+
+        self.host.start = start
+        result = self.host.execute(["parameters", "plain"], self.alice)
+        self.assertEqual(started, [("plain", [], None)])
+        self.assertIn("Script plain started: run-9", self.text(result))
 
     def test_fill_book_writes_pages_into_the_item_tag(self):
         from endstone_endbot.script_books import fill_book
@@ -1094,8 +1215,16 @@ class BookTests(unittest.TestCase):
         with patch.dict(sys.modules, {"endstone": types.ModuleType("endstone"), "endstone.nbt": nbt}):
             item = fill_book(FakeItem("minecraft:writable_book", []), ["a", "b"])
         self.assertEqual([page["text"].value for page in item.nbt["pages"]], ["a", "b"])
-        with self.assertRaisesRegex(LocalizedError, "empty book and quill"):
+        with self.assertRaisesRegex(LocalizedError, "Hold a book and quill"):
             fill_book(FakeItem("minecraft:written_book", []), ["a"])
+        written = FakeItem("minecraft:writable_book", ["draft"])
+        with self.assertRaisesRegex(LocalizedError, "not empty"):
+            fill_book(written, ["a"])
+        with self.assertRaisesRegex(LocalizedError, "book changed"):
+            fill_book(written, ["a"], ["other"])
+        with patch.dict(sys.modules, {"endstone": types.ModuleType("endstone"), "endstone.nbt": nbt}):
+            item = fill_book(written, ["a"], ["draft"])
+        self.assertEqual([page["text"].value for page in item.nbt["pages"]], ["a"])
 
     def test_a_script_without_params_gets_a_clear_message(self):
         host = ScriptService(self.config, self.store, Mock(world=self.world), None, Path("."), lambda source: True,

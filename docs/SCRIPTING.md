@@ -229,9 +229,9 @@ empty book is written at once. A book that already has writing is overwritten on
 plain `export` refuses it. The menu asks first: it shows the book's current text and page count, and its
 **Overwrite** runs `export <name> overwrite`, writing only if the book still holds those pages. Written (signed)
 books are never changed. Pages hold whole lines: up to 256 characters per page and 50 pages, so a longer line or script is refused.
-No item is created, but because the plugin edits a held item, export is off unless the operator sets
-`[scripting] book-export = true`. The page and character limits are conservative; real-client limits are recorded
-with the human-client checks.
+No item is created. Export is on by default (it is the first step of the multi-line loop); an operator who wants
+the plugin never to change a held item sets `[scripting] book-export = false`. The page and character limits are
+conservative; real-client limits are recorded with the human-client checks.
 
 ### Script files
 
@@ -249,7 +249,11 @@ list); nothing watches the folder. Runs already going keep the source they start
   private: names are server-wide) wins and the file is skipped as "Not loaded: a stored script named … already
   exists"; the console and the start-up log also name that script's owner, so the operator can sort it out.
 - `reload` also runs each file's declaration check and replies with every skipped file and why; start-up only
-  reads the files and logs skipped ones to the server console.
+  reads the files and logs skipped ones to the server console. A file is dropped only for its own fault (a
+  declaration error, or hanging before `params`); when the check cannot run (the caller's run slots are busy, the
+  runner is missing) the file stays loaded and the reply says it was not checked. At most `max-scripts` files load.
+  The checks run on the command worker like saves, about 5 seconds at worst per file that hangs before `params`,
+  so `/bot` commands wait during a reload of such a folder.
 
 Scripts are stored atomically in versioned `scripts.json` in the plugin data folder. Names are case-insensitive
 and follow Groups (1–16 ASCII letters/digits/underscores, starting with a letter/underscore). Disk write errors

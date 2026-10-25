@@ -419,7 +419,8 @@ Decisions after the second human-client look (2026-10-24 JST):
   of numbered lines (the client's two-line field cannot select all, so a prefilled field could not be cleared).
 - **Book and quill:** the client's book editor keeps line breaks and supports Ctrl+A/C/X/V on Windows (no visible
   selection). `/botscript import <name>` reads the held book; `/botscript export <name>` fills an empty held book and
-  quill without creating an item, behind `[scripting] book-export` (default off). One book is the size limit.
+  quill without creating an item, behind `[scripting] book-export` (default off; on since the 2026-10-25 review,
+  once overwriting needed `overwrite` and a menu confirmation). One book is the size limit.
 - **Syntax:** `name=value` run arguments after the positional ones, positions as Luau vectors accepted wherever an
   operation takes `x, y, z`, `param.choice`, `rename`, and templates using `assert(r.ok, r.reason)`.
 

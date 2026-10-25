@@ -617,6 +617,11 @@ class CapacityTests(DoctorTestCase):
         self.write_limits("[limits]\nmax-bots = 8\nreserved-player-slots = 1\n")
         self.assertEqual(self.status_of(self.doctor(), "capacity"), WARN)
 
+    def test_limits_that_are_not_a_table_warn_instead_of_crashing(self) -> None:
+        self.write_limits("limits = 5\n")
+        self.assertEqual(self.status_of(self.doctor(), "capacity"), WARN)
+        self.assertIn("must be a table", self.messages_of(self.doctor(), "capacity")[0])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -657,10 +657,10 @@ JA: dict[str, str] = {
     "block count reached": "指定のブロック数に達しました",
     "ended": "終了",
     "{command} stopped: {reason}": "{command} が止まりました: {reason}",
-    "destroy is waiting: no {block} in sight within 5 blocks; move the Bot closer":
-        "destroy は待機中です: 5ブロック以内に見えている {block} がありません。Bot を近づけてください",
-    "destroy continuous is waiting: no block in sight within 5 blocks":
-        "destroy continuous は待機中です: 5ブロック以内に見えているブロックがありません",
+    "destroy is waiting: no {block} it can break within 5 blocks; move the Bot closer":
+        "destroy は待機中です: 5ブロック以内に壊せる {block} がありません。Bot を近づけてください",
+    "destroy continuous is waiting: no block it can break within 5 blocks":
+        "destroy continuous は待機中です: 5ブロック以内に壊せるブロックがありません",
     "control permission revoked": "操作権限が取り消されました",
     "Bot was renamed or removed": "Bot の名前が変わったか、削除されました",
     # Dispatch and plugin.
@@ -911,6 +911,11 @@ JA.update({
     "The script folder must be a regular directory": "スクリプトのフォルダーは通常のディレクトリにしてください",
     "Script files must be regular files, not links": "スクリプトファイルはリンクではなく通常のファイルにしてください",
     "Script files must be UTF-8 text": "スクリプトファイルは UTF-8 のテキストにしてください",
+    "Loaded without a declaration check: {error}": "引数宣言を確認せずに読み込みました: {error}",
+    "Too many script files (at most {limit})": "スクリプトファイルが多すぎます (上限 {limit} 件)",
+    "Script names must start with a letter/underscore and contain 1-16 letters, digits or underscores":
+        "スクリプト名は英字か下線で始まる 1 から 16 文字の英数字と下線にしてください",
+    "Script {name} already has the book's source": "スクリプト {name} はすでに本と同じ内容です",
     "log limit reached; further logs are dropped": "ログの上限に達しました。以降のログは記録されません",
     "({count} log lines not shown)": "(ログ {count} 行を省略)",
     "Not loaded: a stored script named {name} already exists":

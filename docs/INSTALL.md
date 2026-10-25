@@ -48,9 +48,10 @@ official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition
    `doctor` and `start`. See [RakNet validation](RAKNET_VALIDATION.md) for the evidence boundary. A rollback to an
    older CLI that cannot read `server.transport` refuses safely; restore a compatible NetherNet configuration first.
 
-   0.4.0 setup writes a `[scripting]` section to `endbot.toml`, which 0.3.x rejects as an unknown key. Before
-   `endbot update --rollback` to a 0.3.x version, stop the instance and remove the `[scripting]` section (or move it
-   aside), then roll back and start. Stored scripts in the plugin data folder are kept and come back with 0.4.0.
+   0.4.0 setup writes `[scripting]` and `[limits]` sections to `endbot.toml`, which 0.3.x rejects as unknown. Before
+   `endbot update --rollback` to a 0.3.x version, stop the instance and remove both sections (or move them aside),
+   then roll back and start; the rollback itself does not edit `endbot.toml`. Stored scripts and script files in the
+   plugin data folder are kept and come back with 0.4.0.
 
    A fresh setup also adds every `--controller` GamerTag to `<instance>/server/allowlist.json` (a fresh BDS enables
    `allow-list=true` with an empty list and would otherwise reject the controllers). When adopting an existing server

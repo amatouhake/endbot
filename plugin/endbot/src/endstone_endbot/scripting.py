@@ -22,6 +22,15 @@ from endstone_endbot.script_store import FILE_SUFFIX, Script, load_files
 
 # The operator's script folder in the plugin data folder.
 FILES_DIRECTORY = "scripts"
+# Inspection errors that come from the host, not the inspected source: `reload` keeps such a file.
+UNCHECKED = frozenset({
+    "Script concurrency limit reached",
+    "Script authority was revoked",
+    "Script service is closed",
+    "scripting runner not built/installed",
+    "Script runner OS confinement failed; see the server log",
+    "Script runner process memory allocation failed",
+})
 # Per-run log budget: logs past it are dropped (one notice), so a script cannot
 # fill the server log at the IPC rate for hours.
 LOG_LINES = 2000
@@ -225,10 +234,19 @@ class ScriptService:
         """
         files, problems = load_files(self.files_directory, self.config)
         if source is not None:
+            # A stored script wins a name clash; there is no point checking a file that will not load.
+            stored = {script.name.casefold() for script in self.store.list() if not script.file}
             for key, script in list(files.items()):
+                if key in stored:
+                    continue
                 try:
                     self.inspect(script, source)
                 except LocalizedError as error:
+                    if error.template in UNCHECKED:
+                        # Busy run slots, revoked authority or a missing runner say nothing about the file.
+                        problems.append((script.name + FILE_SUFFIX, LocalizedError(
+                            "Loaded without a declaration check: {error}", error=Text(error.template))))
+                        continue
                     problems.append((script.name + FILE_SUFFIX, error))
                     del files[key]
         shadowed = self.store.set_files(files)
@@ -684,6 +702,11 @@ class ScriptService:
                         raise LocalizedError("Script {name} already exists", name=existing.name)
                     if guard.revision != existing.revision:
                         raise LocalizedError("Script changed; reopen the menu")
+                if existing is not None and text == existing.source:
+                    # Nothing to replace: no confirmation and no history entry.
+                    return CommandResult(True, (reply(tr(lang, "Script {name} already has the book's source",
+                                                         name=existing.name)),))
+                if existing is not None and menu:
                     if guard.book is None:
                         return CommandResult(True, view=script_forms.import_confirm_screen(existing, text, lang))
                     if guard.book != text:

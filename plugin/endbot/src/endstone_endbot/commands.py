@@ -1070,9 +1070,10 @@ class BotCommandService:
     def poll_mining(self, authorize) -> list[tuple[object, str, str, str]]:
         """Renew/retarget loops; return (source, level, message, log message) notices.
 
-        Notices cover only abnormal ends. Commanded stops already replied, and
-        each successfully broken block would be far too chatty. The message is
-        in the source's language; the log message is English.
+        Notices cover abnormal ends and a loop that has started waiting for a
+        target. Commanded stops already replied, and each successfully broken
+        block would be far too chatty. The message is in the source's language;
+        the log message is English.
         """
         notices = []
         with self._mining_lock:
@@ -1133,15 +1134,15 @@ class BotCommandService:
 
     @staticmethod
     def _waiting_notice(entry) -> tuple[object, str, str, str]:
-        """A one-time notice that a loop is idle because nothing breakable is in sight."""
+        """A one-time notice that a loop is idle: nothing in sight, or the runtime refused what was."""
         name, _, _, source, block_type = entry
 
         def render(lang: str) -> str:
             if block_type:
-                text = tr(lang, "destroy is waiting: no {block} in sight within 5 blocks; move the Bot closer",
+                text = tr(lang, "destroy is waiting: no {block} it can break within 5 blocks; move the Bot closer",
                           block=block_type.removeprefix("minecraft:"))
             else:
-                text = tr(lang, "destroy continuous is waiting: no block in sight within 5 blocks")
+                text = tr(lang, "destroy continuous is waiting: no block it can break within 5 blocks")
             return reply(text, name, "")
 
         return (source, "info", render(_language(source)), render("en"))

@@ -63,9 +63,11 @@ slice-ms = 100
 interrupt-budget = 1000000
 operations-per-second = 20
 max-script-bytes = 32768
-# `/botscript export` writes a script into the empty book and quill the player
-# holds (no item is created). Off by default because it edits a held item.
-book-export = false
+# `/botscript export` writes a script into the book and quill the player holds,
+# for editing it there and importing it back. No item is created; a book that
+# already has writing is overwritten only with `export <name> overwrite`, which
+# the menu confirms first. false keeps players' books untouched.
+book-export = true
 # A script's log() lines also go to the chat of the player who started the run
 # (at most 10 lines per 5 seconds per run; the server log keeps every line).
 chat-logs = true

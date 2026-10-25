@@ -170,20 +170,20 @@ class RuntimeConfigTests(ConfigGenTestCase):
 class PluginConfigTests(ConfigGenTestCase):
     def test_scripting_os_limit_overrides_reach_plugin_and_defaults_return(self):
         with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
-            config.write("\n[scripting]\nos-confinement=false\nprocess-memory-bytes=0\ncpu-seconds=3\nbook-export=true\n"
+            config.write("\n[scripting]\nos-confinement=false\nprocess-memory-bytes=0\ncpu-seconds=3\nbook-export=false\n"
                          "chat-logs=false\n")
         target, _ = generate_plugin_config(self.server, self.paths, self.config())
         table = tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]
         self.assertFalse(table["os-confinement"])
         self.assertEqual(table["process-memory-bytes"], 0)
         self.assertEqual(table["cpu-seconds"], 3)
-        self.assertTrue(table["book-export"])
+        self.assertFalse(table["book-export"])
         self.assertFalse(table["chat-logs"])
         text = self.paths.endbot_toml.read_text(encoding="utf-8")
         self.paths.endbot_toml.write_text(
             text.replace("os-confinement=false", "os-confinement=true")
                 .replace("process-memory-bytes=0", "process-memory-bytes=268435456")
-                .replace("cpu-seconds=3", "cpu-seconds=60").replace("book-export=true", "book-export=false")
+                .replace("cpu-seconds=3", "cpu-seconds=60").replace("book-export=false", "book-export=true")
                 .replace("chat-logs=false", "chat-logs=true"),
             encoding="utf-8",
         )

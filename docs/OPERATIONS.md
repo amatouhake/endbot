@@ -73,9 +73,10 @@ Bundles ship the runner, so enabling it requires no build or toolchain. On each 
 and the absolute path of the running app version's runner into the generated plugin config. An optional
 `[scripting] runner = 'path'` overrides that path (relative paths resolve from the plugin data folder).
 Manual plugin installations set `[scripting]` directly in their plugin config. See [SCRIPTING.md](SCRIPTING.md).
-`[scripting] book-export = true` lets controllers write a script into the empty book and quill they hold
-(`/botscript export`); it is off by default because the plugin edits a held item. Importing from a book is always
-available while scripting is enabled.
+`[scripting] book-export` (default true) lets controllers write a script into the book and quill they hold
+(`/botscript export`) to edit it there. No item is created; a book that already has writing is replaced only with
+`export <name> overwrite`, which the menu confirms first. Set it to false if the plugin must never change a held
+item. Importing from a book is always available while scripting is enabled.
 
 `[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
 (default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value

@@ -161,6 +161,7 @@ SCRIPT_USAGES = [
     "/botscript (import)<action: EndbotScriptImport> <name: string>",
     "/botscript (export)<action: EndbotScriptExport> <name: string>",
     "/botscript (export)<action: EndbotScriptExportTo> <name: string> (overwrite)<mode: EndbotScriptOverwrite>",
+    "/botscript (reload)<action: EndbotScriptReload>",
 ]
 
 
@@ -345,6 +346,16 @@ class EndbotPlugin(Plugin):
             scripts = None
         self._scripts = ScriptService(self._script_config, scripts, self._bot_commands, control, self.data_folder,
             authorize=lambda source: self._server_thread.call(lambda: self._authorize_script(source)))
+        if scripts is not None and self._script_config.enabled:
+            # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
+            try:
+                self._scripts.files_directory.mkdir(exist_ok=True)
+                loaded, problems = self._scripts.reload_files()
+                self.logger.info(f"Loaded {len(loaded)} script files from {self._scripts.files_directory}")
+                for name, error in problems:
+                    self.logger.warning(f"Script file {name} skipped: {error}")
+            except (LocalizedError, OSError) as error:
+                self.logger.error(f"Script files unavailable: {error}")
 
         def script_origin(sender):
             if not hasattr(sender, "location"):

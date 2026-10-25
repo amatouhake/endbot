@@ -76,7 +76,8 @@ def run(*argv, guard=None):
 
 def label(script, own, lang="en"):
     """`name (owner, private)` as lists show it; your own scripts say so."""
-    owner = tr(lang, "yours") if own else (script.owner_name or tr(lang, "unowned"))
+    owner = tr(lang, "file") if script.file else tr(lang, "yours") if own else (
+        script.owner_name or tr(lang, "unowned"))
     return f"{script.name} ({owner}, {tr(lang, script.visibility)})"
 
 
@@ -122,6 +123,7 @@ def list_screen(scripts, lang="en", own=lambda script: False):
             ),
         )
     )
+    items.append(f.Button(tr(lang, "Reload script files"), run("reload")))
     items.append(f.Button(tr(lang, "Back to Bot list"), f.run(f.menu_argv())))
     return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
 
@@ -198,6 +200,8 @@ def script_screen(script, lang="en", editable=True, book_export=False):
         items += [copy, *export]
     items.append(f.Button(tr(lang, "Scripts..."), run("menu")))
     content = (tr(lang, "Your script ({visibility}).", visibility=tr(lang, script.visibility)) if editable
+               else tr(lang, "From {file}. Run it, or copy it to edit in game; the operator edits the file.",
+                       file=f"scripts/{script.name}.luau") if script.file
                else tr(lang, "Shared by {owner}. Run it, or copy it to edit your own.",
                        owner=script.owner_name or tr(lang, "unowned")))
     return f.ActionScreen(script.name, content + "\n\n" + _capped_view(script.source, lang, script.name),

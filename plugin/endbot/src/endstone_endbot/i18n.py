@@ -900,10 +900,22 @@ JA.update({
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "
     "| copy <name> <new> | share|private <name> | history <name> | restore <name> <n> "
-    "| rename <name> <new> | import <name> | export <name> [overwrite] | menu":
+    "| rename <name> <new> | import <name> | export <name> [overwrite] | reload | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
         "| delete <name> | copy <name> <new> | share|private <name> | history <name> "
-        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | menu",
+        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | reload | menu",
+    "Loaded {count} script files from {folder}": "{folder} からスクリプトファイルを {count} 件読み込みました",
+    "Script {name} comes from a file; edit the file, then /botscript reload":
+        "スクリプト {name} はファイルから読み込んだものです。"
+        "ファイルを編集してから /botscript reload してください",
+    "The script folder must be a regular directory": "スクリプトのフォルダーは通常のディレクトリにしてください",
+    "Script files must be regular files, not links": "スクリプトファイルはリンクではなく通常のファイルにしてください",
+    "Script files must be UTF-8 text": "スクリプトファイルは UTF-8 のテキストにしてください",
+    "file": "ファイル",
+    "From {file}. Run it, or copy it to edit in game; the operator edits the file.":
+        "{file} から読み込んだスクリプトです。実行するか、コピーするとゲーム内で編集できます。"
+        "元のファイルは運用者が編集します。",
+    "Reload script files": "スクリプトファイルを再読み込み",
     "Arguments follow declaration order, then name=value for any parameter; "
     "quote positions. Create/edit in the menu, or import from a held book and quill.":
         "引数は宣言順で、その後に name=値 で任意の引数を指定できます。座標は引用符で囲みます。"

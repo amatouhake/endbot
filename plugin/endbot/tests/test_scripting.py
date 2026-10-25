@@ -945,6 +945,97 @@ def submit(screen, *values):
     return forms.modal_commands(screen, json.dumps(list(values)))
 
 
+class FileScriptTests(unittest.TestCase):
+    """`<name>.luau` files in the operator's folder: shared, read-only, reloaded on demand."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.data = Path(directory.name)
+        self.folder = self.data / "scripts"
+        self.folder.mkdir()
+        self.config = ScriptConfig(enabled=True)
+        self.store = ScriptStore(self.data / "scripts.json", self.config)
+        self.runner = lambda *args: FakeRunner([])
+        self.host = ScriptService(self.config, self.store, None, None, self.data, lambda source: True,
+                                  process_factory=lambda *args: self.runner(*args), bootstrap="trusted")
+        self.alice = CommandSource(player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
+
+    def text(self, result):
+        return " ".join(result.messages)
+
+    def write(self, name, text):
+        (self.folder / name).write_bytes(text.encode("utf-8"))
+
+    def test_files_load_shared_and_read_only(self):
+        self.write("patrol.luau", "params {}\r\nlog('a')\r\n")
+        self.write("notes.txt", "ignored")
+        self.assertEqual(self.host.reload_files(), (("patrol",), []))
+        script = self.store.get("PATROL")
+        self.assertEqual((script.source, script.visibility, script.file), ("params {}\nlog('a')\n", "shared", True))
+        self.assertIn("patrol (file, shared)", self.text(self.host.execute(["list"], self.alice)))
+        self.assertTrue(self.host.execute(["show", "patrol"], self.alice).accepted)
+        for argv in (["delete", "patrol"], ["rename", "patrol", "other"], ["share", "patrol"], ["edit", "patrol"]):
+            with self.subTest(argv=argv):
+                self.assertIn("comes from a file", self.text(self.host.execute(argv, self.alice)))
+        guard = script_forms.ScriptGuard(script.revision, "patrol", edit=True)
+        self.assertIn("comes from a file", self.text(
+            self.host.execute(["save", "patrol", "params {}\n"], replace(self.alice, group_guard=guard))))
+        self.assertIn("already exists", self.text(self.host.execute(
+            ["save", "patrol", "params {}\n"], replace(self.alice, group_guard=script_forms.ScriptGuard(edit=True)))))
+        # A copy is an ordinary stored script of the copier.
+        self.assertTrue(self.host.execute(["copy", "patrol", "mine"], self.alice).accepted)
+        self.assertEqual(self.store.get("mine").owner, "xuid:111")
+        screen = script_forms.script_screen(script, "en", self.host.can_edit(script, self.alice))
+        self.assertIn("From scripts/patrol.luau", screen.content)
+        self.assertNotIn("Edit lines...", [item.text for item in screen.items])
+        # The file is never written to scripts.json.
+        self.assertNotIn("patrol", (self.data / "scripts.json").read_text(encoding="utf-8"))
+
+    def test_reload_replaces_files_and_reports_problems(self):
+        self.write("a.luau", "params {}\n")
+        self.host.reload_files()
+        revision = self.store.get("a").revision
+        self.host.reload_files()
+        self.assertEqual(self.store.get("a").revision, revision)
+        self.write("a.luau", "params {}\n-- v2\n")
+        self.write("bad-name.luau", "params {}\n")
+        self.write("empty.luau", "  \n")
+        self.write("broken.luau", "params {")
+        self.write("latin.luau", "")
+        (self.folder / "latin.luau").write_bytes(b"params {}\n-- \xff\n")
+        self.store.save("taken", "params {}\n", None, "xuid:111", "Alice")
+        self.write("taken.luau", "params {}\n-- file\n")
+
+        def runner(executable, source, *args):
+            if source.startswith("params {}"):
+                return FakeRunner([])
+            fake = FakeRunner([])
+            fake.events = queue.Queue()
+            fake.events.put({"type": "error", "message": "script:1: Expected '}'"})
+            return fake
+
+        self.runner = runner
+        result = self.host.execute(["reload"], self.alice)
+        self.assertIn("Loaded 1 script files from plugins/endbot/scripts/", self.text(result))
+        for name in ("bad-name.luau", "empty.luau", "broken.luau", "latin.luau", "taken.luau"):
+            self.assertIn(name, self.text(result))
+        self.assertIn("Script files reloaded by Alice: 1 loaded", result.log_messages[0])
+        self.assertNotEqual(self.store.get("a").revision, revision)
+        self.assertEqual(self.store.get("taken").source, "params {}\n")
+        for name in ("broken", "empty", "latin"):
+            self.assertIn("does not exist", self.text(self.host.execute(["show", name], self.alice)))
+        (self.folder / "a.luau").unlink()
+        self.host.reload_files()
+        self.assertIn("does not exist", self.text(self.host.execute(["show", "a"], self.alice)))
+
+    def test_a_folder_that_is_not_a_directory_is_refused(self):
+        self.folder.rmdir()
+        self.folder.write_text("x", encoding="utf-8")
+        with self.assertRaisesRegex(LocalizedError, "regular directory"):
+            self.host.reload_files()
+
+
 class ScriptFormTests(unittest.TestCase):
     def setUp(self):
         self.script = Script("sample", "params {}\nfor i = 1, 2 do\n    log(i)\nend\n", "r1")

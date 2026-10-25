@@ -444,6 +444,21 @@ BOT-013, is 0.5.0), but its menus were too hard to read and edit with.
   overwrite` (plain `export` refuses a book with writing). Both confirmations, the typed `overwrite` and its
   command hint passed on the Windows client (2026-10-25).
 
+Decisions on script files (2026-10-25 JST): writing source in a PC editor should not need the book loop, and
+controllers still never name server paths.
+
+- **The operator's folder is the source of truth.** `<name>.luau` files directly in the plugin data folder's
+  `scripts/` are loaded at server start and again by `/botscript reload` (console or any controller); no file
+  watching. Runs keep the source they started with.
+- **File scripts are read-only in game** and shared with every controller: Run, Stop runs, Copy and edit and export
+  work, editing does not (copying makes an ordinary stored script). They show as owned by `file` and have no history;
+  the operator versions the folder.
+- A stored script wins a name clash; the file is skipped with a warning. Only regular `.luau` files with a valid
+  script name and within `max-script-bytes` load; symlinks are refused. `reload` also checks each file's declaration
+  and reports problems; start-up only reads the files.
+- Passed on the Windows client (2026-10-25): a file script listed as `file`, ran, refused edits, copied into an
+  editable script, picked up a file change on reload, and reload reported a broken file and dropped it.
+
 The direction above is implemented as described in [scripting](SCRIPTING.md) and this item's status line; the
 independent Group feature is tracked under BOT-010. Real-client editing, permission, cancellation, Bot behavior and
 achievement validation are recorded separately and remain manual gates.

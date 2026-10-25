@@ -56,7 +56,7 @@ Startup limits (integers from 1 to 2147483647, except the zero/boolean settings 
 | `process-memory-bytes` | 268435456 | 256 MiB process cap; 0 disables this cap; nonzero requires at least `memory-bytes + 67108864` (64 MiB native headroom) |
 | `cpu-seconds` | 60 | Cumulative CPU seconds per run, independently of wall time and VM slices; waits use none, so long-waiting macros are unaffected. It is what ends a run stuck inside one C library call (`string.rep`, `string.gsub`), which the per-slice budget cannot interrupt. 0 disables the cap |
 
-Managed instances also accept `os-confinement`, `process-memory-bytes` and `cpu-seconds` in
+Managed instances also accept `os-confinement`, `process-memory-bytes`, `cpu-seconds`, `book-export` and `chat-logs` in
 `endbot.toml` under `[scripting]`; the CLI forwards overrides into the generated plugin config.
 Other limits in this table are plugin `config.toml` settings. Managed instances retain the default
 32 MiB VM bound, so a nonzero process cap must be at least 96 MiB there. For example:
@@ -306,7 +306,12 @@ Ordinary operation calls return **acceptance**, not completion: `{ok=true,messag
 `{ok=false,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
 Handle rejected calls explicitly, for example `assert(r.ok, r.reason)`. Revocation, rate/deadline and protocol errors end the run.
 Use `wait(ticks)` (20 ticks = one wall-clock second) and `waitOnline(bot("Alice"))`, which also accepts a name
-or Group handle. `log(text)` emits bounded log text. Waits recheck authority. No command-string API exists.
+or Group handle. `log(text)` writes one line, tagged with the run id, to the server log, and also to the chat of
+the player who started the run: at most 10 lines per 5 seconds per run, each cut to 256 characters with formatting
+codes removed; held-back lines are counted on the next chat line or the end message, and the server log keeps every
+line (up to 2000 lines / 512 KiB per run). `[scripting] chat-logs = false` (plugin `config.toml`, or `endbot.toml`
+for managed instances) keeps logs in the server log only. Console runs log only there. Waits recheck authority.
+No command-string API exists.
 
 ### Structured status and mining waits
 

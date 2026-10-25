@@ -50,8 +50,9 @@ Line by line:
 - `waitOnline(alice)` waits until Alice is connected, so the next line is not rejected while she is still joining.
 - `alice:jump()` is `/bot Alice jump`. The `:` calls an operation on the handle.
 
-`log("some text")` writes a line to the **server console** (the operator sees it there, tagged with the run id);
-it does not appear in your chat.
+`log("some text")` prints a line in your chat, after the script's name and run id, and in the server console. Add
+`log("jumped")` after the jump to try it. Chat shows at most 10 lines every 5 seconds per run and says how many it
+held back; the console keeps them all.
 
 ## 3. Parameters: one script, many uses
 
@@ -223,7 +224,7 @@ wait(20)                                  -- 20 ticks = 1 second
 b:move("forward", {ticks = 20})           -- options go in a final table
 b:tp(vector.create(0, 64, 0))             -- a vector stands for x, y, z
 b:waitMining{timeout = 1200}              -- wait for a destroy/mining job
-log("text")                               -- one line in the server console
+log("text")                               -- one line in your chat and the server console
 ```
 
 Next: the [generated API reference](SCRIPTING.md#generated-api-reference) lists every operation and its options,

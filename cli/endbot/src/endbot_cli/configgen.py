@@ -246,6 +246,7 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
         ("process-memory-bytes", config.scripting.process_memory_bytes, 268435456),
         ("cpu-seconds", config.scripting.cpu_seconds, 60),
         ("book-export", config.scripting.book_export, False),
+        ("chat-logs", config.scripting.chat_logs, True),
     ):
         if value != default:
             scripting[key] = value

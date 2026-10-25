@@ -911,6 +911,8 @@ JA.update({
     "The script folder must be a regular directory": "スクリプトのフォルダーは通常のディレクトリにしてください",
     "Script files must be regular files, not links": "スクリプトファイルはリンクではなく通常のファイルにしてください",
     "Script files must be UTF-8 text": "スクリプトファイルは UTF-8 のテキストにしてください",
+    "log limit reached; further logs are dropped": "ログの上限に達しました。以降のログは記録されません",
+    "({count} log lines not shown)": "(ログ {count} 行を省略)",
     "Not loaded: a stored script named {name} already exists":
         "読み込みませんでした。同じ名前の保存済みスクリプト {name} があります",
     "Not loaded: a stored script named {name} already exists (owner {owner})":

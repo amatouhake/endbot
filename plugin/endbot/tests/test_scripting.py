@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from endstone_endbot import forms, script_forms
-from endstone_endbot.commands import HELP_TOPICS, parse_command
+from endstone_endbot.commands import HELP_TOPICS, parse_command, strip_colors
 from endstone_endbot.control import RuntimeControlError
 from endstone_endbot.dispatch import CommandSource
 from endstone_endbot.groups import GroupCommandService, GroupStore
@@ -433,6 +433,51 @@ class LifecycleTests(unittest.TestCase):
         logs = [line for line in self.logs() if "line " in line or "log limit" in line]
         self.assertEqual(len([line for line in logs if "line " in line]), 3)
         self.assertEqual(len([line for line in logs if "log limit" in line]), 1)
+
+    def chat_after_end(self, events):
+        """Chat messages of a run that logs ``events`` and ends; the end message is the last one."""
+        self.host.config = replace(self.config, operations_per_second=100000)
+        self.start([*events, {"type": "done"}])
+        self.wait_finished()
+        deadline = time.monotonic() + 2
+        while not any("ended" in line for line in self.logs()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return [message for result in self.notifications for message in result.messages]
+
+    def test_log_lines_reach_the_starters_chat_without_formatting(self):
+        chat = self.chat_after_end([{"type": "log", "text": "§cnot red " + "x" * 300},
+                                    {"type": "log", "text": "second"}])
+        self.assertIn("test (", strip_colors(chat[0]))
+        self.assertIn("not red " + "x" * 248 + "...", strip_colors(chat[0]))
+        self.assertNotIn("§c", chat[0])
+        self.assertTrue(strip_colors(chat[1]).endswith(": second"))
+        self.assertIn("ended", chat[-1])
+        # The console log keeps the whole line.
+        self.assertTrue(any("x" * 300 in line for line in self.logs()))
+
+    def test_chat_logs_are_limited_per_window_and_count_what_was_held_back(self):
+        chat = self.chat_after_end([{"type": "log", "text": f"line {i}"} for i in range(13)])
+        lines = [strip_colors(message) for message in chat if "line " in message]
+        self.assertEqual(len(lines), 10)
+        self.assertTrue(strip_colors(chat[-1]).endswith("(3 log lines not shown)"))
+        self.assertEqual(len([line for line in self.logs() if "line " in line]), 13)
+        # The next window shows the next line with the count of those held back.
+        run = ScriptRun("r", "test", self.source, chat_window=1.0, chat_lines=10, chat_skipped=2)
+        with patch("endstone_endbot.scripting.time.monotonic", return_value=7.0):
+            shown = self.host._chat_log(run, "again")
+        self.assertTrue(strip_colors(shown[0]).endswith("again (2 log lines not shown)"))
+        self.assertEqual(run.chat_skipped, 0)
+
+    def test_chat_logs_can_be_turned_off_and_console_runs_never_chat(self):
+        self.config = replace(self.config, chat_logs=False)
+        self.assertEqual([m for m in self.chat_after_end([{"type": "log", "text": "quiet"}]) if "quiet" in m], [])
+        self.config = replace(self.config, chat_logs=True)
+        self.host.config = self.config
+        console = ScriptRun("r", "test", CommandSource())
+        self.assertEqual(self.host._chat_log(console, "hello"), ())
+        self.assertFalse(ScriptConfig.from_config({}).chat_logs is False)
+        with self.assertRaises(ValueError):
+            ScriptConfig.from_config({"chat-logs": 1})
 
     def test_console_lists_and_stops_every_controllers_runs_and_actions_are_audited(self):
         console = CommandSource()

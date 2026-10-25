@@ -6,6 +6,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from uuid import uuid4
 
 from endstone_endbot import script_forms
@@ -17,8 +18,10 @@ from endstone_endbot.operations import OPERATIONS, operation_argv
 from endstone_endbot.script_books import pages_to_source, source_to_pages, written
 from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
-from endstone_endbot.script_store import Script
+from endstone_endbot.script_store import FILE_SUFFIX, Script, load_files
 
+# The operator's script folder in the plugin data folder.
+FILES_DIRECTORY = "scripts"
 # Per-run log budget: logs past it are dropped (one notice), so a script cannot
 # fill the server log at the IPC rate for hours.
 LOG_LINES = 2000
@@ -55,6 +58,8 @@ class ScriptService:
     ):
         self.config, self.store, self.service, self.inputs = config, store, service, inputs
         self.executable = config.executable(data_folder)
+        # The operator's `<name>.luau` files, loaded at start-up and on `reload`.
+        self.files_directory = Path(data_folder) / FILES_DIRECTORY
         self.authorize, self.process_factory = authorize, process_factory
         self.bootstrap = bootstrap
         self._runs = {}
@@ -177,7 +182,12 @@ class ScriptService:
         return f"xuid:{source.xuid}" if source.xuid else f"player:{source.player_id}"
 
     def can_edit(self, script, source):
-        """The owner or the console; an unowned (pre-ownership) script is claimed by its next editor."""
+        """The owner or the console; an unowned (pre-ownership) script is claimed by its next editor.
+
+        Nobody edits a file script in game: its file is the source.
+        """
+        if script.file:
+            return False
         return source.player_id is None or script.owner is None or script.owner == self.owner_key(source)
 
     def can_run(self, script, source):
@@ -191,10 +201,37 @@ class ScriptService:
         if not self.can_run(script, source):
             # A private script of another controller is indistinguishable from a missing one.
             raise LocalizedError("Script {name} does not exist", name=name)
+        if edit and script.file:
+            raise LocalizedError("Script {name} comes from a file; edit the file, then /botscript reload",
+                                 name=script.name)
         if edit and not self.can_edit(script, source):
             raise LocalizedError("Only the owner {owner} may change script {name}; use Copy and edit",
                                  owner=script.owner_name or "?", name=script.name)
         return script
+
+    def reload_files(self, source=None):
+        """Read the operator's script folder again; with a ``source``, also check each file's declaration.
+
+        Returns ``(loaded names, problems)`` where a problem is ``(file or script name, error)``.
+        Running scripts keep the source they started with.
+        """
+        files, problems = load_files(self.files_directory, self.config)
+        if source is not None:
+            for key, script in list(files.items()):
+                try:
+                    self.inspect(script, source)
+                except LocalizedError as error:
+                    problems.append((script.name + FILE_SUFFIX, error))
+                    del files[key]
+        shadowed = self.store.set_files(files)
+        for name in shadowed:
+            # The console (and the start-up log) is the operator, who may need the owner to sort it out.
+            stored = self.store.get(name)
+            problems.append((name + FILE_SUFFIX, LocalizedError(
+                "Not loaded: a stored script named {name} already exists (owner {owner})", name=stored.name,
+                owner=stored.owner_name or "?") if source is None or source.player_id is None else LocalizedError(
+                "Not loaded: a stored script named {name} already exists", name=stored.name)))
+        return tuple(sorted(script.name for script in files.values() if script.name not in shadowed)), problems
 
     def _new_name(self, name):
         try:
@@ -508,7 +545,7 @@ class ScriptService:
                                 "Script help: list | show <name> [page] | run <name> [args...] "
                                 "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
                                 "| share|private <name> | history <name> | restore <name> <n> "
-                                "| rename <name> <new> | import <name> | export <name> [overwrite] | menu",
+                                "| rename <name> <new> | import <name> | export <name> [overwrite] | reload | menu",
                             )
                         ),
                         reply(
@@ -531,6 +568,17 @@ class ScriptService:
                     for r in self.visible(source)
                 ) or tr(lang, "No active script runs")
                 return CommandResult(True, (reply(text),))
+            if operation == "reload" and not tail:
+                loaded, problems = self.reload_files(source)
+                lines = [tr(lang, "Loaded {count} script files from {folder}", count=len(loaded),
+                            folder=f"plugins/endbot/{FILES_DIRECTORY}/")]
+                lines += [f"{name}: {localize_error(error, lang)}" for name, error in problems]
+                english = [f"{name}: {error}" for name, error in problems]
+                return CommandResult(
+                    True, tuple(reply(line, color=ERROR) if index else reply(line) for index, line in enumerate(lines)),
+                    log_level="info",
+                    log_messages=(f"Script files reloaded by {self._who(source)}: {len(loaded)} loaded"
+                                  + "".join(f"; {line}" for line in english),))
             if operation == "stop" and len(tail) == 1:
                 count = self.stop(source, tail[0])
                 return CommandResult(

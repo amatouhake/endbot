@@ -159,13 +159,15 @@ retain the pinned BDS baseline's completion limitations.
 /botscript rename <name> <new-name>
 /botscript import <name>
 /botscript export <name> [overwrite]
+/botscript reload
 /botscript help
 /botscript menu
 ```
 
 `runs`/`stop` address the invoking controller's runs. The console is the operator: its `runs` lists every controller's runs with their owner, and its `stop <id|name|all>` stops any of them, so a run left behind by a controller who logged out can be ended without revoking that controller. Start, stop, save and delete are logged with the controller's name, and so is each run's end. Deleting a script
 does not cancel running copies. Show displays numbered, bounded pages and wraps long lines without dropping
-source. Source is never loaded from a user-supplied filesystem path.
+source. Source is never loaded from a user-supplied filesystem path; the only files read are the operator's
+[script files](#script-files).
 
 ### Ownership, visibility and revisions
 
@@ -227,6 +229,24 @@ books are never changed. Pages hold whole lines: up to 256 characters per page a
 No item is created, but because the plugin edits a held item, export is off unless the operator sets
 `[scripting] book-export = true`. The page and character limits are conservative; real-client limits are recorded
 with the human-client checks.
+
+### Script files
+
+To write scripts in a PC editor, the operator puts `<name>.luau` files directly in `scripts/` inside the plugin data
+folder (for a standard instance, `server/plugins/endbot/scripts/`, created at start-up). They are read when the
+server starts and again by `/botscript reload` (console, any controller, or **Reload script files** in the script
+list); nothing watches the folder. Runs already going keep the source they started with.
+
+- A file script is **shared** with every controller and **read-only** in game: Run, Stop runs, show, Copy and edit
+  and export work; editing, rename, delete and sharing refuse with a pointer to the file. Lists show its owner as
+  `file`. Copying makes an ordinary stored script owned by the copier.
+- It has no revision history; version the folder yourself if you need one. It is never written to `scripts.json`.
+- Only regular `.luau` files (UTF-8, CRLF accepted) with a valid script name and at most `max-script-bytes` load;
+  links, other extensions and subfolders are ignored or refused. A stored script with the same name (anyone's, even
+  private: names are server-wide) wins and the file is skipped as "Not loaded: a stored script named … already
+  exists"; the console and the start-up log also name that script's owner, so the operator can sort it out.
+- `reload` also runs each file's declaration check and replies with every skipped file and why; start-up only
+  reads the files and logs skipped ones to the server console.
 
 Scripts are stored atomically in versioned `scripts.json` in the plugin data folder. Names are case-insensitive
 and follow Groups (1–16 ASCII letters/digits/underscores, starting with a letter/underscore). Disk write errors

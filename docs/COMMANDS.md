@@ -409,7 +409,8 @@ stack IDs. The runtime predicts both slots until the next authoritative observat
 selected equipment after a changed selection or held stack. **Inventory... / Hold item...** accepts an item ID and
 **Swap slots...** offers two 1-36 dropdowns. These forms echo the equivalent typed command, including any item prefix.
 Group swap/hold use the existing UUID-pinned batch input path with bounded request replies, audit and saved history.
-Live acceptance of these new operations is **pending**; see [the validation record](INVENTORY_VALIDATION.md).
+Live acceptance of swap/hold passed on the locked pair over Windows RakNet (2026-10-22); human-client forms, native
+hints and other-client equipment rendering remain manual gates. See [the validation record](INVENTORY_VALIDATION.md).
 The native `EndbotSwap`/`EndbotHold` typed overloads provide hints; enum-free required message tails continue to carry
 execution under the pinned BDS declaration rules. Native client hints and form rendering still require live checks.
 
@@ -429,7 +430,7 @@ immediately. Group selectors use the same grammar; drops remain mutations with b
 
 The versioned `endbot:inventory-v2` observation carries exact typed item/NBT data in bounded fragments, applied only
 after a full valid snapshot arrives. Existing `hotbar-sync-interval-ticks` and `hotbar-sync-resend-ticks` settings now
-cover the entire inventory. Size bounds and pending live product validation are described in the validation record.
+cover the entire inventory. Size bounds and the remaining live gates are described in the validation record.
 
 `use continuous` holds right-click: its first input tick sends the initial air-use interaction, and later ticks send
 simulation-tick interactions in the same authoritative input stream. `use stop` or global `stop` releases it, for example

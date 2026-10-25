@@ -229,6 +229,11 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
     runtime["hotbar-sync-resend-ticks"] = config.runtime.hotbar_sync_resend_ticks
     document.add("runtime", runtime)
 
+    limits = tomlkit.table()
+    limits["max-bots"] = config.limits.max_bots
+    limits["reserved-player-slots"] = config.limits.reserved_player_slots
+    document.add("limits", limits)
+
     ui = tomlkit.table()
     ui["language"] = config.ui.language
     document.add("ui", ui)

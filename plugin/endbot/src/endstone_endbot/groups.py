@@ -205,8 +205,8 @@ class _BatchReplyControl:
 class GroupCommandService(BotCommandService):
     """Shared groups reuse existing Bot actions for each operation."""
 
-    def __init__(self, control, world, groups: GroupStore | None, authorize):
-        super().__init__(control, world)
+    def __init__(self, control, world, groups: GroupStore | None, authorize, limits=None, capacity=None):
+        super().__init__(control, world, limits=limits, capacity=capacity)
         self.groups, self.authorize = groups, authorize
         self._groups_open = True
         self.results = ResultStore()

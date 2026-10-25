@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from endstone_endbot.control import RuntimeControlError, bot_profiles
 from endstone_endbot.forms import BotListView, BotView
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
+from endstone_endbot.limits import BotLimits
 from endstone_endbot.operations import ALIASES, OPERATIONS
 
 
@@ -79,6 +80,10 @@ class BotCommand:
     operation: str
     name: str | None = None
     parameters: dict[str, object] = field(default_factory=dict)
+
+
+# States in which a Bot already holds (or is about to hold) a server slot.
+ACTIVE_BOT_STATES = frozenset({"online", "connecting", "reconnecting"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -995,9 +1000,13 @@ def parse_command(arguments: list[str]) -> BotCommand:
 class BotCommandService:
     """Execute parsed commands against transport and world adapters."""
 
-    def __init__(self, control=None, world=None) -> None:
+    def __init__(self, control=None, world=None, limits=None, capacity=None) -> None:
         self.control = control
         self.world = world
+        # Slot budget: `capacity(bot_ids)` returns (max_players, humans_online).
+        # Without it (tests, unusual embeddings) no seat check is applied.
+        self.limits = limits if limits is not None else BotLimits()
+        self.capacity = capacity
         # Shared by the command worker and the mining poll worker. Entries are
         # (name, identity, loopId, source, position): a continuous loop has a
         # loopId; a single-block job has loopId None and is watched only to
@@ -1009,6 +1018,54 @@ class BotCommandService:
         self._mining_unreachable = {}
         # Consecutive polls a loop found nothing to break, per loop entry.
         self._mining_waiting = {}
+
+    def check_seat(self, name: str) -> None:
+        """Refuse a new Bot session that would take a slot kept for players.
+
+        Counts online/connecting Bots (excluding the addressed one) plus online
+        humans, so a Group or script spawn fails per member instead of filling
+        the server. Existing Bots are never despawned here; the budget applies
+        to new sessions only.
+        """
+        limits, capacity, control = self.limits, self.capacity, self.control
+        if capacity is None or control is None or not limits.enabled:
+            return
+        profiles = bot_profiles(control)
+        addressed = name.casefold()
+        identity = ""
+        for profile in profiles:
+            if str(profile.get("name", "")).casefold() == addressed:
+                identity = str(profile.get("identityId", ""))
+                break
+        active = sum(
+            1
+            for profile in profiles
+            if str(profile.get("identityId", "")) != identity
+            and profile.get("connectionState") in ACTIVE_BOT_STATES
+        )
+        if limits.max_bots > 0 and active + 1 > limits.max_bots:
+            raise LocalizedError(
+                "Bot limit reached: {bots} online or connecting, max-bots is {limit}",
+                bots=active,
+                limit=limits.max_bots,
+            )
+        bot_ids = frozenset(str(profile["identityId"]) for profile in profiles if profile.get("identityId"))
+        max_players, humans = capacity(bot_ids)
+        room = max_players - limits.reserved_player_slots
+        if room <= 0:
+            raise LocalizedError(
+                "No Bot can join: all {players} slots are kept for players (reserved-player-slots = {reserved})",
+                players=max_players,
+                reserved=limits.reserved_player_slots,
+            )
+        used = active + humans
+        if used + 1 > room:
+            raise LocalizedError(
+                "No free slot for another Bot: {used} of {players} slots in use, {reserved} kept for players",
+                used=used,
+                players=max_players,
+                reserved=limits.reserved_player_slots,
+            )
 
     def poll_mining(self, authorize) -> list[tuple[object, str, str, str]]:
         """Renew/retarget loops; return (source, level, message, log message) notices.
@@ -1264,6 +1321,9 @@ class BotCommandService:
             except RuntimeControlError as error:
                 if error.code != "not_found":
                     raise
+            # An already active Bot keeps its seat; only a new session is budgeted.
+            if existing is None or existing.get("connectionState") not in ACTIVE_BOT_STATES:
+                self.check_seat(command.name)
             placement = command.parameters or self.world.default_spawn(sender)
             if placement is not None:
                 placement = self.world.resolve_spawn_placement(placement, sender)
@@ -1538,6 +1598,11 @@ class BotCommandService:
         elif command.operation in {"resume", "reconnect", "despawn", "forget"}:
             status = control.request("status", name=command.name)
             self.world.clear_pending_placement(status["identityId"])
+            if (
+                command.operation in {"resume", "reconnect"}
+                and status.get("connectionState") not in ACTIVE_BOT_STATES
+            ):
+                self.check_seat(command.name)
             result = control.request(command.operation, name=command.name, **command.parameters)
         else:
             result = control.request(command.operation, name=command.name, **command.parameters)

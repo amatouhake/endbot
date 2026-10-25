@@ -184,6 +184,51 @@ def check_world(server: Path, properties: dict[str, str] | None) -> CheckResult:
     return CheckResult(PASS, name, details)
 
 
+def check_capacity(server: Path, properties: dict[str, str] | None) -> CheckResult:
+    """Report the Bot slot budget: max-players minus the slots kept for players."""
+
+    name = "capacity"
+    if properties is None:
+        return CheckResult(SKIP, name, "server.properties is unreadable")
+    raw = properties.get("max-players", "10")
+    try:
+        max_players = int(raw)
+    except (TypeError, ValueError):
+        return CheckResult(WARN, name, f"max-players={raw!r} is not an integer; Bot capacity is unchecked")
+    error, document = _load_plugin_config(server)
+    if error is not None:
+        return CheckResult(WARN, name, error)
+    limits = (document or {}).get("limits") or {}
+    max_bots = limits.get("max-bots", 0)
+    reserved = limits.get("reserved-player-slots", 1)
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in (max_bots, reserved)):
+        return CheckResult(WARN, name, "[limits] values must be integers (max-bots, reserved-player-slots)")
+    if max_bots < 0 or reserved < 0:
+        return CheckResult(WARN, name, "[limits] values must be 0 or more (max-bots, reserved-player-slots)")
+    config_path = server / "plugins" / "endbot" / "config.toml"
+    if max_bots == 0 and reserved == 0:
+        return CheckResult(
+            WARN,
+            name,
+            f"no Bot limit and no reserved slots in {config_path}; a controller can fill all {max_players} slots",
+        )
+    room = max_players - reserved
+    if room <= 0:
+        return CheckResult(
+            WARN,
+            name,
+            f"max-players={max_players} with reserved-player-slots={reserved} leaves no slot for a Bot",
+        )
+    if max_bots > room:
+        return CheckResult(
+            WARN,
+            name,
+            f"max-bots={max_bots} cannot apply: {max_players} slots minus {reserved} reserved = {room}",
+        )
+    budget = f"at most {max_bots} Bots" if max_bots > 0 else f"Bots up to {room}"
+    return CheckResult(PASS, name, f"{max_players} slots, {reserved} reserved for players, {budget}")
+
+
 def check_bds_version(server: Path, lock: LockData) -> CheckResult:
     name = "bds-version"
     version_file = server / "version.txt"
@@ -594,10 +639,12 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
     if server is None:
         results.append(CheckResult(SKIP, "server-properties", "server directory is unavailable"))
         results.append(CheckResult(SKIP, "world", "server directory is unavailable"))
+        results.append(CheckResult(SKIP, "capacity", "server directory is unavailable"))
     else:
         properties_result, properties = check_server_properties(server, config.server.transport)
         results.append(properties_result)
         results.append(check_world(server, properties))
+        results.append(check_capacity(server, properties))
 
     if server is None:
         results.append(CheckResult(SKIP, "bds-version", "server directory is unavailable"))

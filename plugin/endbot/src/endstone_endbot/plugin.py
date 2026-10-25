@@ -21,6 +21,7 @@ from endstone_endbot.groups import GroupCommandService, GroupStore
 from endstone_endbot.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, resolve_language, tr
 from endstone_endbot.inventory_sync import PACKET_ID as INVENTORY_PACKET_ID
 from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings, unsupported_payload
+from endstone_endbot.limits import BotLimits
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
 from endstone_endbot.script_store import ScriptStore
@@ -234,6 +235,7 @@ class EndbotPlugin(Plugin):
         self._hotbar_tick = 0
         self._hotbar_publisher = HotbarPublisher()
         self._language_setting = DEFAULT_LANGUAGE_SETTING
+        self._limits = BotLimits()
         self._script_config = ScriptConfig()
         self._scripts = None
         self._grant_versions = {}
@@ -251,6 +253,12 @@ class EndbotPlugin(Plugin):
         except ValueError as error:
             self._language_setting = DEFAULT_LANGUAGE_SETTING
             self.logger.warning(f"{error}; using {DEFAULT_LANGUAGE_SETTING}")
+        try:
+            self._limits = BotLimits.from_config(self.config.get("limits"))
+        except ValueError as error:
+            # A limits typo must not take /bot down with it; use the safe defaults.
+            self._limits = BotLimits()
+            self.logger.warning(f"Invalid [limits] config: {error}; using the default limits")
         authorization = self.config.get("authorization", {})
         self._allowed_players = AllowedPlayers.from_config(authorization)
         self._controllers = ControllerEnrollment.from_config(authorization, self.data_folder)
@@ -311,11 +319,23 @@ class EndbotPlugin(Plugin):
             # A broken groups file must not take /bot down with it.
             self.logger.error(f"Groups disabled: groups.json could not be loaded ({error}); fix or move it and reload")
             groups = None
+        def bot_capacity(bot_ids: frozenset[str]) -> tuple[int, int]:
+            """``(max-players, humans online)``; Bots are known by their profile UUID."""
+
+            def measure() -> tuple[int, int]:
+                players = self.server.online_players
+                humans = sum(1 for player in players if str(player.unique_id) not in bot_ids)
+                return int(self.server.max_players), humans
+
+            return self._server_thread.call(measure)
+
         self._bot_commands = GroupCommandService(
             control, command_world, groups,
             authorize=lambda source: self._server_thread.call(lambda: (
                 self._authorize_script(source) if source.script_run_id is not None
                 else self._authorize_source(source))),
+            limits=self._limits,
+            capacity=bot_capacity,
         )
         try:
             scripts = ScriptStore(self.data_folder / "scripts.json", self._script_config)

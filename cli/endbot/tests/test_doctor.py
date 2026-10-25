@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 import socketserver
 import tempfile
@@ -577,6 +578,44 @@ class RuntimeLiveTests(DoctorTestCase):
     def test_without_live_is_skipped(self) -> None:
         results = self.doctor()
         self.assertEqual(self.status_of(results, "runtime"), SKIP)
+
+
+class CapacityTests(DoctorTestCase):
+    """The `capacity` check reports the Bot slot budget from server.properties and [limits]."""
+
+    def write_limits(self, text: str) -> None:
+        path = self.server / "plugins" / "endbot" / "config.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def set_max_players(self, value: str) -> None:
+        path = self.server / "server.properties"
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"(?m)^max-players=", text):
+            text = re.sub(r"(?m)^max-players=.*$", f"max-players={value}", text)
+        else:
+            text = text.rstrip("\n") + f"\nmax-players={value}\n"
+        path.write_text(text, encoding="utf-8")
+
+    def test_the_default_budget_reserves_one_slot(self) -> None:
+        message = self.messages_of(self.doctor(), "capacity")[0]
+        self.assertIn("10 slots", message)
+        self.assertIn("1 reserved for players", message)
+        self.assertIn("Bots up to 9", message)
+
+    def test_no_limit_warns(self) -> None:
+        self.write_limits("[limits]\nmax-bots = 0\nreserved-player-slots = 0\n")
+        self.assertEqual(self.status_of(self.doctor(), "capacity"), WARN)
+
+    def test_a_reserve_covering_every_slot_warns(self) -> None:
+        self.set_max_players("2")
+        self.write_limits("[limits]\nreserved-player-slots = 2\n")
+        self.assertEqual(self.status_of(self.doctor(), "capacity"), WARN)
+
+    def test_an_unreachable_bot_cap_warns(self) -> None:
+        self.set_max_players("4")
+        self.write_limits("[limits]\nmax-bots = 8\nreserved-player-slots = 1\n")
+        self.assertEqual(self.status_of(self.doctor(), "capacity"), WARN)
 
 
 if __name__ == "__main__":

@@ -30,6 +30,16 @@ hotbar-sync-interval-ticks = 4
 # Resends occur at a read; effective spacing rounds up to a read interval.
 hotbar-sync-resend-ticks = 20
 
+[limits]
+# Server slots kept free for human players. A new Bot session is refused when
+# it would leave fewer than this many free, so a Group or script spawn cannot
+# lock players out. 0 disables the reserve (a controller can fill every slot).
+reserved-player-slots = 1
+# Maximum Bots online or connecting at once. 0 applies no separate Bot cap
+# (the reserve still applies); a positive value caps it. Existing Bots are
+# never despawned when the limit is lowered.
+max-bots = 0
+
 [ui]
 # Language of player-facing replies, help and forms: "auto" follows each
 # player's game language (Japanese clients get Japanese, others English),

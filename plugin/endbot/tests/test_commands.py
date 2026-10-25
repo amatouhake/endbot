@@ -3,6 +3,7 @@ import unittest
 from plain_service import PlainCommandService
 
 from endstone_endbot.commands import BotCommand, parse_command
+from endstone_endbot.limits import BotLimits
 
 
 class BotCommandServiceTests(unittest.TestCase):
@@ -12,6 +13,24 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertEqual(parse_command(["menu"]), BotCommand("menu"))
         self.assertEqual(parse_command([]), BotCommand("menu", parameters={"default": True}))
         self.assertEqual(parse_command(["ping"]).operation, "ping")
+
+    def test_bot_limits_default_to_one_reserved_player_slot(self):
+        self.assertEqual(BotLimits.from_config(None), BotLimits(0, 1))
+        self.assertEqual(BotLimits.from_config({}), BotLimits(0, 1))
+        self.assertEqual(BotLimits.from_config({"max-bots": 8, "reserved-player-slots": 2}), BotLimits(8, 2))
+        self.assertFalse(BotLimits(0, 0).enabled)
+        self.assertTrue(BotLimits(1, 0).enabled)
+        for table in (
+            {"max-bots": -1},
+            {"max-bots": True},
+            {"max-bots": "8"},
+            {"reserved-player-slots": -1},
+            {"reserved-player-slots": "2"},
+            {"max-bot": 1},
+            [],
+        ):
+            with self.subTest(table=table), self.assertRaises(ValueError):
+                BotLimits.from_config(table)
 
     def test_timed_use_keeps_its_meaning(self):
         self.assertEqual(

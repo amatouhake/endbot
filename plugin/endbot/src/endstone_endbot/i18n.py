@@ -558,6 +558,16 @@ JA: dict[str, str] = {
     "already reconnecting": "すでに再接続中です",
     "already online": "すでにオンラインです",
     "already active": "すでに動いています",
+    "Bot limit reached: {bots} online or connecting, max-bots is {limit}": (
+        "Bot の上限に達しました: オンラインまたは接続中 {bots} 体、max-bots は {limit}"
+    ),
+    "No Bot can join: all {players} slots are kept for players (reserved-player-slots = {reserved})": (
+        "Bot を参加させられません: {players} 枠すべてをプレイヤー用に確保しています "
+        "(reserved-player-slots = {reserved})"
+    ),
+    "No free slot for another Bot: {used} of {players} slots in use, {reserved} kept for players": (
+        "Bot の空き枠がありません: 全 {players} 枠のうち {used} 使用中、{reserved} 枠はプレイヤー用です"
+    ),
     "created and connecting": "作成して接続中",
     "{verb} ({where})": "{verb} ({where})",
     "at the world spawn": "ワールドのスポーン地点",

@@ -656,6 +656,28 @@ targets combine with repetition: `attack`/`interact @… continuous|interval|for
 See
 [targets](COMMANDS.md#targets-crosshair-coordinates-block-types-and--entities).
 
+## BOT-017: Cap Bot sessions so players can always join
+
+Status: **Implemented — plugin and CLI tests pass; real-client refusal message pending** (2026-10-25 JST).
+
+Bots are ordinary players, so a controller who spawns a Group or runs a script can fill `max-players` and lock every
+human out until someone despawns Bots from the console. BDS has no reserved-slot setting, so Endbot keeps the reserve
+itself.
+
+Decisions (2026-10-25 JST):
+
+- `[limits] reserved-player-slots` defaults to 1 and is subtracted from the server's `max-players`.
+- `[limits] max-bots` defaults to 0 (no separate Bot cap); a positive value caps online or connecting Bots.
+- `spawn`, `resume` and `reconnect` are checked; `despawn` and `forget` never are. Group and script calls fail per
+  member with the current counts. Existing Bots are never despawned; the budget applies to new sessions only.
+- Humans are the server's online players minus the profiles the runtime knows by UUID, so a server full of players
+  also blocks new Bots.
+- `endbot doctor` prints the resulting budget and warns when it cannot apply, or when both values are 0.
+- `max-bots = 0` with `reserved-player-slots = 0` restores the previous unlimited behavior.
+
+Manual gate: on a real client, spawn until the reserve refuses a Bot and confirm the message; a human must still be
+able to join. Also confirm a large Group spawn reports refusals per member instead of failing the whole operation.
+
 ## BOT-016: Completion waits beyond mining
 
 Status: **after 0.4.0 — not started** (2026-10-24 JST).

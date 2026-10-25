@@ -459,6 +459,16 @@ controllers still never name server paths.
 - Passed on the Windows client (2026-10-25): a file script listed as `file`, ran, refused edits, copied into an
   editable script, picked up a file change on reload, and reload reported a broken file and dropped it.
 
+Decision on script logs (2026-10-25 JST): `log()` reached only the server console, so a controller saw nothing
+of their own script. Log lines now also go to the chat of the player who started the run (not the script's owner),
+tagged with the script name and run id, formatting codes removed, cut to 256 characters, at most 10 per 5 seconds per
+run with the held-back count shown on the next line or the end message. The console keeps every line; a player who
+is offline gets nothing later. `[scripting] chat-logs = false` turns chat delivery off.
+The client check of this found two older faults: a script logging more than 8 lines at once ended "runner exited"
+(the host failed on its full 8-event queue instead of waiting; it now waits, which also stalls the runner on its
+pipe), and script menus echoed internal steps (`/botscript parameters hop`) or a run without its arguments. Menus now
+echo only commands a player could type, including the run form's `name=value` arguments.
+
 The direction above is implemented as described in [scripting](SCRIPTING.md) and this item's status line; the
 independent Group feature is tracked under BOT-010. Real-client editing, permission, cancellation, Bot behavior and
 achievement validation are recorded separately and remain manual gates.

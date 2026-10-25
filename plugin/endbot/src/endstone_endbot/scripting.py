@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from endstone_endbot import script_forms
-from endstone_endbot.commands import ERROR, CommandResult, _language, parse_command, reply, strip_colors
+from endstone_endbot.commands import DIM, ERROR, RESET, CommandResult, _language, parse_command, reply, strip_colors
 from endstone_endbot.control import bot_profiles
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
@@ -26,6 +26,10 @@ FILES_DIRECTORY = "scripts"
 # fill the server log at the IPC rate for hours.
 LOG_LINES = 2000
 LOG_BYTES = 512 * 1024
+# The starter's chat shows at most this many log lines per window per run, each cut to CHAT_LOG_CHARS.
+CHAT_LOG_LINES = 10
+CHAT_LOG_SECONDS = 5
+CHAT_LOG_CHARS = 256
 SCRIPT_TARGET = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
 
 
@@ -50,6 +54,10 @@ class ScriptRun:
     log_lines: int = 0
     log_bytes: int = 0
     log_dropped: bool = False
+    # Log lines in the starter's chat: the current window's start and count, and lines held back.
+    chat_window: float = 0.0
+    chat_lines: int = 0
+    chat_skipped: int = 0
 
 
 class ScriptService:
@@ -430,7 +438,9 @@ class ScriptService:
                         line = (f"Endbot script {run.identity}: log limit reached; further logs are dropped" if over
                                 else f"Endbot script {run.identity}: {text}")
                         run.log_dropped = over
-                        self.notify(run.source, CommandResult(True, (), log_level="info", log_messages=(line,)))
+                        chat = self._chat_log(run, tr(_language(run.source), "log limit reached; further logs are "
+                                                                             "dropped") if over else text)
+                        self.notify(run.source, CommandResult(True, chat, log_level="info", log_messages=(line,)))
                     continue
                 if type(event.get("id")) is not int or event["id"] != next_id:
                     raise LocalizedError("Invalid script runner request")
@@ -492,6 +502,7 @@ class ScriptService:
                                     reason=outcome,
                                 )
                             ),
+                            *self._skipped_logs(run),
                         ),
                         log_level="info",
                         log_messages=(
@@ -501,6 +512,38 @@ class ScriptService:
                         ),
                     ),
                 )
+
+    def _chat_log(self, run, text):
+        """A log line for the chat of the player who started the run, or nothing.
+
+        The console log always has every line; chat gets at most CHAT_LOG_LINES per CHAT_LOG_SECONDS per run,
+        counting the rest for the next line it shows. Formatting codes are removed so a script's text cannot
+        pass for a message of Endbot or another plugin.
+        """
+        if not self.config.chat_logs or run.source.player_id is None:
+            return ()
+        now = time.monotonic()
+        if now - run.chat_window >= CHAT_LOG_SECONDS:
+            run.chat_window, run.chat_lines = now, 0
+        if run.chat_lines >= CHAT_LOG_LINES:
+            run.chat_skipped += 1
+            return ()
+        run.chat_lines += 1
+        # `_clean` already removed color codes; a lone trailing `§` would still format the next text.
+        text = text.replace("§", "")
+        if len(text) > CHAT_LOG_CHARS:
+            text = text[:CHAT_LOG_CHARS] + "..."
+        return (reply(text + "".join(" " + line for line in self._skipped_logs(run, plain=True)),
+                      f"{run.name} ({run.identity})", DIM),)
+
+    @staticmethod
+    def _skipped_logs(run, plain=False):
+        """The count of log lines chat did not show since the last one it did, then reset."""
+        if not run.chat_skipped:
+            return ()
+        text = tr(_language(run.source), "({count} log lines not shown)", count=run.chat_skipped)
+        run.chat_skipped = 0
+        return (text,) if plain else (reply(text, f"{run.name} ({run.identity})", DIM),)
 
     def stop(self, source, selector):
         """Stop runs by id, script name or `all`; the console may stop any controller's runs."""
@@ -768,7 +811,9 @@ class ScriptService:
                         run = self.start(script, [], source, None)
                         return CommandResult(
                             True,
-                            (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),),
+                            # The menu echoes no internal `parameters` step; show the command this was.
+                            (f"{DIM}/botscript run {script.name}{RESET}",
+                             reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run))),
                             log_level="info",
                             log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
                         )

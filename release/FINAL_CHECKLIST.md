@@ -304,16 +304,26 @@ files, chat logs). `endstone.lock`, `patches/endstone/` and the pinned BDS are u
 compatibility gate is required. Defaults: `[scripting] enabled = false`, `book-export = true`, `chat-logs = true`;
 `[limits] reserved-player-slots = 1`, `max-bots = 0`.
 
-- [ ] Build `release-candidate.yml` for `0.4.0` from the release-prepared `main` commit; the Windows/Linux wheel,
-  bundle, runner and clean-consumer jobs and `assemble` must pass.
-- [ ] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.4.0`; verify checksums, attestations and
-  the source commit in the manifest.
-- [ ] Human Windows-client gate on the draft's exact Windows bundle (fresh RakNet instance, scripting enabled), with
-  the manual gates listed under 0.4.0 below; record which ran and which stay open.
-- [ ] A published-0.3.1 instance updated to 0.4.0 keeps BDS `1.26.52.3` and `endbot.toml` byte-identical, and its
-  Bot rejoins with the same identity.
-- [ ] Release notes list the remaining manual gates in `docs/BACKLOG.md` as known limitations.
-- [ ] Publish the tested draft unchanged, then verify published asset checksums and provenance.
+- [x] Build `release-candidate.yml` for `0.4.0` from the release-prepared `main` commit; the Windows/Linux wheel,
+  bundle, runner and clean-consumer jobs and `assemble` must pass. (run 40185205393 from `72f1c0d`: `linux`,
+  `windows`, all four clean-consumer E2E legs and `assemble` passed)
+- [x] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.4.0`; verify checksums, attestations and
+  the source commit in the manifest. (2026-10-25: all 10 checksums and all 10 build-provenance attestations
+  verified; the manifest records `72f1c0d`)
+- [x] Human Windows-client gate on the draft's exact Windows bundle (fresh RakNet instance, scripting enabled,
+  `max-players=3`), run 2026-10-25: controller binding; the `[limits]` refusal message; Japanese replies and forms;
+  Group create/members/operation/result and Manage groups; `inventory`/`hold`/`drop` typed and from forms; `@` typed
+  in chat (`interact @cow`, `entities`); `destroy oak_log count 3`; a script file run from its form with `log()` in
+  chat and the echoed command, then edited and reloaded; template creation and line editing; book export, editing
+  and confirmed replace, the overwrite confirmation and a hand-written book import; `runs`, `stop all` and console
+  `runs`. Not run: a second controller, NetherNet with a human client, boats and horses, Xbox achievements (the
+  0.3.x observation is cited; lock, patches and runtime dependencies are unchanged).
+- [x] A published-0.3.1 instance updated to 0.4.0 keeps BDS `1.26.52.3` and `endbot.toml` byte-identical, and its
+  Bot rejoins with the same identity. (2026-10-25: plugin `v0.3.1` to `v0.4.0`, same Bot UUID, `doctor --live` PASS)
+- [x] Release notes list the remaining manual gates in `docs/BACKLOG.md` as known limitations.
+- [x] Publish the tested draft unchanged, then verify published asset checksums and provenance. (2026-10-25: tag
+  `v0.4.0` = `72f1c0d`, published 13:01 UTC; every re-downloaded asset matches `SHA256SUMS`, which is identical to
+  the candidate's, and all 10 attestations verified)
 
 ### After 0.1.0 (direction)
 

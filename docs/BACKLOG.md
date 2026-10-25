@@ -274,8 +274,8 @@ reuse the event-intercept approach and the one-overload-per-first-token finding 
 
 ## BOT-009: Controller-authored Luau scripts and a small in-game editor
 
-Status: **MVP implemented behind `[scripting] enabled` (off by default) — Windows RakNet live probe passed; human-client
-checks in progress** (updated 2026-10-25 JST). Ownership, private/shared visibility, copy, a 10-revision history with
+Status: **Released in 0.4.0 behind `[scripting] enabled` (off by default) — human Windows-client gate passed on the
+release files; a second-controller check remains open** (updated 2026-10-25 JST). Ownership, private/shared visibility, copy, a 10-revision history with
 restore, the source view, line-by-line editing and book-and-quill import/export are
 implemented (decisions below, #100–#101); the optional run/author permission split is not. Runner builds, bundle
 self-tests, platform-matched OS confinement probes and the clean-consumer E2E on both platforms are required CI steps
@@ -479,7 +479,7 @@ achievement validation are recorded separately and remain manual gates.
 
 ## BOT-010: Define Groups before the Luau operation API
 
-Status: **Group feature merged to `main` (#69) — client smoke confirmed; live mid-batch revocation remains a manual
+Status: **Released in 0.4.0 (2026-10-25); its human-client gate passed — live mid-batch revocation remains a manual
 gate** (2026-10-21 JST).
 
 Settle Groups as reusable Bot targets for existing commands and menus before designing the scripting API that consumes
@@ -609,8 +609,8 @@ remains under BOT-009. Automatic formations and complete mining tasks are not as
 
 ## BOT-011: Inspect and rearrange a Bot's inventory, and drop everything
 
-Status: **Implemented on `main` (#74) — Windows RakNet live checks passed; human-client checks pending**
-(2026-10-22 JST). Targeted for 0.4.0 together with Groups and Luau.
+Status: **Released in 0.4.0 — `inventory`, `hold` and `drop` (typed and forms) passed the human Windows-client gate on
+the release files** (2026-10-25 JST).
 
 `inventory`, `drop <slot>`, `drop <item> [count]`, `drop all`, `swap <a> <b>` and `hold <item>` are implemented. The
 read-only observation now covers the full inventory, offhand and armor, and every change is sent as a legacy normal
@@ -669,7 +669,7 @@ None of these may be inferred from a green unit build.
 
 ## BOT-012: Interact with entities — feeding, riding and dismounting
 
-Status: **Implemented — Windows RakNet live check passed; human-client rendering, boats/horses and NetherNet pending** (2026-10-24 JST). See [entities and vehicles](COMMANDS.md#entities-and-vehicles).
+Status: **Released in 0.4.0 — `@` targets typed in chat and `interact @cow` passed the human Windows-client gate; boats/horses, other-client rendering and NetherNet remain open** (2026-10-25 JST). See [entities and vehicles](COMMANDS.md#entities-and-vehicles).
 
 Operators could not put a Bot in a minecart or feed animals. Add entity interaction through the vanilla client path
 (no server-side shortcuts), so achievements and BDS authority stay intact:
@@ -690,7 +690,7 @@ pair before product work.
 
 ## BOT-014: Read-only world and Bot queries for scripts
 
-Status: **Implemented for 0.4.0 — Windows RakNet live check passed; human-client forms pending** (2026-10-24 JST).
+Status: **Released in 0.4.0 — Windows RakNet live check passed; `entities` passed the human Windows-client gate** (2026-10-25 JST).
 Bot state, inventory/hotbar data and entity details (#86); look target, block lookup and exposed-block search.
 
 Scripts could act but hardly observe: `status` carried no position, `inventory`/`hotbar` returned only text, and there
@@ -711,7 +711,7 @@ add a broad set of read-only queries in 0.4.0, accepting the later release. Deci
 
 ## BOT-015: One target syntax for attack, destroy and interact
 
-Status: **Implemented for 0.4.0 — console live check passed; Windows-client chat entry of `@` pending** (2026-10-24 JST).
+Status: **Released in 0.4.0 — `@` typed in Windows-client chat and `destroy oak_log count 3` on real terrain passed the human gate** (2026-10-25 JST).
 
 The operator found that blocks could only be targeted by coordinates while entities had type/nearest/id selectors, and
 that `interact` mixed blocks and entities. Decision (2026-10-24 JST, "plan B"): keep the separate left/right-click verbs
@@ -726,7 +726,7 @@ See
 
 ## BOT-017: Cap Bot sessions so players can always join
 
-Status: **Implemented — plugin and CLI tests pass; real-client refusal message pending** (2026-10-25 JST).
+Status: **Released in 0.4.0 — the human Windows-client gate saw a spawn refused for the reserved slot with a clear message** (2026-10-25 JST).
 
 Bots are ordinary players, so a controller who spawns a Group or runs a script can fill `max-players` and lock every
 human out until someone despawns Bots from the console. BDS has no reserved-slot setting, so Endbot keeps the reserve

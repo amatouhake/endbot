@@ -81,11 +81,19 @@ def label(script, own, lang="en"):
     return f"{script.name} ({owner}, {tr(lang, script.visibility)})"
 
 
+def shown(text):
+    """Source text as the client should display it: a `§` in it would start a formatting code, so it is
+    written as the Luau escape `\\u{a7}` (the same character inside a string). Otherwise a shared script
+    could color, hide (`§0`) or scramble (`§k`) lines in the preview other controllers read before running it.
+    """
+    return text.replace("§", "\\u{a7}")
+
+
 def source_view(source, first=1):
     """Source lines behind a colored, right-aligned line-number gutter."""
     lines = source.splitlines()
     width = len(str(first + len(lines) - 1))
-    return "\n".join(f"{GUTTER}{index:>{width}}§r {line}" for index, line in enumerate(lines, start=first))
+    return "\n".join(f"{GUTTER}{index:>{width}}§r {shown(line)}" for index, line in enumerate(lines, start=first))
 
 
 def _capped_view(source, lang, name=None):
@@ -306,7 +314,7 @@ def lines_screen(script, page, lang="en"):
     if page == 1:
         items.append(f.Button(tr(lang, "+ Add a first line"), f.Show(add_screen(script, 0, page, lang))))
     for index in range(first, min(first + EDIT_PAGE_LINES, len(lines))):
-        text = lines[index].strip()
+        text = shown(lines[index].strip())
         text = text[:BUTTON_CHARS] + "..." if len(text) > BUTTON_CHARS + 3 else text
         items.append(f.Button(f"{BUTTON_GUTTER}{index + 1:>{width}}§r {text}",
                               f.Show(line_screen(script, index, page, lang))))
@@ -405,5 +413,5 @@ def source_pages(script):
     lines = []
     for index, line in enumerate(script.source.splitlines()):
         chunks = [line[start : start + 200] for start in range(0, len(line), 200)] or [""]
-        lines.extend(f"{index + 1}: {chunk}" for chunk in chunks)
+        lines.extend(f"{index + 1}: {shown(chunk)}" for chunk in chunks)
     return ["\n".join(lines[start : start + 8]) for start in range(0, len(lines), 8)] or [""]

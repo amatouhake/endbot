@@ -1126,6 +1126,22 @@ class ScriptFormTests(unittest.TestCase):
         self.assertLess(len(content), script_forms.VIEW_CHARS + 500)
         self.assertIn("more lines; see /botscript show big", content)
 
+    def test_previews_show_formatting_codes_as_text(self):
+        # A shared script must not color, hide (§0) or scramble (§k) its own lines in the preview.
+        script = Script("sneaky", 'params {}\nlog("§kgone")\n', "r1")
+        previews = [
+            script_forms.script_screen(script, "en", False).content,
+            script_forms.lines_screen(script, 1).items[2].text,
+            script_forms.line_screen(script, 1, 1).controls[0].text,
+            "\n".join(script_forms.source_pages(script)),
+        ]
+        for preview in previews:
+            with self.subTest(preview=preview):
+                self.assertIn('log("\\u{a7}kgone")', preview)
+                self.assertNotIn("§k", preview)
+        # The line field keeps the real text, so saving it unchanged changes nothing.
+        self.assertEqual(script_forms.line_screen(script, 1, 1).controls[1].default_value, 'log("§kgone")')
+
     def test_line_buttons_open_the_line_filled_in(self):
         screen = script_forms.lines_screen(self.script, 1)
         texts = [item.text for item in screen.items]

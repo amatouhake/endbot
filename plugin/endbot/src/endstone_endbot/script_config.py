@@ -26,6 +26,7 @@ class ScriptConfig:
     cpu_seconds: int = 60
     book_export: bool = True
     chat_logs: bool = True
+    ui_pack_editor: bool = False
 
     @classmethod
     def from_config(cls, config):
@@ -40,10 +41,11 @@ class ScriptConfig:
         result = cls(**values)
         if (type(result.enabled) is not bool or type(result.os_confinement) is not bool
                 or type(result.book_export) is not bool or type(result.chat_logs) is not bool
-                or not isinstance(result.runner, str)):
-            raise ValueError("Invalid scripting enabled/os-confinement/book-export/chat-logs/runner setting")
+                or type(result.ui_pack_editor) is not bool or not isinstance(result.runner, str)):
+            raise ValueError("Invalid scripting enabled/os-confinement/book-export/chat-logs/ui-pack-editor/runner "
+                             "setting")
         for f in fields(cls):
-            if f.name in {"enabled", "runner", "os_confinement", "book_export", "chat_logs"}:
+            if f.name in {"enabled", "runner", "os_confinement", "book_export", "chat_logs", "ui_pack_editor"}:
                 continue
             value = getattr(result, f.name)
             minimum = 0 if f.name in {"wall_seconds", "cpu_seconds", "process_memory_bytes"} else 1

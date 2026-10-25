@@ -409,7 +409,8 @@ Decisions after the first human-client look (2026-10-24 JST):
   and the line modes; multi-line authoring uses the book loop (create from template → Write into held book → edit →
   Replace from held book), and the game editor's own per-page paste limit is documented there. Paste-based multi-line
   editing is deferred until a control can hold line breaks (or the web editor, BOT-013).
-- **Web editing** is the preferred long-term authoring experience; see BOT-013.
+- **Web editing** is the preferred long-term authoring experience; see BOT-013. An optional client resource pack with
+  a multi-line form field is the in-game stopgap under evaluation; see BOT-018.
 
 Decisions after the second human-client look (2026-10-24 JST):
 
@@ -766,6 +767,29 @@ short-lived one-time URL bound to their XUID; saves go through the same compile/
 in-game saves (BOT-009). Authentication, CSRF and rate limits are the main design work. A deployment reference is
 [endstone-live-map](https://github.com/wingxia/endstone-live-map#readme) (local Node service, optional Cloudflare
 delivery); it is not an editor or authentication design to adopt, and no Cloudflare service is required.
+
+## BOT-018: Optional UI resource pack for forms and multi-line editing
+
+Status: **Prototype on the branch, awaiting the manual client check** (2026-10-25 JST).
+
+Question: can an optional resource pack make the menus easier to read and let script source be written over several
+lines in a form, and how does that compare with the web editor (BOT-013)? Answer so far: yes, as a stopgap. A
+client-side global pack can enlarge the form window, shrink buttons, and turn marked text inputs into the vanilla
+multi-line, scrolling edit box that the book editor uses. It cannot add highlighting, completion or diffs, depends
+on unofficial JSON UI internals, and does not reach consoles, so BOT-013 stays the long-term editor. Details,
+findings and the check list: [UI_PACK.md](UI_PACK.md).
+
+Done without a client: vanilla 1.26.50.4 UI analysis, which found the form input's `$max_text_edit_length: 100` and
+no `enabled_newline`. Also done: `ui-pack/` (one redefined vanilla element, everything else `endbot_*`), a
+reproducible `.mcpack` build with vanilla reference checking (`scripts/build_ui_pack.py`), the plugin marker
+(`forms.MULTILINE_MARKER`) on multi-line inputs, and **Edit all at once (UI pack)...** behind
+`[scripting] ui-pack-editor` (default false, also in `endbot.toml`), which refuses replies that lost their line
+breaks. A reading of the locked Endstone path showed that a form reply's string content reaches the plugin
+unchanged.
+
+Manual gates: [UI_PACK.md checks 1–10](UI_PACK.md#manual-client-check), including whether the client cuts inputs at
+100 characters (which would also affect the existing line editor for long lines) and a world achievement unlock with
+the pack active. Do not enable `ui-pack-editor` by default or ship the pack in release bundles before those pass.
 
 ## Deferred priorities
 

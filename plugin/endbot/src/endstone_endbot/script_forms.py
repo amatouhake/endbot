@@ -281,7 +281,7 @@ def line_screen(script, index, page, lang="en"):
         tr(lang, "{name}: line {line}", name=script.name, line=index + 1),
         (f.Label(source_view("\n".join(lines[start : index + 3]), start + 1)),
          f.TextInput(tr(lang, "Line {line}", line=index + 1), default_value=lines[index]),
-         f.TextInput(tr(lang, "Add a line below (optional)")),
+         f.TextInput(tr(lang, "Add a line below (optional)"), multiline=True),
          f.Toggle(tr(lang, "Delete this line"))),
         build, submit=tr(lang, "Save"), command="botscript",
         guard=ScriptGuard(script.revision, script.name, edit=True, page=page),
@@ -297,16 +297,47 @@ def add_screen(script, at, page, lang="en"):
         return _edited(script, lines[:at] + new + lines[at:] if any(new) else lines, page)
 
     return f.ModalScreen(tr(lang, "Add a first line" if at == 0 else "Add a line at the end"),
-                         (f.TextInput(tr(lang, "New line")),), build, submit=tr(lang, "Save"), command="botscript",
+                         (f.TextInput(tr(lang, "New line"), multiline=True),), build, submit=tr(lang, "Save"),
+                         command="botscript",
                          guard=ScriptGuard(script.revision, script.name, edit=True, page=page))
+
+
+def source_screen(script, page, lang="en"):
+    """The whole source in one field, for clients with the optional Endbot UI resource pack.
+
+    Without the pack the client's field drops line breaks, so a reply that lost them is refused
+    rather than saved as one long line.
+    """
+    lines = script.source.splitlines()
+
+    def build(values):
+        typed = _typed_lines(values[-1])
+        while typed and not typed[-1]:
+            typed.pop()
+        if typed == [line.rstrip() for line in lines]:
+            return (("edit", script.name, str(page)),)
+        if len(lines) > 1 and len(typed) <= 1:
+            raise f.FormResponseError("The line breaks were lost, so nothing was saved. This needs the Endbot UI "
+                                      "resource pack; use the line buttons or a book instead.")
+        return (("save", script.name, "\n".join(typed) + "\n"),)
+
+    return f.ModalScreen(
+        tr(lang, "{name}: whole script", name=script.name),
+        (f.Label(tr(lang, "Edit the whole script, with line breaks. This field needs the optional Endbot UI "
+                          "resource pack; without it, saving is refused.")),
+         f.TextInput(tr(lang, "Script source"), default_value=script.source.removesuffix("\n"), multiline=True)),
+        build, submit=tr(lang, "Save"), command="botscript",
+        guard=ScriptGuard(script.revision, script.name, edit=True, page=page),
+    )
 
 
 def edit_pages(script):
     return max(1, -(-len(script.source.splitlines()) // EDIT_PAGE_LINES))
 
 
-def lines_screen(script, page, lang="en"):
-    """One button per line; tapping one opens it filled in. Multi-line changes go through a book."""
+def lines_screen(script, page, lang="en", whole_editor=False):
+    """One button per line; tapping one opens it filled in. Multi-line changes go through a book,
+    or through the whole-script field when the server enables it for the optional UI pack."""
     lines = script.source.splitlines()
     pages = edit_pages(script)
     guard = ScriptGuard(script.revision, script.name)
@@ -327,6 +358,9 @@ def lines_screen(script, page, lang="en"):
         items.append(f.Button(tr(lang, "Previous page"), run("edit", script.name, str(page - 1), guard=guard)))
     if page < pages:
         items.append(f.Button(tr(lang, "Next page"), run("edit", script.name, str(page + 1), guard=guard)))
+    if whole_editor:
+        items.append(f.Button(tr(lang, "Edit all at once (UI pack)..."),
+                              f.Show(source_screen(script, page, lang))))
     items += [
         f.Button(tr(lang, "Replace all from held book"), run("import", script.name, guard=guard)),
         f.Button(tr(lang, "Back"), run("menu", script.name, guard=guard)),

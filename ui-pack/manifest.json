@@ -1,0 +1,18 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Endbot UI (optional)",
+    "description": "Larger server forms, compact buttons, and a multi-line field for Endbot script editing.",
+    "uuid": "a87ea0a8-3c31-4d72-a5e6-bb915ee56c71",
+    "version": [0, 1, 0],
+    "min_engine_version": [1, 26, 50]
+  },
+  "modules": [
+    {
+      "description": "Server form layout overrides (ui/server_form.json).",
+      "type": "resources",
+      "uuid": "5e57b2a0-f838-433c-8a19-70b867c93970",
+      "version": [0, 1, 0]
+    }
+  ]
+}

@@ -810,6 +810,17 @@ JA.update({
     "+ Add a line at the end": "+ 末尾に行を追加",
     "New line": "新しい行",
     "Replace all from held book": "手に持った本で全体を置き換え",
+    "Edit all at once (UI pack)...": "全体をまとめて編集 (UIパック)...",
+    "{name}: whole script": "{name}: 全体",
+    "Script source": "スクリプトのソース",
+    "Edit the whole script, with line breaks. This field needs the optional Endbot UI resource pack; without it, "
+    "saving is refused.":
+        "スクリプト全体を改行ごと編集します。この欄には任意導入の Endbot UI リソースパックが必要です。"
+        "パックがないと保存は拒否されます。",
+    "The line breaks were lost, so nothing was saved. This needs the Endbot UI resource pack; use the line "
+    "buttons or a book instead.":
+        "改行が失われたため、保存しませんでした。この欄には Endbot UI リソースパックが必要です。"
+        "行ボタンか本を使ってください。",
     "Tap a line to change or delete it, or to add a line below it.":
         "行を押すと、その行の変更、削除、下への行の追加ができます。",
     "Run or edit this shared script.": "この共有スクリプトを実行または編集します。",

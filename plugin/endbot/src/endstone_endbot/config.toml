@@ -71,6 +71,11 @@ book-export = true
 # A script's log() lines also go to the chat of the player who started the run
 # (at most 10 lines per 5 seconds per run; the server log keeps every line).
 chat-logs = true
+# Adds "Edit all at once (UI pack)" to the line editor: the whole source in one
+# field. Only clients with the optional Endbot UI resource pack (ui-pack/, see
+# docs/UI_PACK.md) keep line breaks there; replies without them are refused,
+# never saved. Off until the pack passes its manual client check.
+ui-pack-editor = false
 max-scripts = 64
 memory-bytes = 33554432
 # OS resource limits, applied before sending script data. Setup failure rejects

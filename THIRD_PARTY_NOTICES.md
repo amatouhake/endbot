@@ -35,6 +35,14 @@ manifest.
 Endbot does not vendor or redistribute the official Minecraft Bedrock Dedicated Server binary. Minecraft and Xbox are
 trademarks of Microsoft; this project is not affiliated with or endorsed by Microsoft.
 
+## Optional UI resource pack
+
+`ui-pack/` is Endbot's own JSON UI written for the Minecraft Bedrock client. It names and inherits vanilla UI
+elements but contains no Mojang files. Its layout was written against the
+[bedrock-samples](https://github.com/Mojang/bedrock-samples) vanilla resource pack 1.26.50.4, which is
+subject to the Minecraft EULA. That pack is neither vendored here nor redistributed; `scripts/build_ui_pack.py --vanilla`
+reads a copy the operator fetches.
+
 ## bedrock-protocol
 
 The Endbot runtime uses the unmodified upstream npm release:

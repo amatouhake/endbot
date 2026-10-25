@@ -73,6 +73,7 @@ class ScriptingConfig:
     cpu_seconds: int = 60
     book_export: bool = True
     chat_logs: bool = True
+    ui_pack_editor: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +249,8 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
         raise _fail(path, "scripting", "must be a table", "write it as a [scripting] section")
     _reject_unknown_keys(
         path, table, "scripting",
-        ("enabled", "runner", "os-confinement", "process-memory-bytes", "cpu-seconds", "book-export", "chat-logs"),
+        ("enabled", "runner", "os-confinement", "process-memory-bytes", "cpu-seconds", "book-export", "chat-logs",
+         "ui-pack-editor"),
     )
     enabled = table.get("enabled", False)
     if type(enabled) is not bool:
@@ -265,6 +267,9 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     chat_logs = table.get("chat-logs", True)
     if type(chat_logs) is not bool:
         raise _fail(path, "scripting.chat-logs", "must be a boolean", "use chat-logs = true or false")
+    ui_pack_editor = table.get("ui-pack-editor", False)
+    if type(ui_pack_editor) is not bool:
+        raise _fail(path, "scripting.ui-pack-editor", "must be a boolean", "use ui-pack-editor = false or true")
     memory = table.get("process-memory-bytes", 268435456)
     cpu = table.get("cpu-seconds", 60)
     for key, value in (("process-memory-bytes", memory), ("cpu-seconds", cpu)):
@@ -275,7 +280,7 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
         raise _fail(path, "scripting.process-memory-bytes", "is too small", "use at least 100663296 bytes, or 0")
     return ScriptingConfig(
         enabled=enabled, runner=runner, os_confinement=confinement, process_memory_bytes=memory, cpu_seconds=cpu,
-        book_export=book_export, chat_logs=chat_logs,
+        book_export=book_export, chat_logs=chat_logs, ui_pack_editor=ui_pack_editor,
     )
 
 

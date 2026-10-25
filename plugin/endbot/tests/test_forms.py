@@ -479,6 +479,15 @@ class PresenterTests(unittest.TestCase):
         self.assertTrue(submitted[0][1]["group_guard"].edit)
         self.assertEqual(player.messages, [])
 
+    def test_multiline_inputs_carry_the_ui_pack_marker_in_their_label(self):
+        presenter = FormPresenter(lambda player, argv, **kwargs: None, form_module=FakeFormModule())
+        screen = forms.ModalScreen("t", (forms.TextInput("one"), forms.TextInput("many", multiline=True)),
+                                   lambda values: ())
+        controls = presenter.render(screen).kwargs["controls"]
+        self.assertEqual([control.args[0] for control in controls], ["one", forms.MULTILINE_MARKER + "many"])
+        # The marker is formatting codes only, so a client without the pack shows the plain label.
+        self.assertEqual(strip_colors(forms.MULTILINE_MARKER), "")
+
     def test_script_menus_echo_only_commands_a_player_could_type(self):
         from endstone_endbot.script_forms import run_screen, script_screen
         from endstone_endbot.script_store import Script

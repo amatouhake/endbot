@@ -56,7 +56,8 @@ Startup limits (integers from 1 to 2147483647, except the zero/boolean settings 
 | `process-memory-bytes` | 268435456 | 256 MiB process cap; 0 disables this cap; nonzero requires at least `memory-bytes + 67108864` (64 MiB native headroom) |
 | `cpu-seconds` | 60 | Cumulative CPU seconds per run, independently of wall time and VM slices; waits use none, so long-waiting macros are unaffected. It is what ends a run stuck inside one C library call (`string.rep`, `string.gsub`), which the per-slice budget cannot interrupt. 0 disables the cap |
 
-Managed instances also accept `os-confinement`, `process-memory-bytes`, `cpu-seconds`, `book-export` and `chat-logs` in
+Managed instances also accept `os-confinement`, `process-memory-bytes`, `cpu-seconds`, `book-export`, `chat-logs` and
+`ui-pack-editor` in
 `endbot.toml` under `[scripting]`; the CLI forwards overrides into the generated plugin config.
 Other limits in this table are plugin `config.toml` settings. Managed instances retain the default
 32 MiB VM bound, so a nonzero process cap must be at least 96 MiB there. For example:
@@ -232,6 +233,14 @@ books are never changed. Pages hold whole lines: up to 256 characters per page a
 No item is created. Export is on by default (it is the first step of the multi-line loop); an operator who wants
 the plugin never to change a held item sets `[scripting] book-export = false`. The page and character limits are
 conservative; real-client limits are recorded with the human-client checks.
+
+### Optional UI pack field
+
+Players who add the optional [Endbot UI resource pack](UI_PACK.md) as a global resource get a larger form window, compact
+buttons and a multi-line field. With `[scripting] ui-pack-editor = true` (default false), the line editor also offers
+**Edit all at once (UI pack)...**: the whole source in one field, saved like any other edit. Without the pack the
+client drops the line breaks, and that reply is refused rather than saved. The pack is a prototype awaiting its
+manual client check; books remain the verified multi-line path.
 
 ### Script files
 

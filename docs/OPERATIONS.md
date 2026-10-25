@@ -347,6 +347,13 @@ Updating from 0.3.0 to 0.3.1 changes only Endbot plugin/runtime/CLI code and ver
 added to continuous mining, and `for` and `count` can be combined. Endstone `0.11.13+endbot.1`, BDS `1.26.52.3`
 and protocol `2193` remain pinned; no BDS/world format migration is needed.
 
+Updating from 0.3.1 to 0.4.0 keeps the same pinned Endstone, BDS and protocol, so no BDS update runs. It adds shared
+Groups, inventory commands, entity interaction and opt-in Luau scripts. An existing `endbot.toml` without
+`[scripting]` or `[limits]` keeps working: scripting stays off, and `[limits]` defaults keep one server slot free for
+players (`reserved-player-slots = 1`), so a server already full of Bots refuses new Bot sessions until a slot is
+free. See [scripting](SCRIPTING.md) to enable scripts, and [installation](INSTALL.md) before rolling back to 0.3.x
+(a fresh 0.4.0 setup writes sections that 0.3.x rejects).
+
 ## 7. Doctor
 
 `endbot doctor` reports, without changing anything:

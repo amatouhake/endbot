@@ -188,7 +188,8 @@ version 1) have no owner and stay shared; the first controller to edit one becom
 
 When enabled, `/bot menu` lists **Scripts...** after **+ New Bot here** (next to **Manage groups...**);
 the target list above it contains only targets `/bot` can address. A script's screen shows its whole source with gray
-line numbers (wrapped lines stay apart from the numbers; very long scripts are cut off with a pointer to `show`) and
+line numbers (wrapped lines stay apart from the numbers; very long scripts are cut off with a pointer to `show`;
+a `§` in the source is shown as `\u{a7}`, so source text cannot color, hide or scramble the preview) and
 offers Run, Stop runs and Copy and edit (and Write into held book where export is enabled). Its owner gets **Edit
 lines...** and **More...** instead of Copy and edit; More holds Rename, Share/Make private, Earlier revisions (restore with a
 confirmation that shows that revision's source), Copy and edit, Write into held book and Delete (confirmation).

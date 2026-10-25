@@ -12,6 +12,9 @@ from endstone_endbot import forms, group_forms
 from endstone_endbot.commands import DIM, ERROR, RESET, reply
 from endstone_endbot.i18n import localize_error, tr
 
+# /botscript form steps that are not commands a player could type.
+SCRIPT_FORM_STEPS = {("parameters",), ("edit",), ("save",)}
+
 
 class FormPresenter:
     def __init__(
@@ -108,9 +111,10 @@ class FormPresenter:
             self.show(player, action.screen, origin, guard)
             return
         for command in action.commands:
-            # Menu navigation is not echoed: /bot ends with "menu", /botgroup starts with it.
+            # Menu navigation is not echoed: /bot ends with "menu", /botgroup starts with it. /botscript also
+            # opens forms (`parameters`, `edit`) and saves them (`save`) with internal words nobody can type.
             if (command[:1] if action.command in {"botgroup", "botscript"} else command[-1:]) != ("menu",) and not (
-                action.command == "botscript" and command[:1] == ("save",)
+                action.command == "botscript" and command[:1] in SCRIPT_FORM_STEPS
             ):
                 # Show the typed equivalent, so forms also teach the command. ASCII only:
                 # the Bedrock chat font lacks symbols such as arrows.

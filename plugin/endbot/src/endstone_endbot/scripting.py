@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from endstone_endbot import script_forms
-from endstone_endbot.commands import DIM, ERROR, CommandResult, _language, parse_command, reply, strip_colors
+from endstone_endbot.commands import DIM, ERROR, RESET, CommandResult, _language, parse_command, reply, strip_colors
 from endstone_endbot.control import bot_profiles
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
@@ -811,7 +811,9 @@ class ScriptService:
                         run = self.start(script, [], source, None)
                         return CommandResult(
                             True,
-                            (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),),
+                            # The menu echoes no internal `parameters` step; show the command this was.
+                            (f"{DIM}/botscript run {script.name}{RESET}",
+                             reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run))),
                             log_level="info",
                             log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
                         )

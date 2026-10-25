@@ -479,6 +479,26 @@ class PresenterTests(unittest.TestCase):
         self.assertTrue(submitted[0][1]["group_guard"].edit)
         self.assertEqual(player.messages, [])
 
+    def test_script_menus_echo_only_commands_a_player_could_type(self):
+        from endstone_endbot.script_forms import run_screen, script_screen
+        from endstone_endbot.script_store import Script
+
+        presenter = FormPresenter(lambda player, argv, **kwargs: None, form_module=FakeFormModule())
+        player = FakePlayer()
+        script = Script("hop", "params {}\n", "r1")
+        presenter.show_view(player, script_screen(script, "en", True))
+        for kind, text, click in player.forms[-1].items:
+            if kind == "button" and text in {"Run", "Stop runs", "Edit lines..."}:
+                click(player)
+        # Run and Edit lines only open forms; Stop runs is a real command.
+        self.assertEqual([strip_colors(message) for message in player.messages], ["/botscript stop hop"])
+        player.messages.clear()
+        schema = [{"name": "name", "type": "string"}, {"name": "origin", "type": "pos"}]
+        presenter.show_view(player, run_screen(script, schema, [], [], None))
+        player.forms[-1].kwargs["on_submit"](player, json.dumps(["Alice", "1 64 2"]))
+        self.assertEqual([strip_colors(message) for message in player.messages],
+                         ['/botscript run hop name=Alice origin="1 64 2"'])
+
     def setUp(self):
         self.submitted = []
         self.presenter = FormPresenter(

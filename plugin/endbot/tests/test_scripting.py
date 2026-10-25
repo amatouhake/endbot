@@ -324,6 +324,34 @@ class RunnerPipeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "revoked"):
             process.receive(None, threading.Event(), Mock(side_effect=[None, ValueError("revoked")]))
 
+    def test_a_burst_of_logs_past_the_queue_bound_waits_instead_of_killing_the_runner(self):
+        # Regression (2026-10-25 client check): a script logging 15 lines at once ended "runner exited" at
+        # line 8, because the reader failed on a full 8-event queue while the host was still handling logs.
+        import io
+
+        frames = b"".join(json.dumps({"type": "log", "text": f"line {i}"}).encode() + b"\n" for i in range(20))
+        process = RunnerProcess.__new__(RunnerProcess)
+        process._events = queue.Queue(maxsize=8)
+        process._closed = threading.Event()
+        process._confinement_error = None
+        process._host_terminated = False
+        process._process = Mock(stdout=io.BytesIO(frames + json.dumps({"type": "done"}).encode() + b"\n"))
+        process._process.poll.return_value = 0  # the runner already exited after writing everything
+        process._terminate = Mock()
+        process._confine = Mock(failure=Mock(return_value=None))
+        process._reader = threading.Thread(target=process._read, daemon=True)
+        process._reader.start()
+        received = []
+        while not received or received[-1].get("type") != "done":
+            time.sleep(0.02)  # a slow host
+            received.append(process.receive(time.monotonic() + 3, threading.Event(), Mock()))
+        self.assertEqual([event.get("text") for event in received[:-1]], [f"line {i}" for i in range(20)])
+        process._reader.join(timeout=3)
+        # Only after the reader drained the pipe does the exit count as a failure (its EOF note, or
+        # "runner exited" when the queue was still full at EOF).
+        with self.assertRaisesRegex(ValueError, "EOF|runner exited"):
+            process.receive(time.monotonic() + 3, threading.Event(), Mock())
+
 
 class LifecycleTests(unittest.TestCase):
     def setUp(self):
@@ -1163,7 +1191,8 @@ class ScriptFormTests(unittest.TestCase):
         self.assertEqual(screen.controls[2].default_value, "1 64 2")
         self.assertEqual([control.label for control in screen.controls], [f"{s['name']} ({s['type']})" for s in schema])
         self.assertEqual(
-            forms.modal_commands(screen, json.dumps([0, 0, "1 64 2", "3", True, "hello world"])), (("run", "sample"),)
+            forms.modal_commands(screen, json.dumps([0, 0, "1 64 2", "3", True, "hello world"])),
+            (("run", "sample", "g=#miners", "b=Alice", 'p="1 64 2"', "n=3", "f=true", 's="hello world"'),),
         )
         self.assertEqual(screen.guard.values["g"], "#miners")
         self.assertEqual(screen.guard.values["s"], "hello world")
@@ -1347,6 +1376,7 @@ class BookTests(unittest.TestCase):
         result = self.host.execute(["parameters", "plain"], self.alice)
         self.assertEqual(started, [("plain", [], None)])
         self.assertIn("Script plain started: run-9", self.text(result))
+        self.assertEqual(strip_colors(result.messages[0]), "/botscript run plain")
 
     def test_fill_book_writes_pages_into_the_item_tag(self):
         from endstone_endbot.script_books import fill_book

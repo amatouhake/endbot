@@ -352,6 +352,12 @@ def history_screen(script, editable, lang="en"):
     return f.ActionScreen(script.name, content, tuple(items))
 
 
+def _typed_argument(name, value):
+    """``name=value`` as `/botscript run` reads it; text with spaces (positions) is quoted."""
+    text = ("true" if value else "false") if isinstance(value, bool) else str(value)
+    return f'{name}="{text}"' if not text or any(c.isspace() for c in text) else f"{name}={text}"
+
+
 def run_screen(script, schema, groups, bots, origin, lang="en"):
     schema = declarations(schema)
     controls, choices = [], {}
@@ -387,7 +393,9 @@ def run_screen(script, schema, groups, bots, origin, lang="en"):
                     selected = next(bot for bot in bots if bot["name"] == value)
                     targets[name] = ("bot", value, selected["identityId"])
             values[name] = value
-        return (("run", script.name),)
+        # The run uses `values` from the guard; the `name=value` words make the echoed command one a player
+        # could type to do the same.
+        return (("run", script.name, *(_typed_argument(name, value) for name, value in values.items())),)
 
     return f.ModalScreen(script.name, tuple(controls), build, submit=tr(lang, "Run"), command="botscript", guard=guard)
 

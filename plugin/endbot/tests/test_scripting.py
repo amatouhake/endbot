@@ -1021,6 +1021,11 @@ class FileScriptTests(unittest.TestCase):
         for name in ("bad-name.luau", "empty.luau", "broken.luau", "latin.luau", "taken.luau"):
             self.assertIn(name, self.text(result))
         self.assertIn("Script files reloaded by Alice: 1 loaded", result.log_messages[0])
+        # A controller learns the clash; the console (the operator) also gets the stored script's owner.
+        self.assertIn("taken.luau: Not loaded: a stored script named taken already exists", self.text(result))
+        self.assertNotIn("(owner", self.text(result))
+        console = self.text(self.host.execute(["reload"], CommandSource()))
+        self.assertIn("named taken already exists (owner Alice)", console)
         self.assertNotEqual(self.store.get("a").revision, revision)
         self.assertEqual(self.store.get("taken").source, "params {}\n")
         for name in ("broken", "empty", "latin"):

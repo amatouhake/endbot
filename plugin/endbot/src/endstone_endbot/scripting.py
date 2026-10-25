@@ -224,8 +224,13 @@ class ScriptService:
                     problems.append((script.name + FILE_SUFFIX, error))
                     del files[key]
         shadowed = self.store.set_files(files)
-        problems += [(name + FILE_SUFFIX, LocalizedError("Script {name} already exists", name=name))
-                     for name in shadowed]
+        for name in shadowed:
+            # The console (and the start-up log) is the operator, who may need the owner to sort it out.
+            stored = self.store.get(name)
+            problems.append((name + FILE_SUFFIX, LocalizedError(
+                "Not loaded: a stored script named {name} already exists (owner {owner})", name=stored.name,
+                owner=stored.owner_name or "?") if source is None or source.player_id is None else LocalizedError(
+                "Not loaded: a stored script named {name} already exists", name=stored.name)))
         return tuple(sorted(script.name for script in files.values() if script.name not in shadowed)), problems
 
     def _new_name(self, name):

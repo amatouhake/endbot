@@ -242,8 +242,9 @@ list); nothing watches the folder. Runs already going keep the source they start
   `file`. Copying makes an ordinary stored script owned by the copier.
 - It has no revision history; version the folder yourself if you need one. It is never written to `scripts.json`.
 - Only regular `.luau` files (UTF-8, CRLF accepted) with a valid script name and at most `max-script-bytes` load;
-  links, other extensions and subfolders are ignored or refused. A stored script with the same name wins and the
-  file is skipped.
+  links, other extensions and subfolders are ignored or refused. A stored script with the same name (anyone's, even
+  private: names are server-wide) wins and the file is skipped as "Not loaded: a stored script named … already
+  exists"; the console and the start-up log also name that script's owner, so the operator can sort it out.
 - `reload` also runs each file's declaration check and replies with every skipped file and why; start-up only
   reads the files and logs skipped ones to the server console.
 

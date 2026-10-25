@@ -911,6 +911,10 @@ JA.update({
     "The script folder must be a regular directory": "スクリプトのフォルダーは通常のディレクトリにしてください",
     "Script files must be regular files, not links": "スクリプトファイルはリンクではなく通常のファイルにしてください",
     "Script files must be UTF-8 text": "スクリプトファイルは UTF-8 のテキストにしてください",
+    "Not loaded: a stored script named {name} already exists":
+        "読み込みませんでした。同じ名前の保存済みスクリプト {name} があります",
+    "Not loaded: a stored script named {name} already exists (owner {owner})":
+        "読み込みませんでした。同じ名前の保存済みスクリプト {name} があります (持ち主 {owner})",
     "file": "ファイル",
     "From {file}. Run it, or copy it to edit in game; the operator edits the file.":
         "{file} から読み込んだスクリプトです。実行するか、コピーするとゲーム内で編集できます。"

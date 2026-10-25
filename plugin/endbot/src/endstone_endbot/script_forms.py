@@ -1,10 +1,10 @@
-"""Endstone-free script menus. Save capabilities exist only on paste forms."""
+"""Endstone-free script menus. Save capabilities exist only on edit forms."""
 
 import time
 from dataclasses import dataclass
 
 from endstone_endbot import forms as f
-from endstone_endbot.i18n import Text, tr
+from endstone_endbot.i18n import tr
 from endstone_endbot.script_params import declarations
 
 
@@ -13,6 +13,8 @@ class ScriptGuard:
     revision: str | None = None
     name: str | None = None
     edit: bool = False
+    # Set on line-editor saves: the editor page to come back to.
+    page: int | None = None
     values: dict | None = None
     targets: dict | None = None
 
@@ -56,6 +58,15 @@ end
 """,
 }
 
+# Line numbers are colored so wrapped source lines stay apart from them: gray on the dark
+# form background, dark gray on the light button background (where §7 would vanish).
+GUTTER, BUTTON_GUTTER = "§7", "§8"
+# Source characters the script screen shows before pointing at /botscript show.
+VIEW_CHARS = 6000
+# Lines per line-editor page, and the characters of a line its buttons show.
+EDIT_PAGE_LINES = 40
+BUTTON_CHARS = 60
+
 
 def run(*argv, guard=None):
     return f.Run((tuple(argv),), command="botscript", guard=guard)
@@ -67,20 +78,42 @@ def label(script, own, lang="en"):
     return f"{script.name} ({owner}, {tr(lang, script.visibility)})"
 
 
+def source_view(source, first=1):
+    """Source lines behind a colored, right-aligned line-number gutter."""
+    lines = source.splitlines()
+    width = len(str(first + len(lines) - 1))
+    return "\n".join(f"{GUTTER}{index:>{width}}§r {line}" for index, line in enumerate(lines, start=first))
+
+
+def _capped_view(script, lang):
+    lines, size = script.source.splitlines(), 0
+    width = len(str(len(lines)))
+    for index, line in enumerate(lines):
+        size += len(line) + width + 6  # with the gutter's color codes, space and line break
+        if size > VIEW_CHARS:
+            more = tr(lang, "... {count} more lines; see /botscript show {name}", count=len(lines) - index,
+                      name=script.name)
+            return source_view("\n".join(lines[:index])) + f"\n{GUTTER}{more}§r"
+    return source_view(script.source)
+
+
 def list_screen(scripts, lang="en", own=lambda script: False):
     items = [f.Button(label(s, own(s), lang), run("menu", s.name, guard=ScriptGuard(s.revision, s.name)))
              for s in scripts]
     templates = [
-        f.Button(tr(lang, title), f.Show(edit_screen(None, lang, source))) for title, source in TEMPLATES.items()
+        f.Button(tr(lang, title), f.Show(new_screen(source, "", lang))) for title, source in TEMPLATES.items()
     ]
-    templates.append(f.Button(tr(lang, "Blank script"), f.Show(edit_screen(None, lang, "params {}\n"))))
+    templates += [
+        f.Button(tr(lang, "Blank script"), f.Show(new_screen("params {}\n", "", lang))),
+        f.Button(tr(lang, "From held book..."), f.Show(import_screen(lang))),
+    ]
     items.append(
         f.Button(
             tr(lang, "+ New script..."),
             f.Show(
                 f.ActionScreen(
                     tr(lang, "Script templates"),
-                    tr(lang, "Choose a template, then paste or edit source."),
+                    tr(lang, "Pick a template to start a new script, or read one from a held book."),
                     tuple(templates),
                 )
             ),
@@ -88,6 +121,21 @@ def list_screen(scripts, lang="en", own=lambda script: False):
     )
     items.append(f.Button(tr(lang, "Back to Bot list"), f.run(f.menu_argv())))
     return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
+
+
+def new_screen(source, name="", lang="en"):
+    """Name a new script starting from ``source`` (a template or a copy); its lines are edited after saving."""
+
+    def build(values):
+        return (("save", f._text(values[-1]), source),)
+
+    return f.ModalScreen(
+        tr(lang, "New script"),
+        (f.Label(source_view(source)),
+         f.Label(tr(lang, "Name it and save; then change lines with Edit lines.")),
+         f.TextInput(tr(lang, "Script name"), default_value=name)),
+        build, submit=tr(lang, "Save"), command="botscript", guard=ScriptGuard(edit=True),
+    )
 
 
 def import_screen(lang="en"):
@@ -99,7 +147,7 @@ def import_screen(lang="en"):
     return f.ModalScreen(tr(lang, "Import from a book"),
                          (f.Label(tr(lang, "Hold the book in your main hand. Pages are joined with line breaks.")),
                           f.TextInput(tr(lang, "Script name"))),
-                         build, submit=tr(lang, "Import"), command="botscript")
+                         build, submit=tr(lang, "Import"), command="botscript", guard=ScriptGuard())
 
 
 def rename_screen(script, guard, lang="en"):
@@ -111,14 +159,15 @@ def rename_screen(script, guard, lang="en"):
 
 
 def script_screen(script, lang="en", editable=True, book_export=False):
+    """The source itself, then the frequent actions; the owner's other actions are under More."""
     guard = ScriptGuard(script.revision, script.name)
+    copy = f.Button(tr(lang, "Copy and edit..."), f.Show(new_screen(script.source, f"{script.name}_copy", lang)))
+    export = [f.Button(tr(lang, "Write into held book"), run("export", script.name, guard=guard))] if book_export \
+        else []
     items = [
         f.Button(tr(lang, "Run"), run("parameters", script.name, guard=guard)),
-        f.Button(tr(lang, "Show source"), run("source", script.name, guard=guard)),
         f.Button(tr(lang, "Stop runs"), run("stop", script.name, guard=guard)),
     ]
-    if book_export:
-        items.append(f.Button(tr(lang, "Write into held book"), run("export", script.name, guard=guard)))
     if editable:
         delete = f.ConfirmScreen(
             tr(lang, "Delete script"),
@@ -128,109 +177,120 @@ def script_screen(script, lang="en", editable=True, book_export=False):
             run("delete", script.name, guard=guard),
         )
         visibility = "private" if script.visibility == "shared" else "share"
-        items += [
-            f.Button(tr(lang, "Edit source..."), run("edit", script.name, guard=guard)),
-            f.Button(tr(lang, "Replace from held book"), run("import", script.name, guard=guard)),
+        more = (
             f.Button(tr(lang, "Rename..."), f.Show(rename_screen(script, guard, lang))),
             f.Button(tr(lang, "Make private") if visibility == "private" else tr(lang, "Share with controllers"),
                      run(visibility, script.name, guard=guard)),
             f.Button(tr(lang, "Earlier revisions..."), run("history", script.name, guard=guard)),
+            copy,
+            *export,
             f.Button(tr(lang, "Delete"), f.Show(delete)),
+            f.Button(tr(lang, "Back"), run("menu", script.name, guard=guard)),
+        )
+        items += [
+            f.Button(tr(lang, "Edit lines..."), run("edit", script.name, guard=guard)),
+            f.Button(tr(lang, "More..."), f.Show(f.ActionScreen(script.name, "", more))),
         ]
-    items += [
-        f.Button(tr(lang, "Copy and edit..."), f.Show(edit_screen(None, lang, script.source, f"{script.name}_copy"))),
-        f.Button(tr(lang, "Scripts..."), run("menu")),
-    ]
+    else:
+        items += [copy, *export]
+    items.append(f.Button(tr(lang, "Scripts..."), run("menu")))
     content = (tr(lang, "Your script ({visibility}).", visibility=tr(lang, script.visibility)) if editable
                else tr(lang, "Shared by {owner}. Run it, or copy it to edit your own.",
                        owner=script.owner_name or tr(lang, "unowned")))
-    return f.ActionScreen(script.name, content, tuple(items))
+    return f.ActionScreen(script.name, content + "\n\n" + _capped_view(script, lang), tuple(items))
 
 
-def numbered(source):
-    """The whole source with line numbers, for the read-only preview above the paste field."""
-    return "\n".join(f"{index}: {line}" for index, line in enumerate(source.splitlines(), start=1))
+def _typed_lines(value):
+    """Lines typed into one text field; a paste that kept its line breaks becomes several lines."""
+    if not isinstance(value, str):
+        raise f.FormResponseError("the form response was not understood")
+    return [line.rstrip() for line in value.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
 
 
-# Edit modes in dropdown order. Line modes take "from" and an optional "to" line number.
-EDIT_MODES = ("Replace all", "Append at end", "Replace lines", "Insert after line", "Delete lines")
+def _indent(line):
+    return line[: len(line) - len(line.lstrip())]
 
 
-def _line_number(value, low, high, label):
-    text = f._text(value)
-    if not text:
-        return None
-    if not text.isascii() or not text.isdecimal() or not low <= int(text) <= high:
-        raise f.FormResponseError("{field} must be a line number from {low} to {high}", field=Text(label), low=low,
-                                  high=high)
-    return int(text)
+def _edited(script, lines, page):
+    """Save changed lines (the save returns to the editor page); without a change just go back."""
+    if lines == script.source.splitlines():
+        return (("edit", script.name, str(page)),)
+    return (("save", script.name, "\n".join(lines) + "\n"),)
 
 
-def apply_edit(source, mode, pasted, first, last):
-    """The source after one edit; ``first``/``last`` are 1-based line numbers (strings from the form).
-
-    Pasted text replaces whole lines, so a trailing newline in it adds nothing.
-    """
-    lines = source.splitlines()
-    pasted = pasted.replace("\r\n", "\n").replace("\r", "\n")
-    new = pasted.removesuffix("\n").split("\n") if pasted.strip() else []
-    if mode == "Replace all":
-        if not new:
-            raise f.FormResponseError("Paste the new source; nothing was changed")
-        result = new
-    elif mode == "Append at end":
-        if not new:
-            raise f.FormResponseError("Paste the lines to add; nothing was changed")
-        result = lines + new
-    elif mode == "Insert after line":
-        at = _line_number(first, 0, len(lines), "From line")
-        if at is None or not new:
-            raise f.FormResponseError("Enter a line number (0 = top) and paste the lines to insert")
-        result = lines[:at] + new + lines[at:]
-    else:
-        if not lines:
-            raise f.FormResponseError("The script has no lines yet")
-        start = _line_number(first, 1, len(lines), "From line")
-        if start is None:
-            raise f.FormResponseError("Enter the first line to change")
-        end = _line_number(last, start, len(lines), "To line") or start
-        if mode == "Replace lines" and not new:
-            raise f.FormResponseError("Paste the replacement lines, or choose Delete lines")
-        result = lines[: start - 1] + (new if mode == "Replace lines" else []) + lines[end:]
-    return "\n".join(result) + "\n"
-
-
-def edit_screen(script, lang="en", source="", name=""):
-    """Edit by pasting into an empty field: replace all, append, or replace/insert/delete numbered lines.
-
-    A new script (template or copy) starts from ``source``; leaving the field empty keeps it as is.
-    """
-    guard = ScriptGuard(script.revision if script else None, script.name if script else None, edit=True)
-    text = script.source if script else source
+def line_screen(script, index, page, lang="en"):
+    """Change one line in place: its text starts filled in, so a fix is a few keystrokes."""
+    lines = script.source.splitlines()
+    start = max(index - 2, 0)
 
     def build(values):
-        name = script.name if script else f._text(values[0])
-        mode = f._option(EDIT_MODES, values[-4])
-        pasted = values[-1]
-        if not isinstance(pasted, str):
+        text, below, delete = _typed_lines(values[-3]), _typed_lines(values[-2]), values[-1]
+        if not isinstance(delete, bool):
             raise f.FormResponseError("the form response was not understood")
-        if script is None and mode == "Replace all" and not pasted.strip():
-            return (("save", name, text),)
-        return (("save", name, apply_edit(text, mode, pasted, values[-3], values[-2])),)
+        changed = lines[:index] + ([] if delete else text)
+        if any(below):
+            # New lines line up with the edited one unless typed with their own indentation.
+            indent = _indent(lines[index])
+            changed += [line if not line or _indent(line) else indent + line for line in below]
+        return _edited(script, changed + lines[index + 1 :], page)
 
-    # The client's text input is about two lines tall and cannot select all, so it starts empty;
-    # the label shows the whole source with line numbers for the line modes.
-    preview = (f.Label(tr(lang, "Current source:") + "\n" + numbered(text)),) if text.strip() else ()
-    hint = tr(lang, "Leave empty to keep the source above.") if script is None and text.strip() else ""
-    controls = (() if script else (f.TextInput(tr(lang, "Script name"), default_value=name),)) + preview + (
-        f.Dropdown(tr(lang, "Change"), tuple(tr(lang, mode) for mode in EDIT_MODES)),
-        f.TextInput(tr(lang, "From line (insert: 0 = top)")),
-        f.TextInput(tr(lang, "To line (optional)")),
-        f.TextInput((tr(lang, "Luau source (paste multiple lines)") + " " + hint).strip()),
-    )
     return f.ModalScreen(
-        tr(lang, "Edit script"), controls, build, submit=tr(lang, "Save"), command="botscript", guard=guard
+        tr(lang, "{name}: line {line}", name=script.name, line=index + 1),
+        (f.Label(source_view("\n".join(lines[start : index + 3]), start + 1)),
+         f.TextInput(tr(lang, "Line {line}", line=index + 1), default_value=lines[index]),
+         f.TextInput(tr(lang, "Add a line below (optional)")),
+         f.Toggle(tr(lang, "Delete this line"))),
+        build, submit=tr(lang, "Save"), command="botscript",
+        guard=ScriptGuard(script.revision, script.name, edit=True, page=page),
     )
+
+
+def add_screen(script, at, page, lang="en"):
+    """Add lines at the top (``at`` 0) or at the end of the script."""
+    lines = script.source.splitlines()
+
+    def build(values):
+        new = _typed_lines(values[-1])
+        return _edited(script, lines[:at] + new + lines[at:] if any(new) else lines, page)
+
+    return f.ModalScreen(tr(lang, "Add a first line" if at == 0 else "Add a line at the end"),
+                         (f.TextInput(tr(lang, "New line")),), build, submit=tr(lang, "Save"), command="botscript",
+                         guard=ScriptGuard(script.revision, script.name, edit=True, page=page))
+
+
+def edit_pages(script):
+    return max(1, -(-len(script.source.splitlines()) // EDIT_PAGE_LINES))
+
+
+def lines_screen(script, page, lang="en"):
+    """One button per line; tapping one opens it filled in. Multi-line changes go through a book."""
+    lines = script.source.splitlines()
+    pages = edit_pages(script)
+    guard = ScriptGuard(script.revision, script.name)
+    first = (page - 1) * EDIT_PAGE_LINES
+    width = len(str(len(lines)))
+    items = []
+    if page == 1:
+        items.append(f.Button(tr(lang, "+ Add a first line"), f.Show(add_screen(script, 0, page, lang))))
+    for index in range(first, min(first + EDIT_PAGE_LINES, len(lines))):
+        text = lines[index].strip()
+        text = text[:BUTTON_CHARS] + "..." if len(text) > BUTTON_CHARS + 3 else text
+        items.append(f.Button(f"{BUTTON_GUTTER}{index + 1:>{width}}§r {text}",
+                              f.Show(line_screen(script, index, page, lang))))
+    if page == pages:
+        items.append(f.Button(tr(lang, "+ Add a line at the end"),
+                              f.Show(add_screen(script, len(lines), page, lang))))
+    if page > 1:
+        items.append(f.Button(tr(lang, "Previous page"), run("edit", script.name, str(page - 1), guard=guard)))
+    if page < pages:
+        items.append(f.Button(tr(lang, "Next page"), run("edit", script.name, str(page + 1), guard=guard)))
+    items += [
+        f.Button(tr(lang, "Replace all from held book"), run("import", script.name, guard=guard)),
+        f.Button(tr(lang, "Back"), run("menu", script.name, guard=guard)),
+    ]
+    title = script.name if pages == 1 else f"{script.name} ({page}/{pages})"
+    return f.ActionScreen(title, tr(lang, "Tap a line to change or delete it, or to add a line below it."),
+                          tuple(items))
 
 
 def revision_line(index, revision, lang="en"):
@@ -248,13 +308,13 @@ def history_screen(script, editable, lang="en"):
             confirm = f.ConfirmScreen(
                 tr(lang, "Restore revision"),
                 tr(lang, "Restore {name} to revision {line}? The current source stays in the history.",
-                   name=script.name, line=line) + "\n\n" + numbered(revision.source),
+                   name=script.name, line=line) + "\n\n" + source_view(revision.source),
                 tr(lang, "Restore"), tr(lang, "Cancel"),
                 run("restore", script.name, str(index), guard=guard))
             items.append(f.Button(line, f.Show(confirm)))
         else:
             items.append(f.Header(line))
-    items.append(f.Button(tr(lang, "Scripts..."), run("menu", script.name, guard=guard)))
+    items.append(f.Button(tr(lang, "Back"), run("menu", script.name, guard=guard)))
     content = tr(lang, "Earlier revisions, newest first.") if script.history else tr(lang, "no earlier revisions")
     return f.ActionScreen(script.name, content, tuple(items))
 
@@ -300,20 +360,9 @@ def run_screen(script, schema, groups, bots, origin, lang="en"):
 
 
 def source_pages(script):
+    """Chat pages for `/botscript show`: numbered lines, long lines cut into pieces."""
     lines = []
     for index, line in enumerate(script.source.splitlines()):
         chunks = [line[start : start + 200] for start in range(0, len(line), 200)] or [""]
         lines.extend(f"{index + 1}: {chunk}" for chunk in chunks)
     return ["\n".join(lines[start : start + 8]) for start in range(0, len(lines), 8)] or [""]
-
-
-def source_screen(script, page, lang="en"):
-    pages = source_pages(script)
-    guard = ScriptGuard(script.revision, script.name)
-    items = []
-    if page > 1:
-        items.append(f.Button(tr(lang, "Previous page"), run("source", script.name, str(page - 1), guard=guard)))
-    if page < len(pages):
-        items.append(f.Button(tr(lang, "Next page"), run("source", script.name, str(page + 1), guard=guard)))
-    items.append(f.Button(tr(lang, "Scripts..."), run("menu", script.name, guard=guard)))
-    return f.ActionScreen(f"{script.name} ({page}/{len(pages)})", pages[page - 1], tuple(items))

@@ -18,9 +18,9 @@ The plugin hosts scripts; the Node Bedrock runtime is unchanged. Scripts use the
 /botscript menu
 ```
 
-Enabled `/bot menu` adds **Scripts...** for shared source, paste-only creation/editing, two templates,
-parameter forms, paged source, per-controller stopping and confirmed deletion. Typed `save` cannot author
-source. Positional run arguments follow alphabetical parameter names; quote positions, for example
+Enabled `/bot menu` adds **Scripts...** (after **+ New Bot here**) for shared source, line-by-line and book editing,
+templates, parameter forms, the source on each script's screen, per-controller stopping and confirmed deletion. Typed `save` cannot
+author source. Positional run arguments follow alphabetical parameter names; quote positions, for example
 `/botscript run row #miners "~ ~ ~" 2`. Runs never resume after restart. Disabling scripting retains source.
 
 ## Quick start

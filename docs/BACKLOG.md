@@ -274,8 +274,19 @@ reuse the event-intercept approach and the one-overload-per-first-token finding 
 
 ## BOT-009: Controller-authored Luau scripts and a small in-game editor
 
-Status: **MVP implemented behind `[scripting] enabled` (off by default) — Windows RakNet live probe passed; Linux runner build/bundling, OS resource limits and human-client checks pending** (2026-10-23 JST). Ownership, private/shared visibility, copy, a 10-revision history with restore and the numbered source preview
-are implemented (2026-10-24 decisions below); the optional run/author permission split is not. See [scripting](SCRIPTING.md).
+Status: **MVP implemented behind `[scripting] enabled` (off by default) — Windows RakNet live probe passed; human-client
+checks in progress** (updated 2026-10-25 JST). Ownership, private/shared visibility, copy, a 10-revision history with
+restore, the source view, line-by-line editing and book-and-quill import/export are
+implemented (decisions below, #100–#101); the optional run/author permission split is not. Runner builds, bundle
+self-tests, platform-matched OS confinement probes and the clean-consumer E2E on both platforms are required CI steps
+(#97); the 2026-10-22 candidate run passed both platform jobs and all four consumer legs (source `e983358`), and only
+its `assemble` job stopped, on the candidate version input, so no candidate artifact exists yet.
+The 2026-10-25 Windows client check passed template creation and running, Copy and edit, revision history, rename,
+sharing, book import/export, `runs`/`stop` (including the console) and runaway interruption. Two findings: a multi-line
+paste is saved with its line breaks dropped, so the form is single-line and books carry multi-line authoring (see the
+editing decision below); and a script with no parameters could not be started from the menu because its empty form
+could not be submitted — it now starts the run directly. A second-controller check was not run. See
+[scripting](SCRIPTING.md).
 
 Controllers should be able to write and run their own Bot scripts without server-filesystem access. Use **Luau** as
 the language baseline. Required use cases include loops, conditions, coordinate arithmetic, and placing multiple Bots
@@ -385,11 +396,19 @@ Decisions after the first human-client look (2026-10-24 JST):
   restore from the menu. Runs keep the invoker's authority. Groups remain fully shared.
 - **Optional permission split**: running (`endbot.script.run`) and authoring (`endbot.script.author`) may be granted
   separately; whether an administrator tier that can edit/stop others' scripts is needed is still open.
-- **Editing in 0.4.0 stays paste-based.** The client's form text input keeps newlines but has a fixed height of about
-  two lines (seen 2026-10-24 on Windows). Add a read-only label above the input with the full source and line numbers;
+- **Editing in 0.4.0 stays paste-based.** The client's form text input has a fixed height of about two lines
+  (seen 2026-10-24 on Windows). Add a read-only label above the input with the full source and line numbers;
   keep syntax-error line numbers. Neither Endstone 0.11.13 `TextInput` nor the form JSON offers a taller/multiline
   input; command-block UI needs operator/creative access and is not a server form, so it does not fit the
   `allow-cheats=false`, no-operator model. Book and quill is an unverified in-game multiline candidate.
+  Implemented 2026-10-24 (#100): the Change dropdown offers replace all, append at end, replace lines, insert after
+  line and delete lines, and `/botscript import|export` moves source through a held book and quill (export stays off
+  unless `[scripting] book-export` is enabled). Which of these the real client makes comfortable remains a manual gate.
+  **Correction (2026-10-25 Windows check):** the field does not keep pasted line breaks — a multi-line paste was saved
+  as one line, so C2/C3 failed on the real client. The form now labels the limitation and remains for single-line edits
+  and the line modes; multi-line authoring uses the book loop (create from template → Write into held book → edit →
+  Replace from held book), and the game editor's own per-page paste limit is documented there. Paste-based multi-line
+  editing is deferred until a control can hold line breaks (or the web editor, BOT-013).
 - **Web editing** is the preferred long-term authoring experience; see BOT-013.
 
 Decisions after the second human-client look (2026-10-24 JST):
@@ -404,10 +423,18 @@ Decisions after the second human-client look (2026-10-24 JST):
 - **Syntax:** `name=value` run arguments after the positional ones, positions as Luau vectors accepted wherever an
   operation takes `x, y, z`, `param.choice`, `rename`, and templates using `assert(r.ok, r.reason)`.
 
-This records the agreed scripting direction only. Scripts, a Luau API and editing/import behavior are not yet available;
-the independent Group feature implementation is tracked under BOT-010. Implementation and real-client editing, permission,
-cancellation, Bot behavior and achievement validation must be recorded separately; no release version or completion is
-promised here.
+Decisions after the 2026-10-25 Windows check (JST): the in-game path stays in 0.4.0 as the minimum (web editing,
+BOT-013, is 0.5.0), but its menus were too hard to read and edit with.
+
+- **Source view:** the script screen shows the whole source, with line numbers in gray so wrapped lines no longer
+  blur into them; the separate paged Show source screen is gone (`/botscript show` stays for chat).
+- **Fewer buttons:** Run, Stop runs, Edit lines, More (Rename, Share/Private, Earlier revisions, Copy and edit, Write
+  into held book, Delete) and back. A template or copy asks only for a name.
+- **Editing replaces the Change dropdown and paste field:** a list of line buttons; a line opens prefilled (a one-line
+  field is easy to edit in place), with an optional line below that keeps the indentation and a delete toggle; lines
+  can be added at the top and end. Saving returns to the list. Multi-line changes go through a book. Manual gate: the
+  Windows client renders line buttons and the prefilled field comfortably, including on a 40-line page.
+  Passed on the Windows client (2026-10-25): source view, menus, line editing, paging, new scripts, errors, Japanese.
 
 ## BOT-010: Define Groups before the Luau operation API
 

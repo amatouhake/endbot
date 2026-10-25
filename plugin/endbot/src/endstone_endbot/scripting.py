@@ -557,8 +557,15 @@ class ScriptService:
                 self.inspect(Script(tail[0], tail[1], "draft"), source)
                 self._check(source)
                 self.store.save(tail[0], tail[1], guard.revision, self.owner_key(source), self._who(source))
+                # Menus continue where the save came from: the line editor page, or the new script.
+                saved = self.store.get(tail[0])
+                view = None
+                if source.player_id is not None:
+                    view = (script_forms.lines_screen(saved, min(guard.page, script_forms.edit_pages(saved)), lang)
+                            if guard.page is not None
+                            else script_forms.script_screen(saved, lang, True, self.config.book_export))
                 return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
-                                     log_messages=(f"Script {tail[0]} saved by {self._who(source)}",))
+                                     log_messages=(f"Script {tail[0]} saved by {self._who(source)}",), view=view)
             if operation == "menu" and not tail:
                 self._player(source)
                 return CommandResult(True, view=script_forms.list_screen(
@@ -586,7 +593,9 @@ class ScriptService:
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} imported from the book ({lines} lines)", name=name,
                                     lines=lines)),),
-                    log_level="info", log_messages=(f"Script {name} imported from a book by {self._who(source)}",))
+                    log_level="info", log_messages=(f"Script {name} imported from a book by {self._who(source)}",),
+                    view=script_forms.script_screen(self.store.get(name), lang, True, self.config.book_export)
+                    if isinstance(guard, script_forms.ScriptGuard) else None)
             if operation == "copy" and len(tail) == 2:
                 # Copies start private and belong to the copier; the original is untouched.
                 original = self._script(tail[0], source)
@@ -601,16 +610,17 @@ class ScriptService:
                                   edit=operation in {"delete", "edit", "share", "private", "restore", "rename"})
             if isinstance(guard, script_forms.ScriptGuard) and guard.revision != script.revision:
                 raise LocalizedError("Script changed; reopen the menu")
-            if operation in {"show", "source"} and len(tail) <= 2:
-                page = int(tail[1]) if len(tail) == 2 else 1
-                pages = script_forms.source_pages(script)
-                total = len(pages)
+            if operation in {"show", "edit"} and len(tail) <= 2:
+                total = len(script_forms.source_pages(script)) if operation == "show" else script_forms.edit_pages(
+                    script)
+                page = int(tail[1]) if len(tail) == 2 and tail[1].isascii() and tail[1].isdecimal() else (
+                    1 if len(tail) == 1 else 0)
                 if not 1 <= page <= total:
                     raise LocalizedError("Script source page is out of range")
-                if operation == "source":
+                if operation == "edit":
                     self._player(source)
-                    return CommandResult(True, view=script_forms.source_screen(script, page, lang))
-                text = pages[page - 1]
+                    return CommandResult(True, view=script_forms.lines_screen(script, page, lang))
+                text = script_forms.source_pages(script)[page - 1]
                 return CommandResult(True, (reply(f"{script.name} ({page}/{total})\n{text}"),))
             if operation == "export" and len(tail) == 1:
                 self._player(source)
@@ -676,11 +686,9 @@ class ScriptService:
                     log_level="info",
                     log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
                 )
-            if operation in {"menu", "edit", "parameters"} and len(tail) == 1:
+            if operation in {"menu", "parameters"} and len(tail) == 1:
                 self._player(source)
-                if operation == "edit":
-                    view = script_forms.edit_screen(script, lang)
-                elif operation == "parameters":
+                if operation == "parameters":
                     schema = self.inspect(script, source)
                     if not schema:
                         # No parameters: an empty form cannot be submitted, so start the run.

@@ -182,24 +182,38 @@ version 1) have no owner and stay shared; the first controller to edit one becom
 `name (owner, visibility)` with `yours` for your own. Not implemented: separate run/author permissions
 (`endbot.script.run`/`endbot.script.author`); every controller may still author.
 
-When enabled, `/bot menu` includes **Scripts...**. A script opens Run, Show source (paged), Stop runs and
-Copy and edit; its owner also gets Edit source, Replace from held book, Rename, Share/Make private, Earlier revisions (restore with a
-confirmation that shows that revision's source) and Delete (confirmation). Create offers **Group row**, **Simple patrol**, **Mine at spots**, and a blank script.
-Editing uses an **empty** paste field (the client draws it about two lines tall and cannot select all, so a
-prefilled field could not be cleared) under a read-only label with the whole current source and line numbers.
-A **Change** dropdown picks Replace all, Append at end, Replace lines (`from`, optional `to`), Insert after line
-(`0` = top) or Delete lines; pasted text replaces whole lines and Windows line breaks are normalized. An empty paste
-never wipes a script: it is refused, except that a new script from a template or Copy and edit keeps the shown
-source. Save compiles the complete source and inspects its declaration without accepting the body. `save` is an internal form action; typing it cannot update source.
+When enabled, `/bot menu` lists **Scripts...** after **+ New Bot here** (next to **Manage groups...**);
+the target list above it contains only targets `/bot` can address. A script's screen shows its whole source with gray
+line numbers (wrapped lines stay apart from the numbers; very long scripts are cut off with a pointer to `show`) and
+offers Run, Stop runs and Copy and edit (and Write into held book where export is enabled). Its owner gets **Edit
+lines...** and **More...** instead of Copy and edit; More holds Rename, Share/Make private, Earlier revisions (restore with a
+confirmation that shows that revision's source), Copy and edit, Write into held book and Delete (confirmation).
+Create offers **Group row**, **Simple patrol**, **Mine at spots**, a blank script and **From held book...**; a template
+or copy only asks for a name, and saving opens the new script.
+
+**Edit lines** lists the source one line per button (40 per page). Tapping a line opens a form with that line already
+filled in, an optional line to add below it (taking the edited line's indentation unless typed with its own) and a
+**Delete this line** toggle; **+ Add a first line** and **+ Add a line at the end** add lines at the ends. A one-line
+field is easy to change in place, unlike a whole prefilled source in the client's two-line field, which could not be
+cleared. On the Windows client form fields **drop pasted line breaks** (checked 2026-10-25), so multi-line changes go
+through a book (**Replace all from held book** at the bottom of the list; see below). Saving returns to the same page
+of the list, and a form that changes nothing just goes back. Save compiles the complete source and inspects its
+declaration without accepting the body. `save` is an internal form action; typing it cannot update source.
 Stale edit/delete/run forms reject source revision changes. Canceling does not save; drafts are not persisted.
 
 ### Books
 
 A book and quill is the comfortable in-game editor: it keeps line breaks and supports Ctrl+A/C/X/V on Windows.
-`import <name>` (menu: **From held book...** for a new script, **Replace from held book** for your own) reads the
+`import <name>` (menu: **From held book...** for a new script, **Replace all from held book** for your own) reads the
 book and quill or written book in the main hand. Pages are joined with a line break unless a page already ends with
 one; trailing blank pages are ignored. A new name creates a private script; an existing name saves a new revision
 through the same compile, declaration and owner checks as the menu. The book is only read.
+
+**Multi-line authoring loop (2026-10-25 Windows check):** create from a template (or blank), open the script,
+**Write into held book**, edit the pages, then **Replace all from held book** to save a new revision. The book keeps the
+whole source between edits, so one export is enough. The client's own book editor silently drops text past a page's
+capacity, so split long source over pages by hand (up to 50 pages, 256 characters each); the plugin refuses a script
+that cannot fit and names the offending line.
 
 `export <name>` (menu: **Write into held book**) writes a script you can run into the **empty** book and quill in
 your main hand, so you can edit it there and import it again (for someone else's shared script, import under a new

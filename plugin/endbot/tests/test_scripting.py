@@ -902,57 +902,105 @@ class OwnershipTests(unittest.TestCase):
     def test_menus_offer_owner_actions_only_to_the_owner(self):
         self.save(self.alice, "mine", "params {}\n")
         script = self.store.get("mine")
-        own = [button.text for button in script_forms.script_screen(script, "en", True).items]
-        other = [button.text for button in script_forms.script_screen(script, "en", False).items]
-        self.assertIn("Edit source...", own)
+        own = button_texts(script_forms.script_screen(script, "en", True))
+        other = button_texts(script_forms.script_screen(script, "en", False))
+        self.assertEqual([button.text for button in script_forms.script_screen(script, "en", True).items],
+                         ["Run", "Stop runs", "Edit lines...", "More...", "Scripts..."])
         self.assertIn("Share with controllers", own)
-        self.assertNotIn("Edit source...", other)
+        self.assertNotIn("Edit lines...", other)
         self.assertNotIn("Delete", other)
         self.assertIn("Copy and edit...", other)
         copy = next(button for button in script_forms.script_screen(script, "en", False).items
                     if button.text == "Copy and edit...").action.screen
-        self.assertEqual(copy.controls[0].default_value, "mine_copy")
+        self.assertEqual(copy.controls[-1].default_value, "mine_copy")
         self.assertIsNone(copy.guard.revision)
+        self.host.execute(["share", "mine"], self.alice)
+        self.assertIn("Only the owner", self.text(self.host.execute(["edit", "mine"], self.bob)))
+
+    def test_saves_from_menus_come_back_to_the_editor_or_the_new_script(self):
+        result = self.save(self.alice, "mine", "params {}\nlog('a')\n")
+        self.assertEqual(result.view.title, "mine")
+        script = self.store.get("mine")
+        guard = script_forms.ScriptGuard(script.revision, "mine", edit=True, page=1)
+        result = self.host.execute(["save", "mine", "params {}\n"], replace(self.alice, group_guard=guard))
+        self.assertTrue(result.accepted)
+        self.assertIn("Tap a line", result.view.content)
+        # Saving with the old revision again is refused instead of overwriting.
+        stale = self.host.execute(["save", "mine", "params {}\n-- x"], replace(self.alice, group_guard=guard))
+        self.assertIn("changed", self.text(stale))
+        self.assertIsNone(self.save(self.console, "other", "params {}\n").view)
+
+
+def button_texts(screen):
+    """Button texts of a screen and of the action screens it opens."""
+    texts = []
+    for item in screen.items:
+        texts.append(item.text)
+        if isinstance(item.action, forms.Show) and isinstance(item.action.screen, forms.ActionScreen):
+            texts += button_texts(item.action.screen)
+    return texts
+
+
+def submit(screen, *values):
+    return forms.modal_commands(screen, json.dumps(list(values)))
 
 
 class ScriptFormTests(unittest.TestCase):
-    def test_paste_field_starts_empty_and_guards_stale_edit(self):
-        script = Script("sample", "params {}\n", "r1")
-        screen = script_forms.edit_screen(script)
-        self.assertEqual(screen.controls[-1].default_value, "")
-        self.assertEqual(screen.controls[0].text, "Current source:\n1: params {}")
-        # A client that sends null for the label, and one that leaves it out of the response.
-        self.assertEqual(forms.modal_commands(screen, json.dumps([None, 0, "", "", "x"])), (("save", "sample", "x\n"),))
-        self.assertEqual(
-            forms.modal_commands(screen, json.dumps([0, "", "", "\r\nparams {}\r\n"])),
-            (("save", "sample", "\nparams {}\n"),),
-        )
-        # An empty paste never wipes the source.
-        with self.assertRaisesRegex(forms.FormResponseError, "nothing was changed"):
-            forms.modal_commands(screen, json.dumps([0, "", "", ""]))
-        self.assertEqual(screen.guard.revision, "r1")
+    def setUp(self):
+        self.script = Script("sample", "params {}\nfor i = 1, 2 do\n    log(i)\nend\n", "r1")
+
+    def test_script_screen_shows_the_source_with_a_colored_gutter(self):
+        content = script_forms.script_screen(self.script, "en", True).content
+        self.assertIn("§71§r params {}\n§72§r for i = 1, 2 do\n§73§r     log(i)", content)
+        long = Script("big", "".join(f"log({index})\n" for index in range(2000)), "r1")
+        content = script_forms.script_screen(long, "en", True).content
+        self.assertLess(len(content), script_forms.VIEW_CHARS + 500)
+        self.assertIn("more lines; see /botscript show big", content)
+
+    def test_line_buttons_open_the_line_filled_in(self):
+        screen = script_forms.lines_screen(self.script, 1)
+        texts = [item.text for item in screen.items]
+        self.assertEqual(texts[:3], ["+ Add a first line", "§81§r params {}", "§82§r for i = 1, 2 do"])
+        self.assertEqual(texts[-3:], ["+ Add a line at the end", "Replace all from held book", "Back"])
+        line = screen.items[3].action.screen
+        self.assertEqual(line.controls[1].default_value, "    log(i)")
+        self.assertEqual(line.guard, script_forms.ScriptGuard("r1", "sample", edit=True, page=1))
+        # A client may send null for the label.
+        self.assertEqual(submit(line, None, "    log(i * 2)", "", False),
+                         (("save", "sample", "params {}\nfor i = 1, 2 do\n    log(i * 2)\nend\n"),))
+        # A new line below takes the edited line's indentation unless it brings its own.
+        self.assertEqual(submit(line, "    log(i)", "wait(1)", False),
+                         (("save", "sample", "params {}\nfor i = 1, 2 do\n    log(i)\n    wait(1)\nend\n"),))
+        self.assertEqual(submit(line, "    log(i)", "  wait(1)", True),
+                         (("save", "sample", "params {}\nfor i = 1, 2 do\n  wait(1)\nend\n"),))
+        # A paste that kept line breaks becomes several lines; nothing changed goes back to the editor.
+        self.assertEqual(submit(line, "    a\r\n    b", "", False),
+                         (("save", "sample", "params {}\nfor i = 1, 2 do\n    a\n    b\nend\n"),))
+        self.assertEqual(submit(line, "    log(i)", "", False), (("edit", "sample", "1"),))
+        with self.assertRaises(forms.FormResponseError):
+            submit(line, "    log(i)", "", "yes")
+
+    def test_lines_are_added_at_the_top_or_end_and_paged(self):
+        screen = script_forms.lines_screen(self.script, 1)
+        top, end = screen.items[0].action.screen, screen.items[-3].action.screen
+        self.assertEqual(submit(top, "-- note"), (("save", "sample", "-- note\n" + self.script.source),))
+        self.assertEqual(submit(end, "log('done')"), (("save", "sample", self.script.source + "log('done')\n"),))
+        self.assertEqual(submit(end, ""), (("edit", "sample", "1"),))
+        long = Script("big", "".join(f"log({index})\n" for index in range(90)), "r1")
+        self.assertEqual(script_forms.edit_pages(long), 3)
+        middle = [item.text for item in script_forms.lines_screen(long, 2).items]
+        self.assertEqual(middle[0], "§841§r log(40)")
+        self.assertIn("Previous page", middle)
+        self.assertIn("Next page", middle)
+        self.assertNotIn("+ Add a first line", middle)
+        self.assertEqual(script_forms.lines_screen(long, 2).items[0].action.screen.guard.page, 2)
+
+    def test_new_script_saves_the_template_under_the_typed_name(self):
+        screen = script_forms.new_screen("params {}\n", "row")
+        self.assertEqual(screen.controls[-1].default_value, "row")
+        self.assertEqual(submit(screen, None, None, " row2 "), (("save", "row2", "params {}\n"),))
         self.assertTrue(screen.guard.edit)
-
-    def test_line_edits(self):
-        source = "a\nb\nc\n"
-        edit = script_forms.apply_edit
-        self.assertEqual(edit(source, "Append at end", "d\n", "", ""), "a\nb\nc\nd\n")
-        self.assertEqual(edit(source, "Replace lines", "B1\nB2", "2", ""), "a\nB1\nB2\nc\n")
-        self.assertEqual(edit(source, "Replace lines", "X", "1", "2"), "X\nc\n")
-        self.assertEqual(edit(source, "Insert after line", "top", "0", ""), "top\na\nb\nc\n")
-        self.assertEqual(edit(source, "Insert after line", "end", "3", ""), "a\nb\nc\nend\n")
-        self.assertEqual(edit(source, "Delete lines", "", "2", "3"), "a\n")
-        for mode, first, last in (("Delete lines", "4", ""), ("Delete lines", "2", "1"), ("Replace lines", "", ""),
-                                  ("Insert after line", "x", ""), ("Replace lines", "1", "")):
-            with self.subTest(mode=mode, first=first, last=last), self.assertRaises(forms.FormResponseError):
-                edit(source, mode, "", first, last)
-
-    def test_new_script_keeps_template_when_paste_is_empty(self):
-        screen = script_forms.edit_screen(None, "en", "params {}\n", "row")
-        self.assertEqual(forms.modal_commands(screen, json.dumps(["row", None, 0, "", "", ""])),
-                         (("save", "row", "params {}\n"),))
-        self.assertEqual(forms.modal_commands(screen, json.dumps(["row", None, 0, "", "", "params {}\nlog'x'"])),
-                         (("save", "row", "params {}\nlog'x'\n"),))
+        self.assertIsNone(screen.guard.revision)
 
     def test_param_controls_and_generated_values(self):
         script = Script("sample", "params {}", "r1")
@@ -1084,7 +1132,9 @@ class BookTests(unittest.TestCase):
         self.host.config = replace(self.config, book_export=False)
         self.assertIn("disabled", self.text(self.host.execute(["export", "mine"], self.alice)))
         self.assertNotIn("Write into held book",
-                         [b.text for b in script_forms.script_screen(self.store.get("mine"), "en", True).items])
+                         button_texts(script_forms.script_screen(self.store.get("mine"), "en", True)))
+        self.assertIn("Write into held book",
+                      button_texts(script_forms.script_screen(self.store.get("mine"), "en", True, True)))
 
     def test_a_parameterless_script_starts_from_the_menu(self):
         self.store.save("plain", "params {}\n")

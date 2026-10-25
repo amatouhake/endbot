@@ -468,6 +468,9 @@ The client check of this found two older faults: a script logging more than 8 li
 (the host failed on its full 8-event queue instead of waiting; it now waits, which also stalls the runner on its
 pipe), and script menus echoed internal steps (`/botscript parameters hop`) or a run without its arguments. Menus now
 echo only commands a player could type, including the run form's `name=value` arguments.
+Rechecked on the Windows client (2026-10-25): a 15-line burst ran to the end with the held-back count, and the
+menus echoed `/botscript run chatty` and `/botscript run hop name=Alice`. The same check found source previews
+rendering `§` as formatting; previews now show it as `\u{a7}` (#106, rechecked).
 
 The direction above is implemented as described in [scripting](SCRIPTING.md) and this item's status line; the
 independent Group feature is tracked under BOT-010. Real-client editing, permission, cancellation, Bot behavior and

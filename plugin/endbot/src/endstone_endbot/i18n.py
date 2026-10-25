@@ -900,10 +900,10 @@ JA.update({
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "
     "| copy <name> <new> | share|private <name> | history <name> | restore <name> <n> "
-    "| rename <name> <new> | import <name> | export <name> | menu":
+    "| rename <name> <new> | import <name> | export <name> [overwrite] | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
         "| delete <name> | copy <name> <new> | share|private <name> | history <name> "
-        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> | menu",
+        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | menu",
     "Arguments follow declaration order, then name=value for any parameter; "
     "quote positions. Create/edit in the menu, or import from a held book and quill.":
         "引数は宣言順で、その後に name=値 で任意の引数を指定できます。座標は引用符で囲みます。"
@@ -933,7 +933,22 @@ JA.update({
     "The script does not fit in one book ({pages} of {limit} pages)":
         "スクリプトが本1冊に収まりません ({pages} ページ / 上限 {limit} ページ)",
     "Hold a book and quill or a written book in your main hand": "本と羽根ペンか署名済みの本を利き手に持ってください",
-    "Hold an empty book and quill in your main hand": "空の本と羽根ペンを利き手に持ってください",
+    "Hold a book and quill in your main hand": "本と羽根ペンを利き手に持ってください",
+    "The book changed; check it again": "本の内容が変わりました。もう一度確認してください",
+    "The book and quill is not empty; hold an empty one or add overwrite":
+        "本と羽根ペンが空ではありません。空のものを持つか、overwrite を付けてください",
+    "Replace from book": "本で置き換え",
+    "Replace all of {name} ({old} lines) with the book below ({new} lines)? "
+    "The current source stays in Earlier revisions.":
+        "{name} ({old} 行) の全体を下の本の内容 ({new} 行) で置き換えますか? 今のソースは以前の版に残ります。",
+    "Replace": "置き換える",
+    "Overwrite the book": "本を上書き",
+    "This book and quill already has writing ({pages} pages). Overwrite it with {name}? "
+    "Its current text is lost.":
+        "この本と羽根ペンにはすでに書き込みがあります ({pages} ページ)。"
+        "{name} で上書きしますか? 今の内容は失われます。",
+    "Overwrite": "上書きする",
+    "... {count} more lines": "... ほか {count} 行",
     "The book and quill is not empty; hold an empty one": "本と羽根ペンが空ではありません。空のものを持ってください",
     "No stored scripts": "保存されたスクリプトはありません",
     "No active script runs": "実行中のスクリプトはありません",

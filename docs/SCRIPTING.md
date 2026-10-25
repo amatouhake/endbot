@@ -158,7 +158,7 @@ retain the pinned BDS baseline's completion limitations.
 /botscript restore <name> <n>
 /botscript rename <name> <new-name>
 /botscript import <name>
-/botscript export <name>
+/botscript export <name> [overwrite]
 /botscript help
 /botscript menu
 ```
@@ -207,7 +207,10 @@ A book and quill is the comfortable in-game editor: it keeps line breaks and sup
 `import <name>` (menu: **From held book...** for a new script, **Replace all from held book** for your own) reads the
 book and quill or written book in the main hand. Pages are joined with a line break unless a page already ends with
 one; trailing blank pages are ignored. A new name creates a private script; an existing name saves a new revision
-through the same compile, declaration and owner checks as the menu. The book is only read.
+through the same compile, declaration and owner checks as the menu. The book is only read. In the menu, **Replace
+all from held book** first shows the book's source with both line counts and replaces the script only after
+**Replace**, and only if the book still holds that text; **From held book...** refuses a name that already exists.
+A typed `import` of an existing name saves at once (the previous source stays in Earlier revisions).
 
 **Multi-line authoring loop (2026-10-25 Windows check):** create from a template (or blank), open the script,
 **Write into held book**, edit the pages, then **Replace all from held book** to save a new revision. The book keeps the
@@ -215,9 +218,12 @@ whole source between edits, so one export is enough. The client's own book edito
 capacity, so split long source over pages by hand (up to 50 pages, 256 characters each); the plugin refuses a script
 that cannot fit and names the offending line.
 
-`export <name>` (menu: **Write into held book**) writes a script you can run into the **empty** book and quill in
-your main hand, so you can edit it there and import it again (for someone else's shared script, import under a new
-name). Pages hold whole lines: up to 256 characters per page and 50 pages, so a longer line or script is refused.
+`export <name>` (menu: **Write into held book**) writes a script you can run into the book and quill in your main
+hand, so you can edit it there and import it again (for someone else's shared script, import under a new name). An
+empty book is written at once. A book that already has writing is overwritten only by `export <name> overwrite`;
+plain `export` refuses it. The menu asks first: it shows the book's current text and page count, and its
+**Overwrite** runs `export <name> overwrite`, writing only if the book still holds those pages. Written (signed)
+books are never changed. Pages hold whole lines: up to 256 characters per page and 50 pages, so a longer line or script is refused.
 No item is created, but because the plugin edits a held item, export is off unless the operator sets
 `[scripting] book-export = true`. The page and character limits are conservative; real-client limits are recorded
 with the human-client checks.

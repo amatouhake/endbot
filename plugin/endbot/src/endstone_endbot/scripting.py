@@ -14,7 +14,7 @@ from endstone_endbot.control import bot_profiles
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.operations import OPERATIONS, operation_argv
-from endstone_endbot.script_books import pages_to_source, source_to_pages
+from endstone_endbot.script_books import pages_to_source, source_to_pages, written
 from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
 from endstone_endbot.script_store import Script
@@ -508,7 +508,7 @@ class ScriptService:
                                 "Script help: list | show <name> [page] | run <name> [args...] "
                                 "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
                                 "| share|private <name> | history <name> | restore <name> <n> "
-                                "| rename <name> <new> | import <name> | export <name> | menu",
+                                "| rename <name> <new> | import <name> | export <name> [overwrite] | menu",
                             )
                         ),
                         reply(
@@ -574,18 +574,31 @@ class ScriptService:
                 raise LocalizedError("Use /botscript help")
             if operation == "import" and len(tail) == 1:
                 # A new name creates the script; an existing one gets a new revision (owner only).
+                # Menus never replace a script in one tap: the owner first sees the book's source.
                 self._player(source)
+                menu = isinstance(guard, script_forms.ScriptGuard)
                 text = pages_to_source(self._world().held_book_pages(source.player_id))
                 if len(text.encode("utf-8")) > self.config.max_script_bytes:
                     raise LocalizedError("Script source is empty or too large")
                 try:
-                    revision = self._script(tail[0], source, edit=True).revision
+                    existing = self._script(tail[0], source, edit=True)
                 except LocalizedError as error:
                     if error.template != "Script {name} does not exist":
                         raise
                     self._new_name(tail[0])
-                    revision = None
-                name = self.store.get(tail[0]).name if revision else tail[0]
+                    existing = None
+                if existing is not None and menu:
+                    if guard.name is None:
+                        # New script from a book: an existing name is never overwritten.
+                        raise LocalizedError("Script {name} already exists", name=existing.name)
+                    if guard.revision != existing.revision:
+                        raise LocalizedError("Script changed; reopen the menu")
+                    if guard.book is None:
+                        return CommandResult(True, view=script_forms.import_confirm_screen(existing, text, lang))
+                    if guard.book != text:
+                        raise LocalizedError("The book changed; check it again")
+                revision = existing.revision if existing else None
+                name = existing.name if existing else tail[0]
                 self.inspect(Script(name, text, "draft"), source)
                 self._check(source)
                 self.store.save(name, text, revision, self.owner_key(source), self._who(source))
@@ -622,12 +635,24 @@ class ScriptService:
                     return CommandResult(True, view=script_forms.lines_screen(script, page, lang))
                 text = script_forms.source_pages(script)[page - 1]
                 return CommandResult(True, (reply(f"{script.name} ({page}/{total})\n{text}"),))
-            if operation == "export" and len(tail) == 1:
+            if operation == "export" and (len(tail) == 1 or len(tail) == 2 and tail[1].lower() == "overwrite"):
                 self._player(source)
                 if not self.config.book_export:
                     raise LocalizedError("Book export is disabled on this server")
                 pages = source_to_pages(script.source)
-                self._world().fill_held_book(source.player_id, pages)
+                # Writing in the book is replaced only with `overwrite`; the menu asks first, showing it,
+                # and its confirmation overwrites only the pages it showed.
+                current = self._world().held_book_pages(source.player_id, writable=True)
+                expected = None
+                if written(current):
+                    if len(tail) == 1:
+                        if isinstance(guard, script_forms.ScriptGuard):
+                            return CommandResult(True, view=script_forms.export_confirm_screen(
+                                script, current, pages_to_source(current), lang))
+                        raise LocalizedError("The book and quill is not empty; hold an empty one or add overwrite")
+                    menu_pages = guard.book if isinstance(guard, script_forms.ScriptGuard) else None
+                    expected = list(menu_pages) if menu_pages is not None else current
+                self._world().fill_held_book(source.player_id, pages, expected)
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} written into the book ({pages} pages)", name=script.name,
                                     pages=len(pages))),),

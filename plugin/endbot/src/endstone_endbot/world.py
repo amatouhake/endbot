@@ -480,14 +480,14 @@ class EndstoneWorld:
             raise ValueError("Command player is no longer online")
         return player
 
-    def held_book_pages(self, player_id: str) -> list[str]:
+    def held_book_pages(self, player_id: str, writable: bool = False) -> list[str]:
         """Page texts of the book the controller holds in the main hand; the item is not changed."""
-        return book_pages(self._controller(player_id).inventory.item_in_main_hand)
+        return book_pages(self._controller(player_id).inventory.item_in_main_hand, writable)
 
-    def fill_held_book(self, player_id: str, pages: list[str]) -> None:
-        """Write pages into the empty book and quill the controller holds; no item is created."""
+    def fill_held_book(self, player_id: str, pages: list[str], expected: list[str] | None = None) -> None:
+        """Write pages into the book and quill the controller holds (see ``fill_book``); no item is created."""
         inventory = self._controller(player_id).inventory
-        inventory.item_in_main_hand = fill_book(inventory.item_in_main_hand, pages)
+        inventory.item_in_main_hand = fill_book(inventory.item_in_main_hand, pages, expected)
 
     def _bot(self, identity_id: str):
         bot = self.server.get_player(UUID(identity_id))

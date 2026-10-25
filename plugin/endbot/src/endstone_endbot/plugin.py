@@ -160,6 +160,7 @@ SCRIPT_USAGES = [
     "/botscript (rename)<action: EndbotScriptRename> <name: string> <new: string>",
     "/botscript (import)<action: EndbotScriptImport> <name: string>",
     "/botscript (export)<action: EndbotScriptExport> <name: string>",
+    "/botscript (export)<action: EndbotScriptExportTo> <name: string> (overwrite)<mode: EndbotScriptOverwrite>",
 ]
 
 

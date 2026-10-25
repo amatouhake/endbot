@@ -15,6 +15,8 @@ class ScriptGuard:
     edit: bool = False
     # Set on line-editor saves: the editor page to come back to.
     page: int | None = None
+    # Set on book confirmations: the book text (import) or pages (export) the player saw.
+    book: str | tuple[str, ...] | None = None
     values: dict | None = None
     targets: dict | None = None
 
@@ -85,16 +87,17 @@ def source_view(source, first=1):
     return "\n".join(f"{GUTTER}{index:>{width}}§r {line}" for index, line in enumerate(lines, start=first))
 
 
-def _capped_view(script, lang):
-    lines, size = script.source.splitlines(), 0
+def _capped_view(source, lang, name=None):
+    """``source_view`` up to VIEW_CHARS; the rest is counted (and pointed at `show` for a stored ``name``)."""
+    lines, size = source.splitlines(), 0
     width = len(str(len(lines)))
     for index, line in enumerate(lines):
         size += len(line) + width + 6  # with the gutter's color codes, space and line break
         if size > VIEW_CHARS:
-            more = tr(lang, "... {count} more lines; see /botscript show {name}", count=len(lines) - index,
-                      name=script.name)
+            more = (tr(lang, "... {count} more lines; see /botscript show {name}", count=len(lines) - index,
+                       name=name) if name else tr(lang, "... {count} more lines", count=len(lines) - index))
             return source_view("\n".join(lines[:index])) + f"\n{GUTTER}{more}§r"
-    return source_view(script.source)
+    return source_view(source)
 
 
 def list_screen(scripts, lang="en", own=lambda script: False):
@@ -197,7 +200,33 @@ def script_screen(script, lang="en", editable=True, book_export=False):
     content = (tr(lang, "Your script ({visibility}).", visibility=tr(lang, script.visibility)) if editable
                else tr(lang, "Shared by {owner}. Run it, or copy it to edit your own.",
                        owner=script.owner_name or tr(lang, "unowned")))
-    return f.ActionScreen(script.name, content + "\n\n" + _capped_view(script, lang), tuple(items))
+    return f.ActionScreen(script.name, content + "\n\n" + _capped_view(script.source, lang, script.name),
+                          tuple(items))
+
+
+def import_confirm_screen(script, text, lang="en"):
+    """Show what the held book would make of the script before replacing all of it."""
+    return f.ConfirmScreen(
+        tr(lang, "Replace from book"),
+        tr(lang, "Replace all of {name} ({old} lines) with the book below ({new} lines)? "
+                 "The current source stays in Earlier revisions.",
+           name=script.name, old=len(script.source.splitlines()), new=len(text.splitlines()))
+        + "\n\n" + _capped_view(text, lang),
+        tr(lang, "Replace"), tr(lang, "Cancel"),
+        run("import", script.name, guard=ScriptGuard(script.revision, script.name, book=text)),
+    )
+
+
+def export_confirm_screen(script, pages, text, lang="en"):
+    """A book and quill with writing is overwritten only after its owner saw what is lost."""
+    return f.ConfirmScreen(
+        tr(lang, "Overwrite the book"),
+        tr(lang, "This book and quill already has writing ({pages} pages). Overwrite it with {name}? "
+                 "Its current text is lost.", pages=len(pages), name=script.name)
+        + "\n\n" + _capped_view(text, lang),
+        tr(lang, "Overwrite"), tr(lang, "Cancel"),
+        run("export", script.name, "overwrite", guard=ScriptGuard(script.revision, script.name, book=tuple(pages))),
+    )
 
 
 def _typed_lines(value):

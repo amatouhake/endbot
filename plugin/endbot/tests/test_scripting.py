@@ -1061,16 +1061,19 @@ class BookWorld:
     def __init__(self, item):
         self.item, self.written = item, None
 
-    def held_book_pages(self, player_id):
+    def held_book_pages(self, player_id, writable=False):
         from endstone_endbot.script_books import book_pages
 
-        return book_pages(self.item)
+        return book_pages(self.item, writable)
 
-    def fill_held_book(self, player_id, pages):
-        from endstone_endbot.script_books import WRITABLE_BOOK
+    def fill_held_book(self, player_id, pages, expected=None):
+        # fill_book's checks without the endstone.nbt write.
+        from endstone_endbot.script_books import written
 
-        if self.item is None or self.item.type.id != WRITABLE_BOOK or self.held_book_pages(player_id):
-            raise LocalizedError("The book and quill is not empty; hold an empty one")
+        current = self.held_book_pages(player_id, writable=True)
+        if written(current) and current != expected:
+            raise LocalizedError("The book and quill is not empty; hold an empty one" if expected is None
+                                 else "The book changed; check it again")
         self.written = pages
 
 
@@ -1136,6 +1139,60 @@ class BookTests(unittest.TestCase):
         self.assertIn("Write into held book",
                       button_texts(script_forms.script_screen(self.store.get("mine"), "en", True, True)))
 
+    def menu(self, source, **guard):
+        return replace(source, group_guard=script_forms.ScriptGuard(**guard))
+
+    def test_menu_replace_from_a_book_shows_the_book_first(self):
+        self.host.execute(["import", "mine"], self.alice)
+        script = self.store.get("mine")
+        self.world.item = FakeItem("minecraft:writable_book", ["params {}\n-- v2"])
+        result = self.host.execute(["import", "mine"], self.menu(self.alice, revision=script.revision, name="mine"))
+        confirm = result.view
+        self.assertIsInstance(confirm, forms.ConfirmScreen)
+        self.assertIn("(2 lines) with the book below (2 lines)", confirm.content)
+        self.assertIn("§72§r -- v2", confirm.content)
+        self.assertEqual(self.store.get("mine").source, "params {}\nlog('a')\n")
+        # The book changed after it was shown: nothing is saved.
+        self.world.item = FakeItem("minecraft:writable_book", ["params {}\n-- v3"])
+        stale = self.host.execute(["import", "mine"], replace(self.alice, group_guard=confirm.action.guard))
+        self.assertIn("The book changed", self.text(stale))
+        self.world.item = FakeItem("minecraft:writable_book", ["params {}\n-- v2"])
+        done = self.host.execute(["import", "mine"], replace(self.alice, group_guard=confirm.action.guard))
+        self.assertIn("imported from the book", self.text(done))
+        self.assertEqual(self.store.get("mine").source, "params {}\n-- v2\n")
+        # A new script from a book never overwrites an existing name.
+        self.assertIn("already exists", self.text(self.host.execute(["import", "mine"], self.menu(self.alice))))
+
+    def test_menu_export_overwrites_a_written_book_after_showing_it(self):
+        self.host.execute(["import", "mine"], self.alice)
+        revision = self.store.get("mine").revision
+        self.world.item = FakeItem("minecraft:writable_book", ["my long draft", ""])
+        self.assertIn("add overwrite", self.text(self.host.execute(["export", "mine"], self.alice)))
+        confirm = self.host.execute(["export", "mine"], self.menu(self.alice, revision=revision, name="mine")).view
+        self.assertIsInstance(confirm, forms.ConfirmScreen)
+        self.assertIn("(2 pages)", confirm.content)
+        self.assertIn("my long draft", confirm.content)
+        self.assertIsNone(self.world.written)
+        self.world.item = FakeItem("minecraft:writable_book", ["other text"])
+        self.assertIn("The book changed", self.text(
+            self.host.execute(list(confirm.action.commands[0]), replace(self.alice, group_guard=confirm.action.guard))))
+        self.world.item = FakeItem("minecraft:writable_book", ["my long draft", ""])
+        self.assertIn("written into the book", self.text(
+            self.host.execute(list(confirm.action.commands[0]), replace(self.alice, group_guard=confirm.action.guard))))
+        self.assertEqual(self.world.written, ["params {}\nlog('a')"])
+        self.world.item = FakeItem("minecraft:written_book", ["signed"])
+        self.assertIn("Hold a book and quill", self.text(
+            self.host.execute(["export", "mine"], self.menu(self.alice, revision=revision, name="mine"))))
+        # The menu's Overwrite is the typed command plus its check that the book is the one shown.
+        self.assertEqual(confirm.action.commands, (("export", "mine", "overwrite"),))
+        self.world.item, self.world.written = FakeItem("minecraft:writable_book", ["another draft"]), None
+        self.assertIn("written into the book", self.text(self.host.execute(["export", "mine", "overwrite"],
+                                                                           self.alice)))
+        self.assertEqual(self.world.written, ["params {}\nlog('a')"])
+        self.world.item = FakeItem("minecraft:written_book", ["signed"])
+        self.assertIn("Hold a book and quill", self.text(self.host.execute(["export", "mine", "overwrite"],
+                                                                           self.alice)))
+
     def test_a_parameterless_script_starts_from_the_menu(self):
         self.store.save("plain", "params {}\n")
         self.host.inspect = lambda script, source: []
@@ -1158,8 +1215,16 @@ class BookTests(unittest.TestCase):
         with patch.dict(sys.modules, {"endstone": types.ModuleType("endstone"), "endstone.nbt": nbt}):
             item = fill_book(FakeItem("minecraft:writable_book", []), ["a", "b"])
         self.assertEqual([page["text"].value for page in item.nbt["pages"]], ["a", "b"])
-        with self.assertRaisesRegex(LocalizedError, "empty book and quill"):
+        with self.assertRaisesRegex(LocalizedError, "Hold a book and quill"):
             fill_book(FakeItem("minecraft:written_book", []), ["a"])
+        written = FakeItem("minecraft:writable_book", ["draft"])
+        with self.assertRaisesRegex(LocalizedError, "not empty"):
+            fill_book(written, ["a"])
+        with self.assertRaisesRegex(LocalizedError, "book changed"):
+            fill_book(written, ["a"], ["other"])
+        with patch.dict(sys.modules, {"endstone": types.ModuleType("endstone"), "endstone.nbt": nbt}):
+            item = fill_book(written, ["a"], ["draft"])
+        self.assertEqual([page["text"].value for page in item.nbt["pages"]], ["a"])
 
     def test_a_script_without_params_gets_a_clear_message(self):
         host = ScriptService(self.config, self.store, Mock(world=self.world), None, Path("."), lambda source: True,

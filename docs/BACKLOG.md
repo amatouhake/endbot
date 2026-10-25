@@ -435,6 +435,18 @@ BOT-013, is 0.5.0), but its menus were too hard to read and edit with.
   can be added at the top and end. Saving returns to the list. Multi-line changes go through a book. Manual gate: the
   Windows client renders line buttons and the prefilled field comfortably, including on a 40-line page.
   Passed on the Windows client (2026-10-25): source view, menus, line editing, paging, new scripts, errors, Japanese.
+- **Books act only on what the player saw:** the same check found that the menu's Replace from held book replaced
+  the whole script in one tap, and that export required an empty book, so a book already used for a draft or an
+  earlier export could not take a new export. Menu replace now shows the book's source and line counts and saves on
+  Replace only if the book is unchanged; export into a book with writing shows its text and overwrites on Overwrite
+  only if the pages are unchanged. As with Delete, a confirmation is the menu's addition to a command: Replace runs
+  `import <name>` (which saves at once when typed; history keeps the old source) and Overwrite runs `export <name>
+  overwrite` (plain `export` refuses a book with writing). Both confirmations, the typed `overwrite` and its
+  command hint passed on the Windows client (2026-10-25).
+
+The direction above is implemented as described in [scripting](SCRIPTING.md) and this item's status line; the
+independent Group feature is tracked under BOT-010. Real-client editing, permission, cancellation, Bot behavior and
+achievement validation are recorded separately and remain manual gates.
 
 ## BOT-010: Define Groups before the Luau operation API
 

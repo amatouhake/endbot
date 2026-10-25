@@ -95,6 +95,12 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(screen.items[1].action, forms.Run((("#miners", "menu"),), guard=guard))
         self.assertEqual(screen.items[-1].action, forms.Run((("menu",),), command="botscript"))
 
+    def test_a_form_without_controls_accepts_an_empty_submission(self):
+        screen = forms.ModalScreen("Run", (), lambda values: (("run", "plain"),))
+        for response in (None, "", "[]"):
+            with self.subTest(response=response):
+                self.assertEqual(forms.modal_commands(screen, response), (("run", "plain"),))
+
     def test_main_screen_groups_actions_like_the_game_controls(self):
         screen = self.online_screen()
         self.assertEqual(

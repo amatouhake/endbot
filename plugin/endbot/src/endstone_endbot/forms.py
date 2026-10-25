@@ -742,6 +742,9 @@ def modal_commands(screen: ModalScreen, response: str | None) -> tuple[Argv, ...
         values = json.loads(response) if response else None
     except (TypeError, ValueError) as error:
         raise FormResponseError("the form response was not understood") from error
+    if values is None and not screen.controls:
+        # A form with no controls may submit nothing at all.
+        values = []
     labels = [index for index, control in enumerate(screen.controls) if isinstance(control, Label)]
     if isinstance(values, list) and labels and len(values) == len(screen.controls) - len(labels):
         # A client may leave labels out of the response; keep one value per control.

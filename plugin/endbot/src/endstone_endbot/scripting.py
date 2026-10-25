@@ -682,6 +682,15 @@ class ScriptService:
                     view = script_forms.edit_screen(script, lang)
                 elif operation == "parameters":
                     schema = self.inspect(script, source)
+                    if not schema:
+                        # No parameters: an empty form cannot be submitted, so start the run.
+                        run = self.start(script, [], source, None)
+                        return CommandResult(
+                            True,
+                            (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),),
+                            log_level="info",
+                            log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
+                        )
                     bots = bot_profiles(self.inputs)
                     groups = self.service.groups.groups if self.service.groups else ()
                     view = script_forms.run_screen(script, schema, groups, bots, source.script_origin, lang)

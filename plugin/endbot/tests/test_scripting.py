@@ -1086,6 +1086,20 @@ class BookTests(unittest.TestCase):
         self.assertNotIn("Write into held book",
                          [b.text for b in script_forms.script_screen(self.store.get("mine"), "en", True).items])
 
+    def test_a_parameterless_script_starts_from_the_menu(self):
+        self.store.save("plain", "params {}\n")
+        self.host.inspect = lambda script, source: []
+        started = []
+
+        def start(script, values, source, targets):
+            started.append((script.name, values, targets))
+            return "run-9"
+
+        self.host.start = start
+        result = self.host.execute(["parameters", "plain"], self.alice)
+        self.assertEqual(started, [("plain", [], None)])
+        self.assertIn("Script plain started: run-9", self.text(result))
+
     def test_fill_book_writes_pages_into_the_item_tag(self):
         from endstone_endbot.script_books import fill_book
 

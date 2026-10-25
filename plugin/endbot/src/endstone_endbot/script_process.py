@@ -84,8 +84,16 @@ class RunnerProcess:
                     self._confinement_error = str(event.get("message", "confinement failed"))
                     LOGGER.error("Endbot runner OS confinement failed: %s", self._confinement_error)
                     raise ValueError(self._confinement_error)
-                self._events.put_nowait(event)
-        except (ValueError, OSError, queue.Full) as error:
+                # Logs need no reply, so a script can emit them faster than the host handles them. Wait for
+                # room instead of failing: while this thread waits it stops reading, and the runner blocks on
+                # its full pipe, so the queue bound still holds.
+                while not self._closed.is_set():
+                    try:
+                        self._events.put(event, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+        except (ValueError, OSError) as error:
             try:
                 self._events.put_nowait(error)
             except queue.Full:
@@ -136,7 +144,10 @@ class RunnerProcess:
                 timeout = 0.1 if deadline is None else min(0.1, max(0.001, deadline - time.monotonic()))
                 event = self._events.get(timeout=timeout)
             except queue.Empty:
-                if self._process.poll() is not None:
+                # The runner may exit while events it wrote are still in the pipe; fail only once the reader
+                # has drained them (it ends at EOF, queueing the error).
+                reader = getattr(self, "_reader", None)
+                if self._process.poll() is not None and not (reader is not None and reader.is_alive()):
                     self._failure("runner exited")
                 continue
             if isinstance(event, BaseException):

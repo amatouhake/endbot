@@ -4,6 +4,8 @@ Scripting runs in the **Endbot plugin**, in one native child process per run. Th
 unchanged. Each script belongs to the controller who created it (see [ownership](#ownership-visibility-and-revisions));
 each run uses its invoker's authenticated identity and grant revision. Scripting is optional and **off by default**. No process starts merely because it is enabled.
 
+New to scripts? Start with the [tutorial](SCRIPTING_TUTORIAL.md); this page is the reference.
+
 ## Install and enable
 
 Windows and Linux operator bundles include `app/<version>/runner/endbot-luau-runner[.exe]` and its

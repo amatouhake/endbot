@@ -10,8 +10,8 @@ server-API teleport, rename, movement/actions, hotbar selection, block interacti
 runtime batch. They include menus, bounded operation summaries and per-controller
 operation history with full result inspection. The exercised menu/query flows have passed reported Windows client checks;
 see the Group guide for remaining manual validation gates.
-Macros, work tasks, Discord, blueprints,
-web UI and AI behavior are not implemented.
+Controller-written Luau [scripts](docs/SCRIPTING.md) are on main for 0.4.0, off by default; start with the
+[tutorial](docs/SCRIPTING_TUTORIAL.md). Work tasks, Discord, blueprints, web UI and AI behavior are not implemented.
 
 ## Quick start (server operators)
 
@@ -160,6 +160,9 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)
 - [Compatibility and release gates](docs/COMPATIBILITY.md)
 - [Commands and operation](docs/COMMANDS.md)
+- [Shared Groups](docs/GROUPS.md)
+- [Writing Bot scripts: a tutorial](docs/SCRIPTING_TUTORIAL.md)
+- [Luau scripting reference](docs/SCRIPTING.md)
 - [Open issues and planned improvements](docs/BACKLOG.md)
 - [M2 validation record](docs/M2_VALIDATION.md)
 - [Native Windows development and live smoke](docs/WINDOWS_DEV.md)

@@ -3,7 +3,8 @@
 ## Optional Luau scripts
 
 Scripting is off by default. Enable `[scripting] enabled = true` and install the pinned native runner;
-see [SCRIPTING.md](SCRIPTING.md) for installation, configurable limits, generated API and validation gates.
+see [SCRIPTING.md](SCRIPTING.md) for installation, configurable limits, generated API and validation gates, and
+the [tutorial](SCRIPTING_TUTORIAL.md) to learn writing scripts.
 The plugin hosts scripts; the Node Bedrock runtime is unchanged. Scripts use the invoking controller's
 `endbot.command.control` authority, rechecked for every operation, and survive logout until stopped/revoked.
 

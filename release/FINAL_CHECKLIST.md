@@ -295,6 +295,26 @@ new Endstone/BDS compatibility changes in this release.
   (2026-10-17: tag `v0.3.1` = `99ba05e`; every published asset matches the candidate
   `SHA256SUMS`; all 10 attestations verified)
 
+### 0.4.0 release — operating many Bots (decided 2026-10-22, prepared 2026-10-25)
+
+Scope: everything merged since `v0.3.1` — shared Groups (BOT-010), inventory inspection/rearrangement and
+`drop all` (BOT-011), entity interaction and vehicles (BOT-012), read-only queries (BOT-014), one target syntax
+(BOT-015), Bot session limits (BOT-017) and opt-in controller Luau scripts (BOT-009: in-game editor, books, script
+files, chat logs). `endstone.lock`, `patches/endstone/` and the pinned BDS are unchanged from 0.3.1, so no
+compatibility gate is required. Defaults: `[scripting] enabled = false`, `book-export = true`, `chat-logs = true`;
+`[limits] reserved-player-slots = 1`, `max-bots = 0`.
+
+- [ ] Build `release-candidate.yml` for `0.4.0` from the release-prepared `main` commit; the Windows/Linux wheel,
+  bundle, runner and clean-consumer jobs and `assemble` must pass.
+- [ ] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.4.0`; verify checksums, attestations and
+  the source commit in the manifest.
+- [ ] Human Windows-client gate on the draft's exact Windows bundle (fresh RakNet instance, scripting enabled), with
+  the manual gates listed under 0.4.0 below; record which ran and which stay open.
+- [ ] A published-0.3.1 instance updated to 0.4.0 keeps BDS `1.26.52.3` and `endbot.toml` byte-identical, and its
+  Bot rejoins with the same identity.
+- [ ] Release notes list the remaining manual gates in `docs/BACKLOG.md` as known limitations.
+- [ ] Publish the tested draft unchanged, then verify published asset checksums and provenance.
+
 ### After 0.1.0 (direction)
 
 - 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).

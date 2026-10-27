@@ -141,9 +141,11 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.cpu_seconds, 60)
         self.assertTrue(config.book_export)
         self.assertTrue(config.chat_logs)
+        self.assertFalse(config.ui_pack_editor)
         self.write(base + "os-confinement=false\nprocess-memory-bytes=0\ncpu-seconds=2\nbook-export=false\n"
-                   "chat-logs=false\n")
+                   "chat-logs=false\nui-pack-editor=true\n")
         config = load_config(self.path).scripting
+        self.assertTrue(config.ui_pack_editor)
         self.assertFalse(config.book_export)
         self.assertFalse(config.chat_logs)
         self.assertFalse(config.os_confinement)
@@ -154,6 +156,7 @@ class ConfigTests(unittest.TestCase):
             ("process-memory-bytes", "true"), ("process-memory-bytes", "100663295"),
             ("process-memory-bytes", "-1"), ("cpu-seconds", "true"),
             ("cpu-seconds", "-1"), ("cpu-seconds", "2147483648"), ("book-export", "1"), ("chat-logs", "1"),
+            ("ui-pack-editor", "'yes'"),
         ):
             with self.subTest(setting=setting, value=value):
                 self.write(base + f"{setting}={value}\n")

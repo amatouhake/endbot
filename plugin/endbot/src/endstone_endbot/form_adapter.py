@@ -101,7 +101,8 @@ class FormPresenter:
             return form.Toggle(control.label, control.default_value)
         if isinstance(control, forms.Label):
             return form.Label(control.text)
-        return form.TextInput(control.label, control.placeholder, control.default_value)
+        label = forms.MULTILINE_MARKER + control.label if control.multiline else control.label
+        return form.TextInput(label, control.placeholder, control.default_value)
 
     def _on_click(self, action, origin=None, guard=None):
         return lambda player: self._act(player, action, origin, guard)

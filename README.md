@@ -163,6 +163,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Shared Groups](docs/GROUPS.md)
 - [Writing Bot scripts: a tutorial](docs/SCRIPTING_TUTORIAL.md)
 - [Luau scripting reference](docs/SCRIPTING.md)
+- [Optional UI resource pack (prototype)](docs/UI_PACK.md)
 - [Open issues and planned improvements](docs/BACKLOG.md)
 - [M2 validation record](docs/M2_VALIDATION.md)
 - [Native Windows development and live smoke](docs/WINDOWS_DEV.md)

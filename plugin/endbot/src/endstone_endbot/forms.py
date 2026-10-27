@@ -23,6 +23,10 @@ DIRECTIONS = ("forward", "backward", "left", "right", "stop")
 FACES = ("down", "up", "north", "south", "west", "east")
 FLAG_CHOICES = ("no change", "on", "off")
 TELEPORT_COORDINATES = "coordinates below"
+# Formatting codes that render as nothing, put before the label of a TextInput that wants several lines.
+# The optional Endbot UI resource pack (ui-pack/) shows such inputs as a tall field that keeps line breaks;
+# without the pack the client shows its usual field, which drops them.
+MULTILINE_MARKER = "§e§b§o§t§r"
 
 
 class FormResponseError(LocalizedError):
@@ -88,6 +92,8 @@ class TextInput:
     label: str
     placeholder: str = ""
     default_value: str = ""
+    # Not an endstone.form argument: the label carries MULTILINE_MARKER instead (see below).
+    multiline: bool = False
 
 
 @dataclass(frozen=True, slots=True)

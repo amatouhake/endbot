@@ -670,7 +670,8 @@ class ScriptService:
                 saved = self.store.get(tail[0])
                 view = None
                 if source.player_id is not None:
-                    view = (script_forms.lines_screen(saved, min(guard.page, script_forms.edit_pages(saved)), lang)
+                    view = (script_forms.lines_screen(saved, min(guard.page, script_forms.edit_pages(saved)), lang,
+                                                       self.config.ui_pack_editor)
                             if guard.page is not None
                             else script_forms.script_screen(saved, lang, True, self.config.book_export))
                 return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
@@ -746,7 +747,8 @@ class ScriptService:
                     raise LocalizedError("Script source page is out of range")
                 if operation == "edit":
                     self._player(source)
-                    return CommandResult(True, view=script_forms.lines_screen(script, page, lang))
+                    return CommandResult(True, view=script_forms.lines_screen(script, page, lang,
+                                                                              self.config.ui_pack_editor))
                 text = script_forms.source_pages(script)[page - 1]
                 return CommandResult(True, (reply(f"{script.name} ({page}/{total})\n{text}"),))
             if operation == "export" and (len(tail) == 1 or len(tail) == 2 and tail[1].lower() == "overwrite"):

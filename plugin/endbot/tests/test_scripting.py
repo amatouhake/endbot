@@ -37,6 +37,8 @@ class ConfigStorageParamsTests(unittest.TestCase):
 
     def test_startup_defaults_and_strict_settings(self):
         self.assertFalse(ScriptConfig.from_config({}).enabled)
+        self.assertFalse(ScriptConfig.from_config({}).ui_pack_editor)
+        self.assertTrue(ScriptConfig.from_config({"ui-pack-editor": True}).ui_pack_editor)
         self.assertEqual(ScriptConfig.from_config({}).wall_seconds, 0)
         self.assertEqual(ScriptConfig.from_config({"wall-seconds": 0}).limits()["wallMs"], 0)
         self.assertEqual(ScriptConfig.from_config({"wall-seconds": 3}).limits()["wallMs"], 3000)
@@ -48,6 +50,7 @@ class ConfigStorageParamsTests(unittest.TestCase):
             {"interrupt-budget": -1},
             {"max-script-bytes": 65537},
             {"unknown": 1},
+            {"ui-pack-editor": "yes"},
             [],
         ):
             with self.subTest(setting=setting), self.assertRaises(ValueError):
@@ -990,6 +993,19 @@ class OwnershipTests(unittest.TestCase):
         self.host.execute(["share", "mine"], self.alice)
         self.assertIn("Only the owner", self.text(self.host.execute(["edit", "mine"], self.bob)))
 
+    def test_line_editor_offers_the_whole_script_field_from_config(self):
+        self.save(self.alice, "mine", "params {}\nlog('a')\n")
+        label = "Edit all at once (UI pack)..."
+        self.assertNotIn(label, [item.text for item in self.host.execute(["edit", "mine"], self.alice).view.items])
+        host = ScriptService(replace(self.config, ui_pack_editor=True), self.store, None, None, self.path.parent,
+                             lambda source: True, process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
+        view = host.execute(["edit", "mine"], self.alice).view
+        self.assertIn(label, [item.text for item in view.items])
+        script = self.store.get("mine")
+        guard = script_forms.ScriptGuard(script.revision, "mine", edit=True, page=1)
+        saved = host.execute(["save", "mine", "params {}\nlog('b')\n"], replace(self.alice, group_guard=guard))
+        self.assertIn(label, [item.text for item in saved.view.items])
+
     def test_saves_from_menus_come_back_to_the_editor_or_the_new_script(self):
         result = self.save(self.alice, "mine", "params {}\nlog('a')\n")
         self.assertEqual(result.view.title, "mine")
@@ -1199,6 +1215,42 @@ class ScriptFormTests(unittest.TestCase):
         self.assertEqual(submit(line, "    log(i)", "", False), (("edit", "sample", "1"),))
         with self.assertRaises(forms.FormResponseError):
             submit(line, "    log(i)", "", "yes")
+
+    def test_whole_script_field_is_offered_only_when_enabled(self):
+        texts = [item.text for item in script_forms.lines_screen(self.script, 1).items]
+        self.assertNotIn("Edit all at once (UI pack)...", texts)
+        screen = script_forms.lines_screen(self.script, 1, whole_editor=True)
+        texts = [item.text for item in screen.items]
+        self.assertEqual(texts[-4:], ["+ Add a line at the end", "Edit all at once (UI pack)...",
+                                      "Replace all from held book", "Back"])
+        whole = screen.items[-3].action.screen
+        field = whole.controls[-1]
+        self.assertTrue(field.multiline)
+        self.assertEqual(field.default_value, self.script.source.removesuffix("\n"))
+        self.assertEqual(whole.guard, script_forms.ScriptGuard("r1", "sample", edit=True, page=1))
+
+    def test_whole_script_field_saves_line_breaks_and_refuses_a_reply_without_them(self):
+        whole = script_forms.source_screen(self.script, 2)
+        # Unchanged text (even with trailing blank lines or CRLF) goes back to the editor page.
+        self.assertEqual(submit(whole, None, self.script.source.replace("\n", "\r\n") + "\n"),
+                         (("edit", "sample", "2"),))
+        self.assertEqual(submit(whole, None, "params {}\nlog('a')  \n\n"),
+                         (("save", "sample", "params {}\nlog('a')\n"),))
+        # A client without the UI pack drops the line breaks; that reply must never replace the script.
+        with self.assertRaisesRegex(forms.FormResponseError, "line breaks were lost"):
+            submit(whole, None, "params {}for i = 1, 2 do    log(i)end")
+        with self.assertRaises(forms.FormResponseError):
+            submit(whole, None, 3)
+        # A one-line script may stay one line.
+        single = script_forms.source_screen(Script("one", "params {}\n", "r1"), 1)
+        self.assertEqual(submit(single, None, "params {} log(1)"), (("save", "one", "params {} log(1)\n"),))
+
+    def test_added_lines_ask_for_the_multiline_field(self):
+        line = script_forms.line_screen(self.script, 1, 1)
+        self.assertEqual([getattr(control, "multiline", None) for control in line.controls],
+                         [None, False, True, None])
+        add = script_forms.lines_screen(self.script, 1).items[0].action.screen
+        self.assertTrue(add.controls[0].multiline)
 
     def test_lines_are_added_at_the_top_or_end_and_paged(self):
         screen = script_forms.lines_screen(self.script, 1)

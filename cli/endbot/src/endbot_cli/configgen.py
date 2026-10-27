@@ -248,6 +248,7 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
         ("book-export", config.scripting.book_export, True),
         ("chat-logs", config.scripting.chat_logs, True),
         ("ui-pack-editor", config.scripting.ui_pack_editor, False),
+        ("replies", config.scripting.replies, "failures"),
     ):
         if value != default:
             scripting[key] = value

@@ -321,6 +321,11 @@ class ScriptService:
         self.service._form_group(replace(run.source, group_guard=guard), group)
         return guard
 
+    def _reply_chat(self, result) -> bool:
+        """Whether this operation is echoed to the invoker's chat (``[scripting] replies``)."""
+        mode = self.config.replies
+        return mode == "all" or (mode == "failures" and not result.accepted)
+
     def _operation(self, run, event, *, audit=True):
         self._alive(run)
         now = time.monotonic()
@@ -357,7 +362,7 @@ class ScriptService:
                 return {"result": {"ok": False, "reason": localize_error(error, "en")}}
             if audit and self.notify:
                 # Preserve existing command audit, even if the controller logged out.
-                self.notify(source, result)
+                self.notify(source, result, chat=self._reply_chat(result))
             return {
                 "result": {
                     "ok": result.accepted,

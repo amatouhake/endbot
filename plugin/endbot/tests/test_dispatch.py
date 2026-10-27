@@ -218,6 +218,34 @@ class DispatchTests(unittest.TestCase):
             ],
         )
 
+    def test_chat_false_keeps_the_console_log_and_sends_nothing(self) -> None:
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        logged = []
+
+        class Sender:
+            def __init__(self):
+                self.messages = []
+
+            def send_message(self, message):
+                self.messages.append(message)
+
+        sender = Sender()
+        player = CommandSource(player_id="00000000-0000-4000-8000-000000000002", sender=sender)
+
+        class Service:
+            def vote(self, *args):
+                raise AssertionError("unused")
+
+        runner = AsyncCommandRunner(
+            Service(), bridge, lambda source: source.sender, log=lambda level, message: logged.append((level, message))
+        )
+        self.addCleanup(runner.close)
+        runner._deliver(player, CommandResult(True, ("Endbot: Alice: started",), log_level="info"), chat=False)
+        scheduled.run_next()
+        self.assertEqual(sender.messages, [])
+        self.assertEqual(logged, [("info", "Endbot: Alice: started")])
     def test_player_language_is_captured_and_logs_stay_english(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

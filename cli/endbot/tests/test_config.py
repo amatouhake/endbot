@@ -156,7 +156,7 @@ class ConfigTests(unittest.TestCase):
             ("process-memory-bytes", "true"), ("process-memory-bytes", "100663295"),
             ("process-memory-bytes", "-1"), ("cpu-seconds", "true"),
             ("cpu-seconds", "-1"), ("cpu-seconds", "2147483648"), ("book-export", "1"), ("chat-logs", "1"),
-            ("ui-pack-editor", "'yes'"),
+            ("ui-pack-editor", "'yes'"), ("replies", "1"), ("replies", "'quiet'"),
         ):
             with self.subTest(setting=setting, value=value):
                 self.write(base + f"{setting}={value}\n")

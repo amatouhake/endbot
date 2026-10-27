@@ -348,13 +348,15 @@ class AsyncCommandRunner:
 
         self._deliver(source, result)
 
-    def _deliver(self, source, result) -> None:
+    def _deliver(self, source, result, chat: bool = True) -> None:
         def deliver() -> None:
             if result.log_level is not None and self._log is not None:
                 for message in result.messages if result.log_messages is None else result.log_messages:
                     self._log(result.log_level, strip_colors(message))
-                if source.player_id is None:
+                if not chat or source.player_id is None:
                     return  # The console already shows the log entry.
+            elif not chat:
+                return  # chat=False keeps the console record only.
             sender = self._resolve_sender(source)
             for message in result.messages:
                 _send(sender, source, message)

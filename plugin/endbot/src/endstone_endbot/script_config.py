@@ -6,6 +6,7 @@ from pathlib import Path
 FRAME_BYTES = 256 * 1024
 SOURCE_BYTES = 64 * 1024  # Leaves room for JSON escaping, bootstrap and operation table.
 PROCESS_HEADROOM = 64 * 1024 * 1024  # Compiler, JSON, native libraries and stacks, outside the VM allocator.
+REPLY_MODES = ("all", "failures", "none")
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,8 @@ class ScriptConfig:
     book_export: bool = True
     chat_logs: bool = True
     ui_pack_editor: bool = False
+    # all | failures | none: what a script's operation replies do to the invoker's chat.
+    replies: str = "failures"
 
     @classmethod
     def from_config(cls, config):
@@ -41,11 +44,15 @@ class ScriptConfig:
         result = cls(**values)
         if (type(result.enabled) is not bool or type(result.os_confinement) is not bool
                 or type(result.book_export) is not bool or type(result.chat_logs) is not bool
-                or type(result.ui_pack_editor) is not bool or not isinstance(result.runner, str)):
+                or type(result.ui_pack_editor) is not bool or not isinstance(result.runner, str)
+                or not isinstance(result.replies, str)):
             raise ValueError("Invalid scripting enabled/os-confinement/book-export/chat-logs/ui-pack-editor/runner "
                              "setting")
+        if result.replies not in REPLY_MODES:
+            raise ValueError("scripting.replies must be all, failures or none")
         for f in fields(cls):
-            if f.name in {"enabled", "runner", "os_confinement", "book_export", "chat_logs", "ui_pack_editor"}:
+            if f.name in {"enabled", "runner", "os_confinement", "book_export", "chat_logs", "ui_pack_editor",
+                          "replies"}:
                 continue
             value = getattr(result, f.name)
             minimum = 0 if f.name in {"wall_seconds", "cpu_seconds", "process_memory_bytes"} else 1

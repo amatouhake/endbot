@@ -56,8 +56,8 @@ Startup limits (integers from 1 to 2147483647, except the zero/boolean settings 
 | `process-memory-bytes` | 268435456 | 256 MiB process cap; 0 disables this cap; nonzero requires at least `memory-bytes + 67108864` (64 MiB native headroom) |
 | `cpu-seconds` | 60 | Cumulative CPU seconds per run, independently of wall time and VM slices; waits use none, so long-waiting macros are unaffected. It is what ends a run stuck inside one C library call (`string.rep`, `string.gsub`), which the per-slice budget cannot interrupt. 0 disables the cap |
 
-Managed instances also accept `os-confinement`, `process-memory-bytes`, `cpu-seconds`, `book-export`, `chat-logs` and
-`ui-pack-editor` in
+Managed instances also accept `os-confinement`, `process-memory-bytes`, `cpu-seconds`, `book-export`, `chat-logs`,
+`ui-pack-editor` and `replies` in
 `endbot.toml` under `[scripting]`; the CLI forwards overrides into the generated plugin config.
 Other limits in this table are plugin `config.toml` settings. Managed instances retain the default
 32 MiB VM bound, so a nonzero process cap must be at least 96 MiB there. For example:
@@ -326,6 +326,13 @@ codes removed; held-back lines are counted on the next chat line or the end mess
 line (up to 2000 lines / 512 KiB per run). `[scripting] chat-logs = false` (plugin `config.toml`, or `endbot.toml`
 for managed instances) keeps logs in the server log only. Console runs log only there. Waits recheck authority.
 No command-string API exists.
+
+Every operation a script issues is also a normal `/bot` command, so its reply would reach the invoker's chat as if
+typed. That echo is noise for a script that issues dozens of operations, so `[scripting] replies` (plugin
+`config.toml`, or `endbot.toml` for managed instances) chooses the policy: `all` echoes every operation like a typed
+command, `failures` (default) echoes only rejected operations while accepted ones keep their console log line, and
+`none` is silent. The run's start/end lines and `log()` are unaffected, and the mining loop's start/stop notices
+still reach the chat. Scripts cannot change the policy.
 
 ### Structured status and mining waits
 

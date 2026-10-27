@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from endstone_endbot import forms, script_forms
-from endstone_endbot.commands import HELP_TOPICS, parse_command, strip_colors
+from endstone_endbot.commands import HELP_TOPICS, CommandResult, parse_command, strip_colors
 from endstone_endbot.control import RuntimeControlError
 from endstone_endbot.dispatch import CommandSource
 from endstone_endbot.groups import GroupCommandService, GroupStore
@@ -384,7 +384,13 @@ class LifecycleTests(unittest.TestCase):
         self.host.ordered = lambda callback: self.worker.submit(callback).result(timeout=3)
         self.addCleanup(self.host.close)
         self.notifications = []
-        self.host.notify = lambda source, result: self.notifications.append(result)
+        self.chat_flags = []
+
+        def notify(source, result, chat=True):
+            self.notifications.append(result)
+            self.chat_flags.append(chat)
+
+        self.host.notify = notify
 
     def start(self, events):
         self.runner = FakeRunner(events)
@@ -498,6 +504,30 @@ class LifecycleTests(unittest.TestCase):
             shown = self.host._chat_log(run, "again")
         self.assertTrue(strip_colors(shown[0]).endswith("again (2 log lines not shown)"))
         self.assertEqual(run.chat_skipped, 0)
+
+    def test_operation_replies_follow_the_replies_policy(self):
+        accepted = CommandResult(True, ("ok",))
+        rejected = CommandResult(True, ("no",), accepted=False)
+        for mode, accepted_chat, rejected_chat in (("all", True, True), ("failures", False, True),
+                                                   ("none", False, False)):
+            self.host.config = replace(self.config, replies=mode)
+            self.assertEqual(self.host._reply_chat(accepted), accepted_chat, mode)
+            self.assertEqual(self.host._reply_chat(rejected), rejected_chat, mode)
+
+    def test_default_config_reports_failures_only(self):
+        self.assertEqual(ScriptConfig.from_config({}).replies, "failures")
+        self.assertEqual(ScriptConfig.from_config({"replies": "all"}).replies, "all")
+        with self.assertRaises(ValueError):
+            ScriptConfig.from_config({"replies": "quiet"})
+
+    def test_accepted_operation_echo_follows_the_reply_policy(self):
+        for mode, expected in (("all", True), ("failures", False)):
+            self.host.config = replace(self.config, operations_per_second=100000, replies=mode)
+            self.chat_flags.clear()
+            self.notifications.clear()
+            self.start([self.op(2, "move", {"direction": "forward"}), {"type": "done"}])
+            self.wait_finished()
+            self.assertEqual(self.chat_flags[0], expected, mode)
 
     def test_chat_logs_can_be_turned_off_and_console_runs_never_chat(self):
         self.config = replace(self.config, chat_logs=False)

@@ -413,8 +413,10 @@ JA: dict[str, str] = {
     "find the nearest exposed blocks of a type": "見えている指定の種類のブロックを近い順に探す",
     "Only blocks with a face open to air, water or plants count, as a player could see them.":
         "空気、水、植物に面したブロックだけを数えます。プレイヤーに見えるものだけです。",
-    "Radius defaults to 8 and limit to 10; results are nearest first.":
-        "半径の既定は8、件数の既定は10です。近い順に表示します。",
+    "Radius (1-16) defaults to 8 and limit to 10; results are nearest first.":
+        "半径は1-16(既定8)、件数の既定は10です。近い順に表示します。",
+    "at <x> <y> <z> scans a sphere around that point instead of the Bot; ~ is relative to the Bot.":
+        "at <x> <y> <z> を付けると Bot ではなくその地点を中心に探します。~ は Bot からの相対位置です。",
     "looking around, entities and vehicles": "周囲の確認、エンティティと乗り物",
     "looking at {block} at {position} face {face} ({distance}m)":
         "{position} の {block} の面 {face} を見ています ({distance}m)",
@@ -424,8 +426,8 @@ JA: dict[str, str] = {
     "{block}: {positions}": "{block}: {positions}",
     "no exposed {block} within {radius} blocks": "{radius}ブロック以内に見えている {block} はありません",
     "Use block <x> <y> <z>": "block <x> <y> <z> の形で指定してください",
-    "Use blocks <type> [radius <1-12>] [limit <1-64>]":
-        "blocks <type> [radius <1-12>] [limit <1-64>] の形で指定してください",
+    "Use blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>]":
+        "blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>] の形で指定してください",
     "Invalid block type": "ブロックの種類が正しくありません",
     "{clause} must be an integer from {low} to {high}": "{clause} は {low} から {high} の整数で指定してください",
     "Look around...": "周囲を確認...",
@@ -436,6 +438,7 @@ JA: dict[str, str] = {
     "Enter one block type": "ブロックの種類を1つ入力してください",
     "Block type": "ブロックの種類",
     "Radius": "半径",
+    "x y z (optional scan centre; ~ is relative to the Bot)": "x y z (省略可・探索の中心。~ は Bot からの相対位置)",
     "health {health}/{max}": "体力 {health}/{max}",
     "food {food}": "満腹度 {food}",
     "Invalid entity type": "エンティティの種類が正しくありません",

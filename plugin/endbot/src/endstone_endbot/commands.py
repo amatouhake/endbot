@@ -302,10 +302,11 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "blocks": HelpTopic(
         "blocks",
         "find the nearest exposed blocks of a type",
-        ("blocks <type> [radius <1-12>] [limit <1-64>]",),
+        ("blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>]",),
         (
             "Only blocks with a face open to air, water or plants count, as a player could see them.",
-            "Radius defaults to 8 and limit to 10; results are nearest first.",
+            "Radius (1-16) defaults to 8 and limit to 10; results are nearest first.",
+            "at <x> <y> <z> scans a sphere around that point instead of the Bot; ~ is relative to the Bot.",
         ),
     ),
     "dismount": HelpTopic(
@@ -391,8 +392,8 @@ INTERACT_USAGE = ("Use interact, interact <x> <y> <z> [face], interact <block ty
                   "or interact @<entity> [continuous|interval <ticks>] [for <ticks>] [count <n>]")
 TARGET_REPEAT_USAGE = "Repeat {action} @<entity> with continuous, interval <ticks>, for <ticks> or count <n>"
 
-BLOCKS_USAGE = "Use blocks <type> [radius <1-12>] [limit <1-64>]"
-BLOCKS_CLAUSES = {"radius": (1, 12), "limit": (1, 64)}
+BLOCKS_USAGE = "Use blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>]"
+BLOCKS_CLAUSES = {"radius": (1, 16), "limit": (1, 64)}
 
 HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
@@ -874,9 +875,15 @@ def parse_command(arguments: list[str]) -> BotCommand:
         seen = set()
         while tokens:
             clause = tokens.pop(0).lower()
-            if clause not in BLOCKS_CLAUSES or clause in seen or not tokens:
+            if clause not in BLOCKS_CLAUSES and clause != "at" or clause in seen or not tokens:
                 raise CommandSyntaxError(BLOCKS_USAGE)
             seen.add(clause)
+            if clause == "at":
+                # Scan centre: ~ is relative to the Bot, as for block.
+                if len(tokens) < 3:
+                    raise CommandSyntaxError(BLOCKS_USAGE)
+                parameters["coordinates"] = [_coordinate(tokens.pop(0)) for _ in range(3)]
+                continue
             low, high = BLOCKS_CLAUSES[clause]
             value = tokens.pop(0)
             if not value.isascii() or not value.isdecimal() or not low <= int(value) <= high:
@@ -1509,7 +1516,8 @@ class BotCommandService:
                     text += f" {DIM}[{states}]{RESET}"
             else:
                 parameters = command.parameters
-                found = self.world.find_blocks(identity, parameters["type"], parameters["radius"], parameters["limit"])
+                found = self.world.find_blocks(identity, parameters["type"], parameters["radius"], parameters["limit"],
+                                            parameters.get("coordinates"))
                 data = {"type": parameters["type"], "radius": parameters["radius"], "blocks": found}
                 block_name = parameters["type"].removeprefix("minecraft:")
                 if found:

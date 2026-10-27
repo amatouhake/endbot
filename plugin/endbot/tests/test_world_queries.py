@@ -129,8 +129,8 @@ class FakeQueries:
         self.coordinates = coordinates
         return {"x": 0, "y": 63, "z": 0, "type": "minecraft:wheat", "states": {"growth": 7}}
 
-    def find_blocks(self, identity, block_type, radius, limit):
-        self.search = (block_type, radius, limit)
+    def find_blocks(self, identity, block_type, radius, limit, coordinates=None):
+        self.search = (block_type, radius, limit, coordinates)
         return [{"x": 1, "y": 64, "z": 0, "distance": 1.2}]
 
 
@@ -138,7 +138,16 @@ class QueryCommandTests(unittest.TestCase):
     def test_parsing(self):
         self.assertEqual(parse_command(["Alice", "blocks", "OAK_LOG", "limit", "3"]).parameters,
                          {"type": "minecraft:oak_log", "radius": 8, "limit": 3})
-        for arguments in (["blocks"], ["blocks", "oak_log", "radius", "13"], ["blocks", "oak_log", "radius"],
+        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "radius", "16"]).parameters,
+                         {"type": "minecraft:oak_log", "radius": 16, "limit": 10})
+        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "at", "~", "~10", "~", "limit", "4"]).parameters,
+                         {"type": "minecraft:oak_log", "radius": 8, "limit": 4,
+                          "coordinates": [("relative", 0.0), ("relative", 10.0), ("relative", 0.0)]})
+        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "at", "1", "2", "3"]).parameters,
+                         {"type": "minecraft:oak_log", "radius": 8, "limit": 10, "coordinates": [1.0, 2.0, 3.0]})
+        for arguments in (["blocks"], ["blocks", "oak_log", "radius", "17"], ["blocks", "oak_log", "radius"],
+                          ["blocks", "oak_log", "at", "1", "2"], ["blocks", "oak_log", "at", "1", "2", "3", "at",
+                                                                    "1", "2", "3"],
                           ["blocks", "oak_log", "radius", "2", "radius", "3"], ["block", "1", "2"], ["target", "x"]):
             with self.subTest(arguments=arguments), self.assertRaises(CommandSyntaxError):
                 parse_command(["Alice", *arguments])
@@ -153,7 +162,11 @@ class QueryCommandTests(unittest.TestCase):
         self.assertEqual(block.messages, ("Endbot: Alice: block at 0 63 0: wheat [growth=7]",))
         self.assertEqual(block.data["states"], {"growth": 7})
         found = service.execute(["Alice", "blocks", "oak_log", "radius", "12"])
-        self.assertEqual(queries.search, ("minecraft:oak_log", 12, 10))
+        self.assertEqual(queries.search, ("minecraft:oak_log", 12, 10, None))
+        # at <x y z> moves the scan centre without moving the Bot.
+        service.execute(["Alice", "blocks", "oak_log", "at", "~", "~10", "~"])
+        self.assertEqual(queries.search,
+                         ("minecraft:oak_log", 8, 10, [("relative", 0.0), ("relative", 10.0), ("relative", 0.0)]))
         self.assertEqual(found.messages, ("Endbot: Alice: oak_log: 1 64 0 (1.2m)",))
         self.assertEqual(found.data["blocks"][0]["x"], 1)
 

@@ -76,6 +76,11 @@ chat-logs = true
 # docs/UI_PACK.md) keep line breaks there; replies without them are refused,
 # never saved. Off until the pack passes its manual client check.
 ui-pack-editor = false
+# What a script's operation replies do to the chat of the player who started the
+# run: "all" echoes every operation like a typed /bot command, "failures" echoes
+# only rejected operations (accepted ones keep their console log line), "none"
+# is silent. The run's start/end lines and log() are unaffected.
+replies = "failures"
 max-scripts = 64
 memory-bytes = 33554432
 # OS resource limits, applied before sending script data. Setup failure rejects

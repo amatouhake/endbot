@@ -171,7 +171,7 @@ class PluginConfigTests(ConfigGenTestCase):
     def test_scripting_os_limit_overrides_reach_plugin_and_defaults_return(self):
         with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
             config.write("\n[scripting]\nos-confinement=false\nprocess-memory-bytes=0\ncpu-seconds=3\nbook-export=false\n"
-                         "chat-logs=false\nui-pack-editor=true\n")
+                         "chat-logs=false\nui-pack-editor=true\nreplies=\"all\"\n")
         target, _ = generate_plugin_config(self.server, self.paths, self.config())
         table = tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]
         self.assertFalse(table["os-confinement"])
@@ -180,12 +180,14 @@ class PluginConfigTests(ConfigGenTestCase):
         self.assertFalse(table["book-export"])
         self.assertFalse(table["chat-logs"])
         self.assertTrue(table["ui-pack-editor"])
+        self.assertEqual(table["replies"], "all")
         text = self.paths.endbot_toml.read_text(encoding="utf-8")
         self.paths.endbot_toml.write_text(
             text.replace("os-confinement=false", "os-confinement=true")
                 .replace("process-memory-bytes=0", "process-memory-bytes=268435456")
                 .replace("cpu-seconds=3", "cpu-seconds=60").replace("book-export=false", "book-export=true")
-                .replace("chat-logs=false", "chat-logs=true").replace("ui-pack-editor=true", "ui-pack-editor=false"),
+                .replace("chat-logs=false", "chat-logs=true").replace("ui-pack-editor=true", "ui-pack-editor=false")
+                .replace('replies="all"', 'replies="failures"'),
             encoding="utf-8",
         )
         target, _ = generate_plugin_config(self.server, self.paths, self.config())
@@ -196,6 +198,7 @@ class PluginConfigTests(ConfigGenTestCase):
         self.assertNotIn("book-export", table)
         self.assertNotIn("chat-logs", table)
         self.assertNotIn("ui-pack-editor", table)
+        self.assertNotIn("replies", table)
 
     def test_bundled_runner_is_absolute_and_scripting_stays_disabled(self):
         version = "test-version"

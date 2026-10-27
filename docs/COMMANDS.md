@@ -368,7 +368,7 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice entity [@<type|id|nearest>]
 /bot Alice target
 /bot Alice block <x> <y> <z>
-/bot Alice blocks <type> [radius <1-12>] [limit <1-64>]
+/bot Alice blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>]
 /bot Alice dismount
 /bot Alice drop
 /bot Alice drop stack
@@ -565,9 +565,11 @@ blocks in detail (id, distance, position, health, name tag); without an argument
 non-player entity. `block <x> <y> <z>` shows one block's type and states; `~` is relative to the Bot, and coordinates beyond
 30000000 are refused. `blocks <type>`
 lists the nearest blocks of that type, as `x y z (distance)`, nearest cells first (it stops reading once `limit`
-matches are certain), within a radius (default 8, at most 12), up to `limit`
+matches are certain), within a radius (default 8, at most 16), up to `limit`
 (default 10, at most 64),
-counting only blocks with a face open to air, water or plants, so it does not reveal buried ores. All three read BDS
+counting only blocks with a face open to air, water or plants, so it does not reveal buried ores. `at <x> <y> <z>`
+moves the scan centre (and the distances) to that point instead of the Bot, so a tall structure can be searched from
+the height that matters; `~` is relative to the Bot. All three read BDS
 through the Endstone SDK, never change anything, and return data to scripts; Group targets print every member's
 result like `status`. The Gameplay form's **Look around...** offers them with the nearby-entity list.
 

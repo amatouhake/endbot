@@ -384,7 +384,8 @@ World queries read BDS on the server thread and count as operations:
 | --- | --- |
 | `bot:target()` | `kind` (`"block"`, `"entity"` or nil), `distance`, and `block = {x, y, z, face, type}` or `entity = {runtimeId, type}`: the nearer hit within 6 blocks of the Bot's eyes, ignoring players |
 | `bot:block(x, y, z)` | `{x, y, z, type, states}`; `"~"`/`"~-1"` strings are relative to the Bot; any loaded position |
-| `bot:blocks("oak_log", {radius=8, limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance}` nearest first, only blocks with a face open to air, water or plants (no x-ray); radius 1-12, limit 1-64 |
+| `bot:blocks("oak_log", {radius=8, limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance}` nearest first, only blocks with a face open to air, water or plants (no x-ray); radius 1-16, limit 1-64 |
+| `bot:blocks("oak_log", vector.create(x, y, z), {radius=16})` | the same query around a point (`blocks <type> at <x> <y> <z>`), for a treetop out of reach of the Bot's feet |
 
 A radius-12 search took about 23 ms of server-thread time in the live check (2026-10-24).
 
@@ -431,6 +432,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:target()` | none | none |
 | `:block()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:blocks()` | type: string | radius: integer, limit: integer |
+| `:blocks()` | type: string, x: coordinate, y: coordinate, z: coordinate | radius: integer, limit: integer |
 | `:resume()` | none | none |
 | `:reconnect()` | none | none |
 | `:despawn()` | none | none |

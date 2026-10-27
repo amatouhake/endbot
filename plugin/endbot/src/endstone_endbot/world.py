@@ -544,15 +544,19 @@ class EndstoneWorld:
         except (RuntimeError, ValueError) as error:
             raise LocalizedError("Unknown block type: {block}", block=block_type.removeprefix("minecraft:")) from error
 
-    def find_blocks(self, identity_id: str, block_type: str, radius: int, limit: int) -> list[dict]:
-        """Nearest exposed blocks of one type around the Bot; hidden blocks are never reported."""
+    def find_blocks(self, identity_id: str, block_type: str, radius: int, limit: int,
+                    coordinates: list[object] | None = None) -> list[dict]:
+        """Nearest exposed blocks of one type around the Bot or a given point; hidden blocks are never reported."""
         bot = self._bot(identity_id)
         self._known_block(block_type)
         location = bot.location
         dimension = location.dimension
         low, high = DIMENSION_HEIGHTS.get(dimension.name, (-64, 319))
-        origin = [math.floor(float(location.x)), math.floor(float(location.y)), math.floor(float(location.z))]
-        feet = [float(location.x), float(location.y), float(location.z)]
+        if coordinates is None:
+            feet = [float(location.x), float(location.y), float(location.z)]
+        else:
+            feet = self._resolve_coordinates(coordinates, location)
+        origin = [math.floor(value) for value in feet]
         found = []
         # Nearest cells first; stop once no farther cell can beat the limit-th match.
         for cell_distance, dx, dy, dz in _search_offsets(radius):

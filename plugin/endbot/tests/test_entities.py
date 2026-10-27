@@ -141,8 +141,10 @@ class EntityFormTests(unittest.TestCase):
                          {"entity": "type", "type": "minecraft:sheep"})
         self.assertEqual(modal_commands(around.items[3].action.screen, '["~ ~-1 ~"]'),
                          (("Alice", "block", "~", "~-1", "~"),))
-        self.assertEqual(modal_commands(around.items[4].action.screen, '["oak_log", 5]'),
+        self.assertEqual(modal_commands(around.items[4].action.screen, '["oak_log", 5, ""]'),
                          (("Alice", "blocks", "oak_log", "radius", "5"),))
+        self.assertEqual(modal_commands(around.items[4].action.screen, '["oak_log", 5, "~ ~10 ~"]'),
+                         (("Alice", "blocks", "oak_log", "radius", "5", "at", "~", "~10", "~"),))
         modal = gameplay.items[4].action
         self.assertIsInstance(modal, Show)
         self.assertIsInstance(modal.screen, ModalScreen)

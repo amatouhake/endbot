@@ -137,6 +137,34 @@ test('offhand equipment cannot overwrite or reannounce the main hand during use'
   assert.equal(queued[0].params.window_id, 'inventory')
 })
 
+test('an interval use keeps its schedule when the server consumes the held stack', async t => {
+  const { client, session, inputs, tick } = await fixture(t)
+  inputs.setAction('use', 'interval', 40, undefined, 3)
+  assert.ok(tick().input_data.includes('item_interact'))
+  assert.equal(session.activeItemUse?.holdTicks, 3)
+  // A bottle is drunk: the selected slot becomes air mid-press.
+  client.emit('mob_equipment', { runtime_entity_id: 7n, window_id: 'inventory', selected_slot: 0, item: { ...EMPTY_ITEM } })
+  assert.equal(session.activeItemUse, undefined)
+  assert.equal(inputs.actionMode('use'), 'interval')
+  // A refilled hand is used at the next interval instead of never again.
+  client.emit('mob_equipment', { runtime_entity_id: 7n, window_id: 'inventory', selected_slot: 0, item: { ...item } })
+  let presses = 0
+  for (let i = 0; i < 45; i += 1) if ((tick().input_data ?? []).includes('item_interact')) presses += 1
+  assert.ok(presses >= 1, `expected another press, saw ${presses}`)
+})
+
+test('an interval use skips a trigger with an empty hand instead of cancelling itself', async t => {
+  const { client, session, inputs, tick } = await fixture(t)
+  inputs.setAction('use', 'interval', 20, undefined, 3)
+  client.emit('mob_equipment', { runtime_entity_id: 7n, window_id: 'inventory', selected_slot: 0, item: { ...EMPTY_ITEM } })
+  assert.equal(tick().input_data.includes('item_interact'), false)
+  assert.equal(inputs.actionMode('use'), 'interval')
+  client.emit('mob_equipment', { runtime_entity_id: 7n, window_id: 'inventory', selected_slot: 0, item: { ...item } })
+  let presses = 0
+  for (let i = 0; i < 25; i += 1) if ((tick().input_data ?? []).includes('item_interact')) presses += 1
+  assert.ok(presses >= 1, `expected another press, saw ${presses}`)
+})
+
 test('timed use retains its full duration when block interactions defer the first air use', async t => {
   const { session, inputs, queued, tick } = await fixture(t)
   for (const duration of [1, 3]) {

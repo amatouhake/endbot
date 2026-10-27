@@ -494,6 +494,11 @@ actions, sprint/sneak and mining continue. A new command for the same input repl
 without `for` removes it. Global `stop`, `<input> stop`, death and disconnect end it early. `status` lists inputs that
 end on their own with the ticks left, for example `timed: move forward 30 ticks left, use interval 40 hold 30`.
 
+An `interval` action is a repeating command, so it outlives the item it first fired with: consuming a stack (drinking
+a potion) or ending up with an empty hand only ends the press in progress, and the next trigger uses whatever is held
+then. A trigger with an empty hand sends nothing and keeps waiting for the following interval. `once`, `continuous`
+and a plain `use for` still cancel themselves when their item is consumed or the hotbar slot changes.
+
 `count <blocks>` is the destroy-only completion counterpart to `for`: it stops continuous mining once that many
 blocks are gone (1–72000), waiting between blocks costs nothing, and `for ... count ...` in either order ends at
 whichever comes first. Item-count conditions for other inputs are not implemented.

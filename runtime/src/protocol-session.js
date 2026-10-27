@@ -1069,7 +1069,8 @@ export class BedrockSession extends EventEmitter {
         revision: this.inputs.actionRevision('use'), timed: this.inputs.hasTimedUse(), starting: true,
         holdTicks: this.inputs.holdTicks('use'), heldTicks: 0 }
     }
-    if (state.triggered.includes('use') && !hasUsableHeldItem(this.heldItem)) this.inputs.cancelTimedUse()
+    if (state.triggered.includes('use') && !hasUsableHeldItem(this.heldItem) &&
+        this.inputs.actionMode('use') !== 'interval') this.inputs.cancelTimedUse()
     if (this.activeItemUse && !transaction) {
       if (this.activeItemUse.starting) {
         inputData.push('start_using_item')
@@ -1208,8 +1209,11 @@ export class BedrockSession extends EventEmitter {
       this.activeItemUse = undefined
       this.releaseItemUseNextTick = false
       if (use.holdTicks !== undefined) this.inputs?.finishHold(use.revision)
-      if (use.hotbarSlot !== this.hotbarSlot || !hasUsableHeldItem(item) ||
-          use.heldItem.network_id !== item.network_id) this.inputs?.cancelTimedUse()
+      // An interval action is a repeating command, not one press for this stack:
+      // it keeps its schedule and uses whatever is held at the next trigger.
+      if (this.inputs?.actionMode('use') !== 'interval' &&
+          (use.hotbarSlot !== this.hotbarSlot || !hasUsableHeldItem(item) ||
+            use.heldItem.network_id !== item.network_id)) this.inputs?.cancelTimedUse()
     } else {
       use.heldItem = item
     }

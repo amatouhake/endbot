@@ -749,10 +749,11 @@ able to join. Also confirm a large Group spawn reports refusals per member inste
 
 ## BOT-016: Completion waits beyond mining
 
-Status: **Done for move, jump, attack, use, interact and destroy** (2026-10-29 JST); a teleport's arrival is not yet a
-job. The runtime keeps a job id per input channel and the last end of each with its reason; continuing operations
-return their job and `job:wait{timeout=}` waits for it (see [SCRIPTING.md](SCRIPTING.md#jobs-and-waits)). Real-server
-validation of the waits (timed move, `use hold`, counted attack, death and disconnect reasons) is a manual gate.
+Status: **Done** (2026-10-29 JST): move, jump, attack, use, interact, destroy and a teleport's arrival are jobs.
+The runtime keeps a job id per input channel and the last end of each with its reason, and counts acknowledged
+server teleports; continuing operations return their job and `job:wait{timeout=}` waits for it (see
+[SCRIPTING.md](SCRIPTING.md#jobs-and-waits)). Real-server validation of the waits (timed move, `use hold`, counted
+attack, teleport arrival, death and disconnect reasons) is a manual gate.
 
 Scripts can wait for mining jobs (`waitMining`) and for Bots to come online, but a timed `move`, `use hold`, `attack`
 or `interact` repetition, and a teleport's arrival, are only covered by guessing with `wait(ticks)`. Add waits that end

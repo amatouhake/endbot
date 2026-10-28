@@ -160,6 +160,16 @@ class CommandServiceTests(unittest.TestCase):
         self.assertTrue(summary.endswith("list is a reserved name; rename this Bot"))
         self.assertTrue(self.service.execute(["list", "rename", "Lister"]).accepted)
 
+    def test_teleport_returns_a_job_that_ends_on_the_next_acknowledged_teleport(self):
+        self.service.execute(["Alice", "spawn"])
+        self.control.bots["Alice"]["inputs"] = {"teleports": 4, "actions": {}}
+        self.world.teleport = lambda identity, parameters, sender: "Overworld 1.00 64.00 2.00"
+        result = self.service.execute(["Alice", "tp", "1", "64", "2"])
+        self.assertEqual(result.data["job"], {"kind": "tp", "id": 5})
+        # A runtime that does not count teleports gives no job rather than one that never ends.
+        del self.control.bots["Alice"]["inputs"]
+        self.assertIsNone(self.service.execute(["Alice", "tp", "1", "64", "2"]).data)
+
     def test_outcomes_carry_a_code_and_queries_carry_data(self):
         self.assertEqual(self.service.execute(["Alice", "status"]).code, "not_found")
         self.assertEqual(self.service.execute(["Alice", "move", "sideways"]).code, "invalid_argument")

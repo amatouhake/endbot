@@ -368,6 +368,7 @@ the world (or before BDS has sent it).
 | `data.mining.reason` | Nil while active; otherwise the runtime's terminal reason, or nil with no job |
 | `data.running` | Running input job ids by kind (`move`, `jump`, `attack`, `use`, `interact`); nil when none runs |
 | `data.ended` | The last end of each input kind: `{job, reason}` |
+| `data.teleports` | Server teleports the Bot has acknowledged since the runtime started |
 
 Terminal reasons include `block count reached`, `duration elapsed`, `stopped`, and runtime failure reasons.
 Null JSON fields become nil in Luau. `group:status()` returns `data.results` in pinned membership order;
@@ -398,8 +399,9 @@ A radius-12 search took about 23 ms of server-thread time in the live check (202
 ### Jobs and waits
 
 A continuing operation's result carries its **job**: whatever the Bot keeps doing after the operation returns.
-`move`, `jump`, `attack`, `use` and `interact` (any mode that keeps running, including `use` once with `hold`) and
-`destroy` return one; on a Group the job covers every member that started one. Wait for it with `job:wait`:
+`move`, `jump`, `attack`, `use` and `interact` (any mode that keeps running, including `use` once with `hold`),
+`destroy` and `tp` return one; on a Group the job covers every member that started one. A `tp` job ends with
+`arrived` once the Bot has acknowledged the server teleport. Wait for it with `job:wait`:
 
 ```lua
 local r = bot("Alice"):move("forward", {ticks = 40})

@@ -1415,6 +1415,11 @@ class BotCommandService:
         if command.operation == "teleport":
             status = control.request("status", name=command.name)
             location = self.world.teleport(status["identityId"], command.parameters, sender)
+            arrived = (status.get("inputs") or {}).get("teleports")
+            if isinstance(arrived, int):
+                # The job ends when the Bot has acknowledged one more server teleport.
+                started.update(name=status["name"], identityId=status["identityId"],
+                               job={"kind": "tp", "id": arrived + 1})
             return say("teleported to {location}", status["name"], location=location)
         if command.operation == "radius":
             result = control.request("radius", name=command.name, **command.parameters)
@@ -1858,6 +1863,7 @@ class BotCommandService:
             "held": observed.get("held"),
             # Running input jobs by channel and the last end of each, for job:wait().
             "running": {channel: BotCommandService.input_job(status, channel) for channel in INPUT_JOBS},
+            "teleports": (status.get("inputs") or {}).get("teleports"),
             "ended": dict((status.get("inputs") or {}).get("ended") or {}),
             "mining": {
                 "active": active,

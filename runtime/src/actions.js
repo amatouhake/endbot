@@ -22,6 +22,9 @@ export class InputState {
     // or an action name) is kept with its reason so a script can wait for it.
     this.movementJob = undefined
     this.ended = new Map()
+    // Server teleports the Bot has acknowledged (handled_teleport). It survives
+    // reconnects, so a teleport job waits for the count to reach its number.
+    this.teleports = 0
     this.sprint = false
     this.sneak = false
     this.transitions = []
@@ -80,6 +83,8 @@ export class InputState {
   }
 
   actionTarget (action) { return this.actions.get(action)?.target }
+
+  teleported () { this.teleports += 1 }
 
   #ended (channel, job, reason) { this.ended.set(channel, { job, reason }) }
 
@@ -217,6 +222,7 @@ export class InputState {
     return {
       movement: this.movement ?? null,
       ...(this.movementJob === undefined ? {} : { movementJob: this.movementJob }),
+      teleports: this.teleports,
       ...(this.movementEndTick === undefined ? {} : { movementRemainingTicks: this.movementEndTick - this.tick - 1 }),
       sprint: this.sprint,
       sneak: this.sneak,

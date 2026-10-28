@@ -17,6 +17,7 @@ from endstone_endbot.commands import (
     help_page,
     strip_colors,
 )
+from endstone_endbot.events import render
 from endstone_endbot.i18n import JA, Text, language_setting, localize_error, resolve_language, tr
 from endstone_endbot.inventory_sync import EQUIPMENT_SLOTS
 from endstone_endbot.script_forms import TEMPLATES
@@ -254,7 +255,8 @@ class JapaneseServiceTests(unittest.TestCase):
         self.control.bots["Alice"]["mining"] = {"state": "canceled", "reason": "respawning"}
         notices = super(PlainCommandService, self.service).poll_mining(lambda _: True)
         self.assertEqual(
-            [(level, strip_colors(message), strip_colors(log)) for _, level, message, log in notices],
+            [(event.level, strip_colors(render(event, "chat")[0]), strip_colors(render(event, "log")[0]))
+             for event in notices],
             [
                 (
                     "warning",

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from endstone_endbot.commands import ERROR, WARNING, CommandResult, reply, strip_colors
+from endstone_endbot.events import Event, render
 from endstone_endbot.i18n import tr
 from endstone_endbot.menu_views import menu_view
 from endstone_endbot.principal import Principal
@@ -212,6 +213,7 @@ class AsyncCommandRunner:
         if scripts is not None:
             scripts.ordered = lambda callback: self._executor.submit(callback).result()
             scripts.notify = self._deliver
+            scripts.publish = self.publish
 
     def poll(self) -> None:
         """Queue at most one poll, independent of the command worker."""
@@ -227,17 +229,23 @@ class AsyncCommandRunner:
         def authorize(source):
             return self._authorize is None or self._bridge.call(lambda: self._authorize(source))
 
-        for source, level, message, log_message in self._service.poll_mining(authorize) or ():
-            self._notify(source, level, message, log_message)
+        for event in self._service.poll_mining(authorize) or ():
+            self.publish(event)
 
-    def _notify(self, source: Principal, level: str, message: str, log_message: str) -> None:
+    def publish(self, event: Event) -> None:
+        """Deliver an Event to its sinks: the console log in English, then its principal's chat."""
+
         def deliver() -> None:
+            source = event.to
             if self._log is not None:
-                self._log(level, strip_colors(log_message))
+                for line in render(event, "log"):
+                    self._log(event.level, strip_colors(line))
                 if source.player_id is None:
                     return  # The console already shows the log entry.
             # A controller who has logged off still gets the console log entry.
-            _send(self._resolve_sender(source), source, message)
+            sender = self._resolve_sender(source)
+            for line in render(event, "chat"):
+                _send(sender, source, line)
 
         self._bridge.post(deliver)
 

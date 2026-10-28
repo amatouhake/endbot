@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from endstone_endbot.commands import BotCommandService, strip_colors
+from endstone_endbot.events import render
 
 
 class PlainCommandService(BotCommandService):
@@ -13,5 +14,5 @@ class PlainCommandService(BotCommandService):
         return replace(result, messages=tuple(strip_colors(message) for message in result.messages))
 
     def poll_mining(self, authorize):
-        notices = super().poll_mining(authorize)
-        return [(source, level, strip_colors(message)) for source, level, message, _ in notices]
+        events = super().poll_mining(authorize)
+        return [(event.to, event.level, strip_colors(render(event, "chat")[0])) for event in events]

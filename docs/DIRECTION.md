@@ -1,7 +1,7 @@
 # Product direction: from one plugin to a small distribution
 
 Status: **Accepted direction, not implemented** (2026-10-28 JST). This records decisions and their reasons; the work
-items are BOT-019 to BOT-023 in the [backlog](BACKLOG.md). [Architecture](ARCHITECTURE.md) describes what exists today.
+items are BOT-019 to BOT-024 in the [backlog](BACKLOG.md). [Architecture](ARCHITECTURE.md) describes what exists today.
 
 ## Goals
 
@@ -187,31 +187,71 @@ added later as another way to prove the link. It is not the primary method becau
 Revisit this if a single shared service replaces per-operator Workers (one registration would then suffice), if never
 joining the game becomes a requirement, or if passkeys turn out to block many users in practice.
 
-## Decision 5: scripts wait for changes; the host chooses events or polling
+## Decision 5: events are a registry-defined framework; scripts wait, triggers start runs
 
-Scripts do not write "read the block, wait a few seconds, repeat" loops. They register a watch and wait on it:
+Events will keep being requested (a player did something, the server started, a chat message arrived, ...). Instead
+of designing each one, Endbot defines how any event is added and consumed.
+
+**Event kinds live in the same JSON registry as operations.** Names are `category.action`: `player.join`,
+`player.chat`, `block.change`, `bot.died`, `server.started`. Each kind declares its filter fields (name, position or
+area, block type, ...), its payload shape, its source, its delivery guarantee and its visibility (see the open point
+below). Adding a kind means one source adapter and one registry entry; Luau completion, the web trigger editor and the
+docs follow from the registry, as the [interface guide](INTERFACE_GUIDE.md) requires.
+
+| Source | Examples |
+| --- | --- |
+| Plugin (in game) | Block changed, broken or placed; player joined, left, chatted, died, changed dimension; entered an area (checked positions) |
+| Runtime and Bots | Bot online or offline, Bot died, job finished |
+| endbotd | Server started or stopped (it supervises BDS), schedules and in-game time, script run finished |
+
+**Scripts wait on a watch.** One generic form, not one function per kind:
 
 ```lua
-local w = world.watchBlock(100, 64, 200)
+local w = watch("block.change", {x = 100, y = 64, z = 200})
 while true do
-  local change = w:wait()          -- yields until the block changes
+  local change = w:wait()          -- yields until the block changes; accepts {timeout = ticks}
   if change.to == "minecraft:air" then
     bot("Alice"):spawn()
   end
 end
 ```
 
-The name is illustrative; the final API follows the existing `api.luau` style.
-
 - The blocking-wait shape fits the runner's yield model and reads top to bottom.
-- Inside, the plugin uses Endstone events where they exist (player breaking and placing) and, for changes without an
-  event (redstone, fluids, pistons — coverage to be measured), checks only the registered watched positions in one batched
-  server-thread pass every N ticks. That is far cheaper than many scripts each polling over IPC, it does not consume the
-  script's operation budget, and it does not miss short changes as easily.
-- The documented guarantee is "a change that persists for at least N ticks is delivered", with N stated.
+- Sources filter at the origin. For `block.change` the plugin uses Endstone events where they exist (player breaking
+  and placing) and, for changes without an event (redstone, fluids, pistons — coverage to be measured), checks only the
+  watched positions in one batched server-thread pass every N ticks. That is far cheaper than scripts polling over
+  IPC, does not consume the operation budget, and misses fewer short changes. Its guarantee is "a change that
+  persists for at least N ticks is delivered", with N stated; every kind states its own guarantee.
 - Manual polling with `block()` and `wait()` keeps working as an escape hatch.
-- First a running script loops on `wait()`. Persistent triggers that survive restarts come later (BOT-022).
-- Watches are owned by the script's principal, bounded per controller and server, and end when that grant is revoked.
+- Watches are owned by the run's principal, bounded per controller and server, and end when that grant is revoked.
+
+**Events are observation only.** Many Endstone events can be cancelled or modified by plugins; scripts get neither.
+Cancelling a block break would be a world write and would bypass Decision 2. Events are delivered after the fact, so
+slow handling never holds a game tick.
+
+**Triggers are separate bindings, not declarations inside scripts:**
+
+```text
+trigger = { event kind + filter → script (+ arguments), owner, enabled, policy }
+```
+
+- The script receives the event as a parameter (`param.event`), so the same script can run by hand or from a trigger.
+- Triggers can be created without code from the web and the in-game forms, and managed with
+  `/botscript trigger add|list|remove`.
+- `watch():wait()` stays for waiting inside a run; a trigger is what starts a run.
+- Policy, against runaway chains (a Bot breaks a block, which fires the trigger that made it break blocks):
+  concurrency defaults to "skip while a run from this trigger is active" (alternatives: queue one, run in parallel);
+  a cooldown; a maximum number of starts per minute, beyond which the trigger disables itself and notifies its owner;
+  a bounded event queue that drops the oldest and reports a `missed` count.
+- Triggers persist in endbotd and survive restarts (after BOT-020).
+
+**First kinds**, then more on request: `block.change`; `bot.online`, `bot.offline`, `bot.died`, `job.finished`;
+`player.join`, `player.leave`, `player.chat`; `server.started`; `schedule` (wall-clock) and `world.time` (in-game day
+and night). What Endstone events actually cover is measured on the locked pair before a kind is listed.
+
+**Open: who may observe what.** Other players' chat, presence and positions are privacy-sensitive, and controllers are
+not operators. How visibility is divided is decided by the permission model (BOT-024), not here. Until then, no kind
+that reveals other players is implemented.
 
 ## Delivery
 

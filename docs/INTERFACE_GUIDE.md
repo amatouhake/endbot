@@ -61,8 +61,9 @@ same name; a bare mode word (`continuous`) becomes the `mode` option (`{mode = "
 | Script | スクリプト | Stored Luau source owned by a controller |
 | Run | 実行 | One execution of a script |
 | Job | ジョブ | What a Bot keeps doing after an operation returns: continuous or interval input, `for`, held use, mining (one block or many) |
-| Watch | 監視 | A registered interest in a world change that a run can wait on |
-| Trigger | トリガー | (BOT-022) A watch that survives restarts and starts a run; managed under `/botscript` |
+| Event | イベント | Something that happened, of a registry-defined kind such as `block.change`; observation only |
+| Watch | 監視 | A run's registered interest in events of one kind and filter, waited on with `w:wait{}` |
+| Trigger | トリガー | (BOT-022) A persistent binding from an event kind and filter to a script; starts runs; managed under `/botscript` |
 
 *Loop* is an internal word only and does not appear in user-facing text.
 
@@ -74,7 +75,7 @@ The grammar is already consistent (`once`, `continuous`, `interval`, `stop`, wit
 for what a continuing operation leaves running are not: docs say mining *job*, *loop* and, once, a finished mining
 *run*. Decision: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (continuous or interval
 input, `for`, mining with `count`). *Run* is reserved for scripts. *Loop* stays an internal word only. Trigger
-(BOT-022) is added when it exists: a persistent watch that starts a run.
+(BOT-022) is added when it exists: a persistent binding from an event to a script that starts runs.
 
 ### D2. The shape of waits in Luau
 

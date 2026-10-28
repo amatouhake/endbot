@@ -861,16 +861,17 @@ then Bot control. Controller administration stays console-only. Main design work
 and CSRF handling, rate limits, revocation of web sessions when a controller is revoked, deployment documentation.
 Microsoft sign-in is deferred (see the direction document).
 
-## BOT-022: Watches and triggers for scripts
+## BOT-022: Events, watches and triggers
 
-Status: **Planned** (2026-10-28 JST).
+Status: **Planned; framework agreed in [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)**
+(2026-10-28 JST).
 
-A script-facing "watch and wait" API for block changes (and later other non-Bot events). The plugin delivers matches
-from Endstone events where available and from a batched server-thread check of registered positions otherwise. First
-measure which block changes Endstone events cover on the locked pair. Document the minimum persistence in ticks that is
-guaranteed to be delivered. Bound watches per controller and server. First version: a running script loops on `wait()`.
-Second version: persistent triggers that survive restarts and run with their owner's grant. Scripts still never write
-the world directly.
+Event kinds in the operation registry (`category.action`, filters, payload, source, guarantee, visibility); a generic
+`watch(kind, filter)` with `w:wait{timeout=}`; observation only, never cancel or modify; triggers as separate bindings
+(event + filter → script + arguments) with skip-while-running, cooldown, a per-minute start cap that disables the
+trigger, and a bounded queue reporting `missed`. Start with `block.change`: measure which block changes Endstone events
+cover on the locked pair and state the guaranteed minimum persistence. Then the other first kinds listed in Decision 5.
+Persistent triggers need endbotd (BOT-020). Kinds that reveal other players wait for BOT-024.
 
 ## BOT-023: Upstream login-verifier hook (optional)
 
@@ -878,6 +879,19 @@ Status: **Idea** (2026-10-28 JST).
 
 Propose a narrow Endstone API that lets a plugin accept a login before BDS's Microsoft validator rejects it. If upstream
 accepts it, drop `patches/endstone/` and patched builds. Until then the patch stays the source of truth.
+
+## BOT-024: Permission model
+
+Status: **Open topic — to be discussed before BOT-021 and the player-related kinds of BOT-022** (2026-10-28 JST).
+
+Today there is one controller permission plus console-only administration, with per-script ownership and
+private/shared visibility. The web, events and triggers need more, but the granularity must be designed as a whole
+rather than added piecemeal. Guiding requirement: a permission is about what an action does, never about the surface it
+comes from, so a script, a command and the web succeed or fail the same way; there must be no "you can write scripts,
+but not this script". Questions to settle: roles versus per-controller capabilities; whether a controller may operate
+other controllers' Bots and Groups; who may observe other players (chat, presence, position) and whether such events
+exist at all; whether authoring, running and leaving a trigger armed are separate rights; what operators delegate and
+how (console only, or a delegated admin); how revocation propagates to runs, triggers and web sessions.
 
 ## Deferred priorities
 

@@ -10,11 +10,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from endstone_endbot import script_forms
-from endstone_endbot.commands import DIM, ERROR, RESET, CommandResult, _language, parse_command, reply, strip_colors
+from endstone_endbot.commands import DIM, ERROR, RESET, CommandResult, _language, reply, strip_colors
 from endstone_endbot.control import bot_profiles
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
-from endstone_endbot.operations import OPERATIONS, operation_argv
+from endstone_endbot.operations import OPERATIONS, Operation
 from endstone_endbot.script_books import pages_to_source, source_to_pages, written
 from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
@@ -355,9 +355,8 @@ class ScriptService:
                     online = self.inputs.request("status", name=target).get("connectionState") == "online"
                 return {"ok": online}
             try:
-                argv = operation_argv(target, event.get("operation"), event.get("params"))
-                parse_command(argv)  # Semantic combinations use exactly the command grammar.
-                result = self.service.execute(argv, source)
+                operation = Operation(event.get("operation"), target, event.get("params"))
+                result = self.service.execute_operation(operation, source)
             except (RuntimeError, ValueError) as error:
                 return {"result": {"ok": False, "reason": localize_error(error, "en")}}
             if audit and self.notify:

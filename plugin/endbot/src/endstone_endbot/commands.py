@@ -12,7 +12,7 @@ from endstone_endbot.control import RuntimeControlError, bot_profiles
 from endstone_endbot.forms import BotListView, BotView
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.limits import BotLimits
-from endstone_endbot.operations import ALIASES, OPERATIONS
+from endstone_endbot.operations import ALIASES, OPERATIONS, Operation
 from endstone_endbot.principal import as_job
 
 
@@ -1238,7 +1238,20 @@ class BotCommandService:
         for key in keys:
             self._end_mining_loop(key)
 
+    def execute_operation(self, operation: Operation, sender=None) -> CommandResult:
+        """The typed entry: run ``operation`` for the principal ``sender``.
+
+        A malformed operation raises ValueError (or CommandSyntaxError) before
+        anything runs; once it is well formed, failures come back as a result,
+        exactly as for typed commands. The command grammar stays the semantic
+        validator, so both entries accept the same combinations.
+        """
+        arguments = operation.argv()
+        parse_command(arguments)
+        return self.execute(arguments, sender)
+
     def execute(self, arguments: list[str], sender=None) -> CommandResult:
+        """The command-text entry: parse ``arguments``, then run them for ``sender``."""
         command = None
         lang = _language(sender)
         try:

@@ -1,5 +1,7 @@
-"""Shared command vocabulary and typed script-to-command grammar.
+"""Shared command vocabulary, the typed Operation and its command grammar.
 
+An ``Operation`` is one typed request, spelled as the registry and Luau spell it
+(``{op = "destroy", target = "Alice", params = {type = "oak_log", count = 5}}``).
 Variants describe positional fields, named options and their literal argv clauses.
 The ordinary parser remains the final semantic validator (including combinations).
 No script-supplied token can become another command or an untyped suffix.
@@ -8,6 +10,7 @@ No script-supplied token can become another command or an untyped suffix.
 import json
 import math
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 OPERATIONS = json.loads(Path(__file__).with_name("operations.json").read_text(encoding="utf-8"))
@@ -62,3 +65,16 @@ def operation_argv(target, operation, parameters):
             tokens.append(scalar(parameters[key], spec))
         return [operation, *tokens] if operation in ROOT_OPERATIONS else [target, operation, *tokens]
     raise ValueError("Invalid typed operation fields")
+
+
+@dataclass(frozen=True, slots=True)
+class Operation:
+    """One typed request: ``op`` on ``target`` (a Bot, ``#group`` or ``#group[n]``) with registry ``params``."""
+
+    op: str
+    target: str
+    params: dict = field(default_factory=dict)
+
+    def argv(self) -> list[str]:
+        """The equivalent command arguments; raises ValueError for anything the registry does not allow."""
+        return operation_argv(self.target, self.op, self.params)

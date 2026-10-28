@@ -163,8 +163,8 @@ class ServerThreadWorld:
     def reachable_block(self, identity_id, block_type, reach):
         return self._bridge.call(lambda: self._world.reachable_block(identity_id, block_type, reach))
 
-    def find_blocks(self, identity_id, block_type, radius, limit):
-        return self._bridge.call(lambda: self._world.find_blocks(identity_id, block_type, radius, limit))
+    def find_blocks(self, identity_id, block_type, radius, limit, coordinates=None):
+        return self._bridge.call(lambda: self._world.find_blocks(identity_id, block_type, radius, limit, coordinates))
 
     def describe_entities(self, identity_id, runtime_ids):
         return self._bridge.call(lambda: self._world.describe_entities(identity_id, runtime_ids))

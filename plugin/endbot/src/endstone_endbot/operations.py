@@ -14,7 +14,10 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-OPERATIONS = json.loads(Path(__file__).with_name("operations.json").read_text(encoding="utf-8"))
+REGISTRY = json.loads(Path(__file__).with_name("operations.json").read_text(encoding="utf-8"))
+OPERATIONS = REGISTRY["operations"]
+# Root command words that would shadow a Bot of the same name (interface guide D3).
+RESERVED_BOT_NAMES = frozenset(REGISTRY["reservedBotNames"])
 ALIASES = {"teleport": "tp"}
 ROOT_OPERATIONS = {"list", "ping", "help"}
 # Options that only mean something together; a reading never holds part of one.

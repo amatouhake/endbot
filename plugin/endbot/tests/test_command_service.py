@@ -126,6 +126,40 @@ class CommandServiceTests(unittest.TestCase):
         self.world = FakeWorld()
         self.service = PlainCommandService(self.control, self.world)
 
+    def test_reserved_names_cannot_be_created_or_taken_by_rename(self):
+        # `/bot help spawn` is help itself; a script or the web can still ask for a Bot called help.
+        for name in ("list", "PING", "menu"):
+            with self.subTest(name=name):
+                result = self.service.execute([name, "spawn"])
+                self.assertFalse(result.accepted)
+                self.assertIn(f"{name} is a reserved name; choose another name", result.message)
+                self.assertEqual(result.code, "invalid_argument")
+        self.assertNotIn("spawn", [operation for operation, _ in self.control.calls])
+        self.service.execute(["Alice", "spawn"])
+        renamed = self.service.execute(["Alice", "rename", "Menu"])
+        self.assertIn("Menu is a reserved name", renamed.message)
+        self.assertNotIn("rename", [operation for operation, _ in self.control.calls])
+        # Typed operations from scripts and forms reach the same check.
+        from endstone_endbot.i18n import LocalizedError
+        from endstone_endbot.operations import Operation
+
+        # As text, `help spawn` would silently become help; the typed entry says why instead.
+        with self.assertRaisesRegex(LocalizedError, "help is a reserved name"):
+            self.service.execute_operation(Operation("spawn", "help"))
+        self.assertEqual(self.service.execute_operation(Operation("help", None, {"topic": "spawn"})).message,
+                         "Endbot help: spawn")
+
+    def test_existing_reserved_profiles_are_kept_and_pointed_at_rename(self):
+        self.control.bots["list"] = {"identityId": "00000000-0000-4000-8000-000000000009", "name": "list",
+                                     "desiredState": "offline", "connectionState": "offline"}
+        self.assertTrue(self.service.execute(["list", "spawn"]).accepted)
+        listing = self.service.execute(["list"]).message
+        self.assertIn("list [offline] (reserved name; rename it)", listing)
+        player = type("Player", (), {"player_id": "p", "language": "en"})()
+        summary = self.service.execute(["list", "menu"], player).data["summary"]
+        self.assertTrue(summary.endswith("list is a reserved name; rename this Bot"))
+        self.assertTrue(self.service.execute(["list", "rename", "Lister"]).accepted)
+
     def test_outcomes_carry_a_code_and_queries_carry_data(self):
         self.assertEqual(self.service.execute(["Alice", "status"]).code, "not_found")
         self.assertEqual(self.service.execute(["Alice", "move", "sideways"]).code, "invalid_argument")

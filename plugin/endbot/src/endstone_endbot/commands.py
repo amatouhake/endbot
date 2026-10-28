@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from endstone_endbot.control import RuntimeControlError, bot_profiles
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.limits import BotLimits
-from endstone_endbot.operations import ALIASES, OPERATIONS, Operation
+from endstone_endbot.operations import ALIASES, OPERATIONS, RESERVED_BOT_NAMES, Operation
 from endstone_endbot.principal import as_job
 
 
@@ -74,6 +74,16 @@ def reply(detail: str, name: str | None = None, color: str = "") -> str:
     """Format one reply as ``Endbot: <Bot>: <detail>`` with a colored prefix."""
     prefix = f"Endbot: {name}:" if name else "Endbot:"
     return f"{PREFIX}{prefix}{RESET} {color}{detail}{RESET if color else ''}"
+
+
+def reserved(name: str) -> bool:
+    """Whether ``name`` is a root command word no new Bot may take (interface guide D3)."""
+    return name.casefold() in RESERVED_BOT_NAMES
+
+
+def _assert_not_reserved(name: str) -> None:
+    if reserved(name):
+        raise LocalizedError("{name} is a reserved name; choose another name", name=name)
 
 
 def _language(source) -> str:
@@ -1262,7 +1272,9 @@ class BotCommandService:
         validator, so both entries accept the same combinations.
         """
         arguments = operation.argv()
-        parse_command(arguments)
+        if parse_command(arguments).operation == "help" and operation.op != "help":
+            # A Bot called help can never be addressed as text; say so instead of answering with help.
+            _assert_not_reserved(operation.target)
         return self.execute(arguments, sender)
 
     def execute(self, arguments: list[str], sender=None) -> CommandResult:
@@ -1337,16 +1349,22 @@ class BotCommandService:
                 return CommandResult(True, data={"menu": "bots", "bots": list(bot_profiles(control))})
             status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
+            summary = self._status_reply(status, observed, lang)
+            if reserved(status["name"]):
+                summary += "\n" + tr(lang, "{name} is a reserved name; rename this Bot", name=status["name"])
             return CommandResult(True, data={"menu": "bot", "name": status["name"], "status": status,
-                                             "observed": observed,
-                                             "summary": self._status_reply(status, observed, lang)})
+                                             "observed": observed, "summary": summary})
         if command.operation == "list":
             bots = bot_profiles(control)
             data = {"bots": [{"name": bot["name"], "identityId": bot.get("identityId"),
                               "connectionState": bot["connectionState"]} for bot in bots]}
             if not bots:
                 return CommandResult(True, (reply(tr(lang, "no Bot profiles")),), data=data)
-            summary = ", ".join(f"{bot['name']} {DIM}[{tr(lang, bot['connectionState'])}]{RESET}" for bot in bots)
+            summary = ", ".join(
+                f"{bot['name']} {DIM}[{tr(lang, bot['connectionState'])}]"
+                f"{' ' + tr(lang, '(reserved name; rename it)') if reserved(bot['name']) else ''}{RESET}"
+                for bot in bots
+            )
             return CommandResult(True, (reply(summary),), data=data)
         if command.operation == "status":
             status = control.request("status", name=command.name)
@@ -1360,6 +1378,8 @@ class BotCommandService:
             except RuntimeControlError as error:
                 if error.code != "not_found":
                     raise
+            if existing is None:
+                _assert_not_reserved(command.name)  # Existing profiles keep their name.
             # An already active Bot keeps its seat; only a new session is budgeted.
             if existing is None or existing.get("connectionState") not in ACTIVE_BOT_STATES:
                 self.check_seat(command.name)
@@ -1634,6 +1654,7 @@ class BotCommandService:
             yaw, pitch = self.world.look_at(status["identityId"], command.parameters["targetCoordinates"])
             result = control.request("look", name=command.name, yaw=yaw, pitch=pitch)
         elif command.operation == "rename":
+            _assert_not_reserved(command.parameters["newName"])
             status = control.request("status", name=command.name)
             self.world.assert_name_available(command.parameters["newName"], status["identityId"])
             self.world.clear_pending_placement(status["identityId"])

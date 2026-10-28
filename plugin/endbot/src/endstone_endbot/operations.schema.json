@@ -2,15 +2,28 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/amatouhake/endbot/plugin/endbot/src/endstone_endbot/operations.schema.json",
   "title": "Endbot operation registry",
-  "description": "operations.json: every operation, the shapes of its typed parameters and their command clauses. Python (operations.py), the Luau bootstrap (runner/api.luau) and the operator reference read it; later the web Worker generates its types from it.",
+  "description": "operations.json: every operation, the shapes of its typed parameters and their command clauses, and the reserved Bot names. Python (operations.py), the Luau bootstrap (runner/api.luau) and the operator reference read it; later the web Worker generates its types from it.",
   "type": "object",
-  "propertyNames": {"pattern": "^[a-z]+$"},
-  "minProperties": 1,
-  "additionalProperties": {
-    "description": "The shapes an operation accepts, tried in order; the first that fits the parameters wins.",
-    "type": "array",
-    "minItems": 1,
-    "items": {"$ref": "#/$defs/shape"}
+  "required": ["operations", "reservedBotNames"],
+  "additionalProperties": false,
+  "properties": {
+    "operations": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z]+$"},
+      "minProperties": 1,
+      "additionalProperties": {
+        "description": "The shapes an operation accepts, tried in order; the first that fits the parameters wins.",
+        "type": "array",
+        "minItems": 1,
+        "items": {"$ref": "#/$defs/shape"}
+      }
+    },
+    "reservedBotNames": {
+      "description": "Names no Bot may be created or renamed to, because a root command word takes them (interface guide D3). Compared without case.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z]+$"}
+    }
   },
   "$defs": {
     "name": {

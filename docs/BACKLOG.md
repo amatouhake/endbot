@@ -910,7 +910,7 @@ how (console only, or a delegated admin); how revocation propagates to runs, tri
 
 ## BOT-025: Reserved Bot names
 
-Status: **Planned — decided in [interface guide D3](INTERFACE_GUIDE.md#d3-command-roots)** (2026-10-29 JST).
+Status: **Done** (2026-10-29 JST); decided in [interface guide D3](INTERFACE_GUIDE.md#d3-command-roots).
 
 `/bot help <anything>` always opens help, so a Bot named `help` cannot be addressed, and `/bot help status` is
 ambiguous by nature (help topic or operation). Reserve `help`, `list`, `ping` and `menu` as Bot names: the registry

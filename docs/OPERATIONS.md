@@ -201,7 +201,8 @@ account renames itself to the pending name; run `add` while that account is onli
 survive edits to the bootstrap list; use runtime `remove` to revoke them. Do not edit policy files while BDS runs.
 
 Changes update online players' control permission and command visibility immediately and recheck pending commands on
-the server thread. A revoke/regrant cycle also invalidates commands queued under the earlier grant. An operation
+the server thread. A revoke/regrant cycle also invalidates commands queued under the earlier grant and ends
+continuous `destroy` loops and script runs started under it. An operation
 already started by the command worker may finish; revocation does not undo dispatched operations or stop existing Bot
 movement/actions. Use `/bot <name> stop` from the console if those actions must stop too. No operator or vanilla
 command permission is granted.

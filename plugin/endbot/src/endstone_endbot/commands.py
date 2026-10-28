@@ -13,6 +13,7 @@ from endstone_endbot.forms import BotListView, BotView
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.limits import BotLimits
 from endstone_endbot.operations import ALIASES, OPERATIONS
+from endstone_endbot.principal import as_job
 
 
 class CommandSyntaxError(LocalizedError):
@@ -1388,7 +1389,7 @@ class BotCommandService:
                         result["name"],
                         result["identityId"],
                         result["mining"]["loopId"],
-                        sender,
+                        as_job(sender),
                         command.parameters.get("blockType"),
                     )
                 elif mode != "stop":
@@ -1396,7 +1397,7 @@ class BotCommandService:
                         result["name"],
                         result["identityId"],
                         None,
-                        sender,
+                        as_job(sender),
                         list(target["blockPosition"]),
                     )
             if mode == "continuous":

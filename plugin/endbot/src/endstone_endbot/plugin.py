@@ -1,6 +1,7 @@
 """Thin Endstone adapter for Endbot commands."""
 
 import shlex
+from dataclasses import replace
 from pathlib import Path
 from typing import ClassVar
 from uuid import UUID
@@ -14,7 +15,7 @@ from endstone_endbot.commands import BotCommandService
 from endstone_endbot.control import RuntimeControlClient
 from endstone_endbot.controller_policy import ControllerPolicy
 from endstone_endbot.controller_requests import execute_request
-from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
+from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
 from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
 from endstone_endbot.form_adapter import FormPresenter
 from endstone_endbot.groups import GroupCommandService, GroupStore
@@ -22,6 +23,7 @@ from endstone_endbot.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, langu
 from endstone_endbot.inventory_sync import PACKET_ID as INVENTORY_PACKET_ID
 from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings, unsupported_payload
 from endstone_endbot.limits import BotLimits
+from endstone_endbot.principal import Principal
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
 from endstone_endbot.script_store import ScriptStore
@@ -296,17 +298,17 @@ class EndbotPlugin(Plugin):
         self._world = EndstoneWorld(self.server)
         self._server_thread = ServerThreadBridge(lambda task: self.server.scheduler.run_task(self, task))
 
-        def resolve_sender(source: CommandSource):
+        def resolve_sender(source: Principal):
             if source.player_id is not None:
                 return self.server.get_player(UUID(source.player_id))
-            return source.sender
+            return self.server.command_sender
 
-        def authorized_sender(source: CommandSource):
-            if source.script_run_id is not None:
-                if not self._authorize_script(source):
+        def authorized_sender(source: Principal):
+            if source.run_id is not None:
+                if not self._authorize(source):
                     raise LocalizedError("Script authority was revoked")
                 return resolve_sender(source)
-            return resolve_sender(source) if self._authorize_source(source) else None
+            return resolve_sender(source) if self._authorize(source) else None
 
         command_world = ServerThreadWorld(self._world, self._server_thread, authorized_sender)
         # Forms resolve to ordinary /bot arguments and re-enter through _submit_bot.
@@ -333,9 +335,7 @@ class EndbotPlugin(Plugin):
 
         self._bot_commands = GroupCommandService(
             control, command_world, groups,
-            authorize=lambda source: self._server_thread.call(lambda: (
-                self._authorize_script(source) if source.script_run_id is not None
-                else self._authorize_source(source))),
+            authorize=lambda source: self._server_thread.call(lambda: self._authorize(source)),
             limits=self._limits,
             capacity=bot_capacity,
         )
@@ -345,7 +345,7 @@ class EndbotPlugin(Plugin):
             self.logger.error(f"Scripts unavailable: scripts.json could not be loaded ({error})")
             scripts = None
         self._scripts = ScriptService(self._script_config, scripts, self._bot_commands, control, self.data_folder,
-            authorize=lambda source: self._server_thread.call(lambda: self._authorize_script(source)))
+            authorize=lambda source: self._server_thread.call(lambda: self._authorize(source)))
         if scripts is not None and self._script_config.enabled:
             # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
             try:
@@ -356,29 +356,14 @@ class EndbotPlugin(Plugin):
                     self.logger.warning(f"Script file {name} skipped: {error}")
             except (LocalizedError, OSError) as error:
                 self.logger.error(f"Script files unavailable: {error}")
-
-        def script_origin(sender):
-            if not hasattr(sender, "location"):
-                return None
-            location = sender.location
-            return {"x": float(location.x), "y": float(location.y), "z": float(location.z),
-                    "yaw": float(location.yaw), "pitch": float(location.pitch), "dimension": location.dimension.name}
         self._command_runner = AsyncCommandRunner(
             self._bot_commands,
             self._server_thread,
             resolve_sender,
-            authorize=self._authorize_source,
-            authorize_loop=self._authorize_loop,
+            authorize=self._authorize,
             log=self._log_endbot,
             show_view=presenter.show_view,
-            language=self._language,
             scripts=self._scripts,
-            grant_revision=lambda sender: self._grant_versions.get(str(sender.unique_id), 0)
-            if hasattr(sender, "unique_id") else None,
-            origin=script_origin,
-            revision=lambda sender: (
-                self._authorization_versions.get(str(sender.unique_id), 0) if hasattr(sender, "unique_id") else None
-            ),
         )
         self.server.scheduler.run_task(self, self._command_runner.poll, delay=4, period=4)
         self.server.scheduler.run_task(
@@ -546,36 +531,56 @@ class EndbotPlugin(Plugin):
                 )
         return sorted(rows, key=lambda row: row["name"].casefold())
 
-    def _authorize_source(self, source: CommandSource) -> bool:
-        if source.player_id is None:
-            return isinstance(source.sender, ConsoleCommandSender)
-        player = self.server.get_player(UUID(source.player_id))
-        return (
-            player is not None
-            and self._allows_control(player)
-            and source.authorization_revision == self._authorization_versions.get(source.player_id, 0)
-        )
+    def _authorize(self, principal: Principal) -> bool:
+        """Two layers for every principal; server thread only.
 
-    def _authorize_loop(self, source: CommandSource) -> bool:
-        """Keep a continuous loop while its controller remains permitted.
-
-        Unlike queued commands, a loop survives logoff and other operations;
-        only a revocation (or a stop) ends it. Offline controllers are checked
-        by the identity captured when they started the loop.
+        Every principal except the console needs a grant at the grant revision
+        it captured, so a revoke and regrant never revive older work. Then an
+        in-game player must still be online with an unchanged authorization
+        revision; runs and jobs outlive their owner's session and are checked
+        by the identity captured when they started.
         """
-        if source.player_id is None:
-            return isinstance(source.sender, ConsoleCommandSender)
-        if source.script_run_id is not None and source.grant_revision != self._grant_versions.get(source.player_id, 0):
+        if principal.console:
+            return True
+        if principal.player_id is None or principal.grant_revision != self._grant_versions.get(principal.player_id, 0):
             return False
-        player = self.server.get_player(UUID(source.player_id))
+        player = self.server.get_player(UUID(principal.player_id))
+        if principal.kind == "player":
+            return (
+                player is not None
+                and self._allows_control(player)
+                and principal.authorization_revision == self._authorization_versions.get(principal.player_id, 0)
+            )
         if player is not None:
             return self._allows_control(player)
-        return self._control_decision(source.name or "", source.xuid or "", source.player_id)[0]
+        return self._control_decision(principal.name or "", principal.xuid or "", principal.player_id)[0]
 
-    def _authorize_script(self, source: CommandSource) -> bool:
-        return (
-            source.player_id is None or source.grant_revision == self._grant_versions.get(source.player_id, 0)
-        ) and self._authorize_loop(source)
+    def _principal(self, sender, *, command: str = "bot", group_guard=None) -> Principal:
+        """Capture who sent a command; server thread only. The console stays English."""
+        if not hasattr(sender, "unique_id"):
+            return Principal("console")
+        player_id = str(sender.unique_id)
+        principal = Principal(
+            "player",
+            name=str(getattr(sender, "name", None) or "") or None,
+            xuid=str(getattr(sender, "xuid", None) or "") or None,
+            grant_revision=self._grant_versions.get(player_id, 0),
+            language=self._language(sender),
+            player_id=player_id,
+            authorization_revision=self._authorization_versions.get(player_id, 0),
+        )
+        if group_guard is not None:
+            # A form's guard is copied, so later edits to the form cannot reach the queued command.
+            if getattr(group_guard, "values", None) is not None:
+                group_guard = replace(group_guard, values=dict(group_guard.values),
+                                      targets=dict(group_guard.targets or {}))
+            principal = replace(principal, group_guard=group_guard)
+        if command == "botscript" and hasattr(sender, "location"):
+            location = sender.location
+            principal = replace(principal, origin={
+                "x": float(location.x), "y": float(location.y), "z": float(location.z),
+                "yaw": float(location.yaw), "pitch": float(location.pitch), "dimension": location.dimension.name})
+        return principal
 
     def _log_endbot(self, level: str, message: str) -> None:
         getattr(self.logger, level, self.logger.info)(message)
@@ -725,7 +730,7 @@ class EndbotPlugin(Plugin):
             sender.send_message(f"Endbot: {tr(self._language(sender), 'you do not have Bot control permission')}")
             return
         submitted = self._command_runner is not None and self._command_runner.submit(
-            args, sender, command=command, group_guard=group_guard
+            args, self._principal(sender, command=command, group_guard=group_guard), command=command
         )
         if not submitted:
             sender.send_message(f"Endbot: {tr(self._language(sender), 'command service is unavailable')}")

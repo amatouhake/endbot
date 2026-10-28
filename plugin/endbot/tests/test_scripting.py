@@ -16,10 +16,10 @@ from unittest.mock import Mock, patch
 from endstone_endbot import forms, script_forms
 from endstone_endbot.commands import HELP_TOPICS, CommandResult, parse_command, strip_colors
 from endstone_endbot.control import RuntimeControlError
-from endstone_endbot.dispatch import CommandSource
 from endstone_endbot.groups import GroupCommandService, GroupStore
 from endstone_endbot.i18n import LocalizedError, localize_error
 from endstone_endbot.operations import OPERATIONS, operation_argv
+from endstone_endbot.principal import Principal
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
 from endstone_endbot.script_params import arguments, declarations
@@ -366,7 +366,7 @@ class LifecycleTests(unittest.TestCase):
         self.raw = FakeControl()
         self.inputs = OwnedInputs(self.raw)
         self.allowed = True
-        self.source = CommandSource(player_id="controller", name="Caller", grant_revision=1)
+        self.source = Principal("player", player_id="controller", name="Caller", grant_revision=1)
         groups = GroupStore(Path(self.directory.name) / "groups.json")
         self.service = GroupCommandService(self.inputs, None, groups, lambda source: self.allowed)
         self.store = ScriptStore(Path(self.directory.name) / "scripts.json", self.config)
@@ -536,15 +536,15 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual([m for m in self.chat_after_end([{"type": "log", "text": "quiet"}]) if "quiet" in m], [])
         self.config = replace(self.config, chat_logs=True)
         self.host.config = self.config
-        console = ScriptRun("r", "test", CommandSource())
+        console = ScriptRun("r", "test", Principal())
         self.assertEqual(self.host._chat_log(console, "hello"), ())
         self.assertFalse(ScriptConfig.from_config({}).chat_logs is False)
         with self.assertRaises(ValueError):
             ScriptConfig.from_config({"chat-logs": 1})
 
     def test_console_lists_and_stops_every_controllers_runs_and_actions_are_audited(self):
-        console = CommandSource()
-        other = CommandSource(player_id="other", name="Other", grant_revision=1)
+        console = Principal()
+        other = Principal("player", player_id="other", name="Other", grant_revision=1)
         self.store.save("loop", "params {}", None)
         first = self.start([{"type": "wait", "id": 2, "ticks": 100000}])
         self.runner = FakeRunner([{"type": "wait", "id": 2, "ticks": 100000}])
@@ -899,7 +899,7 @@ class LifecycleTests(unittest.TestCase):
         with patch.object(self.host, "config", ScriptConfig()), patch.object(self.host, "_process") as process:
             for argv in ([], ["list"], ["runs"], ["help"], ["menu"], ["show", "test"], ["run", "test"],
                          ["stop", "test"], ["delete", "test"], ["save", "test", "params {}"]):
-                for source in (self.source, CommandSource(sender=object())):
+                for source in (self.source, Principal()):
                     with self.subTest(argv=argv, console=source.player_id is None):
                         result = self.host.execute(argv, source)
                         self.assertFalse(result.accepted)
@@ -943,9 +943,9 @@ class OwnershipTests(unittest.TestCase):
         self.store = ScriptStore(self.path, self.config)
         self.host = ScriptService(self.config, self.store, None, None, Path(directory.name), lambda source: True,
                                   process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
-        self.alice = CommandSource(player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
-        self.bob = CommandSource(player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
-        self.console = CommandSource()
+        self.alice = Principal("player", player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
+        self.bob = Principal("player", player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
+        self.console = Principal()
 
     def save(self, source, name, text, revision=None):
         guard = script_forms.ScriptGuard(revision, None if revision is None else name, edit=True)
@@ -1080,7 +1080,7 @@ class FileScriptTests(unittest.TestCase):
         self.runner = lambda *args: FakeRunner([])
         self.host = ScriptService(self.config, self.store, None, None, self.data, lambda source: True,
                                   process_factory=lambda *args: self.runner(*args), bootstrap="trusted")
-        self.alice = CommandSource(player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
+        self.alice = Principal("player", player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
 
     def text(self, result):
         return " ".join(result.messages)
@@ -1145,7 +1145,7 @@ class FileScriptTests(unittest.TestCase):
         # A controller learns the clash; the console (the operator) also gets the stored script's owner.
         self.assertIn("taken.luau: Not loaded: a stored script named taken already exists", self.text(result))
         self.assertNotIn("(owner", self.text(result))
-        console = self.text(self.host.execute(["reload"], CommandSource()))
+        console = self.text(self.host.execute(["reload"], Principal()))
         self.assertIn("named taken already exists (owner Alice)", console)
         self.assertNotEqual(self.store.get("a").revision, revision)
         self.assertEqual(self.store.get("taken").source, "params {}\n")
@@ -1392,8 +1392,8 @@ class BookTests(unittest.TestCase):
         self.host = ScriptService(self.config, self.store, Mock(world=self.world), None, Path(directory.name),
                                   lambda source: True, process_factory=lambda *args: FakeRunner([]),
                                   bootstrap="trusted")
-        self.alice = CommandSource(player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
-        self.bob = CommandSource(player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
+        self.alice = Principal("player", player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
+        self.bob = Principal("player", player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
 
     def text(self, result):
         return " ".join(result.messages)
@@ -1427,7 +1427,7 @@ class BookTests(unittest.TestCase):
         self.assertIn("Only the owner Alice", self.text(self.host.execute(["import", "fromBook"], self.bob)))
         self.world.item = FakeItem("minecraft:stick")
         self.assertIn("Hold a book", self.text(self.host.execute(["import", "other"], self.alice)))
-        self.assertIn("only to players", self.text(self.host.execute(["import", "other"], CommandSource())))
+        self.assertIn("only to players", self.text(self.host.execute(["import", "other"], Principal())))
 
     def test_export_fills_only_an_empty_book_and_can_be_disabled(self):
         self.host.execute(["import", "mine"], self.alice)
@@ -1607,8 +1607,8 @@ class SyntaxTests(unittest.TestCase):
         store = ScriptStore(Path(directory.name) / "scripts.json", config)
         host = ScriptService(config, store, None, None, Path(directory.name), lambda source: True,
                              process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
-        alice = CommandSource(player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
-        bob = CommandSource(player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
+        alice = Principal("player", player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
+        bob = Principal("player", player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
         store.save("row", "params {}\n-- 1", None, "xuid:111", "Alice")
         store.save("row", "params {}\n-- 2", store.get("row").revision, "xuid:111", "Alice")
         store.save("other", "params {}", None, "xuid:111", "Alice")

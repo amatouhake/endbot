@@ -6,6 +6,8 @@ import types
 import unittest
 from pathlib import Path
 
+from endstone_endbot.principal import Principal
+
 
 class FakePlugin:
     pass
@@ -205,7 +207,7 @@ class PluginAdapterTests(unittest.TestCase):
         )
         self.assertTrue(plugin.on_command(sender, FakeCommand("bot"), ["ping"]))
         self.assertEqual(sender.messages, [])
-        self.assertEqual(submissions, [(["ping"], sender)])
+        self.assertEqual(submissions, [(["ping"], Principal())])
 
     def test_group_management_uses_the_authorized_worker_and_control_permission(self) -> None:
         plugin = self.module.EndbotPlugin()
@@ -221,7 +223,7 @@ class PluginAdapterTests(unittest.TestCase):
         self.assertFalse(any("EndbotGroupMembers" in usage for usage in usages))
         self.assertIn("/botgroup (list)<action: EndbotGroupList> [group: message]", usages)
         self.assertTrue(plugin.on_command(FakeConsole(), FakeCommand("botgroup"), ["create", "#miners"]))
-        self.assertEqual(submissions, [(["create", "#miners"], {"command": "botgroup", "group_guard": None})])
+        self.assertEqual(submissions, [(["create", "#miners"], {"command": "botgroup"})])
         unauthorized = types.SimpleNamespace(messages=[], send_message=lambda message: None)
         plugin.on_command(unauthorized, FakeCommand("botgroup"), ["delete", "#miners"])
         self.assertEqual(len(submissions), 1)
@@ -293,8 +295,6 @@ class PluginAdapterTests(unittest.TestCase):
         return player
 
     def test_live_grant_revoke_regrant_cancels_old_sources_and_survives_restart(self):
-        from endstone_endbot.dispatch import CommandSource
-
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)
             player = self.controller_player()
@@ -303,32 +303,26 @@ class PluginAdapterTests(unittest.TestCase):
             command = FakeCommand("botcontrollers")
             plugin.on_command(console, command, ["add", player.name])
             self.assertTrue(plugin._allows_control(player))
-            source = CommandSource(
-                player_id=str(player.unique_id),
-                authorization_revision=plugin._authorization_versions[str(player.unique_id)],
-            )
-            self.assertTrue(plugin._authorize_source(source))
+            source = plugin._principal(player)
+            self.assertTrue(plugin._authorize(source))
             plugin.on_command(console, command, ["remove", player.name])
             self.assertFalse(plugin._allows_control(player))
-            self.assertFalse(plugin._authorize_source(source))
+            self.assertFalse(plugin._authorize(source))
             self.assertEqual(player.permission_values[-1], ("endbot.command.control", False))
             plugin.on_command(console, command, ["add", player.name])
             self.assertTrue(plugin._allows_control(player))
-            self.assertFalse(plugin._authorize_source(source))
+            self.assertFalse(plugin._authorize(source))
             self.assertEqual(player.command_updates, 3)
             restarted = self.controller_fixture(directory)
             self.assertTrue(restarted._allows_control(player))
-            current_source = CommandSource(
-                player_id=str(player.unique_id),
-                authorization_revision=plugin._authorization_versions[str(player.unique_id)],
-            )
-            self.assertTrue(plugin._authorize_source(current_source))
+            current_source = plugin._principal(player)
+            self.assertTrue(plugin._authorize(current_source))
             plugin.on_player_quit(types.SimpleNamespace(player=player))
             self.assertNotIn(str(player.unique_id), plugin._control_attachments)
-            self.assertFalse(plugin._authorize_source(current_source))
+            self.assertFalse(plugin._authorize(current_source))
             plugin._join_controller(player)
             self.assertTrue(plugin._allows_control(player))
-            self.assertFalse(plugin._authorize_source(current_source))
+            self.assertFalse(plugin._authorize(current_source))
 
     def test_form_submissions_share_the_typed_command_gate(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -343,7 +337,8 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertEqual(player.messages, ["Endbot: you do not have Bot control permission"])
             plugin.on_command(FakeConsole(), FakeCommand("botcontrollers"), ["add", player.name])
             plugin._submit_bot(player, ["Alice", "stop"])
-            self.assertEqual(submissions, [(["Alice", "stop"], player)])
+            self.assertEqual(submissions, [(["Alice", "stop"], plugin._principal(player))])
+            self.assertEqual(submissions[0][1].kind, "player")
 
     def test_reply_language_follows_setting_and_client_locale(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -374,7 +369,7 @@ class PluginAdapterTests(unittest.TestCase):
                 self.assertEqual(bool(warnings), warned)
 
     def test_mining_loop_survives_controller_logoff_but_not_revocation(self):
-        from endstone_endbot.dispatch import CommandSource
+        from endstone_endbot.principal import as_job
 
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)
@@ -382,39 +377,74 @@ class PluginAdapterTests(unittest.TestCase):
             plugin.server.online_players = [player]
             console, command = FakeConsole(), FakeCommand("botcontrollers")
             plugin.on_command(console, command, ["add", player.name])
-            source = CommandSource.capture(player)
+            source = plugin._principal(player)
             self.assertEqual((source.xuid, source.name), (player.xuid, player.name))
+            job = as_job(source)
             plugin.on_player_quit(types.SimpleNamespace(player=player))
             plugin.server.online_players = []
-            # Queued commands are invalidated by logoff; a running loop is not.
-            self.assertFalse(plugin._authorize_source(source))
-            self.assertTrue(plugin._authorize_loop(source))
+            # Queued commands are invalidated by logoff; a running job is not.
+            self.assertFalse(plugin._authorize(source))
+            self.assertTrue(plugin._authorize(job))
             plugin.on_command(console, command, ["remove", f"xuid:{player.xuid}"])
-            self.assertFalse(plugin._authorize_loop(source))
-            self.assertTrue(plugin._authorize_loop(CommandSource(sender=console)))
+            self.assertFalse(plugin._authorize(job))
+            self.assertTrue(plugin._authorize(as_job(Principal())))
 
-    def test_script_grant_revision_survives_logout_but_revoke_regrant_never_revives_it(self):
-        from dataclasses import replace
-
-        from endstone_endbot.dispatch import CommandSource
+    def test_revoke_and_regrant_never_revive_an_older_job(self):
+        from endstone_endbot.principal import as_job
 
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)
             player = self.controller_player()
             plugin.server.online_players = [player]
             self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
-            source = replace(CommandSource.capture(player), script_run_id="run1", grant_revision=0)
-            self.assertTrue(plugin._authorize_script(source))
-            plugin.on_player_quit(types.SimpleNamespace(player=player))
-            plugin.server.online_players = []
-            self.assertTrue(plugin._authorize_script(source))
+            job = as_job(plugin._principal(player))
+            self.assertTrue(plugin._authorize(job))
             self.assertTrue(plugin._controller_operation(["remove", f"xuid:{player.xuid}"])["ok"])
-            self.assertFalse(plugin._authorize_script(source))
             self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
             self.assertTrue(plugin._allows_control(player))
-            self.assertFalse(plugin._authorize_script(source))
+            self.assertFalse(plugin._authorize(job))
+            self.assertTrue(plugin._authorize(as_job(plugin._principal(player))))
+
+    def test_principal_captures_grant_origin_language_and_copies_form_values(self):
+        from endstone_endbot.script_forms import ScriptGuard
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            player.locale = "ja_JP"
+            player.location = types.SimpleNamespace(x=1, y=64, z=2, yaw=90, pitch=0,
+                                                    dimension=types.SimpleNamespace(name="Overworld"))
+            plugin._grant_versions[str(player.unique_id)] = 7
+            guard = ScriptGuard("r1", "test", values={"name": "Alice"})
+            principal = plugin._principal(player, command="botscript", group_guard=guard)
+            guard.values["name"] = "Changed"
+            self.assertEqual((principal.kind, principal.grant_revision, principal.language), ("player", 7, "ja"))
+            self.assertEqual(principal.origin, {"x": 1.0, "y": 64.0, "z": 2.0, "yaw": 90.0, "pitch": 0.0,
+                                                "dimension": "Overworld"})
+            self.assertEqual(principal.group_guard.values, {"name": "Alice"})
+            self.assertIsNone(plugin._principal(player).origin)
+            self.assertEqual(plugin._principal(FakeConsole()), Principal())
+
+    def test_script_grant_revision_survives_logout_but_revoke_regrant_never_revives_it(self):
+        from dataclasses import replace
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
+            source = replace(plugin._principal(player), kind="run", run_id="run1")
+            self.assertTrue(plugin._authorize(source))
+            plugin.on_player_quit(types.SimpleNamespace(player=player))
+            plugin.server.online_players = []
+            self.assertTrue(plugin._authorize(source))
+            self.assertTrue(plugin._controller_operation(["remove", f"xuid:{player.xuid}"])["ok"])
+            self.assertFalse(plugin._authorize(source))
+            self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
+            self.assertTrue(plugin._allows_control(player))
+            self.assertFalse(plugin._authorize(source))
             new_source = replace(source, grant_revision=plugin._grant_versions[str(player.unique_id)])
-            self.assertTrue(plugin._authorize_script(new_source))
+            self.assertTrue(plugin._authorize(new_source))
 
     def test_controller_cannot_manage_access_even_with_external_permission(self):
         with tempfile.TemporaryDirectory() as directory:

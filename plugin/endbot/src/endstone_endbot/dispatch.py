@@ -5,46 +5,11 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import replace
 
 from endstone_endbot.commands import ERROR, WARNING, CommandResult, reply, strip_colors
 from endstone_endbot.i18n import tr
-
-
-@dataclass(frozen=True, slots=True)
-class CommandSource:
-    """A worker-safe reference to a command source.
-
-    Endstone player wrappers are native objects whose lifetime ends when the
-    player disconnects.  Never retain one across asynchronous runtime IPC.
-    Console-style senders are process-lifetime objects and remain safe.
-    """
-
-    player_id: str | None = None
-    sender: object | None = None
-    authorization_revision: int | None = None
-    # Identity snapshot: lets a continuous mining loop recheck permission
-    # after its controller logs off, without retaining the player wrapper.
-    xuid: str | None = None
-    name: str | None = None
-    # Reply language, resolved on the server thread when the command arrives.
-    language: str = "en"
-    group_guard: object | None = None
-    grant_revision: int | None = None
-    script_run_id: str | None = None
-    script_origin: dict | None = None
-
-    @classmethod
-    def capture(cls, sender, language: str = "en") -> CommandSource:
-        if hasattr(sender, "unique_id") and hasattr(sender, "location"):
-            return cls(
-                player_id=str(sender.unique_id),
-                xuid=str(getattr(sender, "xuid", None) or "") or None,
-                name=str(getattr(sender, "name", None) or "") or None,
-                language=language,
-            )
-        # The console stays English, like the server log it shares.
-        return cls(sender=sender)
+from endstone_endbot.principal import Principal
 
 
 class ServerThreadBridge:
@@ -120,22 +85,22 @@ class ServerThreadBridge:
 class ServerThreadWorld:
     """Expose the world adapter to workers without off-thread Endstone access."""
 
-    def __init__(self, world, bridge: ServerThreadBridge, resolve_sender: Callable[[CommandSource], object]) -> None:
+    def __init__(self, world, bridge: ServerThreadBridge, resolve_sender: Callable[[Principal], object]) -> None:
         self._world = world
         self._bridge = bridge
         self._resolve_sender = resolve_sender
 
-    def _sender(self, source: CommandSource):
+    def _sender(self, source: Principal):
         sender = self._resolve_sender(source)
-        if source.player_id is not None and sender is None and source.script_run_id is None:
+        if source.player_id is not None and sender is None and source.run_id is None:
             raise ValueError("Command player is no longer online")
         return sender
 
     def default_spawn(self, sender):
         def resolve():
             player = self._sender(sender)
-            origin = sender.script_origin
-            if player is None and sender.script_run_id is not None and origin is not None:
+            origin = sender.origin
+            if player is None and sender.run_id is not None and origin is not None:
                 return {"coordinates": [origin[axis] for axis in ("x", "y", "z")],
                         "rotation": [origin[axis] for axis in ("yaw", "pitch")], "dimension": origin["dimension"]}
             return self._world.default_spawn(player)
@@ -203,7 +168,7 @@ class ServerThreadWorld:
         return self._bridge.call(lambda: self._world.assert_name_available(name, identity_id))
 
 
-def _send(sender, source: CommandSource, message: str) -> None:
+def _send(sender, source: Principal, message: str) -> None:
     """Deliver a reply; only players get color codes.
 
     Endstone renders codes on an interactive console, but the console stream
@@ -220,32 +185,21 @@ class AsyncCommandRunner:
         self,
         service,
         bridge: ServerThreadBridge,
-        resolve_sender: Callable[[CommandSource], object],
-        authorize: Callable[[CommandSource], bool] | None = None,
-        revision: Callable[[object], int | None] | None = None,
-        authorize_loop: Callable[[CommandSource], bool] | None = None,
+        resolve_sender: Callable[[Principal], object],
+        authorize: Callable[[Principal], bool] | None = None,
         log: Callable[[str, str], None] | None = None,
         show_view: Callable[[object, object], None] | None = None,
-        language: Callable[[object], str] | None = None,
         scripts=None,
-        grant_revision=None,
-        origin=None,
     ) -> None:
         self._service = service
         self._bridge = bridge
         self._resolve_sender = resolve_sender
+        # One two-layer check for commands, runs and jobs (see Principal).
         self._authorize = authorize
-        self._revision = revision
-        # Loops outlive their controller's session; commands do not.
-        self._authorize_loop = authorize_loop or authorize
         self._log = log
         # Presents a result's form view to its player on the server thread.
         self._show_view = show_view
-        # Resolves a player's reply language on the server thread.
-        self._language = language
         self._scripts = scripts
-        self._grant_revision = grant_revision
-        self._origin = origin
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
@@ -271,12 +225,12 @@ class AsyncCommandRunner:
                 return
 
         def authorize(source):
-            return self._authorize_loop is None or self._bridge.call(lambda: self._authorize_loop(source))
+            return self._authorize is None or self._bridge.call(lambda: self._authorize(source))
 
         for source, level, message, log_message in self._service.poll_mining(authorize) or ():
             self._notify(source, level, message, log_message)
 
-    def _notify(self, source: CommandSource, level: str, message: str, log_message: str) -> None:
+    def _notify(self, source: Principal, level: str, message: str, log_message: str) -> None:
         def deliver() -> None:
             if self._log is not None:
                 self._log(level, strip_colors(log_message))
@@ -287,26 +241,15 @@ class AsyncCommandRunner:
 
         self._bridge.post(deliver)
 
-    def submit(self, arguments: list[str], sender, *, command: str = "bot", group_guard=None) -> bool:
+    def submit(self, arguments: list[str], principal: Principal, *, command: str = "bot") -> bool:
+        """Queue one command; the adapter captured ``principal`` on the server thread."""
         if command not in {"bot", "botgroup", "botscript"}:
             raise ValueError("Unknown Endbot command root")
-        source = CommandSource.capture(sender, self._language(sender) if self._language else "en")
-        if group_guard is not None:
-            if getattr(group_guard, "values", None) is not None:
-                group_guard = replace(group_guard, values=dict(group_guard.values),
-                                      targets=dict(group_guard.targets or {}))
-            source = replace(source, group_guard=group_guard)
-        if self._revision is not None:
-            source = replace(source, authorization_revision=self._revision(sender))
-        if self._grant_revision is not None:
-            source = replace(source, grant_revision=self._grant_revision(sender))
-        if command == "botscript" and self._origin is not None:
-            source = replace(source, script_origin=self._origin(sender))
         with self._lock:
             if not self._open:
                 return False
             try:
-                self._executor.submit(self._execute, list(arguments), source, command)
+                self._executor.submit(self._execute, list(arguments), principal, command)
             except RuntimeError:
                 return False
         return True
@@ -327,7 +270,7 @@ class AsyncCommandRunner:
         self._executor.shutdown(wait=False)
         self._poll_executor.shutdown(wait=False)
 
-    def _execute(self, arguments: list[str], source: CommandSource, command: str = "bot") -> None:
+    def _execute(self, arguments: list[str], source: Principal, command: str = "bot") -> None:
         with self._lock:
             if not self._open:
                 return

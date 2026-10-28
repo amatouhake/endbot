@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 from endstone_endbot.commands import CommandResult, reply, strip_colors
-from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
+from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
+from endstone_endbot.principal import Principal
 
 
 class ScheduledCallbacks:
@@ -25,7 +26,7 @@ class DispatchTests(unittest.TestCase):
         from endstone_endbot.i18n import LocalizedError
 
         origin = {"x": 1., "y": 64., "z": 2., "yaw": 90., "pitch": 0., "dimension": "Overworld"}
-        source = CommandSource(player_id="controller", script_run_id="run1", script_origin=origin)
+        source = Principal("player", player_id="controller", run_id="run1", origin=origin)
         bridge = SimpleNamespace(call=lambda callback: callback())
         world = ServerThreadWorld(object(), bridge, lambda source: None)
         self.assertEqual(world.default_spawn(source), {"coordinates": [1., 64., 2.],
@@ -76,11 +77,10 @@ class DispatchTests(unittest.TestCase):
             checked += 1
         self.assertGreater(checked, 10)
 
-    def test_script_routing_captures_grant_origin_and_copies_form_values(self):
+    def test_script_routing_passes_the_captured_principal_to_scripts(self):
         from types import SimpleNamespace
 
         from endstone_endbot.script_config import ScriptConfig
-        from endstone_endbot.script_forms import ScriptGuard
 
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
@@ -88,20 +88,15 @@ class DispatchTests(unittest.TestCase):
         captured, closed = [], threading.Event()
         scripts = SimpleNamespace(config=ScriptConfig(enabled=True), cancel=lambda: None, close=closed.set)
         scripts.execute = lambda argv, source: captured.append((argv, source)) or CommandResult(True)
-        player = SimpleNamespace(unique_id="controller", location=object(), name="Caller", xuid="123")
-        origin = {"x": 1, "y": 64, "z": 2}
-        guard = ScriptGuard("r1", "test", values={"name": "Alice"})
+        player = SimpleNamespace(send_message=lambda message: None)
+        principal = Principal("player", player_id="controller", grant_revision=7, origin={"x": 1, "y": 64, "z": 2})
         runner = AsyncCommandRunner(object(), bridge, lambda source: player, authorize=lambda source: True,
-                                    scripts=scripts, grant_revision=lambda sender: 7, origin=lambda sender: origin)
+                                    scripts=scripts)
         self.addCleanup(runner.close)
-        self.assertTrue(runner.submit(["run", "test"], player, command="botscript", group_guard=guard))
-        guard.values["name"] = "Changed"
+        self.assertTrue(runner.submit(["run", "test"], principal, command="botscript"))
         scheduled.run_next()
         scheduled.run_next()
-        self.assertEqual(captured[0][0], ["run", "test"])
-        self.assertEqual(captured[0][1].grant_revision, 7)
-        self.assertEqual(captured[0][1].script_origin, origin)
-        self.assertEqual(captured[0][1].group_guard.values, {"name": "Alice"})
+        self.assertEqual(captured, [(["run", "test"], principal)])
         runner.close()
         self.assertTrue(closed.wait(1))
 
@@ -119,15 +114,15 @@ class DispatchTests(unittest.TestCase):
             def execute_group(self, argv, source):
                 captured.append((argv, source))
                 return CommandResult(True)
-        player = SimpleNamespace(unique_id="player-id", location=object(), name="Tester", xuid="123")
+        player = SimpleNamespace(send_message=lambda message: None)
         runner = AsyncCommandRunner(Service(), bridge, lambda source: player, authorize=lambda source: True)
         self.addCleanup(runner.close)
-        self.assertTrue(runner.submit(["delete", "#miners"], player, command="botgroup", group_guard=guard))
+        principal = Principal("player", player_id="player-id", group_guard=guard)
+        self.assertTrue(runner.submit(["delete", "#miners"], principal, command="botgroup"))
         scheduled.run_next()  # authorization on server thread
         scheduled.run_next()  # delivery
         self.assertEqual(captured[0][0], ["delete", "#miners"])
         self.assertIs(captured[0][1].group_guard, guard)
-        self.assertIsNone(captured[0][1].sender)
         self.assertEqual(captured[0][1].player_id, "player-id")
 
     def test_periodic_poll_is_coalesced_and_not_blocked_by_a_slow_command(self):
@@ -155,7 +150,7 @@ class DispatchTests(unittest.TestCase):
         runner = AsyncCommandRunner(Service(), bridge, lambda source: None)
         self.addCleanup(runner.close)
         # A spawn can block the command worker for longer than the mining lease.
-        runner.submit(["Bob", "spawn"], object())
+        runner.submit(["Bob", "spawn"], Principal())
         self.assertTrue(executing.wait(1))
         runner.poll()
         self.assertTrue(polled.wait(1))
@@ -193,11 +188,11 @@ class DispatchTests(unittest.TestCase):
 
         service = Service()
         sender = Sender()
-        runner = AsyncCommandRunner(service, bridge, lambda source: source.sender)
+        runner = AsyncCommandRunner(service, bridge, lambda source: sender)
         self.addCleanup(runner.close)
         self.addCleanup(bridge.close)
 
-        self.assertTrue(runner.submit(["Alice", "reconnect"], sender))
+        self.assertTrue(runner.submit(["Alice", "reconnect"], Principal()))
         self.assertTrue(executed.wait(1))
         self.assertNotEqual(service.thread, main_thread)
         self.assertEqual(sender.messages, [])
@@ -220,27 +215,29 @@ class DispatchTests(unittest.TestCase):
             def send_message(self, message):
                 self.messages.append(message)
 
-        sender, offline = Sender(), CommandSource(player_id="00000000-0000-4000-8000-000000000001")
-        player = CommandSource(player_id="00000000-0000-4000-8000-000000000002", sender=sender)
+        sender, offline = Sender(), Principal("player", player_id="00000000-0000-4000-8000-000000000001")
+        player = Principal("player", player_id="00000000-0000-4000-8000-000000000002")
         console = Sender()
+        senders = {player.player_id: sender, None: console}
 
         class Service:
             def poll_mining(self, authorize):
                 return [(player, "warning", "Endbot: Alice: stopped", "Endbot: Alice: stopped"),
                         (offline, "warning", "Endbot: Bob: stopped", "Endbot: Bob: stopped"),
-                        (CommandSource(sender=console), "warning", "Endbot: Carol: stopped", "Endbot: Carol: stopped")]
+                        (Principal(), "warning", "Endbot: Carol: stopped", "Endbot: Carol: stopped")]
 
             def execute(self, arguments, source):
                 return CommandResult(True, ("Endbot: Alice: started",), log_level="info")
 
         runner = AsyncCommandRunner(
-            Service(), bridge, lambda source: source.sender, log=lambda level, message: logged.append((level, message))
+            Service(), bridge, lambda source: senders.get(source.player_id),
+            log=lambda level, message: logged.append((level, message)),
         )
         self.addCleanup(runner.close)
         runner.poll()
         for _ in range(3):
             scheduled.run_next()
-        runner.submit(["Alice", "destroy", "continuous"], console)
+        runner.submit(["Alice", "destroy", "continuous"], Principal())
         scheduled.run_next()
         # A controller who logged off still has the console log entry; the
         # console is not shown the same line twice.
@@ -270,14 +267,14 @@ class DispatchTests(unittest.TestCase):
                 self.messages.append(message)
 
         sender = Sender()
-        player = CommandSource(player_id="00000000-0000-4000-8000-000000000002", sender=sender)
+        player = Principal("player", player_id="00000000-0000-4000-8000-000000000002")
 
         class Service:
             def vote(self, *args):
                 raise AssertionError("unused")
 
         runner = AsyncCommandRunner(
-            Service(), bridge, lambda source: source.sender, log=lambda level, message: logged.append((level, message))
+            Service(), bridge, lambda source: sender, log=lambda level, message: logged.append((level, message))
         )
         self.addCleanup(runner.close)
         runner._deliver(player, CommandResult(True, ("Endbot: Alice: started",), log_level="info"), chat=False)
@@ -285,7 +282,7 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(sender.messages, [])
         self.assertEqual(logged, [("info", "Endbot: Alice: started")])
 
-    def test_player_language_is_captured_and_logs_stay_english(self) -> None:
+    def test_player_language_reaches_the_service_and_logs_stay_english(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
         self.addCleanup(bridge.close)
@@ -315,12 +312,11 @@ class DispatchTests(unittest.TestCase):
             bridge,
             lambda source: player if source.player_id else None,
             log=lambda level, message: logged.append(message),
-            language=lambda sender: "ja",
         )
         self.addCleanup(runner.close)
-        runner.submit(["Alice", "destroy", "stop"], player)
+        runner.submit(["Alice", "destroy", "stop"], Principal("player", player_id=Player.unique_id, language="ja"))
         scheduled.run_next()
-        runner.submit(["Alice", "destroy", "stop"], object())
+        runner.submit(["Alice", "destroy", "stop"], Principal())
         scheduled.run_next()
         self.assertEqual([source.language for source in sources], ["ja", "en"])
         self.assertEqual(player.messages, ["ja"])
@@ -352,12 +348,13 @@ class DispatchTests(unittest.TestCase):
                 return CommandResult(True, (colored,), log_level=log_level)
 
         def resolve(source):
-            return player if source.player_id == player.unique_id else source.sender
+            return player if source.player_id == player.unique_id else console
 
         runner = AsyncCommandRunner(Service(), bridge, resolve, log=lambda level, message: logged.append(message))
         self.addCleanup(runner.close)
-        for arguments, sender in ((["plain"], player), (["plain"], console), (["logged"], player)):
-            runner.submit(arguments, sender)
+        in_game = Principal("player", player_id=Player.unique_id)
+        for arguments, principal in ((["plain"], in_game), (["plain"], Principal()), (["logged"], in_game)):
+            runner.submit(arguments, principal)
             scheduled.run_next()
 
         self.assertNotEqual(colored, strip_colors(colored))
@@ -419,7 +416,7 @@ class DispatchTests(unittest.TestCase):
 
         # The controller is offline: its source no longer resolves to a player.
         world = ServerThreadWorld(World(), bridge, lambda source: None)
-        offline = CommandSource(player_id="00000000-0000-4000-8000-000000000001")
+        offline = Principal("player", player_id="00000000-0000-4000-8000-000000000001")
         results = {}
 
         def worker():
@@ -481,21 +478,16 @@ class DispatchTests(unittest.TestCase):
         service = Service()
         player = Player()
         resolved[str(player.unique_id)] = player
-        runner = AsyncCommandRunner(
-            service,
-            bridge,
-            lambda source: resolved.get(source.player_id) if source.player_id else source.sender,
-        )
+        runner = AsyncCommandRunner(service, bridge, lambda source: resolved.get(source.player_id))
         self.addCleanup(runner.close)
         self.addCleanup(bridge.close)
 
-        self.assertTrue(runner.submit(["Alice", "status"], player))
+        self.assertTrue(runner.submit(["Alice", "status"], Principal("player", player_id=str(player.unique_id))))
         resolved.clear()
         release.set()
         scheduled.run_next()
 
-        self.assertEqual(service.source, CommandSource(player_id=str(player.unique_id)))
-        self.assertIsNone(service.source.sender)
+        self.assertEqual(service.source, Principal("player", player_id=str(player.unique_id)))
 
     def test_disable_releases_pending_server_thread_calls(self) -> None:
         scheduled = ScheduledCallbacks()
@@ -536,22 +528,23 @@ class DispatchTests(unittest.TestCase):
 
         def authorize(source):
             authorization_threads.append(threading.get_ident())
-            self.assertIsNone(source.sender)
             return source.authorization_revision == epoch[0]
 
         service = type(
             "Service", (), {"execute": lambda _, args, source: calls.append(args) or CommandResult(True, ("done",))}
         )()
-        runner = AsyncCommandRunner(service, bridge, lambda source: player, authorize, lambda sender: epoch[0])
+        runner = AsyncCommandRunner(service, bridge, lambda source: player, authorize)
         self.addCleanup(runner.close)
-        self.assertTrue(runner.submit(["Bot", "despawn"], player))
+        submitted = Principal("player", player_id="player-id", authorization_revision=epoch[0])
+        self.assertTrue(runner.submit(["Bot", "despawn"], submitted))
         epoch[0] += 2  # Revoke and regrant while the main-thread authorization check is queued.
         scheduled.run_next()
         scheduled.run_next()
         self.assertEqual(calls, [])
         self.assertIn("permission was revoked", messages[0])
         self.assertEqual(authorization_threads, [main_thread])
-        self.assertTrue(runner.submit(["Bot", "status"], player))
+        current = Principal("player", player_id="player-id", authorization_revision=epoch[0])
+        self.assertTrue(runner.submit(["Bot", "status"], current))
         scheduled.run_next()
         scheduled.run_next()
         self.assertEqual(calls, [["Bot", "status"]])

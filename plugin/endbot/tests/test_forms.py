@@ -8,9 +8,10 @@ from test_command_service import FakeControl, FakeWorld
 
 from endstone_endbot import forms
 from endstone_endbot.commands import BotCommandService, CommandResult, parse_command, strip_colors
-from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge
+from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge
 from endstone_endbot.form_adapter import FormPresenter
 from endstone_endbot.i18n import tr
+from endstone_endbot.principal import Principal
 
 ONLINE = {
     "identityId": "00000000-0000-4000-8000-000000000001",
@@ -340,12 +341,12 @@ class ServiceMenuTests(unittest.TestCase):
         self.world = FakeWorld()
         self.world.observe = lambda identity: OBSERVED
         self.service = PlainCommandService(self.control, self.world)
-        self.player = CommandSource(player_id="11111111-2222-4333-8444-555555555555")
+        self.player = Principal("player", player_id="11111111-2222-4333-8444-555555555555")
 
     def test_menu_is_player_only_and_needs_no_runtime_for_the_refusal(self):
         for service in (self.service, PlainCommandService()):
             for arguments in (["menu"], ["Alice", "menu"]):
-                result = service.execute(arguments, CommandSource(sender=object()))
+                result = service.execute(arguments, Principal())
                 self.assertEqual(result.messages, ("Endbot: menu is available only to players; use /bot help",))
                 self.assertIsNone(result.view)
 
@@ -363,7 +364,7 @@ class ServiceMenuTests(unittest.TestCase):
 
     def test_bare_bot_opens_list_for_players_and_help_for_console(self):
         self.assertEqual(self.service.execute([], self.player).view, forms.BotListView((ONLINE,)))
-        self.assertIn("Endbot help page 1", self.service.execute([], CommandSource()).message)
+        self.assertIn("Endbot help page 1", self.service.execute([], Principal()).message)
 
     def test_unknown_bot_menu_fails_like_any_command(self):
         result = self.service.execute(["Ghost", "menu"], self.player)

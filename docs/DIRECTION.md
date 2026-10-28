@@ -129,6 +129,29 @@ Removing access:
 | The operator | `endbot web revoke <GamerTag>` at the console | Delete the account and end every session |
 | Automatic | Controller revocation | Ends every web session at once |
 
+Optional: a trusted external site (off by default). An operator who already runs a site where players sign in, for
+example with their own Microsoft OAuth, can let that site prove the link instead of the in-game code:
+
+```text
+operator's site (knows the user's XUID)
+   │ signed, short-lived assertion:
+   │ { sub: XUID, gtg: GamerTag, aud: this server, exp: about 60 s, jti: single use }
+   ▼
+Worker ──relays──▶ endbotd: verifies with the site's public key from endbot.toml, rejects reused jti
+                            → creates or links the account, or signs the user in
+```
+
+- The operator generates a key pair, registers the public key in `endbot.toml` and adds a few lines to their site that
+  sign the assertion and redirect. The ES384 signed-token form mirrors the existing local Bot authentication.
+- The operator chooses whether the site only links (later logins use passkeys) or is also the sign-in (SSO, no
+  passkey).
+- Risk: whoever controls that site can claim any XUID. The operator opts into that trust explicitly; controller
+  grants stay console-only, so no grant can be widened.
+- Operators who want Microsoft sign-in can plug in their own this way, which further reduces the need for Endbot to
+  carry it.
+- Site-to-site API access (for example showing Bot status inside the operator's site) is a larger, later step that
+  the Operation API (BOT-019) would make possible; it is not planned now.
+
 Microsoft sign-in (OAuth → Xbox user token → XSTS, yielding XUID and GamerTag) is deferred, not rejected; it can be
 added later as another way to prove the link. It is not the primary method because:
 

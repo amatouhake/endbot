@@ -755,6 +755,8 @@ Scripts can wait for mining jobs (`waitMining`) and for Bots to come online, but
 or `interact` repetition, and a teleport's arrival, are only covered by guessing with `wait(ticks)`. Add waits that end
 when those continuing inputs finish (or report why they stopped), with the same timeout, authority recheck and
 Group/identity pinning as `waitMining`. This needs runtime-side completion state for each input channel.
+Shape (agreed in the [interface guide](INTERFACE_GUIDE.md#d2-the-shape-of-waits-in-luau)): a continuing operation's
+result carries a job, waited with `job:wait{timeout = ...}`; `waitMining` stays as an alias until 1.0.
 
 ## BOT-013: Web script editor
 
@@ -847,7 +849,7 @@ operations, and performs world observation, teleport and block reads. Keep all i
 Status: **Planned, after BOT-020** (2026-10-28 JST).
 
 Worker + one Durable Object per server; endbotd connects outbound over WebSocket after `endbot web pair <code>`.
-Passkey web accounts linked to an XUID once with `/bot web link <code>`; `endbot web invite --admin` bootstraps the
+Passkey web accounts linked to an XUID once with `/botweb link <code>`; `endbot web invite --admin` bootstraps the
 first account. endbotd re-authorizes every relayed operation. Order: status and logs, then script editing (BOT-013),
 then Bot control. Controller administration stays console-only. Main design work: pairing and key rotation, session
 and CSRF handling, rate limits, revocation of web sessions when a controller is revoked, deployment documentation.

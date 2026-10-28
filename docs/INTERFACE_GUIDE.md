@@ -1,6 +1,6 @@
 # Interface guide: one vocabulary, a grammar per surface
 
-Status: **Agreed principles; the open questions at the end are proposals** (2026-10-28 JST). Applies to chat commands,
+Status: **Agreed** (2026-10-28 JST); not yet implemented. Applies to chat commands,
 in-game forms and books, Luau scripts and the web. The technical basis is the Operation API (BOT-019); see also the
 [product direction](DIRECTION.md).
 
@@ -60,23 +60,25 @@ same name. Operation names, parameter names, choice values, units (ticks) and ta
 | Mode | モード | `once`, `continuous`, `interval`, `stop` |
 | Script | スクリプト | Stored Luau source owned by a controller |
 | Run | 実行 | One execution of a script |
+| Job | ジョブ | What a Bot keeps doing after an operation returns: continuous or interval input, `for`, mining with `count` |
 | Watch | 監視 | A registered interest in a world change that a run can wait on |
+| Trigger | トリガー | (BOT-022) A watch that survives restarts and starts a run; managed under `/botscript` |
 
-Open questions below may add or change terms.
+*Loop* is an internal word only and does not appear in user-facing text.
 
-## Open questions (proposals)
+## Decisions
 
-### Q1. The noun for ongoing Bot work
+### D1. The noun for ongoing Bot work
 
 The grammar is already consistent (`once`, `continuous`, `interval`, `stop`, with `for`, `hold`, `count`). The nouns
 for what a continuing operation leaves running are not: docs say mining *job*, *loop* and, once, a finished mining
-*run*. Proposal: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (continuous or interval
+*run*. Decision: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (continuous or interval
 input, `for`, mining with `count`). *Run* is reserved for scripts. *Loop* stays an internal word only. Trigger
 (BOT-022) is added when it exists: a persistent watch that starts a run.
 
-### Q2. The shape of waits in Luau
+### D2. The shape of waits in Luau
 
-Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is a method. Proposal:
+Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is a method. Decision:
 
 - A continuing operation's result carries its job: `local job = b:destroy("stone", {count = 64}).job`, waited with
   `job:wait{timeout = 1200}`. This generalizes `waitMining` and is how BOT-016 adds waits for move, use and attack.
@@ -87,10 +89,10 @@ Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is 
   "timeout"` and does not stop the job.
 - `waitOnline(b)` and `b:waitMining{}` remain as documented aliases until 1.0 so stored scripts keep working.
 
-### Q3. Command roots
+### D3. Command roots
 
 Rule: `/bot` makes Bots do things (single Bots or Groups); `/bot<noun>` manages that noun: `/botgroup` group
 definitions, `/botscript` scripts and runs. Triggers will be managed under `/botscript`.
 
 Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would collide with a Bot
-called `web`. Proposal: `/botweb link <code>` (also `/botweb status` and `/botweb unlink`).
+called `web`. Decision: `/botweb link <code>` (also `/botweb status` and `/botweb unlink`).

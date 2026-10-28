@@ -89,7 +89,7 @@ web account (passkey login) ──link──▶ XUID (key of the existing contro
 Primary link flow (one game join, no Azure registration):
 
 1. On the web, create an account by registering a passkey. The page shows a short code, e.g. `K7Q-4M2`.
-2. In game, run `/bot web link K7Q-4M2`.
+2. In game, run `/botweb link K7Q-4M2`.
 3. The plugin knows the player's XUID because BDS already validated their Xbox login; endbotd tells the Worker that
    the code belongs to that XUID.
 4. Done. Later logins use the passkey only; the game is not needed again.

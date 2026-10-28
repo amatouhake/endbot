@@ -74,13 +74,15 @@ browser ──HTTPS──▶ Worker (static UI, login, sessions)
 - Deployment and pairing: `endbot web deploy` uploads the prebuilt Worker to the operator's account through the
   Cloudflare API, generates a pairing secret and stores it as a Worker secret. endbotd then pairs with its
   own key pair, whose private key stays on the PC (never in the repository). The Worker has no admin page.
-- **endbotd remains the authority.** The Worker stores only passkey public keys and sessions. The link table (web
-  account ↔ XUID) lives in endbotd, which decides every relayed request against its own controller policy, exactly
-  like an in-game request. A compromised Worker can therefore misuse the sessions it relays, within those users'
-  grants, but cannot claim other XUIDs or widen grants: controller grants and revocations stay console-only.
-- Cloudflare holds the minimum: XUID, GamerTag, passkey public keys and sessions. Script source and operation logs
-  are relayed, never stored there. Scripts stay on the PC; when the PC is offline the web shows it as offline.
-  Mirroring to D1 can be added later if offline editing becomes necessary.
+- **endbotd remains the authority.** The Worker stores passkey public keys and sessions. The authoritative link table
+  (web account ↔ XUID) lives in endbotd, which decides every relayed request against its own permission model, exactly
+  like an in-game request. A compromised Worker could act as any already-linked account within that person's role,
+  but cannot link a new XUID (that needs a code endbotd issued in game) or widen anyone's role: grants and revocations
+  stay console-only. Having endbotd verify passkey assertions itself would narrow this further; it is a hardening
+  option for BOT-021, not a decision.
+- Cloudflare holds the minimum: passkey public keys, sessions, and a display copy of each account's XUID and GamerTag.
+  Script source and operation logs are relayed, never stored there. Scripts stay on the PC; when the PC is offline the
+  web shows it as offline. Mirroring to D1 can be added later if offline editing becomes necessary.
 - Versions: the Worker and endbotd speak a versioned protocol. endbotd refuses a mismatched Worker and says so;
   `endbot update` redeploys the Worker (or tells the operator to run `endbot web deploy`).
 - With BDS stopped, endbotd still runs, so the web can show status and logs and edit scripts. Starting and stopping
@@ -192,17 +194,17 @@ joining the game becomes a requirement, or if passkeys turn out to block many us
 Events will keep being requested (a player did something, the server started, a chat message arrived, ...). Instead
 of designing each one, Endbot defines how any event is added and consumed.
 
-**Event kinds live in the same JSON registry as operations.** Names are `category.action`: `player.join`,
-`player.chat`, `block.change`, `bot.died`, `server.started`. Each kind declares its filter fields (name, position or
-area, block type, ...), its payload shape, its source, its delivery guarantee and its visibility (see the open point
-below). Adding a kind means one source adapter and one registry entry; Luau completion, the web trigger editor and the
-docs follow from the registry, as the [interface guide](INTERFACE_GUIDE.md) requires.
+**Event kinds live in the same JSON registry as operations.** Names are `category.action`: `player.join`, `player.chat`,
+`block.change`, `bot.died`, `server.started`. Each kind declares its filter fields (name, position or area, block type,
+...), its payload shape, its source, its delivery guarantee and its visibility (see who may observe what, below). Adding
+a kind means one source adapter and one registry entry; Luau completion, the web trigger editor and the docs follow from
+the registry, as the [interface guide](INTERFACE_GUIDE.md) requires.
 
 | Source | Examples |
 | --- | --- |
-| Plugin (in game) | Block changed, broken or placed; player joined, left, chatted, died, changed dimension; entered an area (checked positions) |
+| Plugin (in game) | Block changed, broken or placed; player joined, left, chatted, died; in-game time (day and night) |
 | Runtime and Bots | Bot online or offline, Bot died, job finished |
-| endbotd | Server started or stopped (it supervises BDS), schedules and in-game time, script run finished |
+| endbotd | Server started or stopped (it supervises BDS), wall-clock schedules, script run finished |
 
 **Scripts wait on a watch.** One generic form, not one function per kind:
 
@@ -262,7 +264,9 @@ checkpoint; whether a checkpoint ships on its own or together with later ones is
 1. BOT-019 (Operation API, principals) with the agreed waits (BOT-016, interface guide D2).
 2. BOT-020 (endbotd). It moves the policy and script stores, so `endbot update` and `--rollback` must carry the
    migration in both directions.
-3. BOT-021 (web), then BOT-022 (watches, then triggers).
+3. BOT-024 (permission model: roles, ownership, script declarations), before anything reaches the web or runs
+   unattended.
+4. BOT-021 (web) and BOT-022 (watches first; persistent triggers need step 2). Their order is open.
 
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

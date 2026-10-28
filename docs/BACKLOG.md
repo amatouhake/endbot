@@ -801,7 +801,7 @@ or new operations here.
 
 ```text
 Operation  { op, target: "Alice" | "#miners" | "#miners[2]", params: { typed } }
-Principal  { kind: player | web | console | trigger, xuid?, name, grantRevision, language, origin? }
+Principal  { kind: player | web | console | trigger, role, xuid?, name, grantRevision, language, origin? }
 Outcome    { ok, code, args, data }        -- localized at the edge
 Event      { to: Principal, kind, data }   -- chat, console log and later the web are sinks
 ```
@@ -818,11 +818,11 @@ Agreed decisions:
 - Error codes start coarse, by what the user should do next: authorization, not found, invalid argument, temporary
   failure, conflict. Refine only when needed. During migration an Outcome carries both a code and the existing
   localized messages. The message catalog becomes exportable JSON.
-- Authorization has two layers. Every principal except the console needs a valid XUID-based grant at the current
-  grant revision. Then
-  each channel adds its own condition: in-game players must be online with an unchanged authorization revision, web
-  principals need a valid link and session, triggers and loops need their owner's grant, and the console is always
-  allowed. This replaces the three current rules (command, loop, script).
+- Authorization has two layers. Every principal except the console needs a valid XUID-based grant at the current grant
+  revision. Then each channel adds its own condition: in-game players must be online with an unchanged authorization
+  revision, web principals need a valid link and session, triggers and loops need their owner's grant, and the console
+  is always allowed. This replaces the three current rules (command, loop, script). Roles, ownership and the script
+  declaration intersection come from BOT-024 and plug into this check.
 - Web principals may use Groups and indexed members (`#group[1]`) under the same authorization.
 
 Steps, each about one PR, none meant to change what players see:
@@ -847,19 +847,21 @@ operations, and performs world observation, teleport and block reads. Keep all i
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
-Status: **Planned, after BOT-020; release grouping open, see [delivery](DIRECTION.md#delivery)** (2026-10-28 JST).
+Status: **Planned, after BOT-020 and BOT-024; release grouping open, see [delivery](DIRECTION.md#delivery)**
+(2026-10-28 JST).
 
-Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy`
-(stack: [web technology](DIRECTION.md#web-technology)); endbotd connects outbound over
-WebSocket. Accounts are created only from a one-time code issued in game by `/botweb link`, with a passkey; endbotd
-keeps the link table and re-authorizes every relayed operation. One account per XUID with several passkeys and sessions;
-"add this device", `/botweb unlink`, `/botweb status` and `endbot web revoke <GamerTag>`. Optional, off by default: a trusted
-external site that proves the link (or signs users in) with a signed ES384 assertion verified by endbotd. Cloudflare
-stores only XUID, GamerTag, passkey public keys and sessions. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped, the web
-still shows status and logs and edits scripts; BDS start/stop stays console-only. Update SECURITY.md with this boundary. Order: status and logs, then script editing (BOT-013),
-then Bot control. Controller administration stays console-only. Main design work: pairing and key rotation, session
-and CSRF handling, rate limits, revocation of web sessions when a controller is revoked, deployment documentation.
-Microsoft sign-in is deferred (see the direction document).
+Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
+[web technology](DIRECTION.md#web-technology)); endbotd connects outbound over WebSocket. Accounts are created only from
+a one-time code issued in game by `/botweb link`, with a passkey; endbotd keeps the link table and re-authorizes every
+relayed operation. One account per XUID with several passkeys and sessions; "add this device", `/botweb unlink`,
+`/botweb status` and `endbot web revoke <GamerTag>`. Optional, off by default: a trusted external site that proves the
+link (or signs users in) with a signed ES384 assertion verified by endbotd. Cloudflare stores passkey public keys, sessions and a
+display copy of XUID and GamerTag. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped,
+the web still shows status and logs and edits scripts; BDS start/stop stays console-only. Update SECURITY.md with this
+boundary. Order: status and logs, then script editing (BOT-013), then Bot control. Controller administration stays
+console-only. Main design work: pairing and key rotation, whether endbotd verifies passkey assertions itself, session and CSRF handling, rate limits, revocation of web
+sessions when a controller is revoked, deployment documentation. Microsoft sign-in is deferred (see the direction
+document).
 
 ## BOT-022: Events, watches and triggers
 

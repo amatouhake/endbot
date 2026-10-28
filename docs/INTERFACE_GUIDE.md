@@ -17,15 +17,16 @@ form     Alice › Destroy › (same fields)
 ```
 
 Translation rule: positional arguments stay positional; a clause (`count 5`) becomes a named option or field with the
-same name; a bare mode word (`continuous`) becomes the `mode` option (`{mode = "continuous"}`). Operation names, parameter names, choice values, units (ticks) and target syntax (`Alice`, `#miners`,
-`#miners[2]`) are spelled the same everywhere.
+same name; a bare mode word (`continuous`) becomes the `mode` option (`{mode = "continuous"}`). Operation names,
+parameter names, choice values, units (ticks) and target syntax (`Alice`, `#miners`, `#miners[2]`) are spelled the same
+everywhere.
 
 ## Rules
 
 1. **One registry.** The language-neutral JSON registry is the source of command help, Luau types and completion,
-   web forms and completion, and in-game form fields. It holds each operation's category (help page and web tab),
-   description keys, parameter units, ranges and defaults, whether it continues (needs `stop` or a wait), and
-   examples.
+   web forms and completion, and in-game form fields. It holds operations, event kinds and Luau host APIs. Each entry
+   has its category (help page and web tab), description keys, parameter units, ranges and defaults, whether it
+   continues (needs `stop` or a wait), the capability it requires ([permissions](PERMISSIONS.md)), and examples.
 2. **Examples are written once**, as Operations, and rendered as command, Luau and web text, so docs and help cannot
    drift apart.
 3. **Every surface shows the equivalent.** Forms already echo `/bot ...`. The web shows the command and the Luau line
@@ -57,12 +58,12 @@ same name; a bare mode word (`continuous`) becomes the `mode` option (`{mode = "
 | --- | --- | --- |
 | Bot | Bot | One Endbot-controlled player, addressed by its unique name |
 | Group | グループ | A named list of Bots, `#name`; `#name[i]` is one member |
-| Controller | コントローラー | A person allowed to control Bots; also the name of the role without script authoring |
+| Controller | コントローラー | A person allowed to control Bots, and the base role; every scripter is also a controller |
 | Scripter | スクリプター | The role that can also create, edit, copy and share scripts |
 | Operator | オペレーター | The console; grants and revokes access |
 | Operation | 操作 | One request, such as `destroy` or `tp` |
 | Mode | モード | `once`, `continuous`, `interval`, `stop` |
-| Script | スクリプト | Stored Luau source owned by a controller |
+| Script | スクリプト | Stored Luau source owned by the scripter who created it |
 | Run | 実行 | One execution of a script |
 | Job | ジョブ | What a Bot keeps doing after an operation returns: continuous or interval input, `for`, held use, mining (one block or many) |
 | Event | イベント | Something that happened, of a registry-defined kind such as `block.change`; observation only |
@@ -77,8 +78,7 @@ same name; a bare mode word (`continuous`) becomes the `mode` option (`{mode = "
 
 The grammar is already consistent (`once`, `continuous`, `interval`, `stop`, with `for`, `hold`, `count`). The nouns
 for what a continuing operation leaves running are not: docs say mining *job*, *loop* and, once, a finished mining
-*run*. Decision: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (continuous or interval
-input, `for`, mining with `count`). *Run* is reserved for scripts. *Loop* stays an internal word only. Trigger
+*run*. Decision: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (see the glossary). *Run* is reserved for scripts. *Loop* stays an internal word only. Trigger
 (BOT-022) is added when it exists: a persistent binding from an event to a script that starts runs.
 
 ### D2. The shape of waits in Luau
@@ -103,5 +103,6 @@ Existing exceptions, kept: `/bot list`, `/bot help`, `/bot ping` and `/bot menu`
 whole command, so a Bot named `list` is still reached with `/bot list status` or `/bot list menu`.
 
 Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would read as operation
-`link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link` (issues the one-time code), `/botweb status` and `/botweb unlink`; see
+`link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link` (issues the
+one-time code), `/botweb status` and `/botweb unlink`; see
 [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game).

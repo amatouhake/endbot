@@ -31,7 +31,7 @@ players (a trigger fired by someone else's action lets a non-controller steer Bo
 code. So a script states the capabilities it uses beyond a basic set, next to `params`:
 
 ```lua
-requires { "observe.chat", "trigger.arm" }
+requires { "observe.chat" }
 params { ... }
 ```
 
@@ -60,7 +60,8 @@ Authoring is separate from running because a scripter decides what gets automate
 others run, and spends server resources freely. A controller automates only with scripts someone published, such as
 the operator's file scripts. Running is the same for both roles: the intersection above applies.
 
-- Assignment: `endbot controllers add <GamerTag> --role scripter|controller`.
+- Assignment: `endbot controllers add <GamerTag> --role scripter|controller`; the same option on an existing grant
+  changes the role.
 - Migration: controllers granted before this model become **scripter**, which keeps today's behavior.
 - A new grant without `--role` is **controller** (least privilege). Release notes and `endbot controllers list` show
   each person's role.
@@ -75,6 +76,8 @@ Bots, Groups, scripts and triggers share one model: the creator is the owner, an
   `[permissions] bots-default = private`) changes the default.
 - Owners switch visibility per item, as `share` and `private` do for scripts today.
 - The console can operate everything and reassign owners.
+- Migration: existing Bots and Groups have no owner and stay shared, like scripts saved before ownership; the console
+  can assign owners. A Bot created by a run or trigger is owned by the run's invoker or the trigger's owner.
 - Consistency follows from principle 1: running someone's shared script against your own private Bot works; running
   it against another person's private Bot fails exactly as the command would.
 

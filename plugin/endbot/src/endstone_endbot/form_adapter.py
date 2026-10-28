@@ -11,6 +11,7 @@ from collections.abc import Callable
 from endstone_endbot import forms, group_forms
 from endstone_endbot.commands import DIM, ERROR, RESET, reply
 from endstone_endbot.i18n import localize_error, tr
+from endstone_endbot.operations import command_text
 
 # /botscript form steps that are not commands a player could type.
 SCRIPT_FORM_STEPS = {("parameters",), ("edit",), ("save",)}
@@ -119,7 +120,7 @@ class FormPresenter:
             ):
                 # Show the typed equivalent, so forms also teach the command. ASCII only:
                 # the Bedrock chat font lacks symbols such as arrows.
-                player.send_message(f"{DIM}/{action.command} {' '.join(command)}{RESET}")
+                player.send_message(f"{DIM}{command_text(action.command, command)}{RESET}")
             self._submit(player, list(command), command=action.command, group_guard=action.guard or guard)
 
     def _on_modal(self, player, screen, response, guard=None) -> None:

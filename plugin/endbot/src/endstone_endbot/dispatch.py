@@ -5,10 +5,10 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import replace
 
 from endstone_endbot.commands import ERROR, WARNING, CommandResult, reply, strip_colors
 from endstone_endbot.i18n import tr
+from endstone_endbot.menu_views import menu_view
 from endstone_endbot.principal import Principal
 
 
@@ -282,10 +282,6 @@ class AsyncCommandRunner:
                 execute = (self._scripts.execute if command == "botscript" and self._scripts is not None else
                            self._service.execute_group if command == "botgroup" else self._service.execute)
                 result = execute(arguments, source)
-                if self._scripts is not None:
-                    from endstone_endbot.forms import BotListView
-                    if isinstance(result.view, BotListView):
-                        result = replace(result, view=replace(result.view, scripting=self._scripts.config.enabled))
         except Exception:  # noqa: BLE001 - never strand command delivery on an unexpected service failure
             result = CommandResult(True, (reply(tr(source.language, "internal command failure"), color=ERROR),),
                                    accepted=False, code="unavailable")
@@ -305,12 +301,14 @@ class AsyncCommandRunner:
             for message in result.messages:
                 _send(sender, source, message)
             # Permission may have changed while the worker queried the runtime.
+            view = result.view if result.view is not None else menu_view(
+                result, source, scripting=self._scripts is not None and self._scripts.config.enabled)
             if (
-                result.view is not None
+                view is not None
                 and self._show_view is not None
                 and sender is not None
                 and (self._authorize is None or self._authorize(source))
             ):
-                self._show_view(sender, result.view)
+                self._show_view(sender, view)
 
         self._bridge.post(deliver)

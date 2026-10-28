@@ -9,7 +9,6 @@ import threading
 from dataclasses import dataclass, field
 
 from endstone_endbot.control import RuntimeControlError, bot_profiles
-from endstone_endbot.forms import BotListView, BotView
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.limits import BotLimits
 from endstone_endbot.operations import ALIASES, OPERATIONS, Operation
@@ -118,7 +117,8 @@ class CommandResult:
     messages: tuple[str, ...] = ()
     # Set for results worth a server console log entry (e.g. destroy continuous/stop).
     log_level: str | None = None
-    # Set when the result is a form screen (BotListView/BotView) for a player.
+    # A management screen (/botgroup, /botscript) for a player. Operations
+    # never set it: a menu outcome is data, and menu_views builds its screen.
     view: object | None = None
     # English wording for the log when ``messages`` are in another language.
     log_messages: tuple[str, ...] | None = None
@@ -1346,12 +1346,12 @@ class BotCommandService:
             raise RuntimeError("runtime control is not configured")
         if command.operation == "menu":
             if command.name is None:
-                return CommandResult(True, view=BotListView(tuple(bot_profiles(control))))
+                return CommandResult(True, data={"menu": "bots", "bots": list(bot_profiles(control))})
             status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
-            return CommandResult(
-                True, view=BotView(status["name"], self._status_reply(status, observed, lang), status, observed)
-            )
+            return CommandResult(True, data={"menu": "bot", "name": status["name"], "status": status,
+                                             "observed": observed,
+                                             "summary": self._status_reply(status, observed, lang)})
         if command.operation == "list":
             bots = bot_profiles(control)
             data = {"bots": [{"name": bot["name"], "identityId": bot.get("identityId"),

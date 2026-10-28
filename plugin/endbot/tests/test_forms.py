@@ -11,6 +11,7 @@ from endstone_endbot.commands import BotCommandService, CommandResult, parse_com
 from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge
 from endstone_endbot.form_adapter import FormPresenter
 from endstone_endbot.i18n import tr
+from endstone_endbot.menu_views import menu_view
 from endstone_endbot.principal import Principal
 
 ONLINE = {
@@ -350,20 +351,25 @@ class ServiceMenuTests(unittest.TestCase):
                 self.assertEqual(result.messages, ("Endbot: menu is available only to players; use /bot help",))
                 self.assertIsNone(result.view)
 
-    def test_menu_views_carry_runtime_data_and_the_status_reply(self):
+    def test_menu_outcomes_carry_runtime_data_and_the_status_reply(self):
         listing = self.service.execute(["menu"], self.player)
         self.assertEqual(listing.messages, ())
-        self.assertEqual(listing.view, forms.BotListView((ONLINE,)))
+        # The service answers with data; the in-game UI layer builds the screen.
+        self.assertIsNone(listing.view)
+        self.assertEqual(listing.data, {"menu": "bots", "bots": [ONLINE]})
+        self.assertEqual(menu_view(listing, self.player), forms.BotListView((ONLINE,)))
+        self.assertEqual(menu_view(listing, self.player, scripting=True).scripting, True)
         # Players see the colored status reply in the form, exactly as in chat.
         colored = BotCommandService(self.control, self.world)
-        bot = colored.execute(["Alice", "MENU"], self.player)
+        bot = menu_view(colored.execute(["Alice", "MENU"], self.player), self.player)
         status = colored.execute(["Alice", "status"], self.player)
-        self.assertEqual(bot.view.summary, status.message)
-        self.assertNotEqual(strip_colors(bot.view.summary), bot.view.summary)
-        self.assertEqual((bot.view.name, bot.view.observed), ("Alice", OBSERVED))
+        self.assertEqual(bot.summary, status.message)
+        self.assertNotEqual(strip_colors(bot.summary), bot.summary)
+        self.assertEqual((bot.name, bot.observed), ("Alice", OBSERVED))
+        self.assertIsNone(menu_view(status, self.player))
 
     def test_bare_bot_opens_list_for_players_and_help_for_console(self):
-        self.assertEqual(self.service.execute([], self.player).view, forms.BotListView((ONLINE,)))
+        self.assertEqual(menu_view(self.service.execute([], self.player), self.player), forms.BotListView((ONLINE,)))
         self.assertIn("Endbot help page 1", self.service.execute([], Principal()).message)
 
     def test_unknown_bot_menu_fails_like_any_command(self):

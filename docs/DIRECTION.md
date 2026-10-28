@@ -249,9 +249,10 @@ trigger = { event kind + filter → script (+ arguments), owner, enabled, policy
 `player.join`, `player.leave`, `player.chat`; `server.started`; `schedule` (wall-clock) and `world.time` (in-game day
 and night). What Endstone events actually cover is measured on the locked pair before a kind is listed.
 
-**Open: who may observe what.** Other players' chat, presence and positions are privacy-sensitive, and controllers are
-not operators. How visibility is divided is decided by the permission model (BOT-024), not here. Until then, no kind
-that reveals other players is implemented.
+**Who may observe what** follows the [permission model](PERMISSIONS.md#observation): what an ordinary player in game
+can see (joins, leaves, public chat, death messages) is available and declared by scripts; other players' positions
+and inventories are not provided; direct messages never are. Triggers are approved per script revision and bounded by
+limits ([triggers](PERMISSIONS.md#triggers)).
 
 ## Delivery
 

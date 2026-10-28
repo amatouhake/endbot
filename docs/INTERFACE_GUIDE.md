@@ -46,6 +46,8 @@ same name; a bare mode word (`continuous`) becomes the `mode` option (`{mode = "
 | --- | --- | --- |
 | Chat | Sender-relative `~` and `me` | Typing coordinates is slow; resolved to absolute values at the entry |
 | Luau | Handles (`bot("Alice")`), vectors, `wait` family | Programs need values and sequencing |
+| Luau | Capabilities beyond operations: watches, events, triggers set up from scripts, future host APIs | Scripts automate and observe over time; each such API declares its capability in the registry ([permissions](PERMISSIONS.md)) |
+| Web, forms | Triggers set up without code | A no-code subset of what scripts can do |
 | Web, forms | Picking from lists, picking coordinates | Pointing is easier than typing |
 | Forms | Quick single taps (for example short moves) stay typed | Form space is limited |
 
@@ -55,7 +57,9 @@ same name; a bare mode word (`continuous`) becomes the `mode` option (`{mode = "
 | --- | --- | --- |
 | Bot | Bot | One Endbot-controlled player, addressed by its unique name |
 | Group | グループ | A named list of Bots, `#name`; `#name[i]` is one member |
-| Controller | コントローラー | A person allowed to control Bots |
+| Controller | コントローラー | A person allowed to control Bots; also the name of the role without script authoring |
+| Scripter | スクリプター | The role that can also create, edit, copy and share scripts |
+| Operator | オペレーター | The console; grants and revokes access |
 | Operation | 操作 | One request, such as `destroy` or `tp` |
 | Mode | モード | `once`, `continuous`, `interval`, `stop` |
 | Script | スクリプト | Stored Luau source owned by a controller |

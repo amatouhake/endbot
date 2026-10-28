@@ -871,7 +871,7 @@ Event kinds in the operation registry (`category.action`, filters, payload, sour
 (event + filter → script + arguments) with skip-while-running, cooldown, a per-minute start cap that disables the
 trigger, and a bounded queue reporting `missed`. Start with `block.change`: measure which block changes Endstone events
 cover on the locked pair and state the guaranteed minimum persistence. Then the other first kinds listed in Decision 5.
-Persistent triggers need endbotd (BOT-020). Kinds that reveal other players wait for BOT-024.
+Persistent triggers need endbotd (BOT-020). Visibility and trigger approval follow [PERMISSIONS.md](PERMISSIONS.md).
 
 ## BOT-023: Upstream login-verifier hook (optional)
 
@@ -882,7 +882,14 @@ accepts it, drop `patches/endstone/` and patched builds. Until then the patch st
 
 ## BOT-024: Permission model
 
-Status: **Open topic — to be discussed before BOT-021 and the player-related kinds of BOT-022** (2026-10-28 JST).
+Status: **Design agreed — see [PERMISSIONS.md](PERMISSIONS.md); not implemented** (2026-10-28 JST).
+
+Agreed: roles operator, scripter and controller (no viewer, no extra per-person permissions); a run's power is the
+invoker's authority intersected with the script's `requires {}` declaration; one ownership model for Bots, Groups,
+scripts and triggers with today's defaults; observation limited to what players see in game; triggers pinned to an
+approved revision; per-controller limits; existing controllers migrate to scripter, new grants default to controller.
+
+Original framing:
 
 Today there is one controller permission plus console-only administration, with per-script ownership and
 private/shared visibility. The web, events and triggers need more, but the granularity must be designed as a whole

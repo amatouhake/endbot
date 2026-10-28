@@ -1,6 +1,7 @@
 import queue
 import threading
 import unittest
+from pathlib import Path
 
 from endstone_endbot.commands import CommandResult, reply, strip_colors
 from endstone_endbot.dispatch import AsyncCommandRunner, CommandSource, ServerThreadBridge, ServerThreadWorld
@@ -37,6 +38,43 @@ class DispatchTests(unittest.TestCase):
         world = ServerThreadWorld(World(), bridge, revoked)
         with self.assertRaises(LocalizedError):
             world.teleport("bot-id", {"coordinates": [1., 64., 2.]}, source)
+
+    def test_find_blocks_forwards_the_scan_centre_to_the_world(self):
+        from types import SimpleNamespace
+
+        calls = []
+
+        class World:
+            def find_blocks(self, *args):
+                calls.append(args)
+                return []
+
+        bridge = SimpleNamespace(call=lambda callback: callback())
+        world = ServerThreadWorld(World(), bridge, lambda source: None)
+        world.find_blocks("bot-id", "minecraft:oak_log", 8, 10)
+        world.find_blocks("bot-id", "minecraft:oak_log", 16, 3, [("relative", 0.0), 70.0, 2.0])
+        self.assertEqual(calls, [("bot-id", "minecraft:oak_log", 8, 10, None),
+                                 ("bot-id", "minecraft:oak_log", 16, 3, [("relative", 0.0), 70.0, 2.0])])
+
+    def test_server_thread_world_methods_take_the_world_parameters(self):
+        # world.py needs endstone, so read its signatures from the source; a missed
+        # parameter here only fails on a real server.
+        import ast
+        import inspect
+
+        path = Path(__file__).resolve().parents[1] / "src" / "endstone_endbot" / "world.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "EndstoneWorld")
+        expected = {node.name: [arg.arg for arg in node.args.args if arg.arg != "self"]
+                    for node in cls.body if isinstance(node, ast.FunctionDef)}
+        checked = 0
+        for name, method in vars(ServerThreadWorld).items():
+            if name.startswith("_") or not callable(method) or name not in expected:
+                continue
+            with self.subTest(method=name):
+                self.assertEqual([p for p in inspect.signature(method).parameters if p != "self"], expected[name])
+            checked += 1
+        self.assertGreater(checked, 10)
 
     def test_script_routing_captures_grant_origin_and_copies_form_values(self):
         from types import SimpleNamespace
@@ -246,6 +284,7 @@ class DispatchTests(unittest.TestCase):
         scheduled.run_next()
         self.assertEqual(sender.messages, [])
         self.assertEqual(logged, [("info", "Endbot: Alice: started")])
+
     def test_player_language_is_captured_and_logs_stay_english(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

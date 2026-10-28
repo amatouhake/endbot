@@ -17,7 +17,7 @@ form     Alice › Destroy › (same fields)
 ```
 
 Translation rule: positional arguments stay positional; a clause (`count 5`) becomes a named option or field with the
-same name. Operation names, parameter names, choice values, units (ticks) and target syntax (`Alice`, `#miners`,
+same name; a bare mode word (`continuous`) becomes the `mode` option (`{mode = "continuous"}`). Operation names, parameter names, choice values, units (ticks) and target syntax (`Alice`, `#miners`,
 `#miners[2]`) are spelled the same everywhere.
 
 ## Rules
@@ -60,7 +60,7 @@ same name. Operation names, parameter names, choice values, units (ticks) and ta
 | Mode | モード | `once`, `continuous`, `interval`, `stop` |
 | Script | スクリプト | Stored Luau source owned by a controller |
 | Run | 実行 | One execution of a script |
-| Job | ジョブ | What a Bot keeps doing after an operation returns: continuous or interval input, `for`, mining with `count` |
+| Job | ジョブ | What a Bot keeps doing after an operation returns: continuous or interval input, `for`, held use, mining (one block or many) |
 | Watch | 監視 | A registered interest in a world change that a run can wait on |
 | Trigger | トリガー | (BOT-022) A watch that survives restarts and starts a run; managed under `/botscript` |
 
@@ -85,7 +85,7 @@ Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is 
   On a Group the job covers every member, like `group:waitMining` does today.
 - Watches use the same form: `w:wait{timeout = ...}`.
 - State waits stay on the handle: `b:waitOnline{timeout = ...}`.
-- Every wait takes `{timeout = ticks}` and returns the common result shape; a timeout is `ok = false, code =
+- Every wait accepts `{timeout = ticks}` and returns the common result shape; a timeout is `ok = false, code =
   "timeout"` and does not stop the job.
 - `waitOnline(b)` and `b:waitMining{}` remain as documented aliases until 1.0 so stored scripts keep working.
 
@@ -94,5 +94,8 @@ Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is 
 Rule: `/bot` makes Bots do things (single Bots or Groups); `/bot<noun>` manages that noun: `/botgroup` group
 definitions, `/botscript` scripts and runs. Triggers will be managed under `/botscript`.
 
-Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would collide with a Bot
-called `web`. Decision: `/botweb link <code>` (also `/botweb status` and `/botweb unlink`).
+Existing exceptions, kept: `/bot list`, `/bot help`, `/bot ping` and `/bot menu` are root words. They win only as the
+whole command, so a Bot named `list` is still reached with `/bot list status` or `/bot list menu`.
+
+Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would read as operation
+`link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link <code>` (also `/botweb status` and `/botweb unlink`).

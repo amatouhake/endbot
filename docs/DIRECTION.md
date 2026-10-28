@@ -24,7 +24,7 @@ isolation, no internet-facing code inside the game server). The target is:
 
 ```text
 in-game UI (commands, forms, books)         web UI (Cloudflare Worker, see Decision 3)
-                 │                                       │
+                 │                                       │ relayed over the outbound link
                  ▼                                       ▼
   endbotd — grown from today's supervisor, outside BDS
     one Operation API, principals (player XUID, web account, console, trigger),
@@ -110,7 +110,7 @@ local w = world.watchBlock(100, 64, 200)
 while true do
   local change = w:wait()          -- yields until the block changes
   if change.to == "minecraft:air" then
-    bot.spawn("Alice")
+    bot("Alice"):spawn()
   end
 end
 ```

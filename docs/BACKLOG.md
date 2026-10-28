@@ -818,13 +818,14 @@ Agreed decisions:
 - Error codes start coarse, by what the user should do next: authorization, not found, invalid argument, temporary
   failure, conflict. Refine only when needed. During migration an Outcome carries both a code and the existing
   localized messages. The message catalog becomes exportable JSON.
-- Authorization has two layers. Every principal needs a valid XUID-based grant at the current grant revision. Then
+- Authorization has two layers. Every principal except the console needs a valid XUID-based grant at the current
+  grant revision. Then
   each channel adds its own condition: in-game players must be online with an unchanged authorization revision, web
   principals need a valid link and session, triggers and loops need their owner's grant, and the console is always
   allowed. This replaces the three current rules (command, loop, script).
 - Web principals may use Groups and indexed members (`#group[1]`) under the same authorization.
 
-Steps, each about one PR, each without player-visible change:
+Steps, each about one PR, none meant to change what players see:
 
 1. Introduce `Principal` in place of `CommandSource`; resolving Endstone senders moves to the adapter; authorization
    follows the two-layer table.

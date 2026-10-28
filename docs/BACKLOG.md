@@ -789,12 +789,50 @@ the pack active. Do not enable `ui-pack-editor` by default or ship the pack in r
 
 ## BOT-019: One Operation API and principals
 
-Status: **Planned — first step of the [product direction](DIRECTION.md)** (2026-10-28 JST).
+Status: **Planned — first step of the [product direction](DIRECTION.md); design agreed** (2026-10-28 JST).
 
-Make every surface (chat commands, forms, books, scripts, later the web) call one versioned Operation API whose request
-and result shapes are schema-defined, building on `operations.json`. Replace the player-bound `CommandSource` with a
-principal (in-game player, web account linked to an XUID, console, trigger) that carries identity and grant revision.
-No behavior change for players; this is what makes moving the logic out of the plugin mechanical.
+Today the de facto API is `/bot` argv text: forms build command text, scripts turn typed operations back into argv
+(`operation_argv`) to be parsed again, results are localized prose with `data` on some queries only, `view` couples the
+service to forms, and `CommandSource` assumes a player or the console. Make every surface (chat, forms, books, scripts,
+later the web) call `execute(Operation, Principal) -> Outcome`. No behavior change for players; no process split, web
+or new operations here.
+
+```text
+Operation  { op, target: "Alice" | "#miners" | "#miners[2]", params: { typed } }
+Principal  { kind: player | web | console | trigger, xuid?, name, grantRevision, language, origin? }
+Outcome    { ok, code, args, data }        -- localized at the edge
+Event      { to: Principal, kind, data }   -- chat, console log and later the web are sinks
+```
+
+Agreed decisions:
+
+- The registry is language-neutral JSON, extended from `operations.json` with result shapes and error codes; Python,
+  Luau and the Worker's TypeScript read or generate from it.
+- Operations map 1:1 to commands (RPC), plus a few read models such as the Bot list and a status snapshot. No
+  REST-style state resources.
+- Sender-relative arguments are resolved at the entry: the in-game entry turns sender-relative `~` into absolute
+  coordinates, so only Bot-relative `~` (destroy, block) remains in an Operation. A web spawn without a position uses
+  the world spawn; the form offers coordinates. A script's start point becomes the principal's `origin`.
+- Error codes start coarse, by what the user should do next: authorization, not found, invalid argument, temporary
+  failure, conflict. Refine only when needed. During migration an Outcome carries both a code and the existing
+  localized messages. The message catalog becomes exportable JSON.
+- Authorization has two layers. Every principal needs a valid XUID-based grant at the current grant revision. Then
+  each channel adds its own condition: in-game players must be online with an unchanged authorization revision, web
+  principals need a valid link and session, triggers and loops need their owner's grant, and the console is always
+  allowed. This replaces the three current rules (command, loop, script).
+- Web principals may use Groups and indexed members (`#group[1]`) under the same authorization.
+
+Steps, each about one PR, each without player-visible change:
+
+1. Introduce `Principal` in place of `CommandSource`; resolving Endstone senders moves to the adapter; authorization
+   follows the two-layer table.
+2. Make `execute(Operation, Principal)` the entry. `execute(argv)` stays as parse-then-call, so existing tests keep
+   working. Scripts send Operations directly.
+3. Add an Operation-to-command formatter. Form echoes use it. Add a round-trip property test: parse(format(op)) == op.
+4. Add `code` and `data` to every Outcome, starting with queries.
+5. Remove `view` from the service; the in-game UI layer builds screens from Outcomes.
+6. Turn notifications into Events.
+7. Extend `operations.json` with a JSON Schema and validate or generate the Python and Luau sides from it.
 
 ## BOT-020: endbotd outside BDS
 

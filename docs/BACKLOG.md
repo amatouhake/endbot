@@ -791,10 +791,9 @@ the pack active. Do not enable `ui-pack-editor` by default or ship the pack in r
 
 ## BOT-019: One Operation API and principals
 
-Status: **In progress — first step of the [product direction](DIRECTION.md); design agreed** (2026-10-28 JST).
-Done: steps 1 (`Principal`), 2 (`execute(Operation, Principal)`), 3 (formatter, round trip), 4 (outcome
-`code` and query `data`), 5 (menu outcomes are data; `menu_views` builds the screens) and 6 (job and run
-notifications are Events with chat and log sinks), 2026-10-29.
+Status: **Done** (2026-10-29 JST); design agreed 2026-10-28. Steps 1–7 landed: `Principal` and one authorization
+check, `execute(Operation, Principal)`, the formatter and round-trip test, outcome `code` and query `data`, menu outcomes
+as data (`menu_views`), Events with chat and log sinks, and `operations.schema.json` checked against Python and Luau.
 
 Today the de facto API is `/bot` argv text: forms build command text, scripts turn typed operations back into argv
 (`operation_argv`) to be parsed again, results are localized prose with `data` on some queries only, `view` couples the

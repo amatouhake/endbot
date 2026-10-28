@@ -157,10 +157,11 @@ Link flow (one game join, no Azure registration). Accounts can only be created f
 2. On the web, enter the code and register a passkey. The account is created already linked to that XUID.
 3. Later logins use the passkey only; the game is not needed again.
 
-There is no open sign-up and no unlinked account, so strangers cannot fill the Worker with accounts, and nobody can
+There is no open sign-up and no unlinked account, so strangers cannot fill endbotd's account store, and nobody can
 link their own account to a controller by asking the controller to type a code. Someone who is given a controller's
 code can still use it; the short lifetime, single use, the in-game warning and new-device notices limit that. The
-operator links the same way, so no separate invite or admin bootstrap is needed.
+operator links the same way, so no separate invite or admin bootstrap is needed. Only XUIDs that hold a controller
+grant get a web account: `/botweb link` is refused for anyone else, and so is every other way of proving the link.
 
 More devices:
 
@@ -195,11 +196,17 @@ Worker ──relays──▶ endbotd: verifies with the site's public key from e
 ```
 
 - The operator generates a key pair, registers the public key in `endbot.toml` and adds a few lines to their site that
-  sign the assertion and redirect. The ES384 signed-token form mirrors the existing local Bot authentication.
+  sign the assertion and hand it to the Worker with an auto-submitted form POST, never in a query string, so it does
+  not land in browser history or access logs. The ES384 signed-token form mirrors the existing local Bot
+  authentication.
+- endbotd refuses an assertion for an XUID without a controller grant, as it refuses `/botweb link`.
 - The operator chooses whether the site only links (later logins use passkeys) or is also the sign-in (SSO, no
   passkey).
 - Risk: whoever controls that site can claim any XUID. The operator opts into that trust explicitly; controller
   grants stay console-only, so no grant can be widened.
+- With the site enabled, removing the account does not keep anyone out: the site can vouch again at the next sign-in.
+  That is fine for the player's own `/botweb unlink`. For the operator, `endbot web revoke` only ends the current
+  account and sessions; to keep someone out, revoke their controller grant, or have the site stop vouching for them.
 - Operators who want Microsoft sign-in can plug in their own this way, which further reduces the need for Endbot to
   carry it.
 - Site-to-site API access (for example showing Bot status inside the operator's site) is a larger, later step that

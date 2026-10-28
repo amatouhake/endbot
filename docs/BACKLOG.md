@@ -855,7 +855,8 @@ Status: **Planned, after BOT-020 and BOT-024; release grouping open, see [delive
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
 [web technology](DIRECTION.md#web-technology)); endbotd connects outbound over WebSocket. Accounts are created only from
 a one-time code issued in game by `/botweb link`, with a passkey; endbotd keeps the link table, passkeys and sessions,
-verifies passkey assertions itself and re-authorizes every relayed operation. One account per XUID with several passkeys and sessions; "add this device", `/botweb unlink`,
+verifies passkey assertions itself and re-authorizes every relayed operation. Only XUIDs with a controller grant get
+an account, whichever way the link is proven. One account per XUID with several passkeys and sessions; "add this device", `/botweb unlink`,
 `/botweb status` and `endbot web revoke <GamerTag>`. Optional, off by default: a trusted external site that proves the
 link (or signs users in) with a signed ES384 assertion verified by endbotd. Cloudflare stores only the static UI and
 at most a display cache. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped,

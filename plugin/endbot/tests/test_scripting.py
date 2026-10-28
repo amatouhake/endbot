@@ -410,6 +410,13 @@ class LifecycleTests(unittest.TestCase):
     def op(identity, operation, params):
         return {"type": "operation", "id": identity, "target": "Alice", "operation": operation, "params": params}
 
+    def test_operation_results_carry_their_outcome_code(self):
+        self.start([self.op(2, "move", {"direction": "forward"}), self.op(3, "status", {}),
+                    self.op(4, "move", {"direction": "up"}), {"type": "done"}])
+        self.wait_finished()
+        results = {reply["id"]: reply["result"] for reply in self.runner.replies if "result" in reply}
+        self.assertEqual([results[key].get("code") for key in (2, 3, 4)], ["ok", "ok", "invalid_argument"])
+
     def test_normal_end_cleans_own_inputs_and_uuid_pins_cleanup(self):
         self.start([self.op(2, "move", {"direction": "forward"}), {"type": "done"}])
         self.wait_finished()

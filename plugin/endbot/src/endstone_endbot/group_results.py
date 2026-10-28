@@ -27,6 +27,8 @@ class MemberResult:
     reason: str = "other"
     detail: str = ""
     data: dict | None = None
+    # The member's outcome code (commands.OUTCOME_CODES).
+    code: str = "ok"
 
 
 @dataclass(frozen=True)

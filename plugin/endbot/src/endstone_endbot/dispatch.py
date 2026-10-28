@@ -277,7 +277,7 @@ class AsyncCommandRunner:
         try:
             if self._authorize is not None and not self._bridge.call(lambda: self._authorize(source)):
                 revoked = tr(source.language, "Bot control permission was revoked; command canceled")
-                result = CommandResult(True, (reply(revoked, color=WARNING),))
+                result = CommandResult(True, (reply(revoked, color=WARNING),), accepted=False, code="unauthorized")
             else:
                 execute = (self._scripts.execute if command == "botscript" and self._scripts is not None else
                            self._service.execute_group if command == "botgroup" else self._service.execute)
@@ -287,7 +287,8 @@ class AsyncCommandRunner:
                     if isinstance(result.view, BotListView):
                         result = replace(result, view=replace(result.view, scripting=self._scripts.config.enabled))
         except Exception:  # noqa: BLE001 - never strand command delivery on an unexpected service failure
-            result = CommandResult(True, (reply(tr(source.language, "internal command failure"), color=ERROR),))
+            result = CommandResult(True, (reply(tr(source.language, "internal command failure"), color=ERROR),),
+                                   accepted=False, code="unavailable")
 
         self._deliver(source, result)
 

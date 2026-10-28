@@ -98,4 +98,5 @@ Existing exceptions, kept: `/bot list`, `/bot help`, `/bot ping` and `/bot menu`
 whole command, so a Bot named `list` is still reached with `/bot list status` or `/bot list menu`.
 
 Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would read as operation
-`link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link <code>` (also `/botweb status` and `/botweb unlink`).
+`link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link` (issues the one-time code), `/botweb status` and `/botweb unlink`; see
+[Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game).

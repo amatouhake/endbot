@@ -851,8 +851,9 @@ Status: **Planned, after BOT-020; release grouping open, see [delivery](DIRECTIO
 
 Worker + one Durable Object per server, deployed and paired by `endbot web deploy`; endbotd connects outbound over
 WebSocket. Accounts are created only from a one-time code issued in game by `/botweb link`, with a passkey; endbotd
-keeps the link table and re-authorizes every relayed operation. Cloudflare stores only XUID, GamerTag, passkey public
-keys and sessions. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped, the web
+keeps the link table and re-authorizes every relayed operation. One account per XUID with several passkeys and sessions;
+"add this device", `/botweb unlink`, `/botweb status` and `endbot web revoke <GamerTag>`. Cloudflare stores only XUID,
+GamerTag, passkey public keys and sessions. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped, the web
 still shows status and logs and edits scripts; BDS start/stop stays console-only. Update SECURITY.md with this boundary. Order: status and logs, then script editing (BOT-013),
 then Bot control. Controller administration stays console-only. Main design work: pairing and key rotation, session
 and CSRF handling, rate limits, revocation of web sessions when a controller is revoked, deployment documentation.

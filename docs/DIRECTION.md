@@ -88,10 +88,12 @@ browser ──HTTPS──▶ Worker (static UI, login, sessions)
 
 ## Decision 4: web accounts use passkeys and are linked to an XUID once, in game
 
-The account and the identity proof are separate:
+One XUID has at most one web account; the account holds any number of passkeys and sessions:
 
 ```text
-web account (passkey login) ──link──▶ XUID (key of the existing controller policy)
+XUID (GamerTag) ── web account ──┬─ passkey (PC)
+                                 ├─ passkey (phone)
+                                 └─ sessions, one per signed-in device
 ```
 
 Link flow (one game join, no Azure registration). Accounts can only be created from a code issued in game:
@@ -104,12 +106,42 @@ Link flow (one game join, no Azure registration). Accounts can only be created f
 
 There is no open sign-up and no unlinked account, so strangers cannot fill the Worker with accounts, and nobody can
 link their own account to a controller by asking the controller to type a code. Someone who is given a controller's
-code can still use it; the short lifetime, single use and the in-game warning limit that. The operator links the
-same way, so no separate invite or admin bootstrap is needed.
+code can still use it; the short lifetime, single use, the in-game warning and new-device notices limit that. The
+operator links the same way, so no separate invite or admin bootstrap is needed.
 
-Microsoft sign-in (OAuth → Xbox user token → XSTS, yielding XUID and GamerTag) is deferred, not rejected. Because each
-operator deploys their own Worker, it would require every operator to register an Azure application and manage a
-secret, and the claim set and terms must be verified first. It can be added later as another way to prove the link.
+More devices:
+
+- Synced passkeys (iCloud Keychain, Google Password Manager and similar) need nothing extra.
+- Standard cross-device sign-in (scanning the login page's QR code with a phone) works across ecosystems.
+- "Add this device" on a signed-in device shows a short one-time code to enter on the new device, which then
+  registers its own passkey. No game join is needed.
+- `/botweb link` for an XUID that already has an account adds a passkey to it instead of creating another account.
+  This is also the recovery path after losing every device.
+- Adding a passkey notifies the account's other devices and, when online, the player in game.
+
+Removing access:
+
+| Who | Where | What |
+| --- | --- | --- |
+| The player | Web device list | Remove one passkey or session |
+| The player | `/botweb unlink` in game | Delete the account and end every session |
+| The player | `/botweb status` in game | List passkeys and last sign-ins |
+| The operator | `endbot web revoke <GamerTag>` at the console | Delete the account and end every session |
+| Automatic | Controller revocation | Ends every web session at once |
+
+Microsoft sign-in (OAuth → Xbox user token → XSTS, yielding XUID and GamerTag) is deferred, not rejected; it can be
+added later as another way to prove the link. It is not the primary method because:
+
+- The Worker, not endbotd, would learn the XUID, so endbotd would have to trust the Worker's claim and a compromised
+  Worker could claim any XUID. Avoiding that needs endbotd to re-verify the token against Xbox Live itself.
+- Each operator deploys their own Worker, so each would have to register an Entra application and manage a secret,
+  probably with an Azure tenant (to be verified).
+- The Xbox token exchange is used by launchers but is not a documented third-party API; changes and terms are risks.
+- Its clear advantages, never joining the game and no device management, are not required: one join is accepted and
+  the device flows above cover several devices.
+
+Revisit this if a single shared service replaces per-operator Workers (one registration would then suffice), if never
+joining the game becomes a requirement, or if passkeys turn out to block many users in practice.
 
 ## Decision 5: scripts wait for changes; the host chooses events or polling
 

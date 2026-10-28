@@ -793,7 +793,8 @@ the pack active. Do not enable `ui-pack-editor` by default or ship the pack in r
 
 Status: **In progress — first step of the [product direction](DIRECTION.md); design agreed** (2026-10-28 JST).
 Done: steps 1 (`Principal`), 2 (`execute(Operation, Principal)`), 3 (formatter, round trip), 4 (outcome
-`code` and query `data`) and 5 (menu outcomes are data; `menu_views` builds the screens), 2026-10-29.
+`code` and query `data`), 5 (menu outcomes are data; `menu_views` builds the screens) and 6 (job and run
+notifications are Events with chat and log sinks), 2026-10-29.
 
 Today the de facto API is `/bot` argv text: forms build command text, scripts turn typed operations back into argv
 (`operation_argv`) to be parsed again, results are localized prose with `data` on some queries only, `view` couples the

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from endstone_endbot.commands import CommandResult, reply, strip_colors
 from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
+from endstone_endbot.events import Event, reason
 from endstone_endbot.principal import Principal
 
 
@@ -243,9 +244,11 @@ class DispatchTests(unittest.TestCase):
 
         class Service:
             def poll_mining(self, authorize):
-                return [(player, "warning", "Endbot: Alice: stopped", "Endbot: Alice: stopped"),
-                        (offline, "warning", "Endbot: Bob: stopped", "Endbot: Bob: stopped"),
-                        (Principal(), "warning", "Endbot: Carol: stopped", "Endbot: Carol: stopped")]
+                def ended(principal, bot):
+                    return Event(principal, "job.ended", {"bot": bot, "job": "destroy", "reason": reason("stopped")},
+                                 "warning")
+
+                return [ended(player, "Alice"), ended(offline, "Bob"), ended(Principal(), "Carol")]
 
             def execute(self, arguments, source):
                 return CommandResult(True, ("Endbot: Alice: started",), log_level="info")
@@ -262,14 +265,15 @@ class DispatchTests(unittest.TestCase):
         scheduled.run_next()
         # A controller who logged off still has the console log entry; the
         # console is not shown the same line twice.
-        self.assertEqual(sender.messages, ["Endbot: Alice: stopped"])
+        self.assertEqual([strip_colors(message) for message in sender.messages],
+                         ["Endbot: Alice: destroy stopped: stopped"])
         self.assertEqual(console.messages, [])
         self.assertEqual(
             logged,
             [
-                ("warning", "Endbot: Alice: stopped"),
-                ("warning", "Endbot: Bob: stopped"),
-                ("warning", "Endbot: Carol: stopped"),
+                ("warning", "Endbot: Alice: destroy stopped: stopped"),
+                ("warning", "Endbot: Bob: destroy stopped: stopped"),
+                ("warning", "Endbot: Carol: destroy stopped: stopped"),
                 ("info", "Endbot: Alice: started"),
             ],
         )

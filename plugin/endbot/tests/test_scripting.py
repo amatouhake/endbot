@@ -16,6 +16,7 @@ from unittest.mock import Mock, patch
 from endstone_endbot import forms, script_forms
 from endstone_endbot.commands import HELP_TOPICS, CommandResult, parse_command, strip_colors
 from endstone_endbot.control import RuntimeControlError
+from endstone_endbot.events import Event, render
 from endstone_endbot.groups import GroupCommandService, GroupStore
 from endstone_endbot.i18n import LocalizedError, localize_error
 from endstone_endbot.operations import OPERATIONS, operation_argv
@@ -394,6 +395,13 @@ class LifecycleTests(unittest.TestCase):
 
         self.host.notify = notify
 
+        def publish(event):
+            # The chat and console log sinks, as the command runner delivers them.
+            notify(event.to, CommandResult(True, render(event, "chat"), log_level=event.level,
+                                           log_messages=render(event, "log")))
+
+        self.host.publish = publish
+
     def start(self, events):
         self.runner = FakeRunner(events)
         identity = self.host.start(Script("test", "params {}", "r1"), [], self.source)
@@ -510,9 +518,12 @@ class LifecycleTests(unittest.TestCase):
         # The next window shows the next line with the count of those held back.
         run = ScriptRun("r", "test", self.source, chat_window=1.0, chat_lines=10, chat_skipped=2)
         with patch("endstone_endbot.scripting.time.monotonic", return_value=7.0):
-            shown = self.host._chat_log(run, "again")
-        self.assertTrue(strip_colors(shown[0]).endswith("again (2 log lines not shown)"))
+            self.assertTrue(self.host._chat_log(run))
+        self.assertEqual(self.host._skipped_logs(run), 2)
         self.assertEqual(run.chat_skipped, 0)
+        shown = render(Event(self.source, "run.log", {"run": "r", "name": "test", "text": "again", "limited": False,
+                                                       "chat": True, "skipped": 2}), "chat")
+        self.assertTrue(strip_colors(shown[0]).endswith("again (2 log lines not shown)"))
 
     def test_operation_replies_follow_the_replies_policy(self):
         accepted = CommandResult(True, ("ok",))
@@ -544,7 +555,7 @@ class LifecycleTests(unittest.TestCase):
         self.config = replace(self.config, chat_logs=True)
         self.host.config = self.config
         console = ScriptRun("r", "test", Principal())
-        self.assertEqual(self.host._chat_log(console, "hello"), ())
+        self.assertFalse(self.host._chat_log(console))
         self.assertFalse(ScriptConfig.from_config({}).chat_logs is False)
         with self.assertRaises(ValueError):
             ScriptConfig.from_config({"chat-logs": 1})

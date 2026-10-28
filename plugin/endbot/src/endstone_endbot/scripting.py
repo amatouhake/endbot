@@ -12,6 +12,7 @@ from uuid import uuid4
 from endstone_endbot import script_forms
 from endstone_endbot.commands import DIM, ERROR, RESET, CommandResult, _language, error_code, reply, strip_colors
 from endstone_endbot.control import bot_profiles
+from endstone_endbot.events import Event, outcome_text, reason
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
 from endstone_endbot.operations import OPERATIONS, Operation
@@ -35,10 +36,9 @@ UNCHECKED = frozenset({
 # fill the server log at the IPC rate for hours.
 LOG_LINES = 2000
 LOG_BYTES = 512 * 1024
-# The starter's chat shows at most this many log lines per window per run, each cut to CHAT_LOG_CHARS.
+# The starter's chat shows at most this many log lines per window per run (events.CHAT_LOG_CHARS cuts each).
 CHAT_LOG_LINES = 10
 CHAT_LOG_SECONDS = 5
-CHAT_LOG_CHARS = 256
 SCRIPT_TARGET = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
 
 
@@ -85,6 +85,8 @@ class ScriptService:
         self._open = True
         self.ordered = None
         self.notify = None
+        # Publishes an Event to its sinks (chat, console log); set by the command runner.
+        self.publish = None
 
     def _enabled(self):
         if not self.config.enabled:
@@ -429,8 +431,7 @@ class ScriptService:
         self._alive(run)
 
     def _run(self, run, script, values):
-        process, outcome_en = None, "completed"
-        outcome = tr(_language(run.source), "completed")
+        process, outcome = None, reason("completed")
         try:
             process = self._process(script.source)
             schema = self._schema(process, run.source, run.canceled, run.deadline)
@@ -457,13 +458,12 @@ class ScriptService:
                     run.log_lines += 1
                     run.log_bytes += len(text.encode("utf-8"))
                     over = run.log_lines > LOG_LINES or run.log_bytes > LOG_BYTES
-                    if self.notify and not (over and run.log_dropped):
-                        line = (f"Endbot script {run.identity}: log limit reached; further logs are dropped" if over
-                                else f"Endbot script {run.identity}: {text}")
+                    if self.publish and not (over and run.log_dropped):
                         run.log_dropped = over
-                        chat = self._chat_log(run, tr(_language(run.source), "log limit reached; further logs are "
-                                                                             "dropped") if over else text)
-                        self.notify(run.source, CommandResult(True, chat, log_level="info", log_messages=(line,)))
+                        shown = self._chat_log(run)
+                        self.publish(Event(run.source, "run.log", {
+                            "run": run.identity, "name": run.name, "text": text, "limited": over, "chat": shown,
+                            "skipped": self._skipped_logs(run) if shown else 0}))
                     continue
                 if type(event.get("id")) is not int or event["id"] != next_id:
                     raise LocalizedError("Invalid script runner request")
@@ -488,85 +488,50 @@ class ScriptService:
                 self._alive(run)
                 process.send({"type": "reply", "id": event["id"], "accepted": True, **payload})
         except Exception as error:  # noqa: BLE001 - isolate failures to this run
-            outcome = localize_error(error, _language(run.source))
-            outcome_en = localize_error(error, "en")
+            outcome = reason(error)
         finally:
             cleanup_ok = False
             if process is not None:
                 try:
                     process.close()
                 except Exception as error:  # noqa: BLE001 - final cleanup must release the run slot
-                    outcome = localize_error(error, _language(run.source))
-                    outcome_en = localize_error(error, "en")
+                    outcome = reason(error)
             try:
-                failures = self.ordered(lambda: self.inputs.cleanup(run.identity))
-                cleanup_ok = not failures
-                if failures:
-                    outcome += "; " + tr(_language(run.source), "Script input cleanup failed; use /bot stop")
-                    outcome_en += "; Script input cleanup failed; use /bot stop"
+                cleanup_ok = not self.ordered(lambda: self.inputs.cleanup(run.identity))
             except Exception:  # noqa: BLE001 - record cleanup failure and always retire the run
-                outcome += "; " + tr(_language(run.source), "Script input cleanup failed; use /bot stop")
-                outcome_en += "; Script input cleanup failed; use /bot stop"
+                cleanup_ok = False
+            ended = Event(run.source, "run.ended", {
+                "run": run.identity, "name": run.name, "outcome": outcome, "cleanup": cleanup_ok,
+                "controller": self._owner(run), "skipped": self._skipped_logs(run)})
             with self._lock:
-                run.state = outcome
+                run.state = outcome_text(ended.data, _language(run.source))
                 self._runs.pop(run.identity, None)
-            if self.notify:
-                self.notify(
-                    run.source,
-                    CommandResult(
-                        True,
-                        (
-                            reply(
-                                tr(
-                                    _language(run.source),
-                                    "Script {name} ({run}) ended: {reason}",
-                                    name=run.name,
-                                    run=run.identity,
-                                    reason=outcome,
-                                )
-                            ),
-                            *self._skipped_logs(run),
-                        ),
-                        log_level="info",
-                        log_messages=(
-                            (f"Endbot script {run.identity} {run.name} ended: {outcome_en} "
-                             f"(controller {self._owner(run)})"),
-                            f"Endbot script {run.identity}: input cleanup {'completed' if cleanup_ok else 'failed'}",
-                        ),
-                    ),
-                )
+            if self.publish:
+                self.publish(ended)
 
-    def _chat_log(self, run, text):
-        """A log line for the chat of the player who started the run, or nothing.
+    def _chat_log(self, run) -> bool:
+        """Whether the chat of the player who started the run shows this log line.
 
         The console log always has every line; chat gets at most CHAT_LOG_LINES per CHAT_LOG_SECONDS per run,
         counting the rest for the next line it shows. Formatting codes are removed so a script's text cannot
-        pass for a message of Endbot or another plugin.
+        pass for a message of Endbot or another plugin; the run.log renderer cuts each line.
         """
         if not self.config.chat_logs or run.source.player_id is None:
-            return ()
+            return False
         now = time.monotonic()
         if now - run.chat_window >= CHAT_LOG_SECONDS:
             run.chat_window, run.chat_lines = now, 0
         if run.chat_lines >= CHAT_LOG_LINES:
             run.chat_skipped += 1
-            return ()
+            return False
         run.chat_lines += 1
-        # `_clean` already removed color codes; a lone trailing `§` would still format the next text.
-        text = text.replace("§", "")
-        if len(text) > CHAT_LOG_CHARS:
-            text = text[:CHAT_LOG_CHARS] + "..."
-        return (reply(text + "".join(" " + line for line in self._skipped_logs(run, plain=True)),
-                      f"{run.name} ({run.identity})", DIM),)
+        return True
 
     @staticmethod
-    def _skipped_logs(run, plain=False):
+    def _skipped_logs(run) -> int:
         """The count of log lines chat did not show since the last one it did, then reset."""
-        if not run.chat_skipped:
-            return ()
-        text = tr(_language(run.source), "({count} log lines not shown)", count=run.chat_skipped)
-        run.chat_skipped = 0
-        return (text,) if plain else (reply(text, f"{run.name} ({run.identity})", DIM),)
+        skipped, run.chat_skipped = run.chat_skipped, 0
+        return skipped
 
     def stop(self, source, selector):
         """Stop runs by id, script name or `all`; the console may stop any controller's runs."""

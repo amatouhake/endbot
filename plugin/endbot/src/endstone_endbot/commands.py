@@ -1102,13 +1102,12 @@ class BotCommandService:
                 reserved=limits.reserved_player_slots,
             )
 
-    def poll_mining(self, authorize) -> list[tuple[object, str, str, str]]:
-        """Renew/retarget loops; return (source, level, message, log message) notices.
+    def poll_mining(self, authorize) -> list:
+        """Renew/retarget loops; return job Events for their principals.
 
-        Notices cover abnormal ends and a loop that has started waiting for a
+        Events cover abnormal ends and a loop that has started waiting for a
         target. Commanded stops already replied, and each successfully broken
-        block would be far too chatty. The message is in the source's language;
-        the log message is English.
+        block would be far too chatty.
         """
         notices = []
         with self._mining_lock:
@@ -1155,32 +1154,21 @@ class BotCommandService:
         return notices
 
     @staticmethod
-    def _mining_notice(entry, level: str, reason) -> tuple[object, str, str, str]:
-        """A notice for an ended job; ``reason`` is an English reason or an error."""
+    def _mining_notice(entry, level: str, cause):
+        """A job.ended Event; ``cause`` is an English reason or an error."""
+        from endstone_endbot.events import Event, reason
+
         name, _, loop_id, source, _ = entry
-        command = "destroy continuous" if loop_id else "destroy"
-        color = WARNING if level == "warning" else ""
-
-        def render(lang: str) -> str:
-            text = localize_error(reason, lang) if isinstance(reason, BaseException) else tr(lang, reason)
-            return reply(tr(lang, "{command} stopped: {reason}", command=command, reason=text), name, color)
-
-        return (source, level, render(_language(source)), render("en"))
+        return Event(source, "job.ended", {"bot": name, "job": "destroy continuous" if loop_id else "destroy",
+                                           "reason": reason(cause)}, level)
 
     @staticmethod
-    def _waiting_notice(entry) -> tuple[object, str, str, str]:
-        """A one-time notice that a loop is idle: nothing in sight, or the runtime refused what was."""
+    def _waiting_notice(entry):
+        """A one-time job.waiting Event: nothing in sight, or the runtime refused what was."""
+        from endstone_endbot.events import Event
+
         name, _, _, source, block_type = entry
-
-        def render(lang: str) -> str:
-            if block_type:
-                text = tr(lang, "destroy is waiting: no {block} it can break within 5 blocks; move the Bot closer",
-                          block=block_type.removeprefix("minecraft:"))
-            else:
-                text = tr(lang, "destroy continuous is waiting: no block it can break within 5 blocks")
-            return reply(text, name, "")
-
-        return (source, "info", render(_language(source)), render("en"))
+        return Event(source, "job.waiting", {"bot": name, "blockType": block_type})
 
     def _waited(self, key, entry, waiting) -> int:
         """Consecutive waiting polls of this loop entry; any target resets it."""

@@ -154,10 +154,10 @@ class RegistrySchemaTests(unittest.TestCase):
         self.types = set(self.schema["$defs"]["field"]["properties"]["type"]["enum"])
 
     def test_the_registry_follows_its_schema(self):
-        check(OPERATIONS, self.schema, self.schema)
+        check(operations.REGISTRY, self.schema, self.schema)
 
     def test_the_checker_rejects_what_the_schema_forbids(self):
-        for registry in (
+        for operations_table in (
             {},
             {"move": []},
             {"move": [{"positional": [], "options": {}}]},
@@ -168,6 +168,11 @@ class RegistrySchemaTests(unittest.TestCase):
                        "prefix": []}]},
             {"Move": [{"positional": [], "options": {}, "prefix": []}]},
         ):
+            registry = {"operations": operations_table, "reservedBotNames": []}
+            with self.subTest(registry=registry), self.assertRaises(AssertionError):
+                check(registry, self.schema, self.schema)
+        for registry in ({"operations": OPERATIONS}, {**operations.REGISTRY, "reservedBotNames": ["List"]},
+                         {**operations.REGISTRY, "extra": 1}):
             with self.subTest(registry=registry), self.assertRaises(AssertionError):
                 check(registry, self.schema, self.schema)
 

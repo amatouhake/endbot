@@ -80,6 +80,9 @@ JA: dict[str, str] = {
     "Item IDs accept minecraft: or no prefix. Replies describe the request; BDS validates it.":
         "アイテムIDの minecraft: は省略できます。返答は要求内容です。BDS が検証します。",
     "Use swap <a> <b>": "swap <a> <b> を使用してください",
+    "{name} is a reserved name; choose another name": "{name} は予約された名前です。別の名前にしてください",
+    "{name} is a reserved name; rename this Bot": "{name} は予約された名前です。この Bot の名前を変更してください",
+    "(reserved name; rename it)": "(予約名のため名前を変更してください)",
     "Use hold <item>": "hold <item> を使用してください",
     "Inventory slots must be from 1 to 36": "持ち物のスロットは1から36で指定してください",
     "Swap requires two different slots": "swap には異なる二つのスロットを指定してください",

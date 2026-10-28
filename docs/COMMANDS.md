@@ -278,6 +278,11 @@ placement. `resume` reconnects an existing profile without relocation, allowing 
 cancels automatic reconnect. `forget` requires an offline profile and removes only Endbot registration; it does not
 purge BDS player data. A live rename preserves UUID and reconnects automatically so the login name changes.
 
+`help`, `list`, `menu` and `ping` are reserved Bot names (any case), because the root commands `/bot help`, `/bot list`,
+`/bot menu` and `/bot ping` take them. Creating a Bot with one of them, or renaming a Bot to one, is refused from
+commands, forms and scripts alike. A profile that already has such a name keeps working; `/bot list` and its menu mark it
+and suggest `rename`. The registry (`operations.json`, `reservedBotNames`) is the one list every surface reads.
+
 `spawn`, `resume` and `reconnect` respect `[limits]` (see [configuration](OPERATIONS.md#2-configuration)): when the Bot
 would take a slot kept for human players, or exceed `max-bots`, the command is refused with the current counts. A Group
 or script fails only the affected members; `despawn` and `forget` are never limited. Existing Bots stay online when the

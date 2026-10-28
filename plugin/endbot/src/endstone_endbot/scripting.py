@@ -274,7 +274,7 @@ class ScriptService:
         with self._lock:
             self._reserve(source)
             identity = uuid4().hex[:12]
-            source = replace(source, script_run_id=identity, group_guard=None)
+            source = replace(source, kind="run", run_id=identity, group_guard=None)
             run = ScriptRun(
                 identity,
                 script.name,
@@ -302,7 +302,7 @@ class ScriptService:
                 matches = any(bot["name"] == name and bot["identityId"] == identity for bot in bots)
             if not matches:
                 raise LocalizedError("Script parameter target changed; reopen the menu")
-        result = arguments(schema, values, groups=self.service.groups, bots=bots, origin=run.source.script_origin)
+        result = arguments(schema, values, groups=self.service.groups, bots=bots, origin=run.source.origin)
         # Pin declared groups now; later membership/name reuse cannot retarget the run.
         for name, spec in declarations(schema).items():
             if spec["type"] == "group":
@@ -849,7 +849,7 @@ class ScriptService:
                         )
                     bots = bot_profiles(self.inputs)
                     groups = self.service.groups.groups if self.service.groups else ()
-                    view = script_forms.run_screen(script, schema, groups, bots, source.script_origin, lang)
+                    view = script_forms.run_screen(script, schema, groups, bots, source.origin, lang)
                 else:
                     view = script_forms.script_screen(
                         script, lang, self.can_edit(script, source), self.config.book_export)

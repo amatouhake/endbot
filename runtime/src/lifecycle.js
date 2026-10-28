@@ -330,9 +330,9 @@ export class BotLifecycle extends EventEmitter {
       }
       if (parameters.mode === 'start') state.session.startMiningLoop(parameters.durationTicks, parameters.blockCount)
       else state.session.startMining(parameters)
-      state.inputs.setAction('attack', 'stop')
-      state.inputs.setAction('use', 'stop')
-      state.inputs.setMovement('stop')
+      state.inputs.setAction('attack', 'stop', undefined, undefined, undefined, undefined, undefined, 'mining started')
+      state.inputs.setAction('use', 'stop', undefined, undefined, undefined, undefined, undefined, 'mining started')
+      state.inputs.setMovement('stop', undefined, 'mining started')
       if (parameters.yaw !== undefined && parameters.pitch !== undefined) state.inputs.setLook(parameters.yaw, parameters.pitch)
       state.session.applyInputs(state.inputs)
     }

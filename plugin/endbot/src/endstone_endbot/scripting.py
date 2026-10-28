@@ -10,7 +10,17 @@ from pathlib import Path
 from uuid import uuid4
 
 from endstone_endbot import script_forms
-from endstone_endbot.commands import DIM, ERROR, RESET, CommandResult, _language, error_code, reply, strip_colors
+from endstone_endbot.commands import (
+    DIM,
+    ERROR,
+    INPUT_JOBS,
+    RESET,
+    CommandResult,
+    _language,
+    error_code,
+    reply,
+    strip_colors,
+)
 from endstone_endbot.control import bot_profiles
 from endstone_endbot.events import Event, outcome_text, reason
 from endstone_endbot.group_forms import GroupGuard
@@ -364,17 +374,70 @@ class ScriptService:
             if audit and self.notify:
                 # Preserve existing command audit, even if the controller logged out.
                 self.notify(source, result, chat=self._reply_chat(result))
+            job = self._job(result.data)
             return {
                 "result": {
                     "ok": result.accepted,
                     "code": result.code,
+                    **({"job": job} if job else {}),
                     "data": result.data,
                     "messages": [strip_colors(m) for m in result.messages],
                     **({"reason": strip_colors(result.message or "")} if not result.accepted else {}),
                 }
             }
 
+    @staticmethod
+    def _job(data):
+        """The job a result started, as job:wait() sends it back: its kind and each member's job id."""
+        if not isinstance(data, dict):
+            return None
+        rows = data.get("jobs") or ([{"identityId": data.get("identityId"), **data["job"]}]
+                                    if isinstance(data.get("job"), dict) else [])
+        kinds = {row["kind"] for row in rows}
+        if len(kinds) != 1:
+            return None
+        kind = kinds.pop()
+        return {"kind": kind, **({} if kind == "mining" else
+                                 {"ids": {row["identityId"]: row["id"] for row in rows}})}
+
+    def _wait_job(self, run, event):
+        """Wait until the job an operation returned ends on every member, or the timeout."""
+        job = event.get("job")
+        kind = job.get("kind") if isinstance(job, dict) else None
+        if kind == "mining":
+            return self._wait_mining(run, event)
+        ids = job.get("ids") if kind in INPUT_JOBS else None
+        if not isinstance(ids, dict) or not ids or not all(
+                isinstance(key, str) and type(value) is int for key, value in ids.items()):
+            raise LocalizedError("Invalid script wait")
+
+        def settle(status, expired):
+            expected = ids.get(status.get("identityId"))
+            if expected is None:
+                return False, False, "no job"
+            if (status.get("running") or {}).get(kind) == expected:
+                return True, False, "timeout" if expired else "active"
+            ended = (status.get("ended") or {}).get(kind) or {}
+            # A later job of the same channel may have ended since; its reason is not this job's.
+            return False, True, ended.get("reason") if ended.get("job") == expected else "ended"
+
+        return self._wait_status(run, event, settle)
+
     def _wait_mining(self, run, event):
+        def settle(status, expired):
+            mining = status.get("mining") or {}
+            if mining.get("active"):
+                return True, False, "timeout" if expired else "active"
+            return False, mining.get("state") != "failed", mining.get("reason") or "idle"
+
+        return self._wait_status(run, event, settle, "mining")
+
+    def _wait_status(self, run, event, settle, detail=None):
+        """Poll the target's status until ``settle`` reports nothing pending, or the timeout.
+
+        ``settle(status, expired)`` returns (pending, ok, reason) for one online member. The result is the common
+        wait shape: ok, code ("ok", "timeout" or the failure's), reason, and one row per member.
+        """
         ticks = event.get("timeout", 1200)
         if type(ticks) not in (int, float) or not math_is_integer(ticks) or not 0 <= ticks <= 2147483647:
             raise LocalizedError("Invalid script wait")
@@ -399,26 +462,25 @@ class ScriptService:
             expired = time.monotonic() >= end
             for row in rows:
                 status = row.get("data") or {}
-                mining = status.get("mining") or {}
                 if not row["ok"]:
-                    reason, ok = row.get("reason") or "status failed", False
+                    reason, ok, code = row.get("reason") or "status failed", False, row.get("code") or "unavailable"
                 elif status.get("connectionState") != "online":
-                    reason, ok = "offline", False
-                elif mining.get("active"):
-                    pending = True
-                    reason, ok = ("timeout" if expired else "active"), False
+                    reason, ok, code = "offline", False, "conflict"
                 else:
-                    reason = mining.get("reason") or "idle"
-                    ok = mining.get("state") != "failed"
+                    waiting, ok, reason = settle(status, expired)
+                    pending |= waiting
+                    code = "ok" if ok else "timeout" if reason == "timeout" else "conflict"
                 results.append({"name": row["name"], "identityId": status.get("identityId", row.get("identityId")),
-                                "ok": ok, "reason": reason, "mining": mining})
+                                "ok": ok, "code": code, "reason": reason,
+                                **({detail: status.get(detail) or {}} if detail else {})})
             if not pending or expired:
                 ok = bool(results) and all(row["ok"] for row in results)
                 reasons = {row["reason"] for row in results}
                 reason = (next(iter(reasons)) if len(reasons) == 1 else
                           ("completed" if ok else next((row["reason"] for row in results if not row["ok"]), "idle")))
+                code = "ok" if ok else next(row["code"] for row in results if not row["ok"]) if results else "not_found"
                 self._alive(run)
-                return {"ok": ok, "reason": reason, "results": results}
+                return {"ok": ok, "code": code, "reason": reason, "results": results}
             self._wait(run, min(max(0.25, 1 / self.config.operations_per_second), max(0, end - time.monotonic())))
 
     def _wait(self, run, seconds):
@@ -476,13 +538,27 @@ class ScriptService:
                     self._wait(run, ticks / 20)
                 elif kind == "waitMining":
                     payload = {"result": self._wait_mining(run, event)}
+                elif kind == "waitJob":
+                    payload = {"result": self._wait_job(run, event)}
                 elif kind in {"operation", "members", "waitOnline"}:
+                    # waitOnline(b) waits without end; b:waitOnline{timeout = ...} gives up after its ticks.
+                    timeout = event.get("timeout") if kind == "waitOnline" else None
+                    if timeout is not None and (type(timeout) not in (int, float) or not math_is_integer(timeout)
+                                                or not 0 <= timeout <= 2147483647):
+                        raise LocalizedError("Invalid script wait")
+                    end = None if timeout is None else time.monotonic() + timeout / 20
                     payload = self.ordered(lambda event=event: self._operation(run, event))
                     while kind == "waitOnline" and not payload["ok"]:
-                        self._wait(run, max(0.25, 1 / self.config.operations_per_second))
+                        if end is not None and time.monotonic() >= end:
+                            payload = {"ok": False, "reason": "timeout"}
+                            break
+                        pause = max(0.25, 1 / self.config.operations_per_second)
+                        self._wait(run, pause if end is None else min(pause, max(0, end - time.monotonic())))
                         payload = self.ordered(lambda event=event: self._operation(run, event))
                     if kind == "waitOnline":
-                        payload = {"result": payload}
+                        payload = {"result": {**payload, "code": "ok" if payload["ok"] else "timeout",
+                                              "reason": payload.get("reason") or ("online" if payload["ok"]
+                                                                                   else "timeout")}}
                 else:
                     raise LocalizedError("Invalid script runner request")
                 self._alive(run)

@@ -374,6 +374,36 @@ test('waitMining rejects invalid timeouts and options before IPC', async () => {
   }
 });
 
+test('a continuing operation returns a job whose wait reaches the host with its timeout', async () => {
+  const waits = [];
+  const run = startRun(`params{}
+local r = bot("Alice"):move("forward", {ticks = 40})
+assert(r.ok and r.job)
+local w = r.job:wait{timeout = 60}
+assert(w.ok and w.code == "ok" and w.reason == "duration elapsed")
+w = group("#miners"):jump({mode = "continuous"}).job:wait()
+assert(not w.ok and w.code == "timeout")
+assert(bot("Alice"):status().job == nil)
+assert(not pcall(function() r.job:wait{ticks = 1} end))
+assert(not pcall(function() r.job:wait{timeout = -1} end))
+local online = bot("Alice"):waitOnline{timeout = 5}
+assert(not online.ok and online.code == "timeout")
+log("done")`, {}, {
+    onOperation: e => e.operation === 'status' ? {ok:true,data:{name:'Alice'}}
+      : {ok:true,code:'ok',job:{kind:e.operation,ids:{'uuid':7}},data:{}},
+    onWaitJob: e => {
+      waits.push(e);
+      return e.target === 'Alice' ? {ok:true,code:'ok',reason:'duration elapsed',results:[]}
+        : {ok:false,code:'timeout',reason:'timeout',results:[]};
+    },
+    onWaitOnline: e => { waits.push(e); return {ok:false,code:'timeout',reason:'timeout'}; },
+  });
+  assert.equal((await run.done).type, 'done');
+  assert.deepEqual(waits.map(e=>[e.type,e.target,e.timeout,e.job?.kind]),
+    [['waitJob','Alice',60,'move'],['waitJob','#miners',1200,'jump'],['waitOnline','Alice',5,undefined]]);
+  assert.deepEqual(waits[0].job.ids, {uuid:7});
+});
+
 test('waitMining suspends until reply and host stop prevents later work', async () => {
   let run;
   run = startRun('params{}\nbot("A"):waitMining{timeout=20}\nlog("wrong")', {}, {

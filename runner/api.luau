@@ -146,6 +146,17 @@ local function arguments(variants, ...)
     end
     error("invalid typed operation arguments", 3)
 end
+-- Every wait takes `{timeout = ticks}` (default 1200) and returns {ok, code, reason, ...}; a timeout is
+-- ok = false, code = "timeout" and does not stop the work it waited for.
+local function timeout(options, what, default)
+    if options == nil then options = {} end
+    assert(type(options) == "table", "invalid " .. what .. " options")
+    for key in options do assert(key == "timeout", "invalid " .. what .. " option") end
+    local ticks = if options.timeout == nil then default else options.timeout
+    assert(ticks == nil or (type(ticks) == "number" and ticks % 1 == 0 and ticks >= 0 and ticks <= 2147483647),
+        "invalid " .. what .. " timeout")
+    return ticks
+end
 local target
 target = function(name, isGroup)
     ready()
@@ -155,16 +166,26 @@ target = function(name, isGroup)
         handle[operation] = function(self, ...)
             local named = arguments(variants, ...)
             local reply = request({type = "operation", target = name, operation = operation, params = named})
-            return reply.result
+            local result = reply.result
+            -- A continuing operation's result carries its job: `b:move("forward", {ticks = 40}).job:wait{}`.
+            if type(result) == "table" and type(result.job) == "table" then
+                local descriptor = result.job
+                result.job = table.freeze({wait = function(_, options)
+                    local ticks = timeout(options, "job wait", 1200)
+                    return request({type = "waitJob", target = name, job = descriptor, timeout = ticks}).result
+                end})
+            end
+            return result
         end
     end
     handle.waitMining = function(self, options)
-        if options == nil then options = {} end
-        assert(type(options) == "table", "invalid waitMining options")
-        for key in options do assert(key == "timeout", "invalid waitMining option") end
-        local ticks = if options.timeout == nil then 1200 else options.timeout
-        assert(type(ticks) == "number" and ticks % 1 == 0 and ticks >= 0 and ticks <= 2147483647, "invalid waitMining timeout")
+        local ticks = timeout(options, "waitMining", 1200)
         return request({type = "waitMining", target = name, timeout = ticks}).result
+    end
+    handle.waitOnline = function(self, options)
+        ready()
+        local ticks = timeout(options, "waitOnline", nil)
+        return request({type = "waitOnline", target = name, timeout = ticks}).result
     end
     if isGroup then
         handle.members = function(self)

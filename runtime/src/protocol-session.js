@@ -859,7 +859,7 @@ export class BedrockSession extends EventEmitter {
       // kept pushing the boat up and down. BDS sends the vehicle's movement.
       this.vehicle = { uniqueId: String(link.ridden_entity_id),
         offsetY: entity ? EYE_HEIGHT - (entity.position.y - Math.floor(entity.position.y)) : EYE_HEIGHT }
-      this.inputs?.setMovement('stop')
+      this.inputs?.setMovement('stop', undefined, 'mounted a vehicle')
       this.horizontalVelocity = { x: 0, z: 0 }
       this.verticalVelocity = 0
     })
@@ -940,7 +940,7 @@ export class BedrockSession extends EventEmitter {
     if (this.respawnPending || !this.client || this.client.status !== 4) return
     this.respawnPending = true
     this.respawnReadySent = false
-    this.inputs?.stopAll()
+    this.inputs?.stopAll('died')
     this.stopMining('respawning', 'canceled', true)
     this.activeItemUse = undefined
     this.releaseItemUseNextTick = false

@@ -499,9 +499,12 @@ class GroupCommandService(BotCommandService):
         if indexed:
             # The console sees only the log; keep the member's own reply there too.
             logs += (reply(strip_colors(rows[0].detail), f"{target} {rows[0].name}"),)
+        jobs = [{"identityId": row.identity, "name": row.name, **row.data["job"]}
+                for row in rows if isinstance(row.data, dict) and "job" in row.data]
         return CommandResult(True, messages, log_level="info", log_messages=logs,
                              accepted=all(row.outcome == "accepted" for row in rows), code=_code(rows),
-                             data={"accepted": sum(row.outcome == "accepted" for row in rows),
+                             data={**({"jobs": jobs} if jobs else {}),
+                                   "accepted": sum(row.outcome == "accepted" for row in rows),
                                    "failed": sum(row.outcome == "failed" for row in rows),
                                    "notRun": sum(row.outcome == "skipped" for row in rows),
                                    "unknown": sum(row.outcome == "unknown" for row in rows)})

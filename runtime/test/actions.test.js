@@ -125,8 +125,49 @@ test('global stop clears movement actions sprint and sneak but not look', () => 
   inputs.setAction('attack', 'continuous')
   inputs.stopAll()
   assert.deepEqual(inputs.snapshot(), {
-    movement: null, sprint: false, sneak: false, look: { yaw: 90, pitch: -20 }, actions: {}
+    movement: null, sprint: false, sneak: false, look: { yaw: 90, pitch: -20 }, actions: {},
+    ended: { move: { job: 1, reason: 'stopped' }, attack: { job: 2, reason: 'stopped' } }
   })
+})
+
+test('every continuing input is a job whose end and reason stay visible', () => {
+  const inputs = new InputState()
+  inputs.setMovement('forward', 2)
+  const move = inputs.snapshot().movementJob
+  inputs.setAction('jump', 'interval', 5, 3)
+  const jump = inputs.snapshot().actions.jump.job
+  assert.notEqual(move, jump)
+  inputs.step()
+  assert.equal(inputs.snapshot().movementJob, move)
+  inputs.step()
+  inputs.step()
+  inputs.step()
+  const snapshot = inputs.snapshot()
+  assert.equal(snapshot.movementJob, undefined)
+  assert.deepEqual(snapshot.ended.move, { job: move, reason: 'duration elapsed' })
+  assert.deepEqual(snapshot.ended.jump, { job: jump, reason: 'duration elapsed' })
+
+  // A new job of the same channel replaces the running one; stop ends it with its reason.
+  inputs.setMovement('left')
+  const first = inputs.snapshot().movementJob
+  inputs.setMovement('right')
+  assert.deepEqual(inputs.snapshot().ended.move, { job: first, reason: 'replaced' })
+  inputs.setMovement('stop', undefined, 'mining started')
+  assert.equal(inputs.snapshot().ended.move.reason, 'mining started')
+
+  inputs.setAction('attack', 'continuous', undefined, undefined, undefined, { type: 'minecraft:zombie' }, 1)
+  const attack = inputs.snapshot().actions.attack.job
+  inputs.countHit('attack', attack)
+  assert.deepEqual(inputs.snapshot().ended.attack, { job: attack, reason: 'count reached' })
+
+  inputs.setAction('use', 'once', undefined, undefined, 10)
+  const use = inputs.snapshot().actions.use.job
+  inputs.cancelTimedUse('held item changed')
+  assert.deepEqual(inputs.snapshot().ended.use, { job: use, reason: 'held item changed' })
+
+  inputs.setAction('attack', 'continuous')
+  inputs.reset()
+  assert.equal(inputs.snapshot().ended.attack.reason, 'disconnected')
 })
 
 test('sprint and sneak transitions are emitted once and reset clears stale transitions', () => {

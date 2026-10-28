@@ -758,15 +758,11 @@ Group/identity pinning as `waitMining`. This needs runtime-side completion state
 
 ## BOT-013: Web script editor
 
-Status: **0.5.0 candidate — not started** (2026-10-24 JST).
+Status: **Superseded by the [product direction](DIRECTION.md)** (2026-10-28 JST).
 
-A browser editor gives syntax highlighting, completion from `api.luau`, line-numbered errors and revision diffs, a
-far better experience than in-game paste. Proposed shape: off by default, listening on localhost/LAN only (public
-exposure is the operator's reverse proxy/TLS); a controller opens it via an in-game `/botscript web` that issues a
-short-lived one-time URL bound to their XUID; saves go through the same compile/declaration/ownership/revision path as
-in-game saves (BOT-009). Authentication, CSRF and rate limits are the main design work. A deployment reference is
-[endstone-live-map](https://github.com/wingxia/endstone-live-map#readme) (local Node service, optional Cloudflare
-delivery); it is not an editor or authentication design to adopt, and no Cloudflare service is required.
+The earlier localhost/LAN, plugin-served shape is replaced: the editor is part of the operator-deployed Cloudflare
+Worker (BOT-021) and saves through endbotd with the same compile/declaration/ownership/revision path as in-game saves
+(BOT-009). Highlighting, completion from `api.luau`, line-numbered errors and revision diffs remain the editor goals.
 
 ## BOT-018: Optional UI resource pack for forms and multi-line editing
 
@@ -790,6 +786,52 @@ unchanged.
 Manual gates: [UI_PACK.md checks 1–10](UI_PACK.md#manual-client-check), including whether the client cuts inputs at
 100 characters (which would also affect the existing line editor for long lines) and a world achievement unlock with
 the pack active. Do not enable `ui-pack-editor` by default or ship the pack in release bundles before those pass.
+
+## BOT-019: One Operation API and principals
+
+Status: **Planned — first step of the [product direction](DIRECTION.md)** (2026-10-28 JST).
+
+Make every surface (chat commands, forms, books, scripts, later the web) call one versioned Operation API whose request
+and result shapes are schema-defined, building on `operations.json`. Replace the player-bound `CommandSource` with a
+principal (in-game player, web account linked to an XUID, console, trigger) that carries identity and grant revision.
+No behavior change for players; this is what makes moving the logic out of the plugin mechanical.
+
+## BOT-020: endbotd outside BDS
+
+Status: **Planned, after BOT-019** (2026-10-28 JST).
+
+Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,
+Luau runner orchestration and the operation log. The plugin becomes a world adapter: it renders in-game UI, forwards
+operations, and performs world observation, teleport and block reads. Keep all internal traffic loopback-only.
+
+## BOT-021: Web on an operator-deployed Cloudflare Worker
+
+Status: **Planned, after BOT-020** (2026-10-28 JST).
+
+Worker + one Durable Object per server; endbotd connects outbound over WebSocket after `endbot web pair <code>`.
+Passkey web accounts linked to an XUID once with `/bot web link <code>`; `endbot web invite --admin` bootstraps the
+first account. endbotd re-authorizes every relayed operation. Order: status and logs, then script editing (BOT-013),
+then Bot control. Controller administration stays console-only. Main design work: pairing and key rotation, session
+and CSRF handling, rate limits, revocation of web sessions when a controller is revoked, deployment documentation.
+Microsoft sign-in is deferred (see the direction document).
+
+## BOT-022: Watches and triggers for scripts
+
+Status: **Planned** (2026-10-28 JST).
+
+A script-facing "watch and wait" API for block changes (and later other non-Bot events). The plugin delivers matches
+from Endstone events where available and from a batched server-thread check of registered positions otherwise. First
+measure which block changes Endstone events cover on the locked pair. Document the minimum persistence in ticks that is
+guaranteed to be delivered. Bound watches per controller and server. First version: a running script loops on `wait()`.
+Second version: persistent triggers that survive restarts and run with their owner's grant. Scripts still never write
+the world directly.
+
+## BOT-023: Upstream login-verifier hook (optional)
+
+Status: **Idea** (2026-10-28 JST).
+
+Propose a narrow Endstone API that lets a plugin accept a login before BDS's Microsoft validator rejects it. If upstream
+accepts it, drop `patches/endstone/` and patched builds. Until then the patch stays the source of truth.
 
 ## Deferred priorities
 

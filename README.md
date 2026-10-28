@@ -155,6 +155,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Product direction](docs/DIRECTION.md)
 - [Installing from release artifacts](docs/INSTALL.md)
 - [Security model](docs/SECURITY.md)
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)

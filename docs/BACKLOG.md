@@ -755,18 +755,16 @@ Scripts can wait for mining jobs (`waitMining`) and for Bots to come online, but
 or `interact` repetition, and a teleport's arrival, are only covered by guessing with `wait(ticks)`. Add waits that end
 when those continuing inputs finish (or report why they stopped), with the same timeout, authority recheck and
 Group/identity pinning as `waitMining`. This needs runtime-side completion state for each input channel.
+Shape (agreed in the [interface guide](INTERFACE_GUIDE.md#d2-the-shape-of-waits-in-luau)): a continuing operation's
+result carries a job, waited with `job:wait{timeout = ...}`; `waitMining` stays as an alias until 1.0.
 
 ## BOT-013: Web script editor
 
-Status: **0.5.0 candidate — not started** (2026-10-24 JST).
+Status: **Superseded by the [product direction](DIRECTION.md)** (2026-10-28 JST).
 
-A browser editor gives syntax highlighting, completion from `api.luau`, line-numbered errors and revision diffs, a
-far better experience than in-game paste. Proposed shape: off by default, listening on localhost/LAN only (public
-exposure is the operator's reverse proxy/TLS); a controller opens it via an in-game `/botscript web` that issues a
-short-lived one-time URL bound to their XUID; saves go through the same compile/declaration/ownership/revision path as
-in-game saves (BOT-009). Authentication, CSRF and rate limits are the main design work. A deployment reference is
-[endstone-live-map](https://github.com/wingxia/endstone-live-map#readme) (local Node service, optional Cloudflare
-delivery); it is not an editor or authentication design to adopt, and no Cloudflare service is required.
+The earlier localhost/LAN, plugin-served shape is replaced: the editor is part of the operator-deployed Cloudflare
+Worker (BOT-021) and saves through endbotd with the same compile/declaration/ownership/revision path as in-game saves
+(BOT-009). Highlighting, completion from `api.luau`, line-numbered errors and revision diffs remain the editor goals.
 
 ## BOT-018: Optional UI resource pack for forms and multi-line editing
 
@@ -790,6 +788,133 @@ unchanged.
 Manual gates: [UI_PACK.md checks 1–10](UI_PACK.md#manual-client-check), including whether the client cuts inputs at
 100 characters (which would also affect the existing line editor for long lines) and a world achievement unlock with
 the pack active. Do not enable `ui-pack-editor` by default or ship the pack in release bundles before those pass.
+
+## BOT-019: One Operation API and principals
+
+Status: **Planned — first step of the [product direction](DIRECTION.md); design agreed** (2026-10-28 JST).
+
+Today the de facto API is `/bot` argv text: forms build command text, scripts turn typed operations back into argv
+(`operation_argv`) to be parsed again, results are localized prose with `data` on some queries only, `view` couples the
+service to forms, and `CommandSource` assumes a player or the console. Make every surface (chat, forms, books, scripts,
+later the web) call `execute(Operation, Principal) -> Outcome`. No behavior change for players; no process split, web
+or new operations here.
+
+```text
+Operation  { op, target: "Alice" | "#miners" | "#miners[2]", params: { typed } }
+Principal  { kind: player | web | console | run | job | trigger, role, xuid?, name, grantRevision, language, origin? }
+Outcome    { ok, code, args, data }        -- localized at the edge
+Event      { to: Principal, kind, data }   -- chat, console log and later the web are sinks
+```
+
+Agreed decisions:
+
+- The registry is language-neutral JSON, extended from `operations.json` with result shapes and error codes; Python,
+  Luau and the Worker's TypeScript read or generate from it.
+- Operations map 1:1 to commands (RPC), plus a few read models such as the Bot list and a status snapshot. No
+  REST-style state resources.
+- Sender-relative arguments are resolved at the entry: the in-game entry turns sender-relative `~` into absolute
+  coordinates, so only Bot-relative `~` (destroy, block) remains in an Operation. A web spawn without a position uses
+  the world spawn; the form offers coordinates. A script's start point becomes the principal's `origin`.
+- Error codes start coarse, by what the user should do next: authorization, not found, invalid argument, temporary
+  failure, conflict. Refine only when needed. During migration an Outcome carries both a code and the existing
+  localized messages. The message catalog becomes exportable JSON.
+- Authorization has two layers. Every principal except the console needs a valid XUID-based grant at the current grant
+  revision. Then each channel adds its own condition: in-game players must be online with an unchanged authorization
+  revision, web principals need a valid link and session, script runs, jobs (internally loops) and triggers need their
+  owner's grant without the in-game online condition, and the console is always allowed. This replaces the three current rules (command, loop, script). Roles, ownership and the script
+  declaration intersection come from BOT-024 and plug into this check.
+- Web principals may use Groups and indexed members (`#group[1]`) under the same authorization.
+
+Steps, each about one PR, none meant to change what players see:
+
+1. Introduce `Principal` in place of `CommandSource`; resolving Endstone senders moves to the adapter; authorization
+   follows the two-layer table.
+2. Make `execute(Operation, Principal)` the entry. `execute(argv)` stays as parse-then-call, so existing tests keep
+   working. Scripts send Operations directly.
+3. Add an Operation-to-command formatter. Form echoes use it. Add a round-trip property test: parse(format(op)) == op.
+4. Add `code` and `data` to every Outcome, starting with queries.
+5. Remove `view` from the service; the in-game UI layer builds screens from Outcomes.
+6. Turn notifications into Events.
+7. Extend `operations.json` with a JSON Schema and validate or generate the Python and Luau sides from it.
+
+## BOT-020: endbotd outside BDS
+
+Status: **Planned, after BOT-019; release grouping open, see [delivery](DIRECTION.md#delivery)** (2026-10-28 JST).
+
+Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,
+Luau runner orchestration and the operation log. The plugin becomes a world adapter: it renders in-game UI, forwards
+operations, performs world observation, teleport and block reads, and reports presence. Keep all internal traffic
+loopback-only. The reasons hold without the web (crash isolation, triggers that outlive BDS, dependencies the plugin
+cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-and-its-centre-moves-out-of-bds).
+
+## BOT-021: Web on an operator-deployed Cloudflare Worker
+
+Status: **Planned, after BOT-020 and BOT-024; release grouping open, see [delivery](DIRECTION.md#delivery)**
+(2026-10-28 JST).
+
+Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
+[web technology](DIRECTION.md#web-technology)); endbotd connects outbound over WebSocket. Accounts are created only from
+a one-time code issued in game by `/botweb link`, with a passkey; endbotd keeps the link table, passkeys and sessions,
+verifies passkey assertions itself and re-authorizes every relayed operation. Only XUIDs with a controller grant get
+an account, whichever way the link is proven. One account per XUID with several passkeys and sessions; "add this device", `/botweb unlink`,
+`/botweb status` and `endbot web revoke <GamerTag>`. Optional, off by default: a trusted external site that proves the
+link (or signs users in) with a signed ES384 assertion verified by endbotd. Cloudflare stores only the static UI and
+at most a display cache. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped,
+the web still shows status and logs and edits scripts; BDS start/stop stays console-only. Update SECURITY.md with this
+boundary. Order: status and logs, then script editing (BOT-013), then Bot control. Controller administration stays
+console-only. Main design work: pairing and key rotation, the WebAuthn relying-party ID and origin seen through the
+relay, session and CSRF handling, rate limits, revocation of web sessions when a controller is revoked, deployment
+documentation. Microsoft sign-in is deferred (see the direction document). Afterwards, localhost mode serves the same
+UI from endbotd without Cloudflare ([other hosts](DIRECTION.md#other-hosts)); other deployment targets are not planned.
+
+## BOT-022: Events, watches and triggers
+
+Status: **Planned; framework agreed in [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)**
+(2026-10-28 JST).
+
+Event kinds in the operation registry (`category.action`, filters, payload, source, guarantee, visibility); a generic
+`watch(kind, filter)` with `w:wait{timeout=}`; observation only, never cancel or modify; triggers as separate bindings
+(event + filter → script + arguments) with skip-while-running, cooldown, a per-minute start cap that disables the
+trigger, and a bounded queue reporting `missed`. Start with `block.change`: measure which block changes Endstone events
+cover on the locked pair and state the guaranteed minimum persistence. Then the other first kinds listed in Decision 5.
+Persistent triggers need endbotd (BOT-020). Visibility and trigger approval follow [PERMISSIONS.md](PERMISSIONS.md).
+
+## BOT-023: Upstream login-verifier hook (optional)
+
+Status: **Idea** (2026-10-28 JST).
+
+Propose a narrow Endstone API that lets a plugin accept a login before BDS's Microsoft validator rejects it. If upstream
+accepts it, drop `patches/endstone/` and patched builds. Until then the patch stays the source of truth.
+
+## BOT-024: Permission model
+
+Status: **Design agreed — see [PERMISSIONS.md](PERMISSIONS.md); not implemented** (2026-10-28 JST).
+
+Agreed: roles operator, scripter and controller (no viewer, no extra per-person permissions); a run's power is the
+invoker's authority intersected with the script's `requires {}` declaration; one ownership model for Bots, Groups,
+scripts and triggers with today's defaults; observation limited to what players see in game; triggers pinned to an
+approved revision; per-controller limits; existing controllers migrate to scripter, new grants default to controller.
+
+Original framing:
+
+Today there is one controller permission plus console-only administration, with per-script ownership and
+private/shared visibility. The web, events and triggers need more, but the granularity must be designed as a whole
+rather than added piecemeal. Guiding requirement: a permission is about what an action does, never about the surface it
+comes from, so a script, a command and the web succeed or fail the same way; there must be no "you can write scripts,
+but not this script". Questions to settle: roles versus per-controller capabilities; whether a controller may operate
+other controllers' Bots and Groups; who may observe other players (chat, presence, position) and whether such events
+exist at all; whether authoring, running and leaving a trigger armed are separate rights; what operators delegate and
+how (console only, or a delegated admin); how revocation propagates to runs, triggers and web sessions.
+
+## BOT-025: Reserved Bot names
+
+Status: **Planned — decided in [interface guide D3](INTERFACE_GUIDE.md#d3-command-roots)** (2026-10-29 JST).
+
+`/bot help <anything>` always opens help, so a Bot named `help` cannot be addressed, and `/bot help status` is
+ambiguous by nature (help topic or operation). Reserve `help`, `list`, `ping` and `menu` as Bot names: the registry
+lists them, and spawn and `rename` reject them from every surface (commands, forms, scripts, later the web) with one
+message. Existing profiles with a reserved name are kept; `/bot list` and the menu mark them and suggest `rename`.
+Small enough to land with or right after BOT-019.
 
 ## Deferred priorities
 

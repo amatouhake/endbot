@@ -1,0 +1,96 @@
+# Interface guide: one vocabulary, a grammar per surface
+
+Status: **Agreed principles; the open questions at the end are proposals** (2026-10-28 JST). Applies to chat commands,
+in-game forms and books, Luau scripts and the web. The technical basis is the Operation API (BOT-019); see also the
+[product direction](DIRECTION.md).
+
+## Principle
+
+The surfaces do not look alike and should not try to. They share one **vocabulary** and translate into each other
+mechanically:
+
+```text
+command  /bot Alice destroy oak_log count 5
+Luau     bot("Alice"):destroy("oak_log", {count = 5})
+web      [Alice] › Destroy   block: oak_log   count: 5   [Run]
+form     Alice › Destroy › (same fields)
+```
+
+Translation rule: positional arguments stay positional; a clause (`count 5`) becomes a named option or field with the
+same name. Operation names, parameter names, choice values, units (ticks) and target syntax (`Alice`, `#miners`,
+`#miners[2]`) are spelled the same everywhere.
+
+## Rules
+
+1. **One registry.** The language-neutral JSON registry is the source of command help, Luau types and completion,
+   web forms and completion, and in-game form fields. It holds each operation's category (help page and web tab),
+   description keys, parameter units, ranges and defaults, whether it continues (needs `stop` or a wait), and
+   examples.
+2. **Examples are written once**, as Operations, and rendered as command, Luau and web text, so docs and help cannot
+   drift apart.
+3. **Every surface shows the equivalent.** Forms already echo `/bot ...`. The web shows the command and the Luau line
+   for each action and offers "copy as script". This is the learning path click → command → script. Recording web or
+   form actions into a script draft is a later extension of the same idea.
+4. **One result and error catalog.** The same failure reads the same in chat, on the web and in Luau `r.message`;
+   scripts branch on `r.code`. Wording comes from the shared message catalog.
+5. **No web-only operations.** Anything the web can do exists in the registry first, so commands and Luau keep parity.
+   Presentation (map picking, live views, diffs) and editor conveniences may be web-only.
+6. **Permitted differences are listed, with reasons.** Any other difference is a bug.
+7. **One glossary.** Each concept has one name per language; no synonyms.
+8. **Shared information architecture, not shared layout.** In-game menus and the web use the same top level
+   (Bots, Groups, Scripts) and the same operation categories as the help pages.
+
+## Permitted differences
+
+| Surface | Difference | Reason |
+| --- | --- | --- |
+| Chat | Sender-relative `~` and `me` | Typing coordinates is slow; resolved to absolute values at the entry |
+| Luau | Handles (`bot("Alice")`), vectors, `wait` family | Programs need values and sequencing |
+| Web, forms | Picking from lists, picking coordinates | Pointing is easier than typing |
+| Forms | Quick single taps (for example short moves) stay typed | Form space is limited |
+
+## Glossary
+
+| Term | Japanese | Meaning |
+| --- | --- | --- |
+| Bot | Bot | One Endbot-controlled player, addressed by its unique name |
+| Group | グループ | A named list of Bots, `#name`; `#name[i]` is one member |
+| Controller | コントローラー | A person allowed to control Bots |
+| Operation | 操作 | One request, such as `destroy` or `tp` |
+| Mode | モード | `once`, `continuous`, `interval`, `stop` |
+| Script | スクリプト | Stored Luau source owned by a controller |
+| Run | 実行 | One execution of a script |
+| Watch | 監視 | A registered interest in a world change that a run can wait on |
+
+Open questions below may add or change terms.
+
+## Open questions (proposals)
+
+### Q1. The noun for ongoing Bot work
+
+The grammar is already consistent (`once`, `continuous`, `interval`, `stop`, with `for`, `hold`, `count`). The nouns
+for what a continuing operation leaves running are not: docs say mining *job*, *loop* and, once, a finished mining
+*run*. Proposal: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (continuous or interval
+input, `for`, mining with `count`). *Run* is reserved for scripts. *Loop* stays an internal word only. Trigger
+(BOT-022) is added when it exists: a persistent watch that starts a run.
+
+### Q2. The shape of waits in Luau
+
+Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is a method. Proposal:
+
+- A continuing operation's result carries its job: `local job = b:destroy("stone", {count = 64}).job`, waited with
+  `job:wait{timeout = 1200}`. This generalizes `waitMining` and is how BOT-016 adds waits for move, use and attack.
+  On a Group the job covers every member, like `group:waitMining` does today.
+- Watches use the same form: `w:wait{timeout = ...}`.
+- State waits stay on the handle: `b:waitOnline{timeout = ...}`.
+- Every wait takes `{timeout = ticks}` and returns the common result shape; a timeout is `ok = false, code =
+  "timeout"` and does not stop the job.
+- `waitOnline(b)` and `b:waitMining{}` remain as documented aliases until 1.0 so stored scripts keep working.
+
+### Q3. Command roots
+
+Rule: `/bot` makes Bots do things (single Bots or Groups); `/bot<noun>` manages that noun: `/botgroup` group
+definitions, `/botscript` scripts and runs. Triggers will be managed under `/botscript`.
+
+Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would collide with a Bot
+called `web`. Proposal: `/botweb link <code>` (also `/botweb status` and `/botweb unlink`).

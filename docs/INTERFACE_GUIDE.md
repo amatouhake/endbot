@@ -76,10 +76,11 @@ everywhere.
 
 ### D1. The noun for ongoing Bot work
 
-The grammar is already consistent (`once`, `continuous`, `interval`, `stop`, with `for`, `hold`, `count`). The nouns
-for what a continuing operation leaves running are not: docs say mining *job*, *loop* and, once, a finished mining
-*run*. Decision: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (see the glossary). *Run* is reserved for scripts. *Loop* stays an internal word only. Trigger
-(BOT-022) is added when it exists: a persistent binding from an event to a script that starts runs.
+The grammar is already consistent (`once`, `continuous`, `interval`, `stop`, with `for`, `hold`, `count`). The nouns for
+what a continuing operation leaves running are not: docs say mining *job*, *loop* and, once, a finished mining *run*.
+Decision: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (see the glossary). *Run* is reserved
+for scripts. *Loop* stays an internal word only. Trigger (BOT-022) is added when it exists: a persistent binding from an
+event to a script that starts runs.
 
 ### D2. The shape of waits in Luau
 

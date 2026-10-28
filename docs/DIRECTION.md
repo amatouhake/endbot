@@ -53,8 +53,8 @@ in-game UI (commands, forms, books)         web UI (Cloudflare Worker, see Decis
 
 Scripts may command Bots, read the world and wait for changes. They get no `setblock`, give, summon-by-command or
 similar direct mutation. Every world change happens through a Bot acting like a player, so BDS stays authoritative,
-`allow-cheats=false` and achievement compatibility keep their meaning, and Endbot stays a Bot automation tool rather than
-a general server scripting platform. Bot lifecycle (spawn, despawn) is allowed: it is Endbot's own state.
+`allow-cheats=false` and achievement compatibility keep their meaning, and Endbot stays a Bot automation tool rather
+than a general server scripting platform. Bot lifecycle (spawn, despawn) is allowed: it is Endbot's own state.
 
 ## Decision 3: the web is hosted on Cloudflare Workers, deployed by each operator
 
@@ -219,11 +219,11 @@ end
 ```
 
 - The blocking-wait shape fits the runner's yield model and reads top to bottom.
-- Sources filter at the origin. For `block.change` the plugin uses Endstone events where they exist (player breaking
-  and placing) and, for changes without an event (redstone, fluids, pistons — coverage to be measured), checks only the
-  watched positions in one batched server-thread pass every N ticks. That is far cheaper than scripts polling over
-  IPC, does not consume the operation budget, and misses fewer short changes. Its guarantee is "a change that
-  persists for at least N ticks is delivered", with N stated; every kind states its own guarantee.
+- Sources filter at the origin. For `block.change` the plugin uses Endstone events where they exist (player breaking and
+  placing) and, for changes without an event (redstone, fluids, pistons — coverage to be measured), checks only the
+  watched positions in one batched server-thread pass every N ticks. That is far cheaper than scripts polling over IPC,
+  does not consume the operation budget, and misses fewer short changes. Its guarantee is "a change that persists for at
+  least N ticks is delivered", with N stated; every kind states its own guarantee.
 - Manual polling with `block()` and `wait()` keeps working as an escape hatch.
 - Watches are owned by the run's principal, bounded per controller and server, and end when that grant is revoked.
 

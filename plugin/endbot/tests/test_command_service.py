@@ -126,6 +126,32 @@ class CommandServiceTests(unittest.TestCase):
         self.world = FakeWorld()
         self.service = PlainCommandService(self.control, self.world)
 
+    def test_operation_entry_runs_like_the_equivalent_command(self):
+        from endstone_endbot.operations import Operation
+
+        self.service.execute(["Alice", "spawn"])
+        self.control.calls.clear()
+        typed = self.service.execute_operation(Operation("move", "Alice", {"direction": "forward", "ticks": 20}))
+        calls = list(self.control.calls)
+        self.control.calls.clear()
+        text = self.service.execute(["Alice", "move", "forward", "for", "20"])
+        self.assertEqual(typed, text)
+        self.assertEqual(calls, self.control.calls)
+        # A well-formed operation that fails still comes back as a result.
+        missing = self.service.execute_operation(Operation("status", "Nobody"))
+        self.assertFalse(missing.accepted)
+
+    def test_operation_entry_rejects_malformed_operations_before_anything_runs(self):
+        from endstone_endbot.commands import CommandSyntaxError
+        from endstone_endbot.operations import Operation
+
+        for operation in (Operation("fly", "Alice"), Operation("move", "Alice", {"direction": "up"}),
+                          Operation("move", "Alice", {"direction": "forward", "speed": 2}),
+                          Operation("move", "Alice", {"direction": "stop", "ticks": 20})):
+            with self.subTest(operation=operation), self.assertRaises((ValueError, CommandSyntaxError)):
+                self.service.execute_operation(operation)
+        self.assertEqual(self.control.calls, [])
+
     def test_continuous_mining_retargets_then_waits_without_restarting_active_block(self):
         self.service.execute(["Alice", "spawn"])
         source = object()

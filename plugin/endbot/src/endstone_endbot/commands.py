@@ -20,6 +20,31 @@ class CommandSyntaxError(LocalizedError):
     pass
 
 
+# Outcome codes, coarse by what the user should do next; refined only when a
+# caller needs to tell two cases apart. "ok" is the only success code.
+OUTCOME_CODES = frozenset({"ok", "unauthorized", "not_found", "invalid_argument", "unavailable", "conflict"})
+# Runtime and member error codes by outcome. The runtime's own "unauthorized"
+# is a rejected plugin token, an installation problem rather than the user's.
+ERROR_CODES = {
+    "not_found": "not_found", "missing_profile": "not_found", "server_not_found": "not_found",
+    "name_conflict": "conflict", "online": "conflict", "offline": "conflict", "not_online": "conflict",
+    "identity_changed": "conflict",
+    "invalid_name": "invalid_argument", "invalid_request": "invalid_argument", "unknown_method": "invalid_argument",
+    "unauthorized": "unavailable", "unavailable": "unavailable", "protocol": "unavailable",
+    "runtime_error": "unavailable", "disconnect_failed": "unavailable",
+}
+
+
+def error_code(error: BaseException) -> str:
+    """The outcome code for an error that ended an operation."""
+    code = getattr(error, "code", None)
+    if isinstance(error, RuntimeControlError) or code in ERROR_CODES:
+        return ERROR_CODES.get(code, "unavailable")
+    if code in OUTCOME_CODES:
+        return code
+    return "unavailable" if isinstance(error, RuntimeError) else "invalid_argument"
+
+
 # Bedrock formatting codes, equal to endstone.ColorFormat values; spelled out
 # so this module stays importable without Endstone. Only players see them:
 # console and log delivery strip them (see strip_colors).
@@ -99,6 +124,8 @@ class CommandResult:
     log_messages: tuple[str, ...] | None = None
     accepted: bool = True
     data: object | None = None
+    # One of OUTCOME_CODES; "ok" exactly when accepted.
+    code: str = "ok"
 
     @property
     def message(self) -> str | None:
@@ -1274,7 +1301,7 @@ class BotCommandService:
                 if len(tokens) >= 2 and tokens[0].lower() != "help":
                     # Syntax errors still name the Bot the operator addressed.
                     name = tokens[0]
-            return CommandResult(True, (reply(detail, name, ERROR),), accepted=False)
+            return CommandResult(True, (reply(detail, name, ERROR),), accepted=False, code=error_code(error))
 
     def _execute(self, command: BotCommand, sender, lang: str = "en", *, control=None) -> CommandResult:
         control = self.control if control is None else control
@@ -1327,10 +1354,12 @@ class BotCommandService:
             )
         if command.operation == "list":
             bots = bot_profiles(control)
+            data = {"bots": [{"name": bot["name"], "identityId": bot.get("identityId"),
+                              "connectionState": bot["connectionState"]} for bot in bots]}
             if not bots:
-                return say("no Bot profiles")
+                return CommandResult(True, (reply(tr(lang, "no Bot profiles")),), data=data)
             summary = ", ".join(f"{bot['name']} {DIM}[{tr(lang, bot['connectionState'])}]{RESET}" for bot in bots)
-            return CommandResult(True, (reply(summary),))
+            return CommandResult(True, (reply(summary),), data=data)
         if command.operation == "status":
             status = control.request("status", name=command.name)
             observed = self.world.observe(status["identityId"]) if self.world else None
@@ -1375,7 +1404,10 @@ class BotCommandService:
             return say("teleported to {location}", status["name"], location=location)
         if command.operation == "radius":
             result = control.request("radius", name=command.name, **command.parameters)
-            return CommandResult(True, (reply(self._radius_summary(result, lang), result["name"]),))
+            data = {"name": result["name"], "chunkRadius": result["chunkRadius"],
+                    "source": "bot" if result.get("chunkRadiusSource") == "bot" else "default",
+                    "serverChunkRadius": result.get("serverChunkRadius")}
+            return CommandResult(True, (reply(self._radius_summary(result, lang), result["name"]),), data=data)
         if command.operation == "destroy":
             mode = command.parameters.get("mode")
             if mode == "continuous":

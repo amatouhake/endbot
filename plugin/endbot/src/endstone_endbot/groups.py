@@ -17,6 +17,7 @@ from endstone_endbot.commands import (
     CommandResult,
     _language,
     _tokens,
+    error_code,
     parse_command,
     reply,
     strip_colors,
@@ -36,8 +37,13 @@ HISTORY_ERROR = "Result history must be a positive integer (1 = latest)"
 PAGE_ERROR = "Page must be a positive integer"
 
 
+def _code(rows) -> str:
+    """A Group outcome's code: "ok" when every member accepted, else the first other member's code."""
+    return next((row.code for row in rows if row.outcome != "accepted"), "ok")
+
+
 class _GroupCanceled(ValueError):
-    pass
+    code = "unauthorized"
 
 
 class _MissingProfile(ValueError):
@@ -330,7 +336,8 @@ class GroupCommandService(BotCommandService):
 
     @staticmethod
     def _error(error, target=None, lang="en"):
-        return CommandResult(True, (reply(localize_error(error, lang), target, ERROR),), accepted=False)
+        return CommandResult(True, (reply(localize_error(error, lang), target, ERROR),), accepted=False,
+                             code=error_code(error))
 
     def execute_group(self, arguments, sender=None):
         """Arguments following /botgroup. Runs on the same authorized, ordered worker as /bot."""
@@ -417,15 +424,17 @@ class GroupCommandService(BotCommandService):
         reason = "other"
         if error is not None:
             reason = getattr(error, "code", "other")
+            code = "unavailable" if outcome == "unknown" else error_code(error)
             if isinstance(error, _GroupCanceled):
                 reason, outcome = "canceled", "skipped"
             detail = localize_error(error, lang)
         else:
+            code = result.code
             detail = " ".join(result.messages or ())
         detail = strip_colors(detail).replace("\n", " ").replace("\r", " ")
         detail = detail.removeprefix("Endbot: ").removeprefix(f"{name}: ")
         return MemberResult(index, identity, name, outcome or ("failed" if error else "accepted"), reason, detail,
-                            result.data if result is not None else None)
+                            result.data if result is not None else None, code)
 
     def _execute_inputs(self, command, sender, members):
         profiles, prepared, requests = {}, [], []
@@ -485,9 +494,10 @@ class GroupCommandService(BotCommandService):
             return CommandResult(True, tuple(
                 reply(row.detail, f"#{group.name}[{row.index}] {row.name}",
                         ERROR if row.outcome != "accepted" else "") for row in rows),
-                                 accepted=all(row.outcome == "accepted" for row in rows),
+                                 accepted=all(row.outcome == "accepted" for row in rows), code=_code(rows),
                                  data={"results": [{"index": row.index, "identityId": row.identity,
                                                     "name": row.name, "ok": row.outcome == "accepted",
+                                                    "code": row.code,
                                                     "reason": row.reason if row.outcome != "accepted" else None,
                                                     "data": row.data} for row in rows]})
         rows = [replace(row, detail=row.detail[:512]) for row in rows]
@@ -506,7 +516,7 @@ class GroupCommandService(BotCommandService):
             # The console sees only the log; keep the member's own reply there too.
             logs += (reply(strip_colors(rows[0].detail), f"{target} {rows[0].name}"),)
         return CommandResult(True, messages, log_level="info", log_messages=logs,
-                             accepted=all(row.outcome == "accepted" for row in rows),
+                             accepted=all(row.outcome == "accepted" for row in rows), code=_code(rows),
                              data={"accepted": sum(row.outcome == "accepted" for row in rows),
                                    "failed": sum(row.outcome == "failed" for row in rows),
                                    "notRun": sum(row.outcome == "skipped" for row in rows),

@@ -135,6 +135,7 @@ class GroupServiceTests(unittest.TestCase):
         del self.control.bots["Alice"]
         result = self.service.execute(["#miners", "spawn"])
         self.assertIn("missing Bot profile 1", messages(result))
+        self.assertEqual((result.accepted, result.code), (False, "not_found"))
         self.assertIn("Bob", messages(self.manage("result", "#miners")))
         self.assertNotIn("Alice", self.control.bots)
         self.assertEqual(len(self.store.get("miners").members), 2)
@@ -149,9 +150,11 @@ class GroupServiceTests(unittest.TestCase):
                 raise KeyError("connectionState")
             return original(operation, **parameters)
         self.control.request = request
-        text = messages(self.service.execute(["#miners", "spawn"]))
+        result = self.service.execute(["#miners", "spawn"])
+        text = messages(result)
         self.assertIn("accepted 1", text)
         self.assertIn("unknown 1", text)
+        self.assertEqual(result.code, "unavailable")
         history = messages(self.manage("result", "#miners"))
         self.assertIn("Alice: accepted", history)
         self.assertIn("Bob: acceptance unknown", history)

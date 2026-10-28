@@ -316,8 +316,12 @@ the Group's own identity guard.
 `param.choice("mode", {"once", "continuous"})` は選択肢から1つを選ぶ引数で、実行フォームではドロップダウンになります。
 引数名の重複、無効な名前、不明な型、名前付きキーや配列との混在はエラーになります。
 
-Ordinary operation calls return **acceptance**, not completion: `{ok=true,messages=...,data=...}` or
-`{ok=false,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
+Ordinary operation calls return **acceptance**, not completion: `{ok=true,code="ok",messages=...,data=...}` or
+`{ok=false,code=...,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
+`code` says what to do next and is the same in every language: `unauthorized` (permission), `not_found` (no such
+Bot or target), `invalid_argument` (fix the request), `unavailable` (try again later) or `conflict` (the Bot's state
+does not allow it now, for example offline or a name in use). A Group's code is its first failed member's; each query
+row also carries its member's `code`. Branch on `code`; `reason` is wording for people.
 Handle rejected calls explicitly, for example `assert(r.ok, r.reason)`. Revocation, rate/deadline and protocol errors end the run.
 Use `wait(ticks)` (20 ticks = one wall-clock second) and `waitOnline(bot("Alice"))`, which also accepts a name
 or Group handle. `log(text)` writes one line, tagged with the run id, to the server log, and also to the chat of

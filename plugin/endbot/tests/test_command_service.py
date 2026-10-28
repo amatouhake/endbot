@@ -126,6 +126,38 @@ class CommandServiceTests(unittest.TestCase):
         self.world = FakeWorld()
         self.service = PlainCommandService(self.control, self.world)
 
+    def test_outcomes_carry_a_code_and_queries_carry_data(self):
+        self.assertEqual(self.service.execute(["Alice", "status"]).code, "not_found")
+        self.assertEqual(self.service.execute(["Alice", "move", "sideways"]).code, "invalid_argument")
+        self.assertEqual(self.service.execute(["list"]).data, {"bots": []})
+        spawned = self.service.execute(["Alice", "spawn"])
+        self.assertEqual((spawned.accepted, spawned.code), (True, "ok"))
+        self.assertEqual(self.service.execute(["list"]).data["bots"][0]["name"], "Alice")
+        radius = self.service.execute(["Alice", "radius"])
+        self.assertEqual(radius.data, {"name": "Alice", "chunkRadius": 5, "source": "default",
+                                       "serverChunkRadius": None})
+        self.assertEqual(self.service.execute(["Alice", "radius", "8"]).data["source"], "bot")
+
+    def test_error_codes_follow_what_the_user_should_do_next(self):
+        from endstone_endbot.commands import CommandSyntaxError, error_code
+        from endstone_endbot.i18n import LocalizedError
+
+        for error, code in (
+            (CommandSyntaxError("Expected x y z coordinates"), "invalid_argument"),
+            (LocalizedError("No matching entity within 16 blocks"), "invalid_argument"),
+            (RuntimeControlError("not_found", "missing"), "not_found"),
+            (RuntimeControlError("name_conflict", "taken"), "conflict"),
+            (RuntimeControlError("not_online", "offline"), "conflict"),
+            (RuntimeControlError("invalid_name", "bad"), "invalid_argument"),
+            (RuntimeControlError("unavailable", "down"), "unavailable"),
+            # The runtime rejecting the plugin's token is an installation fault, not the user's authority.
+            (RuntimeControlError("unauthorized", "token"), "unavailable"),
+            (RuntimeControlError("something_new", "?"), "unavailable"),
+            (RuntimeError("runtime control is not configured"), "unavailable"),
+        ):
+            with self.subTest(error=error):
+                self.assertEqual(error_code(error), code)
+
     def test_operation_entry_runs_like_the_equivalent_command(self):
         from endstone_endbot.operations import Operation
 

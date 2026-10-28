@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from endstone_endbot import script_forms
-from endstone_endbot.commands import DIM, ERROR, RESET, CommandResult, _language, reply, strip_colors
+from endstone_endbot.commands import DIM, ERROR, RESET, CommandResult, _language, error_code, reply, strip_colors
 from endstone_endbot.control import bot_profiles
 from endstone_endbot.group_forms import GroupGuard
 from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
@@ -358,13 +358,14 @@ class ScriptService:
                 operation = Operation(event.get("operation"), target, event.get("params"))
                 result = self.service.execute_operation(operation, source)
             except (RuntimeError, ValueError) as error:
-                return {"result": {"ok": False, "reason": localize_error(error, "en")}}
+                return {"result": {"ok": False, "code": error_code(error), "reason": localize_error(error, "en")}}
             if audit and self.notify:
                 # Preserve existing command audit, even if the controller logged out.
                 self.notify(source, result, chat=self._reply_chat(result))
             return {
                 "result": {
                     "ok": result.accepted,
+                    "code": result.code,
                     "data": result.data,
                     "messages": [strip_colors(m) for m in result.messages],
                     **({"reason": strip_colors(result.message or "")} if not result.accepted else {}),
@@ -855,7 +856,8 @@ class ScriptService:
                 return CommandResult(True, view=view)
             raise LocalizedError("Use /botscript help")
         except (ValueError, RuntimeError, OSError) as error:
-            return CommandResult(True, (reply(localize_error(error, lang), color=ERROR),), accepted=False)
+            return CommandResult(True, (reply(localize_error(error, lang), color=ERROR),), accepted=False,
+                                 code=error_code(error))
 
     @staticmethod
     def _player(source):

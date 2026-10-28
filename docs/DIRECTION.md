@@ -209,10 +209,11 @@ the registry, as the [interface guide](INTERFACE_GUIDE.md) requires.
 **Scripts wait on a watch.** One generic form, not one function per kind:
 
 ```lua
+params {}
 local w = watch("block.change", {x = 100, y = 64, z = 200})
 while true do
-  local change = w:wait()          -- yields until the block changes; accepts {timeout = ticks}
-  if change.to == "minecraft:air" then
+  local r = w:wait{timeout = 1200} -- yields until the block changes or the timeout; common result shape
+  if r.ok and r.data.to == "minecraft:air" then
     bot("Alice"):spawn()
   end
 end
@@ -237,7 +238,8 @@ slow handling never holds a game tick.
 trigger = { event kind + filter → script (+ arguments), owner, enabled, policy }
 ```
 
-- The script receives the event as a parameter (`param.event`), so the same script can run by hand or from a trigger.
+- The script declares the event as a parameter in `params{}` (for example `param.event("event")`) and reads it from
+  the returned arguments (`a.event`), so the same script can run by hand or from a trigger.
 - Triggers can be created without code from the web and the in-game forms, and managed with
   `/botscript trigger add|list|remove`.
 - `watch():wait()` stays for waiting inside a run; a trigger is what starts a run.
@@ -261,7 +263,8 @@ limits ([triggers](PERMISSIONS.md#triggers)).
 No release numbers are assigned in advance. The order is fixed by dependency, and main stays releasable at each
 checkpoint; whether a checkpoint ships on its own or together with later ones is decided when it is reached.
 
-1. BOT-019 (Operation API, principals) with the agreed waits (BOT-016, interface guide D2).
+1. BOT-019 (Operation API, principals), which changes nothing players see, then the agreed waits (BOT-016, interface
+   guide D2) as a separate step in the same checkpoint; the waits are the new Luau API.
 2. BOT-020 (endbotd). It moves the policy and script stores, so `endbot update` and `--rollback` must carry the
    migration in both directions.
 3. BOT-024 (permission model: roles, ownership, script declarations), before anything reaches the web or runs

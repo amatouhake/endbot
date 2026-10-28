@@ -37,6 +37,8 @@ params { ... }
 
 - The basic set needs no declaration: operating Bots the invoker may operate, reading the world, waiting and logging.
   Beginner scripts stay as they are.
+- `requires {}` must be an unconditional top-level call before `params{}`; a later or conditional call is an
+  inspection error, so what inspection reads is the whole declaration.
 - Declarations are read before a run starts, through the existing inspection that executes only up to `params`.
   Forms and the web show them before a shared script runs ("this script observes chat").
 - A missing capability fails before the run starts, with the capability named, never halfway through.
@@ -114,7 +116,8 @@ reserve for players (exists today). Limits are the answer to amplification, not 
 | Jobs the person started | Stop, as continuous mining already does |
 | Owned Bots, Groups and scripts | Kept; shared ones stay usable; the console can reassign owners |
 
-Moving a scripter to controller keeps their scripts, which stay runnable but no longer editable by them.
+Moving a scripter to controller keeps their scripts. An owner may always run their own scripts, private ones
+included, so they stay runnable by them but are no longer editable by them.
 
 ## Not decided here
 

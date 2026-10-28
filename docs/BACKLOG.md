@@ -801,7 +801,7 @@ or new operations here.
 
 ```text
 Operation  { op, target: "Alice" | "#miners" | "#miners[2]", params: { typed } }
-Principal  { kind: player | web | console | trigger, role, xuid?, name, grantRevision, language, origin? }
+Principal  { kind: player | web | console | run | job | trigger, role, xuid?, name, grantRevision, language, origin? }
 Outcome    { ok, code, args, data }        -- localized at the edge
 Event      { to: Principal, kind, data }   -- chat, console log and later the web are sinks
 ```
@@ -820,8 +820,8 @@ Agreed decisions:
   localized messages. The message catalog becomes exportable JSON.
 - Authorization has two layers. Every principal except the console needs a valid XUID-based grant at the current grant
   revision. Then each channel adds its own condition: in-game players must be online with an unchanged authorization
-  revision, web principals need a valid link and session, triggers and loops need their owner's grant, and the console
-  is always allowed. This replaces the three current rules (command, loop, script). Roles, ownership and the script
+  revision, web principals need a valid link and session, script runs, jobs (internally loops) and triggers need their
+  owner's grant without the in-game online condition, and the console is always allowed. This replaces the three current rules (command, loop, script). Roles, ownership and the script
   declaration intersection come from BOT-024 and plug into this check.
 - Web principals may use Groups and indexed members (`#group[1]`) under the same authorization.
 

@@ -62,7 +62,7 @@ everywhere.
 | Scripter | スクリプター | The role that can also create, edit, copy and share scripts |
 | Operator | オペレーター | The console; grants and revokes access |
 | Operation | 操作 | One request, such as `destroy` or `tp` |
-| Mode | モード | `once`, `continuous`, `interval`, `stop` |
+| Mode | モード | `once`, `continuous`, `stop`; `interval <ticks>` is a clause (`{interval = ticks}`), not a mode |
 | Script | スクリプト | Stored Luau source owned by the scripter who created it |
 | Run | 実行 | One execution of a script |
 | Job | ジョブ | What a Bot keeps doing after an operation returns: continuous or interval input, `for`, held use, mining (one block or many) |
@@ -100,8 +100,9 @@ Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is 
 Rule: `/bot` makes Bots do things (single Bots or Groups); `/bot<noun>` manages that noun: `/botgroup` group
 definitions, `/botscript` scripts and runs. Triggers will be managed under `/botscript`.
 
-Existing exceptions, kept: `/bot list`, `/bot help`, `/bot ping` and `/bot menu` are root words. They win only as the
-whole command, so a Bot named `list` is still reached with `/bot list status` or `/bot list menu`.
+Existing exceptions, kept: `/bot list`, `/bot help`, `/bot ping` and `/bot menu` are root words. `list`, `ping` and
+`menu` win only as the whole command, so a Bot named `list` is still reached with `/bot list status` or `/bot list menu`.
+`help` wins with any arguments (`/bot help <page|command>`), so a Bot named `help` cannot be addressed with `/bot`.
 
 Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would read as operation
 `link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link` (issues the

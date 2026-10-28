@@ -100,6 +100,27 @@ class DispatchTests(unittest.TestCase):
         runner.close()
         self.assertTrue(closed.wait(1))
 
+    def test_menu_outcomes_open_their_screen_with_the_scripting_entry(self):
+        from types import SimpleNamespace
+
+        from endstone_endbot.forms import BotListView
+        from endstone_endbot.script_config import ScriptConfig
+
+        scheduled = ScheduledCallbacks()
+        bridge = ServerThreadBridge(scheduled.schedule)
+        self.addCleanup(bridge.close)
+        shown = []
+        scripts = SimpleNamespace(config=ScriptConfig(enabled=True), cancel=lambda: None, close=lambda: None)
+        service = SimpleNamespace(execute=lambda argv, source: CommandResult(
+            True, data={"menu": "bots", "bots": [{"name": "Alice", "connectionState": "online"}]}))
+        player = SimpleNamespace(send_message=lambda message: None)
+        runner = AsyncCommandRunner(service, bridge, lambda source: player, scripts=scripts,
+                                    show_view=lambda sender, view: shown.append(view))
+        self.addCleanup(runner.close)
+        runner.submit(["menu"], Principal("player", player_id="controller"))
+        scheduled.run_next()
+        self.assertEqual(shown, [BotListView(({"name": "Alice", "connectionState": "online"},), scripting=True)])
+
     def test_form_group_guard_survives_authorized_worker_capture_and_root_dispatch(self):
         from types import SimpleNamespace
 

@@ -23,8 +23,7 @@ from endstone_endbot.commands import (
     strip_colors,
 )
 from endstone_endbot.control import RuntimeControlError, bot_profiles
-from endstone_endbot.forms import BotListView, BotView, GroupTarget, Run, menu_argv
-from endstone_endbot.group_forms import GroupGuard, GroupListView, GroupView, ResultView
+from endstone_endbot.group_forms import GroupListView, GroupView, ResultView
 from endstone_endbot.group_results import PAGE_SIZE, MemberResult, ResultStore
 from endstone_endbot.i18n import LocalizedError, localize_error, tr
 
@@ -273,34 +272,19 @@ class GroupCommandService(BotCommandService):
         return CommandResult(True, view=GroupView(group.identity, group.name, members, available, page))
 
     @staticmethod
-    def _group_view_back(view, group, guard):
-        """Keep menu origin separate from the UUID/membership checks on actions."""
-        back_guard = GroupGuard(group.identity, group.name)
-        manage = Run((("menu", f"#{group.name}"),), command="botgroup", guard=back_guard)
-        management = guard.return_to_management
-        if management:
-            back = manage
-        elif guard.bot_identity is not None:
-            back = Run((menu_argv(f"#{group.name}"),), guard=back_guard)
-        else:
-            back = Run((menu_argv(),))
-        label = "Back to group management" if management else (
-            "Back to group operations" if guard.bot_identity is not None else "Back to Bot list")
-        return replace(view, guard=guard, back=back, back_label=label,
-                       management=manage if view.name.startswith("#") and not management else None)
+    def _group_data(group) -> dict:
+        """The Group a menu outcome belongs to, for menu_views to guard and link its screen."""
+        return {"identity": group.identity, "name": group.name, "members": list(group.members)}
 
     def _operation_menu(self, sender, group):
         if getattr(sender, "player_id", None) is None:
             return self._menu(sender)
         self._form_group(sender, group)
         profiles = self._profiles(sender)
-        incoming = getattr(sender, "group_guard", None)
-        guard = GroupGuard(group.identity, group.name, group.members, operation_menu=True,
-                           return_to_management=bool(incoming and incoming.return_to_management))
         online = sum(profiles.get(identity, {}).get("connectionState") == "online" for identity in group.members)
         summary = tr(_language(sender), "Members {count}, online {online}", count=len(group.members), online=online)
-        view = BotView(f"#{group.name}", summary, {})
-        return CommandResult(True, view=self._group_view_back(view, group, guard))
+        return CommandResult(True, data={"menu": "groupOperations", "group": self._group_data(group),
+                                         "summary": summary, "members": len(group.members), "online": online})
 
     def _result(self, sender, group, history, *, menu=False):
         self._form_group(sender, group)
@@ -538,18 +522,18 @@ class GroupCommandService(BotCommandService):
                             command = replace(command, parameters={"identityId": guard.bot_identity})
                         result = self._execute(command, sender, _language(sender), control=_MemberControl(
                             self.control, guard.bot_identity, lambda: self._check(sender)))
-                        if result.view is not None:
-                            result = replace(result, view=self._group_view_back(
-                                result.view, self._store().get(guard.name), guard))
+                        if isinstance(result.data, dict) and result.data.get("menu") == "bot":
+                            group = self._group_data(self._store().get(guard.name))
+                            result = replace(result, data={**result.data, "group": group})
                         return result
                 result = super().execute(arguments, sender)
-                if isinstance(result.view, BotListView):
+                if isinstance(result.data, dict) and result.data.get("menu") == "bots":
                     self._check(sender)
                     # A store that failed to load disables groups, never the Bot list.
                     groups = self.groups.groups if self.groups is not None else ()
-                    targets = tuple(GroupTarget(group.name, len(group.members), GroupGuard(group.identity, group.name))
-                                    for group in groups)
-                    result = replace(result, view=replace(result.view, groups=targets))
+                    targets = [{"identity": group.identity, "name": group.name, "count": len(group.members)}
+                               for group in groups]
+                    result = replace(result, data={**result.data, "groups": targets})
                 return result
             command = parse_command(arguments)
             group, members, indexed = self._store().select(tokens[0])
@@ -598,12 +582,9 @@ class GroupCommandService(BotCommandService):
                         control=_MemberControl(self.control, identity, lambda: self._check(sender)),
                     )
                     if command.operation == "menu":
-                        if result.view is not None:
-                            incoming = getattr(sender, "group_guard", None)
-                            guard = GroupGuard(group.identity, group.name, group.members, bot_identity=identity,
-                                               bot_name=name, return_to_management=bool(
-                                                   incoming and incoming.return_to_management))
-                            result = replace(result, view=self._group_view_back(result.view, group, guard))
+                        if isinstance(result.data, dict) and result.data.get("menu") == "bot":
+                            result = replace(result, data={**result.data, "group": self._group_data(group),
+                                                           "member": {"identityId": identity, "name": name}})
                         return result
                     rows.append(self._row(index, identity, name, result=result))
                 except (RuntimeError, ValueError) as error:

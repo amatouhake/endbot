@@ -1,6 +1,10 @@
 import itertools
+import json
+import re
 import unittest
+from pathlib import Path
 
+from endstone_endbot import operations
 from endstone_endbot.commands import parse_command
 from endstone_endbot.operations import (
     GROUPS,
@@ -103,6 +107,83 @@ class OperationRoundTripTests(unittest.TestCase):
         self.assertEqual(command_text("bot", move), "/bot Alice move forward for 20")
         self.assertEqual(command_text("bot", ("Alice", "tp", "'Some Name'")), "/bot Alice tp 'Some Name'")
         self.assertEqual(command_text("botgroup", ("add", "miners", "Alice")), "/botgroup add miners Alice")
+
+
+SOURCE = Path(operations.__file__).parent
+REPOSITORY = Path(__file__).resolve().parents[3]
+
+
+def check(instance, schema, root, path="registry"):
+    """Validate with the JSON Schema keywords operations.schema.json uses; raise AssertionError on the first fault."""
+    if schema is False:
+        raise AssertionError(f"{path}: not allowed")
+    if "$ref" in schema:
+        check(instance, root["$defs"][schema["$ref"].removeprefix("#/$defs/")], root, path)
+    kind = schema.get("type")
+    types = {"object": dict, "array": list, "string": str}
+    if kind and not isinstance(instance, types[kind]):
+        raise AssertionError(f"{path}: expected {kind}")
+    if "enum" in schema and instance not in schema["enum"]:
+        raise AssertionError(f"{path}: {instance!r} is not one of {schema['enum']}")
+    if "pattern" in schema and not re.search(schema["pattern"], instance):
+        raise AssertionError(f"{path}: {instance!r} does not match {schema['pattern']}")
+    if isinstance(instance, dict):
+        if len(instance) < schema.get("minProperties", 0):
+            raise AssertionError(f"{path}: too few properties")
+        for key in schema.get("required", ()):
+            if key not in instance:
+                raise AssertionError(f"{path}: missing {key}")
+        for key, value in instance.items():
+            check(key, schema.get("propertyNames", {}), root, f"{path} key {key}")
+            properties = schema.get("properties", {})
+            check(value, properties[key] if key in properties else schema.get("additionalProperties", {}), root,
+                  f"{path}.{key}")
+    if isinstance(instance, list):
+        if not schema.get("minItems", 0) <= len(instance) <= schema.get("maxItems", len(instance)):
+            raise AssertionError(f"{path}: wrong number of items")
+        if schema.get("uniqueItems") and len(set(map(json.dumps, instance))) != len(instance):
+            raise AssertionError(f"{path}: duplicate items")
+        prefix = schema.get("prefixItems", [])
+        for index, value in enumerate(instance):
+            check(value, prefix[index] if index < len(prefix) else schema.get("items", {}), root, f"{path}[{index}]")
+
+
+class RegistrySchemaTests(unittest.TestCase):
+    def setUp(self):
+        self.schema = json.loads((SOURCE / "operations.schema.json").read_text(encoding="utf-8"))
+        self.types = set(self.schema["$defs"]["field"]["properties"]["type"]["enum"])
+
+    def test_the_registry_follows_its_schema(self):
+        check(OPERATIONS, self.schema, self.schema)
+
+    def test_the_checker_rejects_what_the_schema_forbids(self):
+        for registry in (
+            {},
+            {"move": []},
+            {"move": [{"positional": [], "options": {}}]},
+            {"move": [{"positional": [["direction", {"type": "vector"}]], "options": {}, "prefix": []}]},
+            {"move": [{"positional": [["direction"]], "options": {}, "prefix": []}]},
+            {"move": [{"positional": [], "options": {"for": {"type": "integer", "clause": "For"}}, "prefix": []}]},
+            {"move": [{"positional": [], "options": {"mode": {"type": "string", "choices": ["a", "a"]}},
+                       "prefix": []}]},
+            {"Move": [{"positional": [], "options": {}, "prefix": []}]},
+        ):
+            with self.subTest(registry=registry), self.assertRaises(AssertionError):
+                check(registry, self.schema, self.schema)
+
+    def test_python_validates_exactly_the_schema_types(self):
+        self.assertEqual({spec["type"] for shapes in OPERATIONS.values() for shape in shapes
+                          for _, spec in (*shape["positional"], *shape["options"].items())}, self.types)
+        # scalar() keeps one validator per type in a table; it must name exactly the schema's types.
+        source = Path(operations.__file__).read_text(encoding="utf-8")
+        table = source[source.index("def scalar"):source.index("def operation_argv")]
+        checked = set(re.findall(r'^\s+"(\w+)": ', table, re.MULTILINE))
+        self.assertEqual(checked, self.types)
+
+    def test_the_luau_bootstrap_validates_exactly_the_schema_types(self):
+        api = (REPOSITORY / "runner" / "api.luau").read_text(encoding="utf-8")
+        valid = api[api.index("local function valid("):api.index("local function arguments(")]
+        self.assertEqual(set(re.findall(r'kind == "(\w+)"', valid)), self.types)
 
 
 if __name__ == "__main__":

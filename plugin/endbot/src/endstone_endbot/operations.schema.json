@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/amatouhake/endbot/plugin/endbot/src/endstone_endbot/operations.schema.json",
+  "title": "Endbot operation registry",
+  "description": "operations.json: every operation, the shapes of its typed parameters and their command clauses. Python (operations.py), the Luau bootstrap (runner/api.luau) and the operator reference read it; later the web Worker generates its types from it.",
+  "type": "object",
+  "propertyNames": {"pattern": "^[a-z]+$"},
+  "minProperties": 1,
+  "additionalProperties": {
+    "description": "The shapes an operation accepts, tried in order; the first that fits the parameters wins.",
+    "type": "array",
+    "minItems": 1,
+    "items": {"$ref": "#/$defs/shape"}
+  },
+  "$defs": {
+    "name": {
+      "description": "A parameter name, spelled the same in commands, Luau and the web.",
+      "type": "string",
+      "pattern": "^[a-z][A-Za-z]*$"
+    },
+    "word": {
+      "description": "A literal command word.",
+      "type": "string",
+      "pattern": "^[a-z]+$"
+    },
+    "field": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "description": "The value's type; coordinate also takes ~ relative forms, the two unions take either kind.",
+          "enum": ["string", "number", "integer", "boolean", "coordinate", "stringOrInteger", "integerOrDefault"]
+        },
+        "choices": {
+          "description": "The only values allowed.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z]+$"}
+        },
+        "clause": {"$ref": "#/$defs/word", "description": "The command word written before the value."}
+      }
+    },
+    "shape": {
+      "type": "object",
+      "required": ["positional", "options", "prefix"],
+      "additionalProperties": false,
+      "properties": {
+        "positional": {
+          "description": "Required fields, in command order.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [{"$ref": "#/$defs/name"}, {"$ref": "#/$defs/field"}],
+            "items": false,
+            "minItems": 2
+          }
+        },
+        "options": {
+          "description": "Optional fields, in command order after the positional ones.",
+          "type": "object",
+          "propertyNames": {"$ref": "#/$defs/name"},
+          "additionalProperties": {"$ref": "#/$defs/field"}
+        },
+        "prefix": {
+          "description": "Literal words between the operation and its first field.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/word"}
+        }
+      }
+    }
+  }
+}

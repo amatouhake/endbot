@@ -2,7 +2,8 @@
 
 An ``Operation`` is one typed request, spelled as the registry and Luau spell it
 (``{op = "destroy", target = "Alice", params = {type = "oak_log", count = 5}}``).
-Variants describe positional fields, named options and their literal argv clauses.
+Variants describe positional fields, named options and their literal argv clauses;
+``operations.schema.json`` defines that structure for every reader (Python, Luau, docs, later the web).
 The ordinary parser remains the final semantic validator (including combinations).
 No script-supplied token can become another command or an untyped suffix.
 """

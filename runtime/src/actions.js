@@ -17,6 +17,11 @@ export class InputState {
     this.actionSequence = 0
     this.movement = undefined
     this.movementEndTick = undefined
+    // Every continuing input is a job: movement and each action get an id from
+    // actionSequence when they start, and the last end of each channel (`move`
+    // or an action name) is kept with its reason so a script can wait for it.
+    this.movementJob = undefined
+    this.ended = new Map()
     this.sprint = false
     this.sneak = false
     this.transitions = []
@@ -30,8 +35,9 @@ export class InputState {
   // transactions per trigger; the session releases it and calls finishHold.
   // `target` ({runtimeId} or {type}) re-aims every trigger at the nearest match;
   // `count` ends the action after that many triggers reached an entity.
+  // `reason` is why a running job of this action ends when this call stops it.
   setAction (action, mode = 'once', intervalTicks = undefined, durationTicks = undefined, holdTicks = undefined,
-    target = undefined, count = undefined) {
+    target = undefined, count = undefined, reason = 'stopped') {
     if (!ACTIONS.has(action)) throw new Error(`Unsupported action: ${action}`)
     if (action === 'interact' && mode !== 'stop' && target === undefined) {
       throw new Error('Repeated interact needs an entity target')
@@ -49,7 +55,7 @@ export class InputState {
       throw new Error('Hold requires use and an integer from 1 to 72000 ticks')
     }
     if (mode === 'stop') {
-      this.actions.delete(action)
+      this.#endAction(action, reason)
       return
     }
     let interval = mode === 'continuous' ? 1 : mode === 'once' ? 0 : Number(intervalTicks)
@@ -64,6 +70,7 @@ export class InputState {
     }
     const legacyTimedUse = durationTicks !== undefined && action === 'use' && mode === 'continuous' &&
       holdTicks === undefined
+    this.#endAction(action, 'replaced')
     this.actions.set(action, { mode, interval, nextTick: this.tick + 1, revision: ++this.actionSequence,
       ...(legacyTimedUse ? { durationTicks } : {}),
       ...(durationTicks !== undefined && !legacyTimedUse ? { endTick: this.tick + 1 + durationTicks } : {}),
@@ -74,10 +81,19 @@ export class InputState {
 
   actionTarget (action) { return this.actions.get(action)?.target }
 
+  #ended (channel, job, reason) { this.ended.set(channel, { job, reason }) }
+
+  #endAction (action, reason) {
+    const state = this.actions.get(action)
+    if (!state) return
+    this.actions.delete(action)
+    this.#ended(action, state.revision, reason)
+  }
+
   look () { return { yaw: this.yaw, pitch: this.pitch } }
 
-  stopTargeted () {
-    for (const [action, state] of this.actions) if (state.target !== undefined) this.actions.delete(action)
+  stopTargeted (reason = 'dimension changed') {
+    for (const [action, state] of this.actions) if (state.target !== undefined) this.#endAction(action, reason)
   }
 
   // One trigger reached an entity; a counted action ends at zero.
@@ -85,7 +101,7 @@ export class InputState {
     const state = this.actions.get(action)
     if (!state || state.revision !== revision || state.remaining === undefined) return
     state.remaining -= 1
-    if (state.remaining <= 0) this.actions.delete(action)
+    if (state.remaining <= 0) this.#endAction(action, 'count reached')
   }
 
   actionMode (action) {
@@ -116,21 +132,23 @@ export class InputState {
   finishHold (revision) {
     const state = this.actions.get('use')
     if (state?.revision === revision && state.holdTicks !== undefined && state.mode === 'once') {
-      this.actions.delete('use')
+      this.#endAction('use', 'completed')
     }
   }
 
-  cancelTimedUse () {
-    if (this.hasTimedUse()) this.actions.delete('use')
+  cancelTimedUse (reason = 'canceled') {
+    if (this.hasTimedUse()) this.#endAction('use', reason)
   }
 
-  setMovement (direction, durationTicks = undefined) {
+  // `reason` is why a running movement job ends when this call stops it.
+  setMovement (direction, durationTicks = undefined, reason = 'stopped') {
     if (durationTicks !== undefined && (direction === 'stop' || !validTicks(durationTicks))) {
       throw new Error('Movement duration requires a direction and an integer from 1 to 72000 ticks')
     }
-    if (direction === 'stop') this.movement = undefined
-    else if (!DIRECTIONS.has(direction)) throw new Error(`Unsupported movement direction: ${direction}`)
-    else this.movement = direction
+    if (direction !== 'stop' && !DIRECTIONS.has(direction)) throw new Error(`Unsupported movement direction: ${direction}`)
+    if (this.movementJob !== undefined) this.#ended('move', this.movementJob, direction === 'stop' ? reason : 'replaced')
+    this.movement = direction === 'stop' ? undefined : direction
+    this.movementJob = this.movement ? ++this.actionSequence : undefined
     this.movementEndTick = this.movement && durationTicks !== undefined ? this.tick + 1 + durationTicks : undefined
   }
 
@@ -151,16 +169,16 @@ export class InputState {
     this.transitions.push(`${value ? 'start' : 'stop'}_${flag}`)
   }
 
-  stopAll () {
-    this.actions.clear()
-    this.setMovement('stop')
+  stopAll (reason = 'stopped') {
+    for (const action of [...this.actions.keys()]) this.#endAction(action, reason)
+    this.setMovement('stop', undefined, reason)
     this.setFlag('sprint', false)
     this.setFlag('sneak', false)
   }
 
-  reset () {
-    this.actions.clear()
-    this.setMovement('stop')
+  reset (reason = 'disconnected') {
+    for (const action of [...this.actions.keys()]) this.#endAction(action, reason)
+    this.setMovement('stop', undefined, reason)
     this.sprint = false
     this.sneak = false
     this.transitions = []
@@ -169,16 +187,18 @@ export class InputState {
   step () {
     this.tick += 1
     const triggered = []
-    if (this.movementEndTick !== undefined && this.tick >= this.movementEndTick) this.setMovement('stop')
+    if (this.movementEndTick !== undefined && this.tick >= this.movementEndTick) {
+      this.setMovement('stop', undefined, 'duration elapsed')
+    }
     for (const [action, state] of this.actions) {
       if (state.endTick !== undefined && this.tick >= state.endTick) {
-        this.actions.delete(action)
+        this.#endAction(action, 'duration elapsed')
         continue
       }
       if (this.tick < state.nextTick) continue
       triggered.push(action)
       if (state.mode === 'once' && state.holdTicks !== undefined) state.nextTick = Infinity
-      else if (state.mode === 'once') this.actions.delete(action)
+      else if (state.mode === 'once') this.#endAction(action, 'completed')
       else state.nextTick = this.tick + state.interval
     }
     return {
@@ -196,12 +216,14 @@ export class InputState {
   snapshot () {
     return {
       movement: this.movement ?? null,
+      ...(this.movementJob === undefined ? {} : { movementJob: this.movementJob }),
       ...(this.movementEndTick === undefined ? {} : { movementRemainingTicks: this.movementEndTick - this.tick - 1 }),
       sprint: this.sprint,
       sneak: this.sneak,
       look: { yaw: this.yaw, pitch: this.pitch },
+      ended: Object.fromEntries(this.ended),
       actions: Object.fromEntries([...this.actions].map(([name, state]) => [name, {
-        mode: state.mode, intervalTicks: state.interval || null,
+        mode: state.mode, job: state.revision, intervalTicks: state.interval || null,
         ...(state.holdTicks === undefined ? {} : { holdTicks: state.holdTicks }),
         ...(state.target === undefined ? {} : { target: state.target }),
         ...(state.remaining === undefined ? {} : { remainingCount: state.remaining }),

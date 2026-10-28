@@ -366,6 +366,8 @@ the world (or before BDS has sent it).
 | `data.mining.blocksBroken` | Runtime continuous-loop count; for a single block, 1 if completed, otherwise 0; 0 with no job |
 | `data.mining.blockCount` | Continuous count limit, or nil when unlimited/no job |
 | `data.mining.reason` | Nil while active; otherwise the runtime's terminal reason, or nil with no job |
+| `data.running` | Running input job ids by kind (`move`, `jump`, `attack`, `use`, `interact`); nil when none runs |
+| `data.ended` | The last end of each input kind: `{job, reason}` |
 
 Terminal reasons include `block count reached`, `duration elapsed`, `stopped`, and runtime failure reasons.
 Null JSON fields become nil in Luau. `group:status()` returns `data.results` in pinned membership order;
@@ -393,9 +395,33 @@ World queries read BDS on the server thread and count as operations:
 
 A radius-12 search took about 23 ms of server-thread time in the live check (2026-10-24).
 
+### Jobs and waits
+
+A continuing operation's result carries its **job**: whatever the Bot keeps doing after the operation returns.
+`move`, `jump`, `attack`, `use` and `interact` (any mode that keeps running, including `use` once with `hold`) and
+`destroy` return one; on a Group the job covers every member that started one. Wait for it with `job:wait`:
+
+```lua
+local r = bot("Alice"):move("forward", {ticks = 40})
+local w = r.job:wait{timeout = 200}   -- {ok, code, reason, results}
+if w.ok then log("stopped: " .. w.reason) end  -- duration elapsed, count reached, completed, stopped, replaced, ...
+group("#miners"):destroy("stone", {count = 64}).job:wait{timeout = 2400}
+```
+
+Every wait takes `{timeout = ticks}` (default 1200) and returns the common result shape: `ok`, `code`, `reason` and,
+for Bot and Group waits, one row per member with `name`, `identityId`, `ok`, `code` and `reason`. A job that ended
+for any reason is `ok=true` with that reason (`stopped`, `replaced` by a newer command of the same kind, `died`,
+`disconnected`, `held item changed`, ...); a timeout is `ok=false, code="timeout"` and does **not** stop the job.
+An offline member is `ok=false, code="conflict", reason="offline"`. A job of a member that is no longer running and
+whose end was overwritten by a later job of the same kind reports `ended`. A `destroy` job waits like `waitMining`.
+
+`bot:waitOnline{timeout=...}` (also on Groups) waits until the target is online and returns `ok=false,
+code="timeout"` at its timeout; without `timeout` it waits like `waitOnline(b)`. `waitOnline(b)` and
+`b:waitMining{}` stay as aliases until 1.0, so existing scripts keep working.
+
 `bot:waitMining{timeout=1200}` and `group:waitMining{timeout=1200}` wait only for destroy/mining jobs.
-They return `{ok=boolean, reason=string, results={...}}`. Each result has `name`, `identityId`, `ok`,
-`reason`, and `mining` (the fields above). The group waits for all current members, pinning membership
+They return `{ok=boolean, code=string, reason=string, results={...}}`. Each result has `name`, `identityId`, `ok`,
+`code`, `reason`, and `mining` (the fields above). The group waits for all current members, pinning membership
 and identity on the first poll; membership replacement ends the run. A literal Bot's identity is also
 pinned on the first poll. Movement and other continuing inputs do not delay this wait.
 

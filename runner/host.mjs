@@ -156,9 +156,10 @@ export function startRun(source, args = {}, options = {}) {
       } else if (event.type === 'waitOnline') {
         send({ type: 'reply', id: event.id, accepted: true, result: await options.onWaitOnline?.(event) ?? { ok: true } });
         return;
-      } else if (event.type === 'waitMining') {
+      } else if (event.type === 'waitMining' || event.type === 'waitJob') {
         if (options.authorize && !await options.authorize(event)) throw new Error('authorization revoked');
-        send({ type: 'reply', id: event.id, accepted: true, result: await options.onWaitMining?.(event) ?? { ok: true, reason: 'idle', results: [] } });
+        const handler = event.type === 'waitJob' ? options.onWaitJob : options.onWaitMining;
+        send({ type: 'reply', id: event.id, accepted: true, result: await handler?.(event) ?? { ok: true, code: 'ok', reason: 'idle', results: [] } });
         return;
       } else throw new Error('unknown request');
       send({ type: 'reply', id: event.id, accepted: true });

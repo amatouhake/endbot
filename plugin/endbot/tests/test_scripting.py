@@ -262,6 +262,8 @@ class FakeControl:
             }
         if method == "mine":
             status["mining"] = {"loopId": "loop-1"}
+        if method == "move" and params.get("direction") != "stop":
+            status["inputs"] = {"movement": params["direction"], "movementJob": 3, "actions": {}}
         return status
 
 
@@ -709,6 +711,54 @@ class LifecycleTests(unittest.TestCase):
                 self.host._wait_mining(run, {"target": "#miners", "timeout": 20})
         self.allowed = True
         self.host._open = True
+
+    def test_job_wait_follows_its_own_job_until_it_ends_and_reports_why(self):
+        status = {**self.raw.request("status", name="Alice"), "inputs": {"movementJob": 7, "actions": {}}}
+        identity, polls = status["identityId"], []
+
+        def request(method, **params):
+            polls.append(method)
+            if polls.count("status") > 1:
+                # A later job of another channel does not end ours; the recorded end of ours does.
+                status["inputs"] = {"actions": {"jump": {"job": 9}},
+                                    "ended": {"move": {"job": 7, "reason": "duration elapsed"}}}
+            return dict(status)
+
+        run = ScriptRun("run", "test", self.source)
+        job = {"kind": "move", "ids": {identity: 7}}
+        with patch.object(self.raw, "request", side_effect=request), patch.object(self.host, "_wait"):
+            result = self.host._wait_job(run, {"target": "Alice", "job": job})
+            self.assertEqual((result["ok"], result["code"], result["reason"]), (True, "ok", "duration elapsed"))
+            status["inputs"] = {"movementJob": 8, "actions": {}, "ended": {"move": {"job": 7, "reason": "replaced"}}}
+            polls.clear()
+            self.assertEqual(self.host._wait_job(run, {"target": "Alice", "job": job})["reason"], "replaced")
+            status["inputs"] = {"movementJob": 7, "actions": {}}
+            polls.clear()
+            timed_out = self.host._wait_job(run, {"target": "Alice", "job": job, "timeout": 0})
+        self.assertEqual((timed_out["ok"], timed_out["code"], timed_out["reason"]), (False, "timeout", "timeout"))
+        for bad in (None, {"kind": "fly", "ids": {identity: 1}}, {"kind": "move", "ids": {}},
+                    {"kind": "move", "ids": {identity: "7"}}):
+            with self.subTest(job=bad), self.assertRaises(LocalizedError):
+                self.host._wait_job(run, {"target": "Alice", "job": bad})
+
+    def test_a_group_job_covers_every_member_that_started_one(self):
+        data = {"jobs": [{"identityId": "a", "name": "Alice", "kind": "jump", "id": 4},
+                         {"identityId": "b", "name": "Bob", "kind": "jump", "id": 9}], "accepted": 2}
+        self.assertEqual(ScriptService._job(data), {"kind": "jump", "ids": {"a": 4, "b": 9}})
+        self.assertIsNone(ScriptService._job({"accepted": 2}))
+        self.assertIsNone(ScriptService._job({"jobs": [{"identityId": "a", "kind": "jump", "id": 1},
+                                                       {"identityId": "b", "kind": "move", "id": 2}]}))
+
+    def test_continuing_operations_name_their_job_for_scripts(self):
+        self.start([self.op(2, "move", {"direction": "forward", "ticks": 40}), self.op(3, "status", {}),
+                    self.op(4, "destroy", {"mode": "continuous"}), {"type": "done"}])
+        self.wait_finished()
+        results = {reply["id"]: reply["result"] for reply in self.runner.replies if "result" in reply}
+        identity = self.raw.request("status", name="Alice")["identityId"]
+        self.assertEqual(results[2]["job"]["kind"], "move")
+        self.assertEqual(results[2]["job"]["ids"], {identity: 3})
+        self.assertNotIn("job", results[3])
+        self.assertEqual(results[4]["job"], {"kind": "mining"})
 
     def test_wait_mining_pins_literal_bot_identity_between_polls(self):
         status = {**self.raw.request("status", name="Alice"), "mining": {"state": "active"}}

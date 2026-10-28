@@ -21,7 +21,10 @@ class CommandSyntaxError(LocalizedError):
 
 # Outcome codes, coarse by what the user should do next; refined only when a
 # caller needs to tell two cases apart. "ok" is the only success code.
-OUTCOME_CODES = frozenset({"ok", "unauthorized", "not_found", "invalid_argument", "unavailable", "conflict"})
+OUTCOME_CODES = frozenset({"ok", "unauthorized", "not_found", "invalid_argument", "unavailable", "conflict",
+                           "timeout"})
+# Input channels whose continuing work is a job a script can wait for (BOT-016).
+INPUT_JOBS = ("move", "jump", "attack", "use", "interact")
 # Runtime and member error codes by outcome. The runtime's own "unauthorized"
 # is a rejected plugin token, an installation problem rather than the user's.
 ERROR_CODES = {
@@ -1306,13 +1309,16 @@ class BotCommandService:
     def _execute(self, command: BotCommand, sender, lang: str = "en", *, control=None) -> CommandResult:
         control = self.control if control is None else control
 
+        started = {}  # The job a continuing operation left running, for its result's data.
+
         def say(template: str, bot: str | None = None, /, **params) -> CommandResult:
-            return CommandResult(True, (reply(tr(lang, template, **params), bot),))
+            return CommandResult(True, (reply(tr(lang, template, **params), bot),), data=started or None)
 
         def logged(name: str, render) -> CommandResult:
             """A reply also written to the console log, which stays English."""
             return CommandResult(
-                True, (reply(render(lang), name),), log_level="info", log_messages=(reply(render("en"), name),)
+                True, (reply(render(lang), name),), log_level="info", log_messages=(reply(render("en"), name),),
+                data=started or None,
             )
 
         if command.operation == "ping":
@@ -1453,6 +1459,8 @@ class BotCommandService:
                         as_job(sender),
                         list(target["blockPosition"]),
                     )
+            if mode != "stop":
+                started.update(name=result["name"], identityId=result["identityId"], job={"kind": "mining"})
             if mode == "continuous":
                 return logged(
                     result["name"],
@@ -1673,6 +1681,10 @@ class BotCommandService:
         name = result.get("name", command.name)
         state = Text(result.get("connectionState", command.operation))
         parameters = command.parameters
+        channel = "move" if command.operation == "move" else parameters.get("action")
+        job = self.input_job(result, channel) if command.operation in {"move", "action"} else None
+        if job is not None:
+            started.update(name=name, identityId=result.get("identityId"), job={"kind": channel, "id": job})
         duration = _for_suffix(parameters, lang)
         if command.operation == "move":
             if parameters["direction"] == "stop":
@@ -1813,6 +1825,14 @@ class BotCommandService:
         return tr(lang, "timed: {inputs}", inputs=", ".join(parts)) if parts else None
 
     @staticmethod
+    def input_job(status, channel):
+        """The id of the job ``channel`` (move or an action) is running in a runtime status, or None."""
+        inputs = status.get("inputs") or {}
+        if channel == "move":
+            return inputs.get("movementJob")
+        return ((inputs.get("actions") or {}).get(channel) or {}).get("job")
+
+    @staticmethod
     def script_status(status, observed=None):
         """Stable script fields: runtime state and jobs, plus BDS observation when the Bot is in the world."""
         observed = observed or {}
@@ -1836,6 +1856,9 @@ class BotCommandService:
             "inWater": observed.get("inWater"),
             "selectedSlot": observed.get("selectedSlot"),
             "held": observed.get("held"),
+            # Running input jobs by channel and the last end of each, for job:wait().
+            "running": {channel: BotCommandService.input_job(status, channel) for channel in INPUT_JOBS},
+            "ended": dict((status.get("inputs") or {}).get("ended") or {}),
             "mining": {
                 "active": active,
                 "mode": ("continuous" if continuous else "once") if mining else None,

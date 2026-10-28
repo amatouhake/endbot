@@ -129,7 +129,8 @@ test('group inputs apply in one dispatch turn, preserving partial failures and U
       calls.push(name)
       queueMicrotask(() => { interleaved = true })
       if (name === 'Offline') throw Object.assign(new Error('Bot is not online'), { code: 'not_online' })
-      return { name, connectionState: 'online', unnecessaryLargeStatus: 'x'.repeat(65_000) }
+      return { name, connectionState: 'online', unnecessaryLargeStatus: 'x'.repeat(65_000),
+        ...(name === 'Bob' ? { inputs: { actions: { jump: { job: 7, mode: 'once' } }, ended: { move: {} } } } : {}) }
     }
   } })
   await server.listen()
@@ -153,6 +154,9 @@ test('group inputs apply in one dispatch turn, preserving partial failures and U
   assert.equal(response.result.results[1].error.code, 'not_online')
   assert.equal(response.result.results[2].error.code, 'identity_changed')
   assert.deepEqual(response.result.results[0].result, { name: 'Alice', connectionState: 'online' })
+  // A started job's id is the only input state a batch reply carries.
+  assert.deepEqual(response.result.results[3].result,
+    { name: 'Bob', connectionState: 'online', inputs: { actions: { jump: { job: 7 } } } })
 })
 
 test('swap and hold use authenticated control and project bounded batch replies', async t => {

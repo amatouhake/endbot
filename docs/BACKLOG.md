@@ -752,8 +752,11 @@ able to join. Also confirm a large Group spawn reports refusals per member inste
 Status: **Done** (2026-10-29 JST): move, jump, attack, use, interact, destroy and a teleport's arrival are jobs.
 The runtime keeps a job id per input channel and the last end of each with its reason, and counts acknowledged
 server teleports; continuing operations return their job and `job:wait{timeout=}` waits for it (see
-[SCRIPTING.md](SCRIPTING.md#jobs-and-waits)). Real-server validation of the waits (timed move, `use hold`, counted
-attack, teleport arrival, death and disconnect reasons) is a manual gate.
+[SCRIPTING.md](SCRIPTING.md#jobs-and-waits)). Bot-side live check (2026-10-29 JST, Windows RakNet, locked Endstone
+`0.11.13+endbot.1` / BDS `1.26.52.3`, `scripts/raknet_spike.py --scripting`, case `waits`): `waitOnline{timeout}`,
+timed move and interval jump (`duration elapsed`), `stop`, `replaced`, teleport `arrived`, a Group move job and a
+timeout that leaves the job running all passed. That run found and fixed job ids arriving as floats through the runner
+and Group batch replies without job ids. Still open: `use hold`, counted attack, and death and disconnect reasons.
 
 Scripts can wait for mining jobs (`waitMining`) and for Bots to come online, but a timed `move`, `use hold`, `attack`
 or `interact` repetition, and a teleport's arrival, are only covered by guessing with `wait(ticks)`. Add waits that end

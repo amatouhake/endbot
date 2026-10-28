@@ -849,7 +849,8 @@ operations, and performs world observation, teleport and block reads. Keep all i
 
 Status: **Planned, after BOT-020; release grouping open, see [delivery](DIRECTION.md#delivery)** (2026-10-28 JST).
 
-Worker + one Durable Object per server, deployed and paired by `endbot web deploy`; endbotd connects outbound over
+Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy`
+(stack: [web technology](DIRECTION.md#web-technology)); endbotd connects outbound over
 WebSocket. Accounts are created only from a one-time code issued in game by `/botweb link`, with a passkey; endbotd
 keeps the link table and re-authorizes every relayed operation. One account per XUID with several passkeys and sessions;
 "add this device", `/botweb unlink`, `/botweb status` and `endbot web revoke <GamerTag>`. Optional, off by default: a trusted

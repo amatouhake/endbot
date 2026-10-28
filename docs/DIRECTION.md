@@ -71,8 +71,8 @@ browser ──HTTPS──▶ Worker (static UI, login, sessions)
 ```
 
 - The server PC opens no inbound port. Unauthenticated traffic stops at Cloudflare.
-- Deployment and pairing: `endbot web deploy` runs a pinned wrangler with the bundle's Node, deploys the Worker to
-  the operator's account, generates a pairing secret and stores it as a Worker secret. endbotd then pairs with its
+- Deployment and pairing: `endbot web deploy` uploads the prebuilt Worker to the operator's account through the
+  Cloudflare API, generates a pairing secret and stores it as a Worker secret. endbotd then pairs with its
   own key pair, whose private key stays on the PC (never in the repository). The Worker has no admin page.
 - **endbotd remains the authority.** The Worker stores only passkey public keys and sessions. The link table (web
   account ↔ XUID) lives in endbotd, which decides every relayed request against its own controller policy, exactly
@@ -85,6 +85,27 @@ browser ──HTTPS──▶ Worker (static UI, login, sessions)
   `endbot update` redeploys the Worker (or tells the operator to run `endbot web deploy`).
 - With BDS stopped, endbotd still runs, so the web can show status and logs and edit scripts. Starting and stopping
   BDS stays console-only, keeping the line that controllers are not operators.
+
+### Web technology
+
+| Part | Choice | Notes |
+| --- | --- | --- |
+| Language | TypeScript | Types generated from the operation registry; build only in CI and development |
+| Worker routing | Hono | Small and Workers-native |
+| Relay and state | One Durable Object per server, WebSocket Hibernation API | Holds endbotd's outbound connection and pushes live updates to browsers |
+| Storage | The Durable Object's SQLite storage | Accounts, passkeys and sessions in one place per server; no D1 |
+| Passkeys | SimpleWebAuthn (server and browser packages) | WebCrypto-based, runs on Workers |
+| Sessions | HttpOnly, Secure, `SameSite=Strict` cookie plus Origin checks | Session state lives in the Durable Object |
+| UI | Svelte 5 + Vite single-page app, served as Workers static assets | No SvelteKit |
+| Script editor | CodeMirror 6 | Light and usable on phones; Luau highlighting defined in-house; completion from the registry and `api.luau` |
+| Luau diagnostics | Compile results from endbotd at first | In-browser Luau compiled to WASM may come later; no luau-lsp |
+| Messages | The shared message catalog from BOT-019 | Same wording as chat |
+| endbotd side | Python `websockets`, pinned and bundled | |
+| Protocol | JSON over WebSocket with a protocol version and request IDs | endbotd proves itself with its paired key on connect |
+| Tests | Vitest with `@cloudflare/vitest-pool-workers`; Playwright for end-to-end | |
+| Build and deploy | CI builds the Worker; release bundles carry it prebuilt | `endbot web deploy` calls the Cloudflare API directly (module upload, Durable Object migrations, secrets, static assets). Confirm the static-asset upload works through the API alone; fall back to a pinned wrangler if it does not |
+
+Dependencies are pinned with a lockfile, like the other parts. Operators need no Node, npm or build step.
 
 ## Decision 4: web accounts use passkeys and are linked to an XUID once, in game
 

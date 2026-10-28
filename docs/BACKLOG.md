@@ -843,7 +843,9 @@ Status: **Planned, after BOT-019; release grouping open, see [delivery](DIRECTIO
 
 Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,
 Luau runner orchestration and the operation log. The plugin becomes a world adapter: it renders in-game UI, forwards
-operations, and performs world observation, teleport and block reads. Keep all internal traffic loopback-only.
+operations, performs world observation, teleport and block reads, and reports presence. Keep all internal traffic
+loopback-only. The reasons hold without the web (crash isolation, triggers that outlive BDS, dependencies the plugin
+cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-and-its-centre-moves-out-of-bds).
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
@@ -852,16 +854,17 @@ Status: **Planned, after BOT-020 and BOT-024; release grouping open, see [delive
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
 [web technology](DIRECTION.md#web-technology)); endbotd connects outbound over WebSocket. Accounts are created only from
-a one-time code issued in game by `/botweb link`, with a passkey; endbotd keeps the link table and re-authorizes every
-relayed operation. One account per XUID with several passkeys and sessions; "add this device", `/botweb unlink`,
+a one-time code issued in game by `/botweb link`, with a passkey; endbotd keeps the link table, passkeys and sessions,
+verifies passkey assertions itself and re-authorizes every relayed operation. One account per XUID with several passkeys and sessions; "add this device", `/botweb unlink`,
 `/botweb status` and `endbot web revoke <GamerTag>`. Optional, off by default: a trusted external site that proves the
-link (or signs users in) with a signed ES384 assertion verified by endbotd. Cloudflare stores passkey public keys, sessions and a
-display copy of XUID and GamerTag. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped,
+link (or signs users in) with a signed ES384 assertion verified by endbotd. Cloudflare stores only the static UI and
+at most a display cache. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped,
 the web still shows status and logs and edits scripts; BDS start/stop stays console-only. Update SECURITY.md with this
 boundary. Order: status and logs, then script editing (BOT-013), then Bot control. Controller administration stays
-console-only. Main design work: pairing and key rotation, whether endbotd verifies passkey assertions itself, session and CSRF handling, rate limits, revocation of web
-sessions when a controller is revoked, deployment documentation. Microsoft sign-in is deferred (see the direction
-document).
+console-only. Main design work: pairing and key rotation, the WebAuthn relying-party ID and origin seen through the
+relay, session and CSRF handling, rate limits, revocation of web sessions when a controller is revoked, deployment
+documentation. Microsoft sign-in is deferred (see the direction document). Afterwards, localhost mode serves the same
+UI from endbotd without Cloudflare ([other hosts](DIRECTION.md#other-hosts)); other deployment targets are not planned.
 
 ## BOT-022: Events, watches and triggers
 
@@ -901,6 +904,16 @@ but not this script". Questions to settle: roles versus per-controller capabilit
 other controllers' Bots and Groups; who may observe other players (chat, presence, position) and whether such events
 exist at all; whether authoring, running and leaving a trigger armed are separate rights; what operators delegate and
 how (console only, or a delegated admin); how revocation propagates to runs, triggers and web sessions.
+
+## BOT-025: Reserved Bot names
+
+Status: **Planned — decided in [interface guide D3](INTERFACE_GUIDE.md#d3-command-roots)** (2026-10-29 JST).
+
+`/bot help <anything>` always opens help, so a Bot named `help` cannot be addressed, and `/bot help status` is
+ambiguous by nature (help topic or operation). Reserve `help`, `list`, `ping` and `menu` as Bot names: the registry
+lists them, and spawn and `rename` reject them from every surface (commands, forms, scripts, later the web) with one
+message. Existing profiles with a reserved name are kept; `/bot list` and the menu mark them and suggest `rename`.
+Small enough to land with or right after BOT-019.
 
 ## Deferred priorities
 

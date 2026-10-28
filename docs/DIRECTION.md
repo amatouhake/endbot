@@ -18,9 +18,18 @@ Endbot cannot be a single plugin: the local bot authentication seam is below wha
 Endstone, BDS, the Bedrock runtime and the Luau runner must be installed and started as a matched set. The CLI and
 supervisor are the consequence of that, not an accident.
 
-What does not scale is the plugin owning everything. Goals 4–6 need authorization, the script store, runner
-orchestration, triggers and the web connection to keep working without depending on the BDS process (crash and tick
-isolation, no internet-facing code inside the game server). The target is:
+What does not scale is the plugin owning everything. Authorization, the script store, runner orchestration, triggers and
+the web connection belong outside the BDS process even before the web exists:
+
+- A BDS crash or restart takes run state and armed triggers with it; persistent triggers need a home that outlives BDS.
+- Policy decisions, script storage and log writing have no reason to run next to the game's tick thread.
+- The plugin can only use what loads in Endstone's Python environment. The web needs WebSocket, WebAuthn and
+  cryptography libraries, which endbotd can pin and bundle in its own environment.
+- Connecting the web to the plugin first and moving it later would build the relay endpoint and its authorization
+  twice. BOT-019 makes the logic process-neutral, but it does not remove that rework.
+- No internet-facing code runs inside the game server.
+
+That the web keeps working while BDS is stopped follows from this; it is a benefit, not the reason. The target is:
 
 ```text
 in-game UI (commands, forms, books)         web UI (Cloudflare Worker, see Decision 3)
@@ -43,6 +52,9 @@ in-game UI (commands, forms, books)         web UI (Cloudflare Worker, see Decis
 - endbotd is Python so that the plugin's pure, fake-tested logic (authorization, controller policy, script store,
   groups, operations, i18n) moves rather than being rewritten.
 - The internal plugin/runtime protocol stays loopback-only local IPC. The web is a separate trust boundary.
+- Only the plugin knows who is online, so it reports presence to endbotd, which applies the in-game online condition
+  from those reports. While endbotd is down, in-game Bot commands are refused with a message saying why; the supervisor
+  starts both, so this is the exception, not a degraded mode to design for.
 - Migration is incremental. The first step (BOT-019) pays off whichever process ends up hosting the logic.
 - Only the bundled, managed install (`endbot setup`) is supported for users once endbotd exists; manual plugin
   installation stays documented for developers.
@@ -62,7 +74,7 @@ The web is meant for the internet, so it is not served from the Minecraft PC. Ea
 **their own** Cloudflare account. The Worker code lives in this repository; no shared central service is run.
 
 ```text
-browser ──HTTPS──▶ Worker (static UI, login, sessions)
+browser ──HTTPS──▶ Worker (static UI, cookie, relay)
                      │
                 Durable Object (one per server; relay)
                      ▲
@@ -74,15 +86,20 @@ browser ──HTTPS──▶ Worker (static UI, login, sessions)
 - Deployment and pairing: `endbot web deploy` uploads the prebuilt Worker to the operator's account through the
   Cloudflare API, generates a pairing secret and stores it as a Worker secret. endbotd then pairs with its
   own key pair, whose private key stays on the PC (never in the repository). The Worker has no admin page.
-- **endbotd remains the authority.** The Worker stores passkey public keys and sessions. The authoritative link table
-  (web account ↔ XUID) lives in endbotd, which decides every relayed request against its own permission model, exactly
-  like an in-game request. A compromised Worker could act as any already-linked account within that person's role,
-  but cannot link a new XUID (that needs a code endbotd issued in game) or widen anyone's role: grants and revocations
-  stay console-only. Having endbotd verify passkey assertions itself would narrow this further; it is a hardening
-  option for BOT-021, not a decision.
-- Cloudflare holds the minimum: passkey public keys, sessions, and a display copy of each account's XUID and GamerTag.
-  Script source and operation logs are relayed, never stored there. Scripts stay on the PC; when the PC is offline the
-  web shows it as offline. Mirroring to D1 can be added later if offline editing becomes necessary.
+- **endbotd is the authority, for authentication as well as authorization.** endbotd keeps the link table (web account
+  ↔ XUID), the passkey public keys and the sessions. It issues WebAuthn challenges, verifies passkey assertions and
+  issues session tokens; the Worker only carries them, keeping the token in an HttpOnly cookie. endbotd decides every
+  relayed request against its own permission model, exactly like an in-game request. Grants and revocations stay
+  console-only.
+- Why, given that Cloudflare itself is unlikely to be breached: the realistic risks are a bug in the Worker's
+  authentication code and a compromised dependency or build. If the Worker verified passkeys, either would let it act
+  as every linked account at any time. With endbotd verifying, a compromised Worker can still misuse the browsers that
+  visit it while it is compromised, but not the other accounts, and it can never link a new XUID or widen a role. The
+  bigger gain is simplicity: authentication and authorization sit in one place, and the Durable Object holds no
+  accounts. Signing in needs the PC online, which costs nothing, since an offline PC has nothing to sign in to.
+- Cloudflare holds nothing that needs protecting: the static UI and, at most, a display cache (server name, online or
+  offline). Script source and operation logs are relayed, never stored there. Scripts stay on the PC; when the PC is
+  offline the web shows it as offline. Mirroring to D1 can be added later if offline editing becomes necessary.
 - Versions: the Worker and endbotd speak a versioned protocol. endbotd refuses a mismatched Worker and says so;
   `endbot update` redeploys the Worker (or tells the operator to run `endbot web deploy`).
 - With BDS stopped, endbotd still runs, so the web can show status and logs and edit scripts. Starting and stopping
@@ -95,9 +112,9 @@ browser ──HTTPS──▶ Worker (static UI, login, sessions)
 | Language | TypeScript | Types generated from the operation registry; build only in CI and development |
 | Worker routing | Hono | Small and Workers-native |
 | Relay and state | One Durable Object per server, WebSocket Hibernation API | Holds endbotd's outbound connection and pushes live updates to browsers |
-| Storage | The Durable Object's SQLite storage | Accounts, passkeys and sessions in one place per server; no D1 |
-| Passkeys | SimpleWebAuthn (server and browser packages) | WebCrypto-based, runs on Workers |
-| Sessions | HttpOnly, Secure, `SameSite=Strict` cookie plus Origin checks | Session state lives in the Durable Object |
+| Storage | endbotd's own store; the Durable Object keeps at most a display cache | Accounts, passkeys and sessions live on the PC; no D1 |
+| Passkeys | SimpleWebAuthn browser package; a pinned, bundled Python WebAuthn library in endbotd | endbotd issues challenges and verifies assertions |
+| Sessions | HttpOnly, Secure, `SameSite=Strict` cookie plus Origin checks | The cookie carries an endbotd-issued token; session state lives in endbotd |
 | UI | Svelte 5 + Vite single-page app, served as Workers static assets | No SvelteKit |
 | Script editor | CodeMirror 6 | Light and usable on phones; Luau highlighting defined in-house; completion from the registry and `api.luau` |
 | Luau diagnostics | Compile results from endbotd at first | In-browser Luau compiled to WASM may come later; no luau-lsp |
@@ -108,6 +125,19 @@ browser ──HTTPS──▶ Worker (static UI, login, sessions)
 | Build and deploy | CI builds the Worker; release bundles carry it prebuilt | `endbot web deploy` calls the Cloudflare API directly (module upload, Durable Object migrations, secrets, static assets). Confirm the static-asset upload works through the API alone; fall back to a pinned wrangler if it does not |
 
 Dependencies are pinned with a lockfile, like the other parts. Operators need no Node, npm or build step.
+
+### Other hosts
+
+Because endbotd owns authentication, the browser ↔ endbotd protocol, and the Worker is a thin static host and relay,
+Cloudflare is one way to put the web on the internet rather than where the web lives.
+
+| Option | Status | Notes |
+| --- | --- | --- |
+| Cloudflare Worker | The supported internet path | As above |
+| Localhost mode | Planned after the web (BOT-021) | endbotd serves the same UI on `127.0.0.1` and speaks the same protocol directly, with no relay. Little new code; useful to operators who do not want Cloudflare and for development and end-to-end tests without a Cloudflare account. `localhost` is a secure context, so passkeys work |
+| LAN access | Documented, not supported | Passkeys need a secure context, so `http://192.168.x.x` does not work. An operator may put localhost mode behind their own TLS reverse proxy |
+| Other deployment targets (a VPS, another cloud, a self-hosted relay) | Not planned | The relay is small, but each target needs its own deployment, `endbot update` integration, tests and docs. The protocol is documented so one can be added; revisit on a concrete request |
+| Cloudflare Tunnel to localhost mode | Not adopted | Removes the Worker code, but unauthenticated internet traffic would reach the PC, losing the property that it stops at Cloudflare |
 
 ## Decision 4: web accounts use passkeys and are linked to an XUID once, in game
 
@@ -264,12 +294,14 @@ No release numbers are assigned in advance. The order is fixed by dependency, an
 checkpoint; whether a checkpoint ships on its own or together with later ones is decided when it is reached.
 
 1. BOT-019 (Operation API, principals), which changes nothing players see, then the agreed waits (BOT-016, interface
-   guide D2) as a separate step in the same checkpoint; the waits are the new Luau API.
+   guide D2) as a separate step in the same checkpoint; the waits are the new Luau API. Reserved Bot names (BOT-025)
+   land here too.
 2. BOT-020 (endbotd). It moves the policy and script stores, so `endbot update` and `--rollback` must carry the
    migration in both directions.
 3. BOT-024 (permission model: roles, ownership, script declarations), before anything reaches the web or runs
    unattended.
-4. BOT-021 (web) and BOT-022 (watches first; persistent triggers need step 2). Their order is open.
+4. BOT-021 (web) and BOT-022 (watches first; persistent triggers need step 2). Their order is open. Localhost mode
+   follows the web.
 
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

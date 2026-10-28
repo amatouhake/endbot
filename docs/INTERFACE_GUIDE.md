@@ -102,7 +102,10 @@ definitions, `/botscript` scripts and runs. Triggers will be managed under `/bot
 
 Existing exceptions, kept: `/bot list`, `/bot help`, `/bot ping` and `/bot menu` are root words. `list`, `ping` and
 `menu` win only as the whole command, so a Bot named `list` is still reached with `/bot list status` or `/bot list menu`.
-`help` wins with any arguments (`/bot help <page|command>`), so a Bot named `help` cannot be addressed with `/bot`.
+`help` wins with any arguments (`/bot help <page|command>`), and `/bot help status` cannot be told apart from operation
+`status` on a Bot called `help`, so no parser rule fixes it. Decision (BOT-025): `help`, `list`, `ping` and `menu` are
+reserved Bot names, listed in the registry so every surface applies the same check, and rejected when a Bot is created
+or renamed. Existing profiles with those names are kept and pointed at `rename`.
 
 Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would read as operation
 `link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link` (issues the

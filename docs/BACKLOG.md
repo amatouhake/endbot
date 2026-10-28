@@ -839,7 +839,7 @@ Steps, each about one PR, none meant to change what players see:
 
 ## BOT-020: endbotd outside BDS
 
-Status: **Planned, after BOT-019** (2026-10-28 JST).
+Status: **Planned, after BOT-019; release grouping open, see [delivery](DIRECTION.md#delivery)** (2026-10-28 JST).
 
 Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,
 Luau runner orchestration and the operation log. The plugin becomes a world adapter: it renders in-game UI, forwards
@@ -847,11 +847,13 @@ operations, and performs world observation, teleport and block reads. Keep all i
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
-Status: **Planned, after BOT-020** (2026-10-28 JST).
+Status: **Planned, after BOT-020; release grouping open, see [delivery](DIRECTION.md#delivery)** (2026-10-28 JST).
 
-Worker + one Durable Object per server; endbotd connects outbound over WebSocket after `endbot web pair <code>`.
-Passkey web accounts linked to an XUID once with `/botweb link <code>`; `endbot web invite --admin` bootstraps the
-first account. endbotd re-authorizes every relayed operation. Order: status and logs, then script editing (BOT-013),
+Worker + one Durable Object per server, deployed and paired by `endbot web deploy`; endbotd connects outbound over
+WebSocket. Accounts are created only from a one-time code issued in game by `/botweb link`, with a passkey; endbotd
+keeps the link table and re-authorizes every relayed operation. Cloudflare stores only XUID, GamerTag, passkey public
+keys and sessions. Protocol versions are checked; `endbot update` redeploys the Worker. With BDS stopped, the web
+still shows status and logs and edits scripts; BDS start/stop stays console-only. Update SECURITY.md with this boundary. Order: status and logs, then script editing (BOT-013),
 then Bot control. Controller administration stays console-only. Main design work: pairing and key rotation, session
 and CSRF handling, rate limits, revocation of web sessions when a controller is revoked, deployment documentation.
 Microsoft sign-in is deferred (see the direction document).

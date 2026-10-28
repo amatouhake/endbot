@@ -736,6 +736,16 @@ class LifecycleTests(unittest.TestCase):
             polls.clear()
             timed_out = self.host._wait_job(run, {"target": "Alice", "job": job, "timeout": 0})
         self.assertEqual((timed_out["ok"], timed_out["code"], timed_out["reason"]), (False, "timeout", "timeout"))
+        tp = {"kind": "tp", "ids": {identity: 3}}
+        with (
+            patch.object(self.raw, "request", side_effect=lambda method, **params: dict(status)),
+            patch.object(self.host, "_wait"),
+        ):
+            status["inputs"] = {"teleports": 2, "actions": {}}
+            self.assertEqual(self.host._wait_job(run, {"target": "Alice", "job": tp, "timeout": 0})["code"], "timeout")
+            status["inputs"] = {"teleports": 3, "actions": {}}
+            arrived = self.host._wait_job(run, {"target": "Alice", "job": tp})
+        self.assertEqual((arrived["ok"], arrived["reason"]), (True, "arrived"))
         for bad in (None, {"kind": "fly", "ids": {identity: 1}}, {"kind": "move", "ids": {}},
                     {"kind": "move", "ids": {identity: "7"}}):
             with self.subTest(job=bad), self.assertRaises(LocalizedError):

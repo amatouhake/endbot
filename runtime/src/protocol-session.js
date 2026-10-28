@@ -1047,6 +1047,7 @@ export class BedrockSession extends EventEmitter {
     if (this.pendingHandledTeleport) {
       inputData.push('handled_teleport')
       this.pendingHandledTeleport = false
+      this.inputs?.teleported()
     }
     if (this.onGround) inputData.push('vertical_collision')
     let transaction

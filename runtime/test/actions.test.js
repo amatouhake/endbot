@@ -125,7 +125,7 @@ test('global stop clears movement actions sprint and sneak but not look', () => 
   inputs.setAction('attack', 'continuous')
   inputs.stopAll()
   assert.deepEqual(inputs.snapshot(), {
-    movement: null, sprint: false, sneak: false, look: { yaw: 90, pitch: -20 }, actions: {},
+    movement: null, teleports: 0, sprint: false, sneak: false, look: { yaw: 90, pitch: -20 }, actions: {},
     ended: { move: { job: 1, reason: 'stopped' }, attack: { job: 2, reason: 'stopped' } }
   })
 })
@@ -168,6 +168,11 @@ test('every continuing input is a job whose end and reason stay visible', () => 
   inputs.setAction('attack', 'continuous')
   inputs.reset()
   assert.equal(inputs.snapshot().ended.attack.reason, 'disconnected')
+
+  // Acknowledged server teleports are counted and survive a reset (reconnect).
+  inputs.teleported()
+  inputs.reset()
+  assert.equal(inputs.snapshot().teleports, 1)
 })
 
 test('sprint and sneak transitions are emitted once and reset clears stale transitions', () => {

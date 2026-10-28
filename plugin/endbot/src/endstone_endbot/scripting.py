@@ -406,7 +406,7 @@ class ScriptService:
         kind = job.get("kind") if isinstance(job, dict) else None
         if kind == "mining":
             return self._wait_mining(run, event)
-        ids = job.get("ids") if kind in INPUT_JOBS else None
+        ids = job.get("ids") if kind in (*INPUT_JOBS, "tp") else None
         if not isinstance(ids, dict) or not ids or not all(
                 isinstance(key, str) and type(value) is int for key, value in ids.items()):
             raise LocalizedError("Invalid script wait")
@@ -415,6 +415,10 @@ class ScriptService:
             expected = ids.get(status.get("identityId"))
             if expected is None:
                 return False, False, "no job"
+            if kind == "tp":
+                if (status.get("teleports") or 0) >= expected:
+                    return False, True, "arrived"
+                return True, False, "timeout" if expired else "active"
             if (status.get("running") or {}).get(kind) == expected:
                 return True, False, "timeout" if expired else "active"
             ended = (status.get("ended") or {}).get(kind) or {}

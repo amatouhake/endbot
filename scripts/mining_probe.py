@@ -10,8 +10,36 @@ import os
 import time
 from pathlib import Path
 
+BOT = "RakNetSpike"
 EQUIPMENT = {"offhand": "item_in_off_hand", "head": "helmet", "chest": "chestplate",
              "legs": "leggings", "feet": "boots"}
+
+
+def mining_state(output: Path) -> dict:
+    """Read the fixture's last observation; a Windows replace can briefly deny access."""
+    for _ in range(20):
+        try:
+            return json.loads((output / "mining-state.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            time.sleep(0.01)
+    return {}
+
+
+def mining_request(output: Path, data: dict) -> None:
+    temporary = output / "mining-request.tmp"
+    temporary.write_text(json.dumps(data), encoding="utf-8")
+    temporary.replace(output / "mining-request.json")
+
+
+def setup_mining_fixture(output: Path, console, control, wait, name: str, block: str,
+                         tool=None, cancel=False, count=1) -> None:
+    """Install one fixture and select the hotbar, exactly as exercise_mining's setup does."""
+    control("mine", mode="stop")
+    mining_request(output, {"id": name, "block": block, "tool": tool, "cancel": cancel, "count": count})
+    wait("mining fixture setup", lambda: mining_state(output).get("id") == name, 10)
+    time.sleep(0.3)
+    console(f"bot {BOT} hotbar 1")
+    time.sleep(0.15)
 
 
 def install_probe(plugin_class):
@@ -233,27 +261,13 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     import time
 
     def observed():
-        # The plugin replaces this file every tick; on Windows a read can meet the
-        # replace. Retry briefly instead of reporting an empty observation.
-        for _ in range(20):
-            try:
-                return json.loads((output / "mining-state.json").read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                time.sleep(0.01)
-        return {}
+        return mining_state(output)
 
     def request(data):
-        temporary = output / "mining-request.tmp"
-        temporary.write_text(json.dumps(data))
-        temporary.replace(output / "mining-request.json")
+        mining_request(output, data)
 
     def setup(name, block, tool=None, cancel=False, count=1):
-        control("mine", mode="stop")
-        request({"id": name, "block": block, "tool": tool, "cancel": cancel, "count": count})
-        wait("mining fixture setup", lambda: observed().get("id") == name, 10)
-        time.sleep(0.3)
-        console("bot RakNetSpike hotbar 1")
-        time.sleep(0.15)
+        setup_mining_fixture(output, console, control, wait, name, block, tool, cancel, count)
 
     for name, block, tool, minimum in (
         ("dirt-hand", "minecraft:dirt", None, 0.3),

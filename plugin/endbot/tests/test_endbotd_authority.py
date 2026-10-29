@@ -234,28 +234,25 @@ class AuthorityTests(unittest.TestCase):
         self.assertFalse(self.allows(authority, renamed))
         self.assertFalse(self.allows(authority, dict(renamed, xuid="")))
 
-    def test_request_result_reaches_the_file(self):
-        authority = self.authority(requests_directory=self.root)
-        request_id, session = str(uuid4()), str(uuid4())
-        path = self.root / f"{request_id}.dispatch.json"
-        path.write_text(json.dumps({"version": 1, "id": request_id, "session": session, "operation": "add",
-                                    "target": "Offline Player"}))
-        authority.manage(["request", request_id])
-        result = json.loads((self.root / f"{request_id}.response.json").read_text())
+    def test_cli_operation_takes_a_whole_name_and_reports_failure(self):
+        authority = self.authority()
+        result, _ = authority.operation(["add"], "Offline Player")
         self.assertTrue(result["ok"])
-        self.assertEqual((result["id"], result["session"]), (request_id, session))
         self.assertEqual(result["entries"][0]["state"], "pending")
-        self.assertFalse(path.exists())
-
-    def test_failed_management_returns_failure_in_correlated_reply(self):
-        authority = self.authority(requests_directory=self.root)
-        request_id = str(uuid4())
-        (self.root / f"{request_id}.dispatch.json").write_text(json.dumps(
-            {"version": 1, "id": request_id, "session": str(uuid4()), "operation": "remove", "target": "Missing"}))
-        authority.manage(["request", request_id])
-        result = json.loads((self.root / f"{request_id}.response.json").read_text())
+        result, _ = authority.operation(["remove"], "Missing")
         self.assertFalse(result["ok"])
         self.assertIn("Unknown offline controller", result["messages"][0])
+
+    def test_the_console_request_file_channel_is_gone(self):
+        # Step 5 (docs/ENDBOTD.md P8): `botcontrollers request <id>` is no longer a console path.
+        request_id = str(uuid4())
+        (self.root / f"{request_id}.dispatch.json").write_text(json.dumps(
+            {"version": 1, "id": request_id, "session": str(uuid4()), "operation": "add", "target": "Someone"}))
+        lines, _ = self.authority().manage(["request", request_id])
+        self.assertIn("Use botcontrollers list|add", lines[0])
+        self.assertEqual(sorted(path.name for path in self.root.iterdir() if "response" in path.name), [])
+        with self.assertRaises(ModuleNotFoundError):
+            __import__("endbot_core.controller_requests")
 
     def test_report_matches_effective_control_and_explains_revocation(self):
         authority, owner = self.authority(), player()

@@ -692,15 +692,16 @@ def check_controllers(config: EndbotConfig, state: ControllerState) -> list[Chec
 
 
 def check_effective_controllers(context, config, state, server) -> list[CheckResult]:
-    from endbot_cli.controller_requests import controller_request
     from endbot_cli.controller_status import load_policy, saved_report
+    from endbot_cli.endbotd_client import controllers_request
     from endbot_cli.runstate import RUNNING, inspect_supervisor
 
     name = "controllers-effective"
     try:
         live = context.live and inspect_supervisor(context.paths.state_run).status == RUNNING
         if live:
-            result = controller_request(context.paths.state_run, "list", timeout=context.timeout)
+            result = controllers_request(context.paths.state_run, context.paths.endbotd_token,
+                                         config.endbotd.link_port, "list", timeout=context.timeout)
             if not result["ok"]:
                 return [CheckResult(FAIL, name, "; ".join(result["messages"]))]
             rows = result["entries"]

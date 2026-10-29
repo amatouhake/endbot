@@ -16,6 +16,11 @@ presence reports and commands reach endbotd in the order they happened (P4).
 Bounds: loopback only on both ends, a 1 MiB frame limit, the token compared in
 constant time and never logged, a deadline on every request, and explicit
 error codes. A protocol or registry-hash mismatch refuses the link.
+
+The same listener is endbotd's CLI endpoint (P8): a ``hello`` with
+``"client": "cli"`` and the same token opens a short connection that carries
+only the CLI request types. Its request ids must be unique on the connection,
+so a replayed request is refused instead of run twice.
 """
 
 from __future__ import annotations
@@ -45,6 +50,10 @@ REQUEST_SECONDS = 10.0
 # Outbound frames waiting for the writer; a peer that stops reading loses the link, not memory.
 MAX_QUEUED_FRAMES = 4096
 MIN_TOKEN_LENGTH = 32
+# CLI connections are short; these bound what a stuck or misbehaving one can hold.
+MAX_CLI_CONNECTIONS = 4
+MAX_CLI_REQUESTS = 64
+CLI_IDLE_SECONDS = 60.0
 
 ROOTS = frozenset({"bot", "botgroup", "botscript", "botcontrollers"})
 PRESENCE_KINDS = frozenset({"snapshot", "join", "quit", "locale"})
@@ -248,6 +257,7 @@ class LinkConnection:
         workers: int = 4,
         on_close: Callable[[LinkConnection, str], None] | None = None,
         first_id: int = 1,
+        unique_ids: bool = False,
     ) -> None:
         self._sock = sock
         self._reader = reader
@@ -261,6 +271,8 @@ class LinkConnection:
         self._outbound: queue.Queue = queue.Queue(MAX_QUEUED_FRAMES)
         self._ordered: queue.Queue = queue.Queue()
         self._pool = ThreadPoolExecutor(workers, thread_name_prefix="endbot-link") if concurrent else None
+        # Request ids already received, when the peer must never reuse one (CLI connections).
+        self._seen: set[int] | None = set() if unique_ids else None
         self.close_reason: str | None = None
 
     def start(self) -> LinkConnection:
@@ -356,13 +368,20 @@ class LinkConnection:
         kind, body = message.get("type"), message.get("body")
         if not isinstance(kind, str) or not isinstance(body, dict):
             raise LinkError("protocol", "malformed request")
+        duplicate = False
+        if self._seen is not None:
+            duplicate = message["id"] in self._seen
+            if not duplicate and len(self._seen) >= MAX_CLI_REQUESTS:
+                raise LinkError("protocol", "too many requests on one connection")
+            self._seen.add(message["id"])
         if kind in self._concurrent:
             try:
-                self._pool.submit(self._handle, message["id"], kind, body)
+                self._pool.submit(self._handle, message["id"], kind, body, duplicate)
             except RuntimeError:
                 return
         else:
-            self._ordered.put((message["id"], kind, body))
+            # A duplicate's refusal is queued too, so replies keep the arrival order.
+            self._ordered.put((message["id"], kind, body, duplicate))
 
     def _accept_reply(self, message: dict) -> None:
         with self._lock:
@@ -381,9 +400,11 @@ class LinkConnection:
                 return
             self._handle(*item)
 
-    def _handle(self, request_id: int, kind: str, body: dict) -> None:
+    def _handle(self, request_id: int, kind: str, body: dict, duplicate: bool = False) -> None:
         handler = self._handlers.get(kind)
         try:
+            if duplicate:
+                raise LinkError("duplicate", f"request id {request_id} was already used; it was not run again")
             if handler is None:
                 raise LinkError("unsupported", f"unknown request type {kind}")
             reply = {"id": request_id, "ok": True, "result": handler(body)}
@@ -569,6 +590,7 @@ class LinkServer:
         expected_registry: str | None = None,
         handshake_timeout: float = HANDSHAKE_SECONDS,
         world_timeout: float = REQUEST_SECONDS,
+        cli_handlers: dict[str, Callable[[dict], object]] | None = None,
     ) -> None:
         self._host = require_loopback(host)
         self._port = port
@@ -586,6 +608,8 @@ class LinkServer:
         self._lock = threading.Lock()
         self._listener: socket.socket | None = None
         self._link: LinkConnection | None = None
+        self._cli_handlers = cli_handlers or {}
+        self._cli: set[LinkConnection] = set()
         self._stopped = False
         self.presence = Presence()
         self.world = LinkWorld(self, world_timeout)
@@ -613,10 +637,13 @@ class LinkServer:
             self._stopped = True
             link, self._link = self._link, None
             listener = self._listener
+            cli, self._cli = self._cli, set()
         if listener is not None:
             listener.close()
         if link is not None:
             link.close("endbotd stopping")
+        for connection in cli:
+            connection.close("endbotd stopping")
         self.presence.reset(None)
 
     def drop_link(self, reason: str = "dropped") -> None:
@@ -638,17 +665,26 @@ class LinkServer:
 
     def _handshake(self, sock: socket.socket) -> None:
         reader = FrameReader(sock)
+        cli = False
         try:
             sock.settimeout(self._handshake_timeout)
             message = reader.read()
             body = message.get("body")
             if message.get("type") != "hello" or not isinstance(body, dict):
                 raise LinkError("protocol", "the link must open with hello")
+            cli = body.get("client") == "cli"
             if not token_matches(self._token, body.get("token")):
                 raise LinkError("unauthorized", "invalid endbotd token")
+            peer = "endbot CLI" if cli else "plugin"
             if body.get("protocol") != PROTOCOL:
-                raise LinkError("protocol_mismatch", f"plugin speaks link protocol {body.get('protocol')!r}, "
+                raise LinkError("protocol_mismatch", f"{peer} speaks link protocol {body.get('protocol')!r}, "
                                                      f"endbotd speaks {PROTOCOL}")
+            if cli:
+                if not self._cli_handlers:
+                    raise LinkError("unsupported", "this endbotd takes no CLI connections")
+                sock.settimeout(CLI_IDLE_SECONDS)
+                self._accept_cli(sock, reader)
+                return
             if body.get("registryHash") != self._registry:
                 raise LinkError("registry_mismatch", "plugin and endbotd carry different operation registries")
             epoch = body.get("epoch")
@@ -657,7 +693,7 @@ class LinkServer:
             sock.settimeout(None)
         except (LinkError, OSError) as error:
             if isinstance(error, LinkError) and error.code != "unavailable":
-                self._log("warning", f"Endbot plugin link refused: {error}")
+                self._log("warning", f"{'endbot CLI connection' if cli else 'Endbot plugin link'} refused: {error}")
                 try:
                     sock.sendall(encode({"id": 0, "ok": False, "error": error_to_wire(error)}))
                 except OSError:
@@ -678,6 +714,23 @@ class LinkServer:
         if previous is not None:
             previous.close("replaced by a newer plugin link")
         self._log("info", f"Endbot plugin {body.get('pluginVersion')} linked")
+
+    def _accept_cli(self, sock: socket.socket, reader: FrameReader) -> None:
+        """Run one CLI connection beside the plugin link; it never replaces the link."""
+        connection = LinkConnection(sock, reader, self._cli_handlers, on_close=self._cli_closed, unique_ids=True)
+        with self._lock:
+            if self._stopped:
+                raise LinkError("unavailable", "endbotd is stopping")
+            if len(self._cli) >= MAX_CLI_CONNECTIONS:
+                raise LinkError("busy", "too many endbot CLI connections; retry shortly")
+            self._cli.add(connection)
+            connection._enqueue(encode({"id": 0, "ok": True, "result": {
+                "protocol": PROTOCOL, "endbotdVersion": self._version}}))
+            connection.start()
+
+    def _cli_closed(self, connection: LinkConnection, reason: str) -> None:
+        with self._lock:
+            self._cli.discard(connection)
 
     def _closed(self, connection: LinkConnection, reason: str) -> None:
         with self._lock:

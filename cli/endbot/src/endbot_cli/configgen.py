@@ -298,9 +298,6 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
     authorization["controller-policy-file"] = _path_value(
         tomlkit, str((paths.state_controllers.parent / "controller-policy.json").resolve())
     )
-    authorization["controller-requests-directory"] = _path_value(
-        tomlkit, str((paths.state_run / "controller-requests").resolve())
-    )
     authorization["allowed-uuids"] = legacy_uuids
     authorization["allowed-xuids"] = legacy_xuids
     document.add("authorization", authorization)

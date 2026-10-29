@@ -294,11 +294,15 @@ def run_controllers_reset(paths: InstancePaths, gamertag: str) -> int:
 
 
 def run_controllers_live(paths: InstancePaths, operation: str, target: str | None = None) -> int:
-    """Wait for the plugin's correlated result; only the plugin writes policy."""
-    from endbot_cli.controller_requests import controller_request
+    """Ask endbotd over its loopback CLI endpoint; only endbotd writes policy (docs/ENDBOTD.md P8)."""
+    from endbot_cli.endbotd_client import controllers_request
 
     try:
-        result = controller_request(paths.state_run, operation, target)
+        config = load_config(paths.endbot_toml)
+    except ConfigError as error:
+        return _fail(f"FAIL controllers: {error}")
+    try:
+        result = controllers_request(paths.state_run, paths.endbotd_token, config.endbotd.link_port, operation, target)
     except KeyboardInterrupt:
         return _fail("FAIL controllers: interrupted; result is unknown; inspect controllers list before retrying")
     except (OSError, ValueError) as error:

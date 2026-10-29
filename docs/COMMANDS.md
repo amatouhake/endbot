@@ -247,12 +247,13 @@ See [mining validation](MINING_VALIDATION.md) for the exact real-server coverage
 
 ## Managing access
 
-`endbot controllers add|remove|list` waits for and prints the plugin result. The list includes effective permission and
-reason; `endbot doctor` inspects saved authorization and `endbot doctor --live` queries the running plugin.
+`endbot controllers add|remove|list` asks endbotd directly over its loopback endpoint and prints the result. The list
+includes effective permission and reason; `endbot doctor` inspects saved authorization and `endbot doctor --live` queries
+the running endbotd.
 
 Bot access can be changed without restarting BDS from the host CLI with `endbot controllers add <GamerTag>`,
-`endbot controllers remove <GamerTag>`, and `endbot controllers list`. These submit the console-only
-`botcontrollers` commands and persist grants/revocations across restart. They do not grant operator permissions.
+`endbot controllers remove <GamerTag>`, and `endbot controllers list`. These run as the server
+console, like the console-only `botcontrollers` commands, and persist grants/revocations across restart. They do not grant operator permissions.
 See [runtime authorization](OPERATIONS.md#runtime-grants-and-revocations) for offline enrollment, precedence and queued
 command behavior.
 

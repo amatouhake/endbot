@@ -254,10 +254,7 @@ class PluginConfigTests(ConfigGenTestCase):
             str((self.paths.state_controllers.parent / "controller-policy.json").resolve()),
         )
         self.assertEqual(document["authorization"]["allowed-uuids"], [])
-        self.assertEqual(
-            document["authorization"]["controller-requests-directory"],
-            str((self.paths.state_run / "controller-requests").resolve()),
-        )
+        self.assertNotIn("controller-requests-directory", document["authorization"])
         self.assertEqual(document["authorization"]["allowed-xuids"], [])
         self.assertEqual(document["runtime"]["token-file"], str(self.paths.control_token.resolve()))
         self.assertEqual(document["runtime"]["host"], "127.0.0.1")

@@ -331,20 +331,20 @@ class StopAndConsoleTests(CommandTestCase):
 
 
 class ControllersLiveTests(CommandTestCase):
-    def test_live_changes_return_plugin_result_and_failure_exit_code(self):
-        from unittest.mock import patch
+    def test_live_changes_return_endbotd_result_and_failure_exit_code(self):
+        from unittest.mock import ANY, patch
 
         with patch(
-            "endbot_cli.controller_requests.controller_request",
+            "endbot_cli.endbotd_client.controllers_request",
             return_value={"ok": True, "messages": ["Player: allowed - runtime grant"]},
         ) as request:
             code, stdout, stderr = self.run_captured(run_controllers_live, self.paths, "add", "Player")
         self.assertEqual(code, 0, stderr)
         self.assertIn("Player: allowed", stdout)
         self.assertNotIn("queued", stdout)
-        request.assert_called_once_with(self.run_dir, "add", "Player")
+        request.assert_called_once_with(self.run_dir, self.paths.endbotd_token, ANY, "add", "Player")
         with patch(
-            "endbot_cli.controller_requests.controller_request",
+            "endbot_cli.endbotd_client.controllers_request",
             return_value={"ok": False, "messages": ["Unknown offline controller"]},
         ):
             code, stdout, stderr = self.run_captured(run_controllers_live, self.paths, "remove", "Missing")

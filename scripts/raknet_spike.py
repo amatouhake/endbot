@@ -31,7 +31,6 @@ import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
-from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "cli" / "endbot" / "src"))
@@ -56,7 +55,6 @@ from endbot_cli.configgen import (
     generate_endstone_config,
     generate_plugin_config,
 )
-from endbot_cli.controller_requests import SESSION_FILE, dispatch_requests
 from endbot_cli.instance import InstancePaths
 from endbot_cli.leveldat import parse_level_dat
 from endbot_cli.netcheck import lan_discovery_port_problem
@@ -287,11 +285,7 @@ def exercise(
     }
     paths = InstancePaths.for_root(output)
     paths.state_run.mkdir(parents=True, exist_ok=True)
-    controller_session = str(uuid4())
     (paths.state_run / "supervisor.pid").write_text(str(os.getpid()), encoding="utf-8")
-    (paths.state_run / SESSION_FILE).write_text(
-        json.dumps({"session": controller_session}), encoding="utf-8"
-    )
     (output / "endbot.toml").write_text(
         f"[server]\npath='{server if reused else 'server'}'\ntransport='{transport}'\n[controllers]\ngamertags=[]\n"
         f"[runtime]\ncontrol-port={control_port}\n[endbotd]\nlink-port={link_port}\n",
@@ -486,17 +480,12 @@ def exercise(
                     encoding="utf-8",
                 )
 
-                def send(line):
-                    console(bds, line)
-                    return True
-
-                deadline = time.monotonic() + 25
-                while child.poll() is None and time.monotonic() < deadline:
-                    dispatch_requests(paths.state_run, controller_session, send)
-                    time.sleep(0.02)
-                if child.poll() is None:
+                # The CLI asks endbotd directly over its loopback CLI endpoint.
+                try:
+                    stdout, stderr = child.communicate(timeout=25)
+                except subprocess.TimeoutExpired:
                     terminate_owned_tree(child)
-                stdout, stderr = child.communicate()
+                    stdout, stderr = child.communicate()
                 if child.returncode != code or expected not in stdout + stderr:
                     raise ConsumerError(
                         f"CLI result mismatch: {arguments}: {stdout} {stderr}"
@@ -929,7 +918,6 @@ def exercise(
             report["clean_shutdown"] = True
         finally:
             (paths.state_run / "supervisor.pid").unlink(missing_ok=True)
-            (paths.state_run / SESSION_FILE).unlink(missing_ok=True)
             if bds is not None and bds.poll() is None:
                 try:
                     console(bds, "stop")

@@ -6,7 +6,8 @@ Endstone `0.11.13+endbot.1`. No server, world, identity, key, token, diagnostic 
 the repository.
 
 Status: **in progress**. The release containing BOT-020 is not validated until every item below is recorded as passed
-on the final main.
+on the final main. The first human Windows client pass (2026-10-30) failed on the script menus; the fix is in #150 and
+needs a rebuilt candidate and a second pass.
 
 ## Early check on the 3c main — 2026-10-29 JST
 
@@ -50,10 +51,34 @@ BDS did not observe, a product drop that took longer than 10 s, and a fed cow th
 `interact`. Each failed once and passed on the next run of the same case. They are runtime timing and world randomness
 checks that predate BOT-020. The probe's own state-file read race is fixed in #149.
 
-## Human Windows client check
+## Human Windows client check — 2026-10-30 JST
 
-To be done by the operator with an unmodified Windows client on the final candidate:
+Run by the operator with an unmodified Windows client against the Windows bundle of candidate run 40862411934
+(`30752f4`): `endbot-0.4.0-windows-x86_64.zip`, sha256 `3c7e134c…bb447c`, `gh attestation verify` exit 0. The instance
+was a fresh setup (`endbot setup --fresh --controller <GamerTag> --transport raknet`), Survival with achievements on,
+`[scripting] enabled = true` and `max-players = 3`; `endbot doctor --live` passed every check except the expected
+`controllers: pending` before the first join.
 
-- [ ] Commands, forms, script menus and messages look and behave as before endbotd.
-- [ ] A command issued while endbotd restarts is refused with a reason, and works again afterwards.
-- [ ] Achievement history is unaffected.
+- [ ] Commands, forms, script menus and messages look and behave as before endbotd. **Failed.** `/bot` and `/botgroup`
+      menus opened and behaved as before, but every `/botscript` menu was dropped: `/botscript`, `/botscript menu` and
+      `/bot menu` → *Scripts...* delivered nothing. endbotd logged
+      `A form view could not be sent to the plugin: function cannot cross the endbotd link` seven times, once per
+      attempt. Cause: script menus were the only screens endbotd built itself, and a script screen carries a form
+      builder (`ModalScreen.build`, a closure) that `endbot_core.wire_views` refuses; bot and group outcomes cross as
+      data and the plugin builds their screens, which is why only the script menus were affected. Fix: #150 crosses a
+      script outcome as `forms.ScriptMenuView` and the plugin builds the screen from it (`menu_views.script_view`),
+      following [ENDBOTD.md](ENDBOTD.md) P3. **Not yet checked on candidate bytes.**
+- [x] A command issued while endbotd restarts is refused with a reason, and works again afterwards. endbotd was killed
+      three times in a row (07:34:43, 07:34:48 and 07:34:52 JST). The plugin logged
+      `Endbot cannot link to endbotd (unavailable: endbotd unavailable: ConnectionRefusedError)` and relinked at
+      07:34:57. Commands typed during that gap were refused with `Endbot service is restarting`; the same command ran
+      normally before and after it.
+- [x] Achievement history is unaffected. The client's achievement list and history were the same before and after the
+      session.
+
+A pre-check of #150 ran on the same instance with the three changed files replaced in place and a restart: every
+`/botscript` menu opened, the operator created `mine_at_spot` from the menu (`state/scripts.json` was written), and the
+run ended `mine_at_spot ended: completed` with no `cannot cross` warnings. That is not the gate — it ran on patched
+bundle files, not on the rebuilt candidate.
+
+Next: after #150 merges, rebuild the candidate and repeat all three items on the new bytes.

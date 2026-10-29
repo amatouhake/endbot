@@ -31,7 +31,8 @@ class EndbotdCliTests(unittest.TestCase):
         self.token.write_text(TOKEN + "\n", encoding="utf-8")
         self.logs: list[tuple[str, str]] = []
         config = EndbotdConfig(
-            base=self.root, link_port=0, link_token_file=self.token, data_folder=self.root,
+            base=self.root, link_port=0, link_token_file=self.token, stores_directory=self.root,
+            scripts_folder=self.root / "scripts", journal_file=self.root / "endbotd-runs.json",
             authorization={"controller-policy-file": "controller-policy.json"}, ui={"language": "en"},
         )
         # No runtime is needed: controller management never reaches it.

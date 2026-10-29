@@ -19,6 +19,7 @@ from scripts.scripting_probe import (
     BOT,
     BUDDY,
     GROUP,
+    WAITS_EXPECTED,
     built_runner,
     configure_fixture,
     enable_config,
@@ -122,13 +123,15 @@ class ScriptingProbeTests(unittest.TestCase):
     def test_saves_submit_same_guarded_action_as_paste_form_without_touching_store(self):
         from endstone_endbot.script_forms import ScriptGuard
 
+        principal = object()
         plugin = SimpleNamespace(_command_runner=SimpleNamespace(submit=Mock(return_value=True)),
-                                 server=SimpleNamespace(command_sender=object()))
+                                 server=SimpleNamespace(command_sender=object()),
+                                 _principal=Mock(return_value=principal))
         self.assertTrue(submit_save(plugin, "line", "params {}"))
-        plugin._command_runner.submit.assert_called_once_with(
-            ["save", "line", "params {}"], plugin.server.command_sender,
-            command="botscript", group_guard=ScriptGuard(edit=True),
-        )
+        plugin._principal.assert_called_once_with(plugin.server.command_sender, command="botscript",
+                                                  group_guard=ScriptGuard(edit=True))
+        plugin._command_runner.submit.assert_called_once_with(["save", "line", "params {}"], principal,
+                                                              command="botscript")
 
     def test_installed_fixture_samples_sdk_locations_and_submits_each_save_once(self):
         callbacks = []
@@ -220,12 +223,13 @@ class ScriptingProbeTests(unittest.TestCase):
     def test_console_smoke_records_authoritative_samples_commands_and_both_stop_selectors(self):
         result, driver = self.run_probe()
         self.assertEqual(result["status"], "passed")
-        for phase in ("row", "stop_patrol", "overlap_cleanup", "mine", "runaway"):
+        for phase in ("row", "stop_patrol", "overlap_cleanup", "mine", "waits", "runaway"):
             self.assertEqual(result[phase]["outcome"], "passed")
         self.assertIn("botscript stop patrol", driver.commands)
         self.assertIn("botscript stop 0003", driver.commands)
         self.assertIn('botscript run line #script_probe "0.5 200 0.5" 3', driver.commands)
-        self.assertEqual(set(driver.saved), {"line", "patrol", "mine", "runaway"})
+        self.assertEqual(set(driver.saved), {"line", "patrol", "mine", "waits", "runaway"})
+        self.assertIn(":job:wait{timeout = 200}", driver.saved["waits"].replace(").job", ":job"))
         self.assertTrue(all(block["type"] == "minecraft:air" for block in result["mine"]["after"]))
         self.assertIn("spot 2: block count reached", result["mine"]["output"])
         self.assertIn('param.group "group"', driver.saved["line"])
@@ -234,7 +238,7 @@ class ScriptingProbeTests(unittest.TestCase):
         self.assertIn("unit test", result["disabled_default"])
 
     def test_probe_fails_and_keeps_evidence_for_wrong_row_drift_cancelled_console_and_missing_budget(self):
-        for failure in ("row", "drift", "overlap", "budget", "cleanup", "mining_blocks", "mining_reason", "mining_end"):
+        for failure in ("row", "drift", "overlap", "budget", "cleanup", "mining_blocks", "mining_reason", "mining_end", "waits"):
             with self.subTest(failure=failure):
                 result, _ = self.run_probe(failure)
                 self.assertEqual(result["status"], "failed")
@@ -333,6 +337,10 @@ class FakeBds:
                     reason = "timeout" if self.failure == "mining_reason" else "block count reached"
                     self.emit(f"Endbot script {self.run_id}: spot {spot}: {reason}")
                 self.finish("mine", self.run_id, "failed" if self.failure == "mining_end" else "completed")
+            elif self.active == "waits":
+                for reported in WAITS_EXPECTED[:-1] if self.failure == "waits" else WAITS_EXPECTED:
+                    self.emit(f"Endbot script {self.run_id}: {reported}")
+                self.finish("waits", self.run_id, "completed")
             else:
                 reason = "Script runner failed: script:2: execution budget exceeded" if self.failure != "budget" else "completed"
                 self.finish("runaway", self.run_id, reason)

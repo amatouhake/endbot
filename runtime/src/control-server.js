@@ -155,6 +155,11 @@ export class ControlServer {
           // avoid multiplying full inventories/mining status by the group size.
           return { ok: true, result: { name: result.name, identityId: result.identityId, connectionState: result.connectionState,
             ...(method === 'hotbar' ? { selectedHotbarSlot: result.selectedHotbarSlot } : {}),
+            // Only the started job's id, so a script can wait for every member's job.
+            ...(method === 'move' && result.inputs?.movementJob !== undefined
+              ? { inputs: { movementJob: result.inputs.movementJob } } : {}),
+            ...(method === 'action' && result.inputs?.actions?.[params.action]?.job !== undefined
+              ? { inputs: { actions: { [params.action]: { job: result.inputs.actions[params.action].job } } } } : {}),
             ...(method === 'hold' ? { found: result.found, sourceSlot: result.sourceSlot, selectedHotbarSlot: result.selectedHotbarSlot } : {}),
             ...(method === 'drop' ? { droppedCount: result.droppedCount, droppedSlots: result.droppedSlots,
               ...(params.selector !== 'all' && result.drops?.length <= 1 ? { drops: result.drops } : {}) } : {}) } }

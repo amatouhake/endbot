@@ -558,17 +558,19 @@ class EndbotPlugin(Plugin):
     def _principal(self, sender, *, command: str = "bot", group_guard=None) -> Principal:
         """Capture who sent a command; server thread only. The console stays English."""
         if not hasattr(sender, "unique_id"):
-            return Principal("console")
-        player_id = str(sender.unique_id)
-        principal = Principal(
-            "player",
-            name=str(getattr(sender, "name", None) or "") or None,
-            xuid=str(getattr(sender, "xuid", None) or "") or None,
-            grant_revision=self._grant_versions.get(player_id, 0),
-            language=self._language(sender),
-            player_id=player_id,
-            authorization_revision=self._authorization_versions.get(player_id, 0),
-        )
+            principal = Principal("console")
+        else:
+            player_id = str(sender.unique_id)
+            principal = Principal(
+                "player",
+                name=str(getattr(sender, "name", None) or "") or None,
+                xuid=str(getattr(sender, "xuid", None) or "") or None,
+                grant_revision=self._grant_versions.get(player_id, 0),
+                language=self._language(sender),
+                player_id=player_id,
+                authorization_revision=self._authorization_versions.get(player_id, 0),
+            )
+        # A guard reaches the console too: the scripting probe saves through the paste form's guard.
         if group_guard is not None:
             # A form's guard is copied, so later edits to the form cannot reach the queued command.
             if getattr(group_guard, "values", None) is not None:

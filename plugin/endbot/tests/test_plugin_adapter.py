@@ -424,6 +424,9 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertEqual(principal.group_guard.values, {"name": "Alice"})
             self.assertIsNone(plugin._principal(player).origin)
             self.assertEqual(plugin._principal(FakeConsole()), Principal())
+            # The console keeps a form guard it was given (the scripting probe saves this way).
+            console = plugin._principal(FakeConsole(), command="botscript", group_guard=guard)
+            self.assertEqual((console.kind, console.group_guard.values), ("console", {"name": "Changed"}))
 
     def test_script_grant_revision_survives_logout_but_revoke_regrant_never_revives_it(self):
         from dataclasses import replace

@@ -746,8 +746,16 @@ class LifecycleTests(unittest.TestCase):
             status["inputs"] = {"teleports": 3, "actions": {}}
             arrived = self.host._wait_job(run, {"target": "Alice", "job": tp})
         self.assertEqual((arrived["ok"], arrived["reason"]), (True, "arrived"))
+        # Through Luau and the runner's JSON a job id can come back as a float.
+        with (
+            patch.object(self.raw, "request", side_effect=lambda method, **params: dict(status)),
+            patch.object(self.host, "_wait"),
+        ):
+            via_luau = self.host._wait_job(run, {"target": "Alice", "job": {"kind": "tp", "ids": {identity: 3.0}}})
+        self.assertEqual(via_luau["reason"], "arrived")
         for bad in (None, {"kind": "fly", "ids": {identity: 1}}, {"kind": "move", "ids": {}},
-                    {"kind": "move", "ids": {identity: "7"}}):
+                    {"kind": "move", "ids": {identity: "7"}}, {"kind": "move", "ids": {identity: 7.5}},
+                    {"kind": "move", "ids": {identity: True}}):
             with self.subTest(job=bad), self.assertRaises(LocalizedError):
                 self.host._wait_job(run, {"target": "Alice", "job": bad})
 

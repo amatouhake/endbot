@@ -55,10 +55,8 @@ def submit_save(plugin, name, source):
 
     # Exactly the capability the paste form supplies. AsyncCommandRunner executes
     # ScriptService's inspect/check/save branch on its normal ordered worker.
-    return plugin._command_runner.submit(
-        ["save", name, source], plugin.server.command_sender,
-        command="botscript", group_guard=ScriptGuard(edit=True),
-    )
+    principal = plugin._principal(plugin.server.command_sender, command="botscript", group_guard=ScriptGuard(edit=True))
+    return plugin._command_runner.submit(["save", name, source], principal, command="botscript")
 
 
 def install_probe(plugin_class):
@@ -134,6 +132,35 @@ def install_probe(plugin_class):
         self.server.scheduler.run_task(self, sample, delay=1, period=1)
 
     plugin_class.on_enable = enable
+
+
+WAITS_SCRIPT = """params {}
+local b = bot("BOT")
+local function show(label, r)
+    log(label .. ": " .. tostring(r.ok) .. " " .. tostring(r.code) .. " " .. tostring(r.reason))
+end
+show("online", b:waitOnline{timeout = 20})
+show("move", b:move("forward", {ticks = 20}).job:wait{timeout = 200})
+show("jump", b:jump({interval = 5, ticks = 20}).job:wait{timeout = 200})
+local held = b:jump({mode = "continuous"}).job
+b:jump({mode = "stop"})
+show("stop", held:wait{timeout = 40})
+local first = b:move("left").job
+b:move("right")
+show("replaced", first:wait{timeout = 40})
+b:move("stop")
+local here = b:status().data.position
+show("tp", b:tp(here.x, here.y, here.z + 2).job:wait{timeout = 200})
+group("GROUP"):waitOnline{timeout = 400}
+show("group", group("GROUP"):move("backward", {ticks = 10}).job:wait{timeout = 200})
+show("timeout", b:move("forward", {ticks = 400}).job:wait{timeout = 5})
+b:stop()
+""".replace("BOT", BOT).replace("GROUP", GROUP)
+WAITS_EXPECTED = (
+    "online: true ok online", "move: true ok duration elapsed", "jump: true ok duration elapsed",
+    "stop: true ok stopped", "replaced: true ok replaced", "tp: true ok arrived",
+    "group: true ok duration elapsed", "timeout: false timeout timeout",
+)
 
 
 def distance(a, b):
@@ -294,6 +321,17 @@ end
             and all(block["type"] == "minecraft:air" for block in state()["mining_blocks"])
         ), 15)
         results["mine"].update(after=state()["mining_blocks"], outcome="passed")
+
+        # BOT-016: every continuing operation returns a job; its wait ends with the runtime's reason.
+        save("waits", WAITS_SCRIPT)
+        run_id, offset = start("waits", "")
+        results["waits"] = {"run_id": run_id, "expected": list(WAITS_EXPECTED)}
+        results["waits"]["output"] = ended("waits", run_id, offset, "completed")
+        missing = [line for line in WAITS_EXPECTED
+                   if f"Endbot script {run_id}: {line}" not in results["waits"]["output"]]
+        if missing:
+            raise ConsumerError(f"job waits did not report: {missing}")
+        results["waits"]["outcome"] = "passed"
 
         run_id, offset = start("runaway", "")
         results["runaway"] = {"run_id": run_id}

@@ -407,9 +407,12 @@ class ScriptService:
         if kind == "mining":
             return self._wait_mining(run, event)
         ids = job.get("ids") if kind in (*INPUT_JOBS, "tp") else None
+        # The ids come back through Luau and the runner's JSON, where 7 may arrive as 7.0.
         if not isinstance(ids, dict) or not ids or not all(
-                isinstance(key, str) and type(value) is int for key, value in ids.items()):
+                isinstance(key, str) and type(value) in (int, float) and math_is_integer(value)
+                for key, value in ids.items()):
             raise LocalizedError("Invalid script wait")
+        ids = {key: int(value) for key, value in ids.items()}
 
         def settle(status, expired):
             expected = ids.get(status.get("identityId"))

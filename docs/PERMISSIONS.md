@@ -121,7 +121,7 @@ included, so they stay runnable by them but are no longer editable by them.
 
 ## Steps
 
-Status: **Proposed** (2026-10-29 JST). Each step is split into PRs; a PR changes one thing for one reason and keeps
+Status: **Agreed** (2026-10-29 JST). Each step is split into PRs; a PR changes one thing for one reason and keeps
 main releasable. BOT-024 ships in the same release as BOT-020, BOT-021 and BOT-022, so a step may land between them,
 but no release is cut from main until the whole set is in. "Claude" marks security boundaries, cross-cutting
 authorization and migrations; "DeepSeek" marks pieces that can be handed over with a precise spec and acceptance
@@ -143,26 +143,26 @@ once, against the endbotd endpoint, not against the file request channel being r
    - **2a. `requires {}` in the runner and inspection.** Exactly once, before `params{}`; an unknown name, a second
      call or a call after `params{}` is an inspection error naming it. Inspection returns the declaration with the
      params schema. A run whose own `requires {}` differs from what inspection read stops before its first
-     operation (open point 3). Scripters see a new Luau function and its errors; existing scripts are unchanged.
+     operation (S3). Scripters see a new Luau function and its errors; existing scripts are unchanged.
      *Claude.*
    - **2b. Forms show the declaration** before a shared script runs, from the inspection result. Players see one
      line on the run form when a script declares anything. *DeepSeek.*
 3. **Roles.** After BOT-020 3c and 4; 3c after BOT-020 5.
    - **3a. Role store.** `state/controller-roles.json`, keyed by XUID, read by endbotd; a grant with no entry is
-     **scripter** (the migration rule), revoked grants keep no role (open point 1). Registered with the BOT-020 4
+     **scripter** (the migration rule), revoked grants keep no role (S1). Registered with the BOT-020 4
      migration and doctor `stores` check. Nothing players see. *Claude.*
-   - **3b. Role in the principal and the check.** `Principal` carries the role, read at each action (open point 5);
-     the authoring operations (open point 6) refuse a controller with the authorization code, from every surface.
+   - **3b. Role in the principal and the check.** `Principal` carries the role, read at each action (S5);
+     the authoring operations (S6) refuse a controller with the authorization code, from every surface.
      Nobody is a controller yet, so nothing players see. *Claude.*
    - **3c. Assigning roles.** `--role scripter|controller` on `endbot controllers add` and the `botcontrollers` console
      command, the same option changing an existing grant, the default **controller** for a new grant, and the role in
      `endbot controllers list`. Operators see the option; new controllers can no longer author. *DeepSeek.*
 4. **Ownership of Bots and Groups.** After BOT-020 3c and 4. Scripts already follow the model.
    - **4a. Ownership store** for Bots and Groups: owner and visibility by identity id, absent means unowned and shared
-     (open point 2); a Bot spawned by a run or trigger is owned by its invoker or the trigger's owner; `[permissions]
-     bots-default` and `groups-default` (open point 7). Nothing players see while the defaults are `shared`. *Claude.*
+     (S2); a Bot spawned by a run or trigger is owned by its invoker or the trigger's owner; `[permissions]
+     bots-default` and `groups-default` (S7). Nothing players see while the defaults are `shared`. *Claude.*
    - **4b. Enforcement in target resolution**, per member for Groups, so a command, form, script or web call on
-     someone else's private Bot fails the same way (open point 4). Players see refusals only after someone makes an
+     someone else's private Bot fails the same way (S4). Players see refusals only after someone makes an
      item private. *Claude.*
    - **4c. Owner commands.** `share` / `private` for Bots and Groups and console reassignment of owners for Bots,
      Groups and scripts, with names from the [interface guide](INTERFACE_GUIDE.md). Players see the new subcommands.
@@ -183,27 +183,29 @@ a run spawning a Bot and that Bot's owner; a run stopped by a `requires {}` mism
 Client check: the declaration line on the run form, the refusal messages, `controllers list` roles, and achievement
 history unaffected.
 
-### Open points for the steps
+### Settled points for the steps
 
-1. **Where the role lives.** Recommended: a separate `state/controller-roles.json`, not a version 2
-   `controller-policy.json`, for the reason P4 gives: the current loader rejects an unknown version and unknown grant
-   fields, so a v2 policy breaks rollback, while an unknown file is ignored. After a rollback everyone acts as a
-   scripter, which is today's behavior.
-2. **Where Bot and Group ownership lives.** Recommended: a separate store, not new fields in runtime profiles (strict
-   `schemaVersion`) or `groups.json`. Consequence to put in the release notes: after a rollback, private Bots and
-   Groups are shared again.
-3. **How "unconditional top-level" is enforced.** Recommended: at run time, not by parsing source: `requires {}` must
-   come before `params{}`, once, and the run's declaration must equal the inspected one, so a conditional call cannot
-   widen a run.
-4. **Someone else's private items.** Recommended: Bots are visible in game anyway, so they stay listed and are refused
-   with the authorization code; private Groups are not visible in game, so they are left out of other people's lists
-   and resolve as not found.
-5. **Role changes during a run.** Recommended: the role is read at each authoring action; a role change does not bump
-   the grant revision, so runs and jobs continue (running is the same for both roles).
-6. **What counts as authoring.** Recommended: create, save, paste or book import, copy, rename, restore and `share`.
-   A controller may still run, `private` and delete their own scripts, which only narrows what others can use.
-7. **Setting names.** Recommended: `[permissions] bots-default` and `groups-default`, each `shared` (default) or
-   `private`.
+Decided 2026-10-29 JST, following the recommendations of the draft.
+
+- **S1. The role lives in** a separate `state/controller-roles.json`, not a version 2
+  `controller-policy.json`, for the reason P4 gives: the current loader rejects an unknown version and unknown grant
+  fields, so a v2 policy breaks rollback, while an unknown file is ignored. After a rollback everyone acts as a
+  scripter, which is today's behavior.
+- **S2. Bot and Group ownership lives in** a separate store, not new fields in runtime profiles (strict
+  `schemaVersion`) or `groups.json`. The release notes must state the consequence: after a rollback, private Bots and
+  Groups are shared again.
+- **S3. "Unconditional top-level" is enforced** at run time, not by parsing source: `requires {}` must
+  come before `params{}`, once, and the run's declaration must equal the inspected one, so a conditional call cannot
+  widen a run.
+- **S4. Someone else's private items.** Bots are visible in game anyway, so they stay listed and are refused
+  with the authorization code; private Groups are not visible in game, so they are left out of other people's lists
+  and resolve as not found.
+- **S5. Role changes during a run.** The role is read at each authoring action; a role change does not bump
+  the grant revision, so runs and jobs continue (running is the same for both roles).
+- **S6. Authoring** is create, save, paste or book import, copy, rename, restore and `share`.
+  A controller may still run, `private` and delete their own scripts, which only narrows what others can use.
+- **S7. Setting names** are `[permissions] bots-default` and `groups-default`, each `shared` (default) or
+  `private`.
 
 ## Not decided here
 

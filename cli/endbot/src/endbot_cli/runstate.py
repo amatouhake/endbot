@@ -5,6 +5,7 @@ other-terminal commands::
 
     state/run/supervisor.pid    PID of the live supervisor (written last, removed on exit)
     state/run/runtime.pid       PID of the Endbot runtime child (informational)
+    state/run/endbotd.pid       PID of the endbotd child (informational)
     state/run/server.pid        PID of the Endstone/BDS child (informational)
     state/run/stop.request      created by `endbot stop`; consumed by the supervisor
     state/run/console.request   appended to by `endbot console`, one line per
@@ -12,7 +13,7 @@ other-terminal commands::
     state/run/last-exit.json    exit record of the most recent supervisor run
     state/run/controller-session.json   nonce of this supervisor start
     state/run/controller-requests/      correlated management requests/results
-    state/run/logs/<start>/     per-start runtime.log / server.log (last 10 kept)
+    state/run/logs/<start>/     per-start runtime.log / endbotd.log / server.log (last 10 kept)
 
 A ``supervisor.pid`` naming a process that no longer exists is stale: every
 command reports it and removes it instead of acting on it.
@@ -32,6 +33,7 @@ from endbot_cli.processes import process_alive
 
 SUPERVISOR_PID = "supervisor.pid"
 RUNTIME_PID = "runtime.pid"
+ENDBOTD_PID = "endbotd.pid"
 SERVER_PID = "server.pid"
 STOP_REQUEST = "stop.request"
 CONSOLE_REQUEST = "console.request"

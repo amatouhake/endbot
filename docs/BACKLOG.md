@@ -856,8 +856,20 @@ Steps, each about one PR, none meant to change what players see:
 
 ## BOT-020: endbotd outside BDS
 
-Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); step 1b (the `endbot_core` package, #130) landed, the rest not
-implemented** (2026-10-29 JST).
+Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); steps 1 to 3b landed and step 3c (the switch: endbotd runs as
+its own child and the plugin is the link client) is in review; 3d to 6 are not implemented** (2026-10-29 JST). No
+release from main until step 4 lands.
+
+Step 3c link measurement (P5, 2026-10-29 JST, `scripts/link_rtt_probe.py`, Windows 11, Python 3.12, real
+`LinkServer`/`PluginLink` over loopback, a stand-in server thread running queued tasks once per 50 ms tick, an
+instant raycast, 8 s per row). The link itself costs little: with tasks run at once a `resolve_mining` round trip is
+0.21-0.26 ms p50 and at most 0.78 ms, and a 32-loop poll takes 8 ms p95. The cost is the wait for the next server
+tick, about 50 ms per call; loops renew one after another, so a poll takes about 50 ms per active loop (1 loop: 49 ms
+p95; 4: 202 ms; 8: 403 ms; 32: 1.6 s) and from 4 loops on it overruns its 200 ms period. That is the in-process
+behaviour too: the plugin's poll worker waited one tick per loop for the raycast and another for the authorization
+check, which endbotd now makes without the server thread, so the switch does not slow renewal. P5's remedy, one
+batched `resolve_mining` world call per poll (one tick per poll instead of one per loop), is a follow-up, not part of
+3c. Live BDS numbers are part of step 6.
 Ships in the single BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery).
 
 Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,

@@ -64,8 +64,9 @@ class ConfigStorageParamsTests(unittest.TestCase):
         except ImportError:
             self.skipTest("tomlkit is Endstone's config loader; not installed here")
         shipped = Path(__file__).resolve().parents[1] / "src" / "endstone_endbot" / "config.toml"
-        document = tomlkit.parse(shipped.read_text(encoding="utf-8"))
-        document["scripting"]["enabled"] = True
+        # The plugin config holds only the endbotd link; scripting settings live in endbotd.toml.
+        self.assertEqual(set(tomlkit.parse(shipped.read_text(encoding="utf-8"))), {"endbotd"})
+        document = tomlkit.parse("[scripting]\nenabled = true\nserver-runs = 8\n")
         config = ScriptConfig.from_config(document["scripting"])
         self.assertTrue(config.enabled)
         self.assertIs(type(config.server_runs), int)

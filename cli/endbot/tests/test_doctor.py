@@ -80,6 +80,9 @@ class HealthyInstanceTests(DoctorTestCase):
             "controllers-legacy": SKIP,
             "endstone-version": PASS,
             "control-token": PASS,
+            "endbotd-token": PASS,
+            "endbotd-config": SKIP,
+            "endbotd-link": SKIP,
             "controllers": WARN,
             "allowlist": PASS,
             "operators": PASS,
@@ -119,13 +122,39 @@ class HealthyInstanceTests(DoctorTestCase):
     def test_plugin_port_agreement(self) -> None:
         plugins = self.server / "plugins" / "endbot"
         plugins.mkdir(parents=True)
-        (plugins / "config.toml").write_text("[runtime]\nport = 19142\n", encoding="utf-8")
+        token = str(self.paths.endbotd_token.resolve())
+
+        def plugin_config(port, token_file=token, extra=""):
+            (plugins / "config.toml").write_text(
+                f"[endbotd]\nport = {port}\ntoken-file = '{token_file}'\n{extra}", encoding="utf-8")
+            return self.status_of(self.doctor(), "plugin-port")
+
+        self.assertEqual(plugin_config(19143), PASS)
+        self.assertEqual(plugin_config(25565), FAIL)
+        self.assertEqual(plugin_config(19143, str(self.paths.control_token.resolve())), FAIL)
+        # A plugin config that still carries the runtime token is regenerated, never accepted.
+        self.assertEqual(plugin_config(19143, extra="[runtime]\nport = 19142\n"), FAIL)
+        self.assertEqual(exit_code(self.doctor()), 1)
+
+    def test_endbotd_config_token_and_link(self) -> None:
+        from endbot_cli.config import load_config
+        from endbot_cli.configgen import generate_all
+
+        generate_all(load_config(self.paths.endbot_toml), self.paths, self.server)
         results = self.doctor()
-        self.assertEqual(self.status_of(results, "plugin-port"), PASS)
-        (plugins / "config.toml").write_text("[runtime]\nport = 25565\n", encoding="utf-8")
-        results = self.doctor()
-        self.assertEqual(self.status_of(results, "plugin-port"), FAIL)
-        self.assertEqual(exit_code(results), 1)
+        for name in ("plugin-port", "endbotd-token", "endbotd-config", "controllers-legacy"):
+            with self.subTest(name=name):
+                self.assertEqual(self.status_of(results, name), PASS)
+        self.assertEqual(self.status_of(results, "endbotd-link"), SKIP)
+        log = self.paths.state_run / "logs" / "20261029-000000" / "endbotd.log"
+        log.parent.mkdir(parents=True)
+        log.write_text("x INFO Endbot plugin 0.4.0 linked\n", encoding="utf-8")
+        self.assertEqual(self.status_of(self.doctor(), "endbotd-link"), PASS)
+        log.write_text("x WARNING Endbot plugin link refused: plugin and endbotd carry different operation "
+                       "registries\n", encoding="utf-8")
+        self.assertEqual(self.status_of(self.doctor(), "endbotd-link"), FAIL)
+        self.paths.endbotd_token.write_text("short", encoding="utf-8")
+        self.assertEqual(self.status_of(self.doctor(), "endbotd-token"), FAIL)
 
 
 class FreshInstanceTests(DoctorTestCase):

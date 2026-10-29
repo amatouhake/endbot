@@ -44,6 +44,7 @@ class InstancePaths:
     state_run: Path
     backups: Path
     control_token: Path
+    endbotd_token: Path
     owner_private_key: Path
     owner_public_key: Path
 
@@ -62,6 +63,7 @@ class InstancePaths:
             state_run=root / "state" / "run",
             backups=root / "backups",
             control_token=state_secrets / "control.token",
+            endbotd_token=state_secrets / "endbotd.token",
             owner_private_key=state_secrets / "owner-private.pem",
             owner_public_key=state_secrets / "owner-public.pem",
         )

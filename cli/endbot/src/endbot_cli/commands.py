@@ -46,10 +46,13 @@ def first_start_tolerable(name: str, paths: InstancePaths) -> bool:
 
     The runtime creates the control token and the owner key pair after config
     generation, so a first start may not have them yet; the strict
-    ``[local-bot-auth]`` re-check runs again right before BDS starts.
+    ``[local-bot-auth]`` re-check runs again right before BDS starts. ``endbot
+    start`` creates the endbotd token, so setup's doctor run may not have it yet.
     """
 
     if name == "control-token" and not paths.control_token.exists():
+        return True
+    if name == "endbotd-token" and not paths.endbotd_token.exists():
         return True
     return name == "local-bot-auth" and not paths.owner_public_key.exists()
 
@@ -72,6 +75,7 @@ def run_start(
     install_signal_handlers: bool = True,
     runtime_command: Sequence[str] | None = None,
     server_command: Sequence[str] | None = None,
+    endbotd_command: Sequence[str] | None = None,
     installed_endstone_version: Callable[[], str | None] | None = None,
     lan_port_check: Callable[[], str | None] | None = None,
     ready_timeout: float = 30.0,
@@ -133,7 +137,7 @@ def run_start(
     try:
         toolchain = resolve_toolchain(paths, environ)
     except ToolchainError as error:
-        if runtime_command is None or server_command is None:
+        if runtime_command is None or server_command is None or endbotd_command is None:
             return _fail(f"FAIL start: {error}")
         toolchain = None
     if runtime_command is None:
@@ -143,6 +147,8 @@ def run_start(
             "--config",
             str(generated.runtime_config),
         )
+    if endbotd_command is None:
+        endbotd_command = (str(toolchain.python), "-m", "endbotd", "--config", str(generated.endbotd_config))
     if server_command is None:
         server_command = (
             str(toolchain.python),
@@ -161,6 +167,7 @@ def run_start(
         run_dir=paths.state_run,
         runtime_command=tuple(runtime_command),
         server_command=tuple(server_command),
+        endbotd_command=tuple(endbotd_command),
         control_token_file=paths.control_token,
         control_host="127.0.0.1",
         control_port=config.runtime.control_port,

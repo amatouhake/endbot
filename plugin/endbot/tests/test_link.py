@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 from uuid import UUID
 
+from endbot_core.forms import BotListView, GroupTarget
+from endbot_core.group_forms import GroupGuard
 from endbot_core.i18n import LocalizedError
 from endbot_core.link import (
     MAX_FRAME_BYTES,
@@ -20,6 +22,7 @@ from endbot_core.link import (
     token_matches,
 )
 from endbot_core.principal import Principal
+from endbot_core.wire_views import encode_view
 from plain_service import PlainCommandService
 from test_command_service import FakeControl, FakeWorld
 
@@ -342,9 +345,12 @@ class PresenceAndCommandTests(LinkHarness):
         link = self.linked()
         alice = FakePlayer(ALICE, "Alice")
         self.join(link, alice)
-        self.assertTrue(self.endbotd.deliver(ALICE, ["§aok"], view={"menu": "bots", "bots": []}))
+        view = BotListView(("Steve",), (GroupTarget("miners", 2, GroupGuard("g1", "miners")),), True)
+        self.assertTrue(self.endbotd.deliver(ALICE, ["§aok"], view=encode_view(view)))
         self.assertEqual(alice.messages, ["§aok"])
-        self.assertEqual(self.views, [("Alice", {"menu": "bots", "bots": []})])
+        self.assertEqual(self.views, [("Alice", view)])
+        with self.assertRaisesRegex(ValueError, "invalid view"):
+            self.endbotd.deliver(ALICE, [], view={"$view": "builtins.object", "fields": {}})
 
     def test_permission_sets_and_clears_the_control_attachment(self):
         link = self.linked()

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "src"))
 sys.path.insert(0, str(ROOT / "cli" / "endbot" / "src"))
 
-from endbot_cli.endbotd_client import EndbotdError, controllers_request
+from endbot_cli.endbotd_client import PROTOCOL, EndbotdError, controllers_request
 from endbotd.config import EndbotdConfig
 from endbotd.service import EndbotService
 
@@ -75,7 +75,7 @@ class EndbotdCliTests(unittest.TestCase):
         self.assertFalse(any(TOKEN in message or "w" * 40 in message for _, message in self.logs))
 
     def test_duplicate_request_id_is_refused_and_not_run_again(self) -> None:
-        hello = {"id": 0, "type": "hello", "body": {"client": "cli", "protocol": 1, "token": TOKEN}}
+        hello = {"id": 0, "type": "hello", "body": {"client": "cli", "protocol": PROTOCOL, "token": TOKEN}}
         request = {"id": 7, "type": "controllers", "body": {"operation": "add", "target": "Once"}}
         _, first, second = self.raw([hello, request, request], 3)
         self.assertEqual((first["id"], first["ok"]), (7, True))
@@ -84,7 +84,7 @@ class EndbotdCliTests(unittest.TestCase):
         self.assertEqual(len(added), 1)
 
     def test_cli_connection_carries_only_cli_requests_and_leaves_the_plugin_link_alone(self) -> None:
-        hello = {"id": 0, "type": "hello", "body": {"client": "cli", "protocol": 1, "token": TOKEN}}
+        hello = {"id": 0, "type": "hello", "body": {"client": "cli", "protocol": PROTOCOL, "token": TOKEN}}
         submit = {"id": 1, "type": "submit", "body": {"root": "botcontrollers", "argv": ["add", "X"]}}
         bad = {"id": 2, "type": "controllers", "body": {"operation": "add", "target": "a\nstop"}}
         accepted, unsupported, invalid = self.raw([hello, submit, bad], 3)

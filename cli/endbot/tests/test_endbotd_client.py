@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 import endbot_cli
-from endbot_cli.endbotd_client import EndbotdError, controllers_request
+from endbot_cli.endbotd_client import PROTOCOL, EndbotdError, controllers_request
 
 TOKEN = "t" * 40
 
@@ -42,7 +42,8 @@ class FakeEndpoint:
         sock, _ = self.listener.accept()
         with sock, sock.makefile("rb") as stream:
             self.hello = json.loads(stream.readline())
-            sock.sendall(b'{"id":0,"ok":true,"result":{"protocol":1,"endbotdVersion":"test"}}\n')
+            hello = {"id": 0, "ok": True, "result": {"protocol": PROTOCOL, "endbotdVersion": "test"}}
+            sock.sendall(json.dumps(hello).encode() + b"\n")
             self.after_request(sock, json.loads(stream.readline()))
 
     def close(self) -> None:

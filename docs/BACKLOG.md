@@ -856,7 +856,8 @@ Steps, each about one PR, none meant to change what players see:
 
 ## BOT-020: endbotd outside BDS
 
-Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); not implemented** (2026-10-29 JST).
+Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); step 1b (the `endbot_core` package) in progress, the rest not
+implemented** (2026-10-29 JST).
 Release grouping open, see [delivery](DIRECTION.md#delivery).
 
 Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,

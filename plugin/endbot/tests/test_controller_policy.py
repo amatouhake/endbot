@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from endstone_endbot.controller_policy import ControllerPolicy
-from endstone_endbot.enrollment import Binding
+from endbot_core.controller_policy import ControllerPolicy
+from endbot_core.enrollment import Binding
 
 XUID = "123456789001"
 UUID = "00000000-0000-4000-8000-000000000001"
@@ -91,7 +91,7 @@ class ControllerPolicyTests(unittest.TestCase):
         self.policy.add("Player", xuid=XUID, player_uuid=UUID)
         prior = self.path.read_bytes()
         with (
-            patch("endstone_endbot.controller_policy.os.replace", side_effect=OSError("disk full")),
+            patch("endbot_core.controller_policy.os.replace", side_effect=OSError("disk full")),
             self.assertRaises(OSError),
         ):
             self.policy.remove("Player", known=(), configured=())

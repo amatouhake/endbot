@@ -8,7 +8,8 @@ import subprocess
 import threading
 import time
 
-from endstone_endbot.i18n import LocalizedError
+from endbot_core.i18n import LocalizedError
+
 from endstone_endbot.script_config import FRAME_BYTES
 from endstone_endbot.script_confine import Confinement
 

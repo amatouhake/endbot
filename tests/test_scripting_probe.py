@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "plugin/endbot/src"))
+sys.path.insert(0, str(ROOT / "core/src"))
 
 from scripts.scripting_probe import (
     BOT,

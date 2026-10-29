@@ -13,8 +13,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from endbot_core.i18n import LocalizedError, localize_error
+
 from endstone_endbot import script_confine as confine
-from endstone_endbot.i18n import LocalizedError, localize_error
 from endstone_endbot.script_config import PROCESS_HEADROOM, ScriptConfig
 from endstone_endbot.script_process import RunnerProcess
 

@@ -1,10 +1,9 @@
 import unittest
 
+from endbot_core.commands import UNREACHABLE_POLL_LIMIT, WAITING_NOTICE_POLLS
+from endbot_core.control import RuntimeControlError
+from endbot_core.limits import BotLimits
 from plain_service import PlainCommandService
-
-from endstone_endbot.commands import UNREACHABLE_POLL_LIMIT, WAITING_NOTICE_POLLS
-from endstone_endbot.control import RuntimeControlError
-from endstone_endbot.limits import BotLimits
 
 
 class FakeControl:
@@ -140,8 +139,8 @@ class CommandServiceTests(unittest.TestCase):
         self.assertIn("Menu is a reserved name", renamed.message)
         self.assertNotIn("rename", [operation for operation, _ in self.control.calls])
         # Typed operations from scripts and forms reach the same check.
-        from endstone_endbot.i18n import LocalizedError
-        from endstone_endbot.operations import Operation
+        from endbot_core.i18n import LocalizedError
+        from endbot_core.operations import Operation
 
         # As text, `help spawn` would silently become help; the typed entry says why instead.
         with self.assertRaisesRegex(LocalizedError, "help is a reserved name"):
@@ -183,8 +182,8 @@ class CommandServiceTests(unittest.TestCase):
         self.assertEqual(self.service.execute(["Alice", "radius", "8"]).data["source"], "bot")
 
     def test_error_codes_follow_what_the_user_should_do_next(self):
-        from endstone_endbot.commands import CommandSyntaxError, error_code
-        from endstone_endbot.i18n import LocalizedError
+        from endbot_core.commands import CommandSyntaxError, error_code
+        from endbot_core.i18n import LocalizedError
 
         for error, code in (
             (CommandSyntaxError("Expected x y z coordinates"), "invalid_argument"),
@@ -203,7 +202,7 @@ class CommandServiceTests(unittest.TestCase):
                 self.assertEqual(error_code(error), code)
 
     def test_operation_entry_runs_like_the_equivalent_command(self):
-        from endstone_endbot.operations import Operation
+        from endbot_core.operations import Operation
 
         self.service.execute(["Alice", "spawn"])
         self.control.calls.clear()
@@ -218,8 +217,8 @@ class CommandServiceTests(unittest.TestCase):
         self.assertFalse(missing.accepted)
 
     def test_operation_entry_rejects_malformed_operations_before_anything_runs(self):
-        from endstone_endbot.commands import CommandSyntaxError
-        from endstone_endbot.operations import Operation
+        from endbot_core.commands import CommandSyntaxError
+        from endbot_core.operations import Operation
 
         for operation in (Operation("fly", "Alice"), Operation("move", "Alice", {"direction": "up"}),
                           Operation("move", "Alice", {"direction": "forward", "speed": 2}),

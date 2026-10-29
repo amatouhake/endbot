@@ -6,11 +6,12 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 
-from endstone_endbot.commands import ERROR, WARNING, CommandResult, reply, strip_colors
-from endstone_endbot.events import Event, render
-from endstone_endbot.i18n import tr
+from endbot_core.commands import ERROR, WARNING, CommandResult, reply, strip_colors
+from endbot_core.events import Event, render
+from endbot_core.i18n import tr
+from endbot_core.principal import Principal
+
 from endstone_endbot.menu_views import menu_view
-from endstone_endbot.principal import Principal
 
 
 class ServerThreadBridge:

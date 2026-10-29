@@ -3,10 +3,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import UUID
 
+from endbot_core.commands import parse_command
 from plain_service import PlainCommandService
 from test_world import EndstoneWorld
 
-from endstone_endbot.commands import parse_command
 from endstone_endbot.inventory_sync import EQUIPMENT_SLOTS, inventory_snapshot
 
 

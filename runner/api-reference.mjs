@@ -16,7 +16,7 @@ export function reference(operations) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { operations } = JSON.parse(readFileSync(new URL('../plugin/endbot/src/endstone_endbot/operations.json', import.meta.url), 'utf8'));
+  const { operations } = JSON.parse(readFileSync(new URL('../core/src/endbot_core/operations.json', import.meta.url), 'utf8'));
   const target = new URL('../docs/SCRIPTING.md', import.meta.url);
   const before = readFileSync(target, 'utf8');
   const after = before.replace(/(<!-- BEGIN GENERATED OPERATIONS -->\r?\n)[\s\S]*?(<!-- END GENERATED OPERATIONS -->)/,

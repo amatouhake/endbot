@@ -225,7 +225,7 @@ def configure_fixture(root: Path, output: Path, environment: dict):
     shutil.copy2(root / "scripts/mining_probe.py", source / "_endbot_mining_probe.py")
     with (source / "endstone_endbot/plugin.py").open("a", encoding="utf-8") as stream:
         stream.write("\nfrom _endbot_mining_probe import install_probe\ninstall_probe(EndbotPlugin)\n")
-    environment["PYTHONPATH"] = os.pathsep.join([str(source), str(root / "cli/endbot/src")])
+    environment["PYTHONPATH"] = os.pathsep.join([str(source), str(root / "core/src"), str(root / "cli/endbot/src")])
     environment["ENDBOT_MINING_PROBE"] = str(output)
 
 

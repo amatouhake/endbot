@@ -4,7 +4,7 @@ from collections import Counter, OrderedDict
 from dataclasses import dataclass
 from uuid import uuid4
 
-from endstone_endbot.i18n import LocalizedError, Text, tr
+from endbot_core.i18n import LocalizedError, Text, tr
 
 PAGE_SIZE = 10
 CACHE_SIZE = 128

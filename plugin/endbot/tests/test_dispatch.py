@@ -3,10 +3,11 @@ import threading
 import unittest
 from pathlib import Path
 
-from endstone_endbot.commands import CommandResult, reply, strip_colors
+from endbot_core.commands import CommandResult, reply, strip_colors
+from endbot_core.events import Event, reason
+from endbot_core.principal import Principal
+
 from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
-from endstone_endbot.events import Event, reason
-from endstone_endbot.principal import Principal
 
 
 class ScheduledCallbacks:
@@ -24,7 +25,7 @@ class DispatchTests(unittest.TestCase):
     def test_script_world_uses_captured_spawn_after_logoff_and_rejects_revoked_world_calls(self):
         from types import SimpleNamespace
 
-        from endstone_endbot.i18n import LocalizedError
+        from endbot_core.i18n import LocalizedError
 
         origin = {"x": 1., "y": 64., "z": 2., "yaw": 90., "pitch": 0., "dimension": "Overworld"}
         source = Principal("player", player_id="controller", run_id="run1", origin=origin)
@@ -104,7 +105,8 @@ class DispatchTests(unittest.TestCase):
     def test_menu_outcomes_open_their_screen_with_the_scripting_entry(self):
         from types import SimpleNamespace
 
-        from endstone_endbot.forms import BotListView
+        from endbot_core.forms import BotListView
+
         from endstone_endbot.script_config import ScriptConfig
 
         scheduled = ScheduledCallbacks()
@@ -125,7 +127,7 @@ class DispatchTests(unittest.TestCase):
     def test_form_group_guard_survives_authorized_worker_capture_and_root_dispatch(self):
         from types import SimpleNamespace
 
-        from endstone_endbot.group_forms import GroupGuard
+        from endbot_core.group_forms import GroupGuard
 
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

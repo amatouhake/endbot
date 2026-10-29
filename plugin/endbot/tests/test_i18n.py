@@ -3,11 +3,8 @@ import string
 import unittest
 from pathlib import Path
 
-from plain_service import PlainCommandService
-from test_command_service import FakeControl, FakeWorld
-
-from endstone_endbot import forms
-from endstone_endbot.commands import (
+from endbot_core import forms
+from endbot_core.commands import (
     DESTROY_SINGLE_BLOCK,
     DESTROY_USAGE,
     HELP_PAGE_TITLES,
@@ -17,8 +14,11 @@ from endstone_endbot.commands import (
     help_page,
     strip_colors,
 )
-from endstone_endbot.events import render
-from endstone_endbot.i18n import JA, Text, language_setting, localize_error, resolve_language, tr
+from endbot_core.events import render
+from endbot_core.i18n import JA, Text, language_setting, localize_error, resolve_language, tr
+from plain_service import PlainCommandService
+from test_command_service import FakeControl, FakeWorld
+
 from endstone_endbot.inventory_sync import EQUIPMENT_SLOTS
 from endstone_endbot.script_forms import TEMPLATES
 

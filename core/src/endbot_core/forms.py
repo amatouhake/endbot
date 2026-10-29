@@ -15,7 +15,7 @@ import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from endstone_endbot.i18n import LocalizedError, Text, tr
+from endbot_core.i18n import LocalizedError, Text, tr
 
 Argv = tuple[str, ...]
 

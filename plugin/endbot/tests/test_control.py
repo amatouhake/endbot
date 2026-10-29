@@ -5,7 +5,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from endstone_endbot.control import RuntimeControlClient, RuntimeControlError, bot_profiles
+from endbot_core.control import RuntimeControlClient, RuntimeControlError, bot_profiles
 
 
 class Handler(socketserver.StreamRequestHandler):

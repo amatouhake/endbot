@@ -5,9 +5,9 @@ from __future__ import annotations
 import math
 from uuid import UUID
 
+from endbot_core.i18n import LocalizedError
 from endstone.level import Location
 
-from endstone_endbot.i18n import LocalizedError
 from endstone_endbot.inventory_sync import inventory_snapshot, item_summary
 from endstone_endbot.script_books import book_pages, fill_book
 

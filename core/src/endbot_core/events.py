@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from endstone_endbot.commands import DIM, WARNING, _language, reply
-from endstone_endbot.i18n import LocalizedError, tr
+from endbot_core.commands import DIM, WARNING, _language, reply
+from endbot_core.i18n import LocalizedError, tr
 
 # The starter's chat shows script log lines cut to this many characters.
 CHAT_LOG_CHARS = 256

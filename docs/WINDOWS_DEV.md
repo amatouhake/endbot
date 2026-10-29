@@ -60,11 +60,12 @@ These run unmodified on Windows:
 
 ```powershell
 python scripts\check_portability.py
-ruff check scripts tests plugin\endbot
+ruff check scripts tests plugin\endbot core
 python -m unittest discover -s tests -v
-$env:PYTHONPATH = "plugin\endbot\src"
+$env:PYTHONPATH = "plugin\endbot\src;core\src"
 python -m unittest discover -s plugin\endbot\tests -v
 Remove-Item Env:PYTHONPATH
+python -m build --wheel --outdir dist\core core
 python -m build --wheel --outdir dist\plugin plugin\endbot
 npm ci --prefix runtime --allow-remote=root
 npm run check --prefix runtime
@@ -209,7 +210,7 @@ than a different Minecraft version.
 `Incorrect permission level for command: bot`). To confirm an accountless join before a human tests, drive the runtime
 directly over its loopback control socket with the plugin's own client, for example
 `RuntimeControlClient("127.0.0.1", 19142, Path(r"C:\endbot-local\secrets\control.token")).request("spawn", name="Alice")`
-from `endstone_endbot.control`; the server log must then show `Accepted local bot 'Alice' (...)`, `Player Spawned:
+from `endbot_core.control`; the server log must then show `Accepted local bot 'Alice' (...)`, `Player Spawned:
 Alice xuid:` with an empty XUID, and vanilla `list` counts the Bot. This bypasses only the command layer and spawn
 placement, not the login path.
 

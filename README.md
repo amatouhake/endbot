@@ -93,7 +93,7 @@ Requirements for the foundation tests are Python 3.10+, Node.js 24+, and Git. Fr
 
 ```bash
 python3 scripts/prepare_endstone.py
-PYTHONPATH=plugin/endbot/src python3 -m unittest discover -s plugin/endbot/tests -v
+PYTHONPATH=plugin/endbot/src:core/src python3 -m unittest discover -s plugin/endbot/tests -v
 python3 -m unittest discover -s tests -v
 npm test --prefix runtime
 python3 scripts/check_portability.py
@@ -124,9 +124,10 @@ After the build, `python3 scripts/build_endstone_wheel.py` runs the pinned check
 manylinux container invokes Endstone's `auditwheel` repair command, and only the repaired wheel is written under
 `dist/endstone/`. CI inspects its ELF dependencies/loader paths and imports it in a clean Linux image.
 
-Build the plugin wheel with `python -m build --wheel plugin/endbot`; install it together with the repaired patched
+Build the shared core and plugin wheels with `python -m build --wheel core` and
+`python -m build --wheel plugin/endbot`; install them together with the repaired patched
 Endstone wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official
-unpatched `0.11.13` wheel. The plugin registers the `/bot` tree, including the original `/bot ping`, and uses
+unpatched `0.11.13` wheel, and it requires the matching `endbot-core` wheel from the same build. The plugin registers the `/bot` tree, including the original `/bot ping`, and uses
 `endbot.command.control`. The permission defaults to false and is granted to authenticated controllers through
 bootstrap enrollment or persistent console-managed policy. `endbot controllers add|remove|list` changes access while
 BDS runs; revocation overrides legacy UUID/XUID allowlists. It does not grant operator or vanilla command rights. See

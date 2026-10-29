@@ -1,6 +1,6 @@
 import unittest
 
-from endstone_endbot.authorization import AllowedPlayers
+from endbot_core.authorization import AllowedPlayers
 
 
 class AllowedPlayersTests(unittest.TestCase):

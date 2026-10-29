@@ -8,7 +8,7 @@ an operation by another caller replaces ownership only of the channels it sets.
 import threading
 from contextlib import contextmanager
 
-from endstone_endbot.control import RuntimeControlError
+from endbot_core.control import RuntimeControlError
 
 
 class OwnedInputs:

@@ -5,18 +5,18 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+from endbot_core import forms
+from endbot_core.commands import strip_colors
+from endbot_core.control import RuntimeControlError
+from endbot_core.forms import BotView
+from endbot_core.group_forms import GroupListView, GroupView, ResultView
+from endbot_core.group_results import CACHE_SIZE, HISTORY_SIZE, GroupResult, MemberResult, ResultStore
+from endbot_core.groups import Group, GroupCommandService, GroupStore
 from test_command_service import FakeWorld
 from test_forms import FakeFormModule, FakePlayer, buttons
 from test_groups import GroupControl, messages
 
-from endstone_endbot import forms
-from endstone_endbot.commands import strip_colors
-from endstone_endbot.control import RuntimeControlError
 from endstone_endbot.form_adapter import FormPresenter
-from endstone_endbot.forms import BotView
-from endstone_endbot.group_forms import GroupListView, GroupView, ResultView
-from endstone_endbot.group_results import CACHE_SIZE, HISTORY_SIZE, GroupResult, MemberResult, ResultStore
-from endstone_endbot.groups import Group, GroupCommandService, GroupStore
 from endstone_endbot.menu_views import menu_view
 
 

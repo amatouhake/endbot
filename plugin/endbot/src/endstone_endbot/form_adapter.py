@@ -1,4 +1,4 @@
-"""Render :mod:`endstone_endbot.forms` screens as native Endstone forms.
+"""Render :mod:`endbot_core.forms` screens as native Endstone forms.
 
 Server thread only: Endstone delivers form callbacks there, and every action
 leaves through ``submit``, the same entry typed /bot commands use.
@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from endstone_endbot import forms, group_forms
-from endstone_endbot.commands import DIM, ERROR, RESET, reply
-from endstone_endbot.i18n import localize_error, tr
-from endstone_endbot.operations import command_text
+from endbot_core import forms, group_forms
+from endbot_core.commands import DIM, ERROR, RESET, reply
+from endbot_core.i18n import localize_error, tr
+from endbot_core.operations import command_text
 
 # /botscript form steps that are not commands a player could type.
 SCRIPT_FORM_STEPS = {("parameters",), ("edit",), ("save",)}

@@ -29,6 +29,15 @@ def _hashfiles_segments(workflow: str) -> list[str]:
 
 
 class ReleaseWheelContractTests(unittest.TestCase):
+    def test_every_package_install_run_passes_the_core_wheel(self) -> None:
+        # The installer refuses to run without all three wheel directories, so
+        # a missing flag only shows up late in a release candidate.
+        for name in ("ci.yml", "full-validation.yml", "release-candidate.yml"):
+            workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            for match in re.finditer(r"python scripts/test_package_install\.py(.*?)(?:\n\s*\n|\Z)", workflow, re.DOTALL):
+                with self.subTest(workflow=name, offset=match.start()):
+                    self.assertIn("--core-wheel-dir", match.group(1))
+
     def test_manifest_separates_current_artifact_from_historical_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "compatibility-manifest.json"
@@ -149,14 +158,18 @@ class ReleaseWheelContractTests(unittest.TestCase):
         cli_version = tomllib.loads((ROOT / "cli/endbot/pyproject.toml").read_text(encoding="utf-8"))[
             "project"
         ]["version"]
-        # The tracked runtime, plugin, and CLI versions name the same release
-        # (npm spelling such as 0.1.0-rc.2, PEP 440 spelling such as
+        core_version = tomllib.loads(
+            (ROOT / "core/pyproject.toml").read_text(encoding="utf-8")
+        )["project"]["version"]
+        # The tracked runtime, plugin, core, and CLI versions name the same
+        # release (npm spelling such as 0.1.0-rc.2, PEP 440 spelling such as
         # 0.1.0rc2), so the release-candidate workflow input matches all
         # package metadata files.
         from packaging.version import Version
 
         self.assertEqual(Version(runtime_version), Version(plugin_version))
         self.assertEqual(Version(runtime_version), Version(cli_version))
+        self.assertEqual(Version(runtime_version), Version(core_version))
         self.assertEqual(plugin_version, str(Version(plugin_version)), "Python versions use normalized PEP 440")
 
         accepted = subprocess.run(
@@ -376,6 +389,7 @@ class WindowsWheelContractTests(unittest.TestCase):
         self.assertEqual(
             workflow.count("python -m build --wheel --outdir dist/plugin plugin/endbot"), 2
         )
+        self.assertEqual(workflow.count("python -m build --wheel --outdir dist/core core"), 2)
         self.assertEqual(workflow.count("python -m build --wheel --outdir dist/cli cli/endbot"), 2)
         self.assertIn(
             "python -m build --wheel --outdir dist/plugin plugin/endbot", blocks["linux"]
@@ -576,6 +590,7 @@ class BundleContractTests(unittest.TestCase):
                 "--version", "0.0.0-test",
                 "--platform", other,
                 "--plugin-wheel", "dist/plugin/endstone_endbot-0.1.0-py3-none-any.whl",
+                "--core-wheel", "dist/core/endbot_core-0.1.0-py3-none-any.whl",
                 "--cli-wheel", "dist/cli/endbot-0.1.0-py3-none-any.whl",
                 "--output-dir", "dist/bundle",
             ),
@@ -596,6 +611,7 @@ class BundleContractTests(unittest.TestCase):
                 self.assertIn(f"--platform {platform}", blocks[job])
                 self.assertIn("--endstone-wheel", blocks[job])
                 self.assertIn("--plugin-wheel", blocks[job])
+                self.assertIn("--core-wheel", blocks[job])
                 self.assertIn("--cli-wheel", blocks[job])
                 self.assertIn("--endstone-license", blocks[job])
                 self.assertIn("--runner-dir build/runner-stage", blocks[job])
@@ -610,6 +626,7 @@ class BundleContractTests(unittest.TestCase):
         # the Linux-built pure pair. Both bundles join dist/ so SHA256SUMS
         # covers them alongside the existing wheels and tarballs.
         self.assertIn("staging/bundle-linux/plugin/*.whl", blocks["assemble"])
+        self.assertIn("staging/bundle-linux/core/*.whl", blocks["assemble"])
         self.assertIn("staging/bundle-linux/cli/*.whl", blocks["assemble"])
         self.assertIn("staging/bundle-linux/bundle/*", blocks["assemble"])
         self.assertIn("staging/bundle-windows/*", blocks["assemble"])

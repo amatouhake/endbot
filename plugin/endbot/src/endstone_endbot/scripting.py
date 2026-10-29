@@ -9,8 +9,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from uuid import uuid4
 
-from endstone_endbot import script_forms
-from endstone_endbot.commands import (
+from endbot_core.commands import (
     DIM,
     ERROR,
     INPUT_JOBS,
@@ -21,15 +20,17 @@ from endstone_endbot.commands import (
     reply,
     strip_colors,
 )
-from endstone_endbot.control import bot_profiles
-from endstone_endbot.events import Event, outcome_text, reason
-from endstone_endbot.group_forms import GroupGuard
-from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
-from endstone_endbot.operations import OPERATIONS, Operation
+from endbot_core.control import bot_profiles
+from endbot_core.events import Event, outcome_text, reason
+from endbot_core.group_forms import GroupGuard
+from endbot_core.i18n import LocalizedError, Text, localize_error, tr
+from endbot_core.operations import OPERATIONS, Operation
+from endbot_core.script_store import FILE_SUFFIX, Script, load_files
+
+from endstone_endbot import script_forms
 from endstone_endbot.script_books import pages_to_source, source_to_pages, written
 from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
-from endstone_endbot.script_store import FILE_SUFFIX, Script, load_files
 
 # The operator's script folder in the plugin data folder.
 FILES_DIRECTORY = "scripts"

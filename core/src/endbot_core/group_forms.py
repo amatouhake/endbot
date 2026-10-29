@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass, replace
 
-from endstone_endbot import forms as f
-from endstone_endbot.group_results import PAGE_SIZE, GroupResult
-from endstone_endbot.i18n import tr
+from endbot_core import forms as f
+from endbot_core.group_results import PAGE_SIZE, GroupResult
+from endbot_core.i18n import tr
 
 
 @dataclass(frozen=True)

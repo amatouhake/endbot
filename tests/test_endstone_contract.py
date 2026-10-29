@@ -73,8 +73,14 @@ class PackageVersionContractTests(unittest.TestCase):
 
         upstream_version = lock["endstone"]["version"]
         self.assertRegex(package_version, rf"^{re.escape(upstream_version)}\+endbot\.[0-9]+$")
-        dependencies = re.findall(r'^dependencies = \["([^"]+)"\]$', plugin, flags=re.MULTILINE)
-        self.assertEqual(dependencies, [f"endstone=={package_version}"])
+        dependencies = re.findall(r'^dependencies = \["([^"]+)", "([^"]+)"\]$', plugin, flags=re.MULTILINE)
+        core = re.search(
+            r'^version = "([^"]+)"$',
+            (ROOT / "core/pyproject.toml").read_text(encoding="utf-8"),
+            flags=re.MULTILINE,
+        )
+        self.assertIsNotNone(core)
+        self.assertEqual(dependencies, [(f"endstone=={package_version}", f"endbot-core=={core.group(1)}")])
         self.assertNotEqual(package_version, lock["endstone"]["version"])
 
     def test_third_party_notice_records_current_patch_revision(self) -> None:

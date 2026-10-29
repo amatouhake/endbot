@@ -2,8 +2,8 @@
 
 from dataclasses import replace
 
-from endstone_endbot.commands import BotCommandService, strip_colors
-from endstone_endbot.events import render
+from endbot_core.commands import BotCommandService, strip_colors
+from endbot_core.events import render
 
 
 class PlainCommandService(BotCommandService):

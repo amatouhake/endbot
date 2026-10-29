@@ -1,6 +1,6 @@
 """Minimal client for the local runtime control protocol (docs/OPERATIONS.md section 7).
 
-Copied from ``plugin/endbot/src/endstone_endbot/control.py`` so the doctor can
+Copied from ``core/src/endbot_core/control.py`` so the doctor can
 probe runtime reachability without importing the plugin (which would drag in
 ``endstone``). Keep the newline-delimited JSON wire format in sync with the
 plugin and the runtime: request ``{"version", "id", "token", "method",

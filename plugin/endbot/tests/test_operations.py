@@ -4,9 +4,9 @@ import re
 import unittest
 from pathlib import Path
 
-from endstone_endbot import operations
-from endstone_endbot.commands import parse_command
-from endstone_endbot.operations import (
+from endbot_core import operations
+from endbot_core.commands import parse_command
+from endbot_core.operations import (
     GROUPS,
     OPERATIONS,
     ROOT_OPERATIONS,

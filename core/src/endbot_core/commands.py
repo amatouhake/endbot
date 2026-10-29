@@ -8,11 +8,11 @@ import shlex
 import threading
 from dataclasses import dataclass, field
 
-from endstone_endbot.control import RuntimeControlError, bot_profiles
-from endstone_endbot.i18n import LocalizedError, Text, localize_error, tr
-from endstone_endbot.limits import BotLimits
-from endstone_endbot.operations import ALIASES, OPERATIONS, RESERVED_BOT_NAMES, Operation
-from endstone_endbot.principal import as_job
+from endbot_core.control import RuntimeControlError, bot_profiles
+from endbot_core.i18n import LocalizedError, Text, localize_error, tr
+from endbot_core.limits import BotLimits
+from endbot_core.operations import ALIASES, OPERATIONS, RESERVED_BOT_NAMES, Operation
+from endbot_core.principal import as_job
 
 
 class CommandSyntaxError(LocalizedError):
@@ -1169,7 +1169,7 @@ class BotCommandService:
     @staticmethod
     def _mining_notice(entry, level: str, cause):
         """A job.ended Event; ``cause`` is an English reason or an error."""
-        from endstone_endbot.events import Event, reason
+        from endbot_core.events import Event, reason
 
         name, _, loop_id, source, _ = entry
         return Event(source, "job.ended", {"bot": name, "job": "destroy continuous" if loop_id else "destroy",
@@ -1178,7 +1178,7 @@ class BotCommandService:
     @staticmethod
     def _waiting_notice(entry):
         """A one-time job.waiting Event: nothing in sight, or the runtime refused what was."""
-        from endstone_endbot.events import Event
+        from endbot_core.events import Event
 
         name, _, _, source, block_type = entry
         return Event(source, "job.waiting", {"bot": name, "blockType": block_type})

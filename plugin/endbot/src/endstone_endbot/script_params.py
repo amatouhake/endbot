@@ -3,7 +3,7 @@
 import math
 import re
 
-from endstone_endbot.i18n import LocalizedError
+from endbot_core.i18n import LocalizedError
 
 KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice"}
 NAMED = re.compile(r"([A-Za-z_][A-Za-z0-9_]{0,31})=(.*)", re.DOTALL)

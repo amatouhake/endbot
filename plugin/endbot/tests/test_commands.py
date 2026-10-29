@@ -1,9 +1,8 @@
 import unittest
 
+from endbot_core.commands import BotCommand, parse_command
+from endbot_core.limits import BotLimits
 from plain_service import PlainCommandService
-
-from endstone_endbot.commands import BotCommand, parse_command
-from endstone_endbot.limits import BotLimits
 
 
 class BotCommandServiceTests(unittest.TestCase):
@@ -176,7 +175,7 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertEqual(parse_command(["help"]).parameters, {"page": 1})
 
     def test_help_pages_are_paginated_like_vanilla_help(self) -> None:
-        from endstone_endbot.commands import HELP_PAGES
+        from endbot_core.commands import HELP_PAGES
 
         for page in range(1, len(HELP_PAGES) + 1):
             with self.subTest(page=page):
@@ -205,7 +204,7 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertEqual(upper.messages, result.messages)
 
     def test_help_and_replies_are_colored_for_players(self) -> None:
-        from endstone_endbot.commands import (
+        from endbot_core.commands import (
             DIM,
             ERROR,
             HEADING,
@@ -246,7 +245,7 @@ class BotCommandServiceTests(unittest.TestCase):
                 self.assertIn("Endbot:", result.message)
 
     def test_help_advanced_remains_a_silent_compatibility_alias(self) -> None:
-        from endstone_endbot.commands import HELP_PAGES
+        from endbot_core.commands import HELP_PAGES
 
         command = parse_command(["help", "advanced"])
         self.assertEqual(command.parameters, {"page": len(HELP_PAGES)})

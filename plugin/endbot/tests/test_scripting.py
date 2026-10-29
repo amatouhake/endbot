@@ -13,19 +13,21 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from endstone_endbot import forms, script_forms
-from endstone_endbot.commands import HELP_TOPICS, CommandResult, parse_command, strip_colors
-from endstone_endbot.control import RuntimeControlError
-from endstone_endbot.events import Event, render
-from endstone_endbot.groups import GroupCommandService, GroupStore
-from endstone_endbot.i18n import LocalizedError, localize_error
-from endstone_endbot.operations import OPERATIONS, operation_argv
-from endstone_endbot.principal import Principal
+from endbot_core import forms
+from endbot_core.commands import HELP_TOPICS, CommandResult, parse_command, strip_colors
+from endbot_core.control import RuntimeControlError
+from endbot_core.events import Event, render
+from endbot_core.groups import GroupCommandService, GroupStore
+from endbot_core.i18n import LocalizedError, localize_error
+from endbot_core.operations import OPERATIONS, operation_argv
+from endbot_core.principal import Principal
+from endbot_core.script_store import Script, ScriptStore
+
+from endstone_endbot import script_forms
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
 from endstone_endbot.script_params import arguments, declarations
 from endstone_endbot.script_process import RunnerProcess
-from endstone_endbot.script_store import Script, ScriptStore
 from endstone_endbot.scripting import ScriptRun, ScriptService
 
 
@@ -85,7 +87,7 @@ class ConfigStorageParamsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 store.save("test", "params {}")
             with (
-                patch("endstone_endbot.script_store.os.replace", side_effect=OSError("disk full")),
+                patch("endbot_core.script_store.os.replace", side_effect=OSError("disk full")),
                 self.assertRaises(OSError),
             ):
                 store.save("test", "params {a=1}", script.revision)

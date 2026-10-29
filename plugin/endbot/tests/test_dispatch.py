@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from endbot_core.commands import CommandResult, reply, strip_colors
-from endbot_core.events import Event, reason
+from endbot_core.events import Event, LoggerSink, reason
 from endbot_core.principal import Principal
 
 from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
@@ -19,6 +19,34 @@ class ScheduledCallbacks:
 
     def run_next(self, timeout=1.0) -> None:
         self.callbacks.get(timeout=timeout)()
+
+
+class RecordingSink:
+    """Record Event log writes as (level, line) pairs and as bare lines."""
+
+    def __init__(self) -> None:
+        self.calls = []
+        self.lines = []
+
+    def write(self, level: str, line: str) -> None:
+        self.calls.append((level, line))
+        self.lines.append(line)
+
+
+class FakeLogger:
+    """Record the level methods a LoggerSink calls."""
+
+    def __init__(self) -> None:
+        self.calls = []
+
+    def info(self, message) -> None:
+        self.calls.append(("info", message))
+
+    def warning(self, message) -> None:
+        self.calls.append(("warning", message))
+
+    def error(self, message) -> None:
+        self.calls.append(("error", message))
 
 
 class DispatchTests(unittest.TestCase):
@@ -230,7 +258,6 @@ class DispatchTests(unittest.TestCase):
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
         self.addCleanup(bridge.close)
-        logged = []
 
         class Sender:
             def __init__(self):
@@ -255,9 +282,11 @@ class DispatchTests(unittest.TestCase):
             def execute(self, arguments, source):
                 return CommandResult(True, ("Endbot: Alice: started",), log_level="info")
 
+        sink = RecordingSink()
+        logged = sink.calls
         runner = AsyncCommandRunner(
             Service(), bridge, lambda source: senders.get(source.player_id),
-            log=lambda level, message: logged.append((level, message)),
+            log_sink=sink,
         )
         self.addCleanup(runner.close)
         runner.poll()
@@ -284,7 +313,6 @@ class DispatchTests(unittest.TestCase):
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
         self.addCleanup(bridge.close)
-        logged = []
 
         class Sender:
             def __init__(self):
@@ -300,9 +328,9 @@ class DispatchTests(unittest.TestCase):
             def vote(self, *args):
                 raise AssertionError("unused")
 
-        runner = AsyncCommandRunner(
-            Service(), bridge, lambda source: sender, log=lambda level, message: logged.append((level, message))
-        )
+        sink = RecordingSink()
+        logged = sink.calls
+        runner = AsyncCommandRunner(Service(), bridge, lambda source: sender, log_sink=sink)
         self.addCleanup(runner.close)
         runner._deliver(player, CommandResult(True, ("Endbot: Alice: started",), log_level="info"), chat=False)
         scheduled.run_next()
@@ -313,7 +341,7 @@ class DispatchTests(unittest.TestCase):
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
         self.addCleanup(bridge.close)
-        logged, sources = [], []
+        sources = []
 
         class Player:
             unique_id = "00000000-0000-4000-8000-000000000003"
@@ -334,11 +362,13 @@ class DispatchTests(unittest.TestCase):
                 return CommandResult(True, ("ja",), log_level="info", log_messages=("en",))
 
         player = Player()
+        sink = RecordingSink()
+        logged = sink.lines
         runner = AsyncCommandRunner(
             Service(),
             bridge,
             lambda source: player if source.player_id else None,
-            log=lambda level, message: logged.append(message),
+            log_sink=sink,
         )
         self.addCleanup(runner.close)
         runner.submit(["Alice", "destroy", "stop"], Principal("player", player_id=Player.unique_id, language="ja"))
@@ -353,7 +383,6 @@ class DispatchTests(unittest.TestCase):
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
         self.addCleanup(bridge.close)
-        logged = []
         colored = reply("destroy stopped", "Alice")
 
         class Sender:
@@ -377,7 +406,9 @@ class DispatchTests(unittest.TestCase):
         def resolve(source):
             return player if source.player_id == player.unique_id else console
 
-        runner = AsyncCommandRunner(Service(), bridge, resolve, log=lambda level, message: logged.append(message))
+        sink = RecordingSink()
+        logged = sink.lines
+        runner = AsyncCommandRunner(Service(), bridge, resolve, log_sink=sink)
         self.addCleanup(runner.close)
         in_game = Principal("player", player_id=Player.unique_id)
         for arguments, principal in ((["plain"], in_game), (["plain"], Principal()), (["logged"], in_game)):
@@ -575,3 +606,42 @@ class DispatchTests(unittest.TestCase):
         scheduled.run_next()
         scheduled.run_next()
         self.assertEqual(calls, [["Bot", "status"]])
+
+
+class LoggerSinkTests(unittest.TestCase):
+    def test_forwards_level_and_line_unchanged(self):
+        logger = FakeLogger()
+        sink = LoggerSink(logger)
+        sink.write("info", "one")
+        sink.write("warning", "two")
+        sink.write("error", "three")
+        self.assertEqual(logger.calls, [("info", "one"), ("warning", "two"), ("error", "three")])
+
+    def test_falls_back_to_info_for_an_unknown_level(self):
+        logger = FakeLogger()
+        LoggerSink(logger).write("debug", "fallback")
+        self.assertEqual(logger.calls, [("info", "fallback")])
+
+    def test_runner_writes_the_same_event_and_audit_calls_a_recorder_receives(self):
+        def run(sink):
+            scheduled = ScheduledCallbacks()
+            bridge = ServerThreadBridge(scheduled.schedule)
+            self.addCleanup(bridge.close)
+            runner = AsyncCommandRunner(object(), bridge, lambda source: None, log_sink=sink)
+            self.addCleanup(runner.close)
+            event = Event(Principal(), "job.ended",
+                          {"bot": "Alice", "job": "destroy", "reason": reason("stopped")}, "warning")
+            runner.publish(event)
+            scheduled.run_next()
+            result = CommandResult(True, ("Endbot: Alice: started",), log_level="info")
+            runner._deliver(Principal(), result, chat=False)
+            scheduled.run_next()
+
+        logger, recorder = FakeLogger(), RecordingSink()
+        run(LoggerSink(logger))
+        run(recorder)  # Records the (level, line) writes the runner makes.
+        self.assertEqual(logger.calls, recorder.calls)
+        self.assertEqual(logger.calls, [
+            ("warning", "Endbot: Alice: destroy stopped: stopped"),
+            ("info", "Endbot: Alice: started"),
+        ])

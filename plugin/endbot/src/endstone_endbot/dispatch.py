@@ -7,7 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from endbot_core.commands import ERROR, WARNING, CommandResult, reply, strip_colors
-from endbot_core.events import Event, render
+from endbot_core.events import Event, EventLogSink, render
 from endbot_core.i18n import tr
 from endbot_core.principal import Principal
 
@@ -189,7 +189,7 @@ class AsyncCommandRunner:
         bridge: ServerThreadBridge,
         resolve_sender: Callable[[Principal], object],
         authorize: Callable[[Principal], bool] | None = None,
-        log: Callable[[str, str], None] | None = None,
+        log_sink: EventLogSink | None = None,
         show_view: Callable[[object, object], None] | None = None,
         scripts=None,
     ) -> None:
@@ -198,7 +198,7 @@ class AsyncCommandRunner:
         self._resolve_sender = resolve_sender
         # One two-layer check for commands, runs and jobs (see Principal).
         self._authorize = authorize
-        self._log = log
+        self._log_sink = log_sink
         # Presents a result's form view to its player on the server thread.
         self._show_view = show_view
         self._scripts = scripts
@@ -238,9 +238,9 @@ class AsyncCommandRunner:
 
         def deliver() -> None:
             source = event.to
-            if self._log is not None:
+            if self._log_sink is not None:
                 for line in render(event, "log"):
-                    self._log(event.level, strip_colors(line))
+                    self._log_sink.write(event.level, strip_colors(line))
                 if source.player_id is None:
                     return  # The console already shows the log entry.
             # A controller who has logged off still gets the console log entry.
@@ -299,9 +299,9 @@ class AsyncCommandRunner:
 
     def _deliver(self, source, result, chat: bool = True) -> None:
         def deliver() -> None:
-            if result.log_level is not None and self._log is not None:
+            if result.log_level is not None and self._log_sink is not None:
                 for message in result.messages if result.log_messages is None else result.log_messages:
-                    self._log(result.log_level, strip_colors(message))
+                    self._log_sink.write(result.log_level, strip_colors(message))
                 if not chat or source.player_id is None:
                     return  # The console already shows the log entry.
             elif not chat:

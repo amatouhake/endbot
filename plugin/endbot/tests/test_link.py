@@ -18,6 +18,7 @@ from endbot_core.link import (
     LinkError,
     LinkServer,
     encode,
+    error_from_wire,
     registry_hash,
     token_matches,
 )
@@ -382,6 +383,24 @@ class WorldCallTests(LinkHarness):
             self.endbotd.world.target("bot-1")
         self.assertEqual(localized.exception.template, "Unknown dimension: {dimension}")
         self.assertEqual(localized.exception.params, {"dimension": "nether"})
+
+    def test_mining_batch_round_trips_with_a_per_item_error(self):
+        self.linked()
+
+        def resolve(identity_id, parameters, sender):
+            if identity_id == "bad":
+                raise LocalizedError("No {block} in sight", block="stone")
+            return {"blockPosition": [1, 64, 2], "identityId": identity_id}
+
+        self.world.resolve_mining = resolve
+        results = self.endbotd.world.resolve_mining_batch([
+            {"identityId": "ok", "blockType": None},
+            {"identityId": "bad", "blockType": None},
+        ])
+        self.assertEqual(results[0], {"target": {"blockPosition": [1, 64, 2], "identityId": "ok"}})
+        error = error_from_wire(results[1]["error"])
+        self.assertIsInstance(error, LocalizedError)
+        self.assertEqual((error.template, error.params), ("No {block} in sight", {"block": "stone"}))
 
     def test_unknown_world_methods_are_neither_sent_nor_served(self):
         self.linked()

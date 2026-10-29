@@ -7,6 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
 
+from endbot_core.link import resolve_mining_batch
 from endbot_core.principal import Principal
 
 
@@ -168,6 +169,11 @@ class ServerThreadWorld:
                 identity_id, parameters, None if sender is None else self._sender(sender)
             )
         )
+
+    def resolve_mining_batch(self, requests):
+        # One server-thread task for every retarget of a poll; each item's
+        # failure stays with that item.
+        return self._bridge.call(lambda: resolve_mining_batch(self._world, requests))
 
     def resolve_dismount(self, identity_id, vehicle_runtime_id):
         return self._bridge.call(lambda: self._world.resolve_dismount(identity_id, vehicle_runtime_id))

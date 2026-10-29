@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from endbot_core.control import RuntimeControlError, bot_profiles
 from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.limits import BotLimits
+from endbot_core.link import error_from_wire
 from endbot_core.operations import ALIASES, OPERATIONS, RESERVED_BOT_NAMES, Operation
 from endbot_core.principal import as_job
 
@@ -514,6 +515,8 @@ UNREACHABLE_POLL_LIMIT = 50
 # Polls a loop may wait for a target before it tells the operator once (about 2 seconds);
 # the short gap after each broken block never reaches it.
 WAITING_NOTICE_POLLS = 10
+# A malformed batch result is an internal protocol fault; the loop ends with this unlocalized reason.
+MINING_BATCH_RESULT_ERROR = "resolve_mining_batch returned an unexpected result"
 
 # Mining ends caused by a command; their reply already told the operator.
 COMMANDED_MINING_STOPS = {"stopped", "continuous mining restarted", "target changed"}
@@ -1120,11 +1123,16 @@ class BotCommandService:
 
         Events cover abnormal ends and a loop that has started waiting for a
         target. Commanded stops already replied, and each successfully broken
-        block would be far too chatty.
+        block would be far too chatty. One world call retargets every loop that
+        needs one this poll.
         """
         notices = []
         with self._mining_lock:
             loops = tuple(self._mining_loops.items())
+        # Phase one checks every loop and collects the retargets, so the server
+        # thread runs all of their raycasts in one task instead of one per loop.
+        requests = []
+        pending = []
         for key, entry in loops:
             name, identity, loop_id, source, position = entry
             try:
@@ -1144,15 +1152,58 @@ class BotCommandService:
                 elif mining.get("loopId") != loop_id:
                     reason = self._mining_end_reason(status, mining)
                 else:
-                    waiting = self._continue_mining_loop(name, identity, loop_id, source, mining, position)
-                    if self._waited(key, entry, waiting) == WAITING_NOTICE_POLLS:
-                        notices.append(self._waiting_notice(entry))
+                    request = None
+                    if mining.get("state") != "active":
+                        request = len(requests)
+                        requests.append({"identityId": identity, "blockType": position or None})
+                    pending.append((key, entry, mining, request))
                     continue
                 if reason is False:
                     continue  # still breaking
                 if self._take_mining_loop(key, entry) and reason:
                     level = "info" if reason in EXPECTED_MINING_ENDS else "warning"
                     notices.append(self._mining_notice(entry, level, reason))
+            except RuntimeControlError as error:
+                # Windows loopback can refuse a fresh connection (WinError 10048)
+                # under rapid reconnects. Retry for about one runtime lease
+                # (200 ticks = 50 polls) before giving up on the runtime.
+                if error.code == "unavailable" and self._unreachable(key, entry) < UNREACHABLE_POLL_LIMIT:
+                    continue
+                if self._end_mining_loop(key, entry):
+                    notices.append(self._mining_notice(entry, "warning", error))
+            except (RuntimeError, ValueError) as error:
+                if self._end_mining_loop(key, entry):
+                    notices.append(self._mining_notice(entry, "warning", error))
+        # Phase two: one call for every loop that needs a target. A failure of
+        # the call itself is repeated for each of them below, as their own call.
+        results, failure = None, None
+        if requests:
+            try:
+                results = self.world.resolve_mining_batch(requests)
+            except Exception as error:  # noqa: BLE001 - repeated per loop in phase three
+                failure = error
+            else:
+                if not isinstance(results, list) or len(results) != len(requests):
+                    results, failure = None, RuntimeError(MINING_BATCH_RESULT_ERROR)
+        # Phase three finishes in the original loop order, with the same
+        # per-loop try/except as a single retarget had.
+        for key, entry, mining, request in pending:
+            name, identity, loop_id, source, _ = entry
+            try:
+                if request is None:
+                    target = None
+                elif failure is not None:
+                    raise failure
+                else:
+                    item = results[request]
+                    if not isinstance(item, dict):
+                        raise RuntimeError(MINING_BATCH_RESULT_ERROR)
+                    if "error" in item:
+                        raise error_from_wire(item["error"])
+                    target = item.get("target")
+                waiting = self._continue_mining_loop(name, identity, loop_id, source, mining, target)
+                if self._waited(key, entry, waiting) == WAITING_NOTICE_POLLS:
+                    notices.append(self._waiting_notice(entry))
             except RuntimeControlError as error:
                 # Windows loopback can refuse a fresh connection (WinError 10048)
                 # under rapid reconnects. Retry for about one runtime lease
@@ -1196,21 +1247,8 @@ class BotCommandService:
         self._mining_unreachable[key] = (entry, count)
         return count
 
-    def _continue_mining_loop(self, name, identity, loop_id, source, mining, block_type=None) -> bool:
-        """Renew the loop's lease and retarget it; True when it has nothing to break."""
-        target = None
-        if mining.get("state") != "active":
-            # Sight retargeting needs no controller; it may have logged off.
-            if block_type:
-                # A typed loop turns to the nearest visible block of its type; none in
-                # reach means waiting, like an empty sight.
-                try:
-                    cell = self.world.reachable_block(identity, block_type, 5.0)
-                    target = {**self.world.resolve_mining(identity, {"coordinates": cell}, None), "turn": True}
-                except ValueError:
-                    target = None
-            else:
-                target = self.world.resolve_mining(identity, {"continuous": True}, None)
+    def _continue_mining_loop(self, name, identity, loop_id, source, mining, target=None) -> bool:
+        """Renew the loop's lease with a pre-resolved target; True when it has nothing to break."""
         try:
             self.control.request("mine", name=name, mode="continue", loopId=loop_id, **(target or {}))
         except RuntimeControlError as error:

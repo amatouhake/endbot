@@ -485,6 +485,23 @@ class EffectiveControllersTests(DoctorTestCase):
         self.assertTrue(any("Other: allowed - runtime grant" in message for message in messages))
         self.assertTrue(any("ExampleTag: allowed - bootstrap binding" in message for message in messages))
 
+    def test_grant_revisions_file_is_validated(self):
+        path = self.paths.state_controllers.parent / "grant-revisions.json"
+        self.assertEqual(self.status_of(self.doctor(), "grant-revisions"), PASS)
+        path.write_text(json.dumps({"version": 1, "revisions": {"0000000a-0000-4000-8000-00000000000b": 2}}))
+        self.assertEqual(self.status_of(self.doctor(), "grant-revisions"), PASS)
+        corrupt = (
+            "{invalid",
+            "[]",
+            json.dumps({"version": 2}),
+            json.dumps({"version": 1, "revisions": {"x": 1}}),
+            json.dumps({"version": 1, "revisions": {"0000000a-0000-4000-8000-00000000000b": 0}}),
+        )
+        for document in corrupt:
+            with self.subTest(document=document):
+                path.write_text(document)
+                self.assertEqual(self.status_of(self.doctor(), "grant-revisions"), FAIL)
+
     def test_corrupt_policy_is_reported_as_failure(self):
         (self.paths.state_controllers.parent / "controller-policy.json").write_text("{invalid")
         self.assertEqual(self.status_of(self.doctor(), "controllers-effective"), FAIL)

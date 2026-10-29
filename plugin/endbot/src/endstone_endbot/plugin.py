@@ -11,6 +11,8 @@ from endbot_core.commands import BotCommandService
 from endbot_core.control import RuntimeControlClient
 from endbot_core.controller_policy import ControllerPolicy
 from endbot_core.enrollment import ControllerEnrollment, _is_xuid
+from endbot_core.grant_revisions import FILE_NAME as GRANT_REVISIONS_FILE
+from endbot_core.grant_revisions import GrantRevisions
 from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, resolve_language, tr
 from endbot_core.limits import BotLimits
@@ -242,7 +244,7 @@ class EndbotPlugin(Plugin):
         self._limits = BotLimits()
         self._script_config = ScriptConfig()
         self._scripts = None
-        self._grant_versions = {}
+        self._grant_revisions = GrantRevisions()
 
     def on_load(self) -> None:
         self.save_default_config()
@@ -277,6 +279,8 @@ class EndbotPlugin(Plugin):
             and self._controllers.bindings_path.resolve() == self._controller_policy.path.resolve()
         ):
             raise ValueError("controllers-file and controller-policy-file must be different files")
+        # Beside the policy, so an Endbot instance keeps it in state/; read only here, at start-up.
+        self._grant_revisions = GrantRevisions(self._controller_policy.path.parent / GRANT_REVISIONS_FILE)
         for gamertag in self._controllers.pending():
             self.logger.info(f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
 
@@ -542,7 +546,7 @@ class EndbotPlugin(Plugin):
         """
         if principal.console:
             return True
-        if principal.player_id is None or principal.grant_revision != self._grant_versions.get(principal.player_id, 0):
+        if principal.player_id is None or principal.grant_revision != self._grant_revisions.get(principal.player_id):
             return False
         player = self.server.get_player(UUID(principal.player_id))
         if principal.kind == "player":
@@ -565,7 +569,7 @@ class EndbotPlugin(Plugin):
                 "player",
                 name=str(getattr(sender, "name", None) or "") or None,
                 xuid=str(getattr(sender, "xuid", None) or "") or None,
-                grant_revision=self._grant_versions.get(player_id, 0),
+                grant_revision=self._grant_revisions.get(player_id),
                 language=self._language(sender),
                 player_id=player_id,
                 authorization_revision=self._authorization_versions.get(player_id, 0),
@@ -667,7 +671,7 @@ class EndbotPlugin(Plugin):
                 else:
                     self._controller_policy.add(target)
             else:
-                # Separate grant revisions survive logout/rejoin. A revoke/regrant
+                # Separate grant revisions survive logout/rejoin and restarts. A revoke/regrant
                 # never revives a run holding the old revision, including offline runs.
                 before = self._controller_report()
                 self._controller_policy.remove(
@@ -678,14 +682,14 @@ class EndbotPlugin(Plugin):
                     player_uuid=str(player.unique_id) if player is not None else None,
                 )
                 denied = self._controller_policy.state
-                for row in before:
-                    if (row.get("xuid") not in denied.denied_xuids
-                            and row.get("uuid") not in denied.denied_uuids
-                            and row.get("name", "").casefold() not in denied.denied_names):
-                        continue
-                    identity = row.get("uuid")
-                    if identity:
-                        self._grant_versions[identity] = self._grant_versions.get(identity, 0) + 1
+                self._grant_revisions.bump(
+                    row["uuid"]
+                    for row in before
+                    if row.get("uuid")
+                    and (row.get("xuid") in denied.denied_xuids
+                         or row.get("uuid") in denied.denied_uuids
+                         or row.get("name", "").casefold() in denied.denied_names)
+                )
             for entry in self.server.online_players:
                 self._apply_control_permission(entry)
             state = "updated" if operation == "add" else "revoked"

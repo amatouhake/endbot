@@ -344,6 +344,9 @@ Decided 2026-10-29 JST.
 - **S5. The Cloudflare API token is never stored**; it is prompted at deploy, rotate-key and update (P9).
 - **S6. The site echoes an endbotd-issued nonce** instead of minting its own `jti` (P12): a leaked assertion is useless
   outside the browser that started the flow, and no replay cache must survive restarts.
+- **S7. UI direction** (2026-10-29 JST): a plain, readable admin interface, not a Minecraft-styled one, equally usable
+  on phones and PCs (responsive layout, no phone-only or desktop-only screens). No mockups up front: the operator
+  reviews the real screens of the first status-and-logs PR, and later screens follow what was agreed there.
 
 ## Steps
 

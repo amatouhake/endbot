@@ -67,6 +67,24 @@ from sandbox_server import reusable_server
 BOT = "RakNetSpike"
 SERVER_NAME = "Endbot RakNet spike"
 LEVEL_NAME = "raknet-spike"
+# A script that stays alive until endbotd dies with it.
+FAILURE_SCRIPT = "endbotd_probe"
+FAILURE_SCRIPT_SOURCE = """params {}
+while true do
+    log("endbotd failure probe running")
+    wait(100)
+end
+"""
+LINK_RESTART_SECONDS = 60
+
+
+def mining_lease_seconds(source: str) -> float:
+    """The runtime's continuous-mining lease, read from protocol-session.js."""
+    lease = re.search(r"leaseTicks\s*>=\s*(\d+)", source)
+    interval = re.search(r"#sendTick\(\)[\s\S]*?\},\s*(\d+)\)", source)
+    if lease is None or interval is None:
+        raise ValueError("runtime mining lease is not in the expected form")
+    return int(lease.group(1)) * int(interval.group(1)) / 1000
 
 
 def terminate_owned_tree(process: subprocess.Popen) -> None:
@@ -137,6 +155,153 @@ def stop_endbotd(process: subprocess.Popen) -> None:
     process.wait(timeout=20)
 
 
+def exercise_endbotd_failures(
+    output: Path, console, control, wait, log, report: dict,
+    kill_endbotd, restart_endbotd, lease_seconds: float,
+) -> None:
+    """Run three live failures on the already-started runtime, endbotd and BDS.
+
+    Each scenario records its own result and a failure fails the spike; the
+    callbacks hard-kill endbotd and start it again on the same config.
+    """
+    from mining_probe import mining_request, mining_state, setup_mining_fixture
+    from scripting_probe import save_script, start_script_run
+
+    order = ("script_run_kill", "mining_kill", "link_restart")
+    results = report["endbotd_failures"] = {name: {"ok": False} for name in order}
+
+    def record(name, scenario) -> None:
+        result = results[name]
+        try:
+            result.update(scenario())
+        except Exception as error:
+            result["error"] = str(error)
+            for later in order[order.index(name) + 1:]:
+                results[later]["error"] = "not run after an earlier failure"
+            raise
+        result["ok"] = True
+
+    def relinked(previous: int) -> None:
+        wait("plugin relinked to endbotd",
+             lambda: log().count("Endbot linked to endbotd") > previous,
+             LINK_RESTART_SECONDS)
+
+    def script_run_kill() -> dict:
+        report["stage"] = "endbotd failure: script run kill"
+        save_script(output, wait, log, FAILURE_SCRIPT, FAILURE_SCRIPT_SOURCE)
+        run_id, offset = start_script_run(console, wait, log, FAILURE_SCRIPT)
+        wait("long-running script is executing",
+             lambda: "endbotd failure probe running" in log()[offset:], 30)
+        # The run is active; do not replay this save when BDS restarts later.
+        (output / "scripting-request.json").unlink(missing_ok=True)
+        linked = log().count("Endbot linked to endbotd")
+        before_kill = len(log())
+        kill_endbotd()
+        offset = len(log())
+        console("bot list")
+        wait("plugin refuses commands while endbotd is down",
+             lambda: "Endbot service is restarting" in log()[offset:], 15)
+        restart_endbotd()
+        relinked(linked)
+        offset = len(log())
+        console("bot list")
+        wait("command works after endbotd restart",
+             lambda: f"{BOT} [online]" in log()[offset:], 15)
+        # Step 3d's run journal ends the run on the next start. A console run has no owner to notify in chat.
+        ended = f"Script {FAILURE_SCRIPT} ({run_id}) ended: Endbot service restarted"
+        wait("run journal ended the killed run", lambda: ended in log()[before_kill:], 15)
+        return {
+            "journal_ended": True,
+            "script": FAILURE_SCRIPT,
+            "run_id": run_id,
+            "refusal": "Endbot service is restarting",
+            "relinked": True,
+            "command_after_restart": "bot list",
+        }
+
+    def mining_kill() -> dict:
+        report["stage"] = "endbotd failure: mining kill"
+        setup_mining_fixture(
+            output, console, control, wait,
+            "endbotd-failure-mining", "minecraft:obsidian", None, False, 3,
+        )
+
+        def mining():
+            return control("status").get("mining") or {}
+
+        def active():
+            current = mining()
+            return bool(current.get("continuous")) and current.get("state") == "active"
+
+        console(f"bot {BOT} destroy continuous")
+        wait("continuous mining is active", active, 15)
+        before = mining_state(output)
+        linked = log().count("Endbot linked to endbotd")
+        killed = time.monotonic()
+        kill_endbotd()
+        # Only endbotd renews the runtime's 200-tick mining lease. The lease counts runtime ticks, and a 50 ms
+        # timer runs slower on Windows (about 62.5 ms per tick, measured 13.3 s for 10 s nominal), so allow half
+        # the lease again plus a status poll.
+        wait("runtime mining lease expires",
+             lambda: not mining().get("continuous"),
+             lease_seconds * 1.5 + 2)
+        elapsed = time.monotonic() - killed
+        time.sleep(1)
+        stopped = mining_state(output)
+        if (stopped.get("blocks") != before.get("blocks")
+                or len(stopped.get("events", [])) != len(before.get("events", []))):
+            raise ConsumerError(
+                f"block breaking continued after endbotd was killed: {stopped}"
+            )
+        restart_endbotd()
+        relinked(linked)
+        time.sleep(3)
+        if mining().get("continuous"):
+            raise ConsumerError("continuous mining resumed after endbotd restarted")
+        resumed = mining_state(output)
+        if (resumed.get("blocks") != before.get("blocks")
+                or len(resumed.get("events", [])) != len(before.get("events", []))):
+            raise ConsumerError(
+                f"block breaking resumed after endbotd restarted: {resumed}"
+            )
+        mining_request(output, {"id": "endbotd-failure-mining-cleanup", "block": "minecraft:air"})
+        wait("mining fixture cleanup",
+             lambda: mining_state(output).get("id") == "endbotd-failure-mining-cleanup", 10)
+        (output / "mining-request.json").unlink(missing_ok=True)
+        return {
+            "lease_seconds": lease_seconds,
+            "stopped_after_seconds": round(elapsed, 2),
+            "resumed": False,
+            "block": "minecraft:obsidian",
+        }
+
+    def link_restart() -> dict:
+        report["stage"] = "endbotd failure: link restart"
+        # LinkServer.drop_link is internal to endbotd and has no control-plane
+        # trigger, so restarting endbotd is the supported way to drop the link.
+        linked = log().count("Endbot linked to endbotd")
+        kill_endbotd()
+        restart_endbotd()
+        relinked(linked)
+        offset = len(log())
+        console("bot list")
+        wait("Bot still listed after the link was rebuilt",
+             lambda: f"{BOT} [online]" in log()[offset:], 15)
+        offset = len(log())
+        console(f"bot {BOT} status")
+        wait("command works after the link was rebuilt",
+             lambda: f"Endbot: {BOT}:" in log()[offset:], 15)
+        return {
+            "relinked": True,
+            "presence_listed": True,
+            "command": f"bot {BOT} status",
+        }
+
+    record("script_run_kill", script_run_kill)
+    record("mining_kill", mining_kill)
+    record("link_restart", link_restart)
+
+
 def check_locked_endstone() -> dict:
     """Fail before any BDS acquisition when this Python lacks the locked Endstone."""
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
@@ -150,11 +315,12 @@ def check_locked_endstone() -> dict:
 
 def exercise(
     output: Path, node: str, report: dict, *, mining=False, inventory=False, inventory_stack=False,
-    item_use=False, groups=False, scripting=False, entity=False,
+    item_use=False, groups=False, scripting=False, entity=False, endbotd_failures=False,
     transport="raknet", server: Path | None = None,
 ) -> None:
+    needs_scripting_fixture = scripting or endbotd_failures
     scripting_runner = None
-    if scripting:
+    if needs_scripting_fixture:
         from scripting_probe import built_runner
 
         scripting_runner = built_runner(ROOT)
@@ -228,7 +394,7 @@ def exercise(
             "runtime/src/control-server.js",
         ):
             report["source_sha256"][relative] = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
-    if scripting:
+    if needs_scripting_fixture:
         sources = [ROOT / "scripts/scripting_probe.py", ROOT / "runner/main.cpp", ROOT / "runner/api.luau",
                    ROOT / "runner/luau.lock.json", scripting_runner, scripting_runner.with_name("api.luau")]
         sources.extend((ROOT / "core/src/endbot_core").glob("script*.py"))
@@ -327,7 +493,7 @@ def exercise(
         [str(ROOT / "plugin/endbot/src"), str(ROOT / "core/src"), str(ROOT / "cli/endbot/src")]
     )
     environment["PYTHONIOENCODING"] = "utf-8"
-    if mining or inventory or item_use or inventory_stack or scripting or entity:
+    if mining or inventory or item_use or inventory_stack or needs_scripting_fixture or entity:
         from mining_probe import configure_fixture
         configure_fixture(ROOT, output, environment)
     if item_use:
@@ -340,7 +506,7 @@ def exercise(
         from inventory_stack_probe import configure_fixture as configure_stack
 
         configure_stack(ROOT, output, environment)
-    if scripting:
+    if needs_scripting_fixture:
         from scripting_probe import configure_fixture as configure_scripting
 
         configure_scripting(ROOT, output, environment)
@@ -385,26 +551,35 @@ def exercise(
             ensure_endbotd_token(paths)
             endbotd_config, _ = generate_endbotd_config(server, paths, config)
             generate_plugin_config(server, paths, config)
-            if scripting:
+            if needs_scripting_fixture:
                 from scripting_probe import enable_config
 
                 enable_config(endbotd_config, scripting_runner)
             generate_endstone_config(server, paths)
+            endbotd_command = [
+                sys.executable, "-m", "endbotd", "--config", str(endbotd_config)
+            ]
+
+            def start_endbotd():
+                process = subprocess.Popen(
+                    endbotd_command,
+                    env=environment,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    start_new_session=os.name != "nt",
+                )
+                ready = threading.Event()
+                threading.Thread(target=copy_endbotd_output,
+                                 args=(process, endbotd_log, server_log, ready),
+                                 daemon=True).start()
+                return process, ready
+
             report["stage"] = "endbotd initialization"
-            endbotd = subprocess.Popen(
-                [sys.executable, "-m", "endbotd", "--config", str(endbotd_config)],
-                env=environment,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                start_new_session=os.name != "nt",
-            )
-            endbotd_ready = threading.Event()
-            threading.Thread(target=copy_endbotd_output, args=(endbotd, endbotd_log, server_log, endbotd_ready),
-                             daemon=True).start()
+            endbotd, endbotd_ready = start_endbotd()
             wait_for("endbotd ready", endbotd_ready.is_set, 30, endbotd)
             report["stage"] = "BDS startup"
             bds = subprocess.Popen(
@@ -577,6 +752,39 @@ def exercise(
                     bds,
                 )
             report["bot_operation_specific_replies"] = True
+            if endbotd_failures:
+                report["stage"] = "endbotd failure scenarios"
+
+                def kill_endbotd():
+                    terminate_owned_tree(endbotd)
+                    if endbotd.poll() is None:
+                        raise ConsumerError("endbotd did not stop after the hard kill")
+
+                def restart_endbotd():
+                    nonlocal endbotd
+                    endbotd, ready = start_endbotd()
+                    wait_for("endbotd ready", ready.is_set, 30, endbotd)
+                    return endbotd
+
+                exercise_endbotd_failures(
+                    output,
+                    lambda line: console(bds, line),
+                    lambda method, **params: control_request(
+                        control_port, token, method, name=BOT, **params
+                    ),
+                    lambda label, predicate, timeout: wait_for(
+                        label, predicate, timeout, bds
+                    ),
+                    logtext,
+                    report,
+                    kill_endbotd,
+                    restart_endbotd,
+                    mining_lease_seconds(
+                        (ROOT / "runtime/src/protocol-session.js").read_text(
+                            encoding="utf-8"
+                        )
+                    ),
+                )
             if scripting:
                 from scripting_probe import exercise_scripting
 
@@ -960,7 +1168,7 @@ def exercise(
     report["ok"] = True
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
@@ -979,6 +1187,11 @@ def main() -> int:
     parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
     parser.add_argument("--scripting", action="store_true", help="enable scripting only in the disposable instance and validate native runs/stop/budgets with BDS observations")
     parser.add_argument(
+        "--endbotd-failures",
+        action="store_true",
+        help="kill endbotd during a script run and continuous mining, then drop/restart the plugin link",
+    )
+    parser.add_argument(
         "--server-dir",
         type=Path,
         help="reusable sandbox BDS directory (reset before the run); keeps one Windows Firewall rule across runs",
@@ -989,6 +1202,11 @@ def main() -> int:
         default="raknet",
         help="Bot/BDS transport (nethernet needs UDP 7551 free)",
     )
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
     output = args.output.resolve()
     # Protect raw artifacts from an accidental git add, even for outputs outside build/.
@@ -1013,7 +1231,8 @@ def main() -> int:
     try:
         options = {"mining": args.mining, "inventory": args.inventory, "inventory_stack": args.inventory_stack,
                    "item_use": args.item_use,
-                   "groups": args.groups, "scripting": args.scripting, "entity": args.entity, "transport": args.transport}
+                   "groups": args.groups, "scripting": args.scripting, "entity": args.entity,
+                   "endbotd_failures": args.endbotd_failures, "transport": args.transport}
         if args.server_dir is None:
             exercise(output, args.node, report, **options)
         else:

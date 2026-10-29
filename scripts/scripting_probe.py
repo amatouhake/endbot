@@ -60,6 +60,34 @@ def submit_save(plugin, name, source):
     return True
 
 
+def scripting_state(output: Path) -> dict:
+    try:
+        return json.loads((output / "scripting-state.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def submit_fixture(output: Path, wait, data: dict) -> None:
+    temporary = output / "scripting-request.tmp"
+    temporary.write_text(json.dumps(data), encoding="utf-8")
+    temporary.replace(output / "scripting-request.json")
+    wait("scripting fixture " + data["id"], lambda: scripting_state(output).get("id") == data["id"], 15)
+
+
+def save_script(output: Path, wait, log, name: str, source: str) -> None:
+    offset = len(log())
+    submit_fixture(output, wait, {"id": "save-" + name, "action": "save", "name": name, "source": source})
+    wait("validated script save", lambda: f"Script {name} saved" in log()[offset:], 15)
+
+
+def start_script_run(console, wait, log, name: str, suffix: str = ""):
+    offset = len(log())
+    console(f"botscript run {name}{suffix}")
+    pattern = re.compile(rf"Script {name} started: ([0-9a-f-]+)")
+    wait("script start " + name, lambda: pattern.search(log()[offset:]), 15)
+    return pattern.search(log()[offset:])[1], offset
+
+
 def install_probe(plugin_class):
     from endbot_core.script_forms import TEMPLATES
     from endstone.level import Location
@@ -177,16 +205,10 @@ def exercise_scripting(output, console, request, wait, log, report):
     }
 
     def state():
-        try:
-            return json.loads((output / "scripting-state.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        return scripting_state(output)
 
     def fixture(data):
-        temporary = output / "scripting-request.tmp"
-        temporary.write_text(json.dumps(data), encoding="utf-8")
-        temporary.replace(output / "scripting-request.json")
-        wait("scripting fixture " + data["id"], lambda: state().get("id") == data["id"], 15)
+        submit_fixture(output, wait, data)
 
     def command(line, *expected):
         offset = len(log())
@@ -195,16 +217,10 @@ def exercise_scripting(output, console, request, wait, log, report):
         return log()[offset:]
 
     def save(name, source):
-        offset = len(log())
-        fixture({"id": "save-" + name, "action": "save", "name": name, "source": source})
-        wait("validated script save", lambda: f"Script {name} saved" in log()[offset:], 15)
+        save_script(output, wait, log, name, source)
 
     def start(name, suffix):
-        offset = len(log())
-        console(f"botscript run {name}{suffix}")
-        pattern = re.compile(rf"Script {name} started: ([0-9a-f-]+)")
-        wait("script start " + name, lambda: pattern.search(log()[offset:]), 15)
-        return pattern.search(log()[offset:])[1], offset
+        return start_script_run(console, wait, log, name, suffix)
 
     def ended(name, run_id, offset, reason):
         wait("script end " + name, lambda: (

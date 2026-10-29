@@ -61,10 +61,14 @@ def submit_save(plugin, name, source):
 
 
 def scripting_state(output: Path) -> dict:
-    try:
-        return json.loads((output / "scripting-state.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    # The plugin replaces this file atomically every tick; on Windows a read that
+    # meets the replace fails or sees nothing, so retry briefly before giving up.
+    for _ in range(20):
+        try:
+            return json.loads((output / "scripting-state.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            time.sleep(0.05)
+    return {}
 
 
 def submit_fixture(output: Path, wait, data: dict) -> None:

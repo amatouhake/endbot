@@ -264,9 +264,11 @@ class PluginAdapterTests(unittest.TestCase):
 
     def controller_fixture(self, directory):
         from endbot_core.controller_policy import ControllerPolicy
+        from endbot_core.grant_revisions import GrantRevisions
 
         plugin = self.module.EndbotPlugin()
         plugin._controller_policy = ControllerPolicy(Path(directory) / "policy.json")
+        plugin._grant_revisions = GrantRevisions(Path(directory) / "grant-revisions.json")
         plugin.server = types.SimpleNamespace(
             online_players=[],
             get_player=lambda identifier: next(
@@ -416,7 +418,8 @@ class PluginAdapterTests(unittest.TestCase):
             player.locale = "ja_JP"
             player.location = types.SimpleNamespace(x=1, y=64, z=2, yaw=90, pitch=0,
                                                     dimension=types.SimpleNamespace(name="Overworld"))
-            plugin._grant_versions[str(player.unique_id)] = 7
+            for _ in range(7):
+                plugin._grant_revisions.bump([str(player.unique_id)])
             guard = ScriptGuard("r1", "test", values={"name": "Alice"})
             principal = plugin._principal(player, command="botscript", group_guard=guard)
             guard.values["name"] = "Changed"
@@ -448,8 +451,58 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
             self.assertTrue(plugin._allows_control(player))
             self.assertFalse(plugin._authorize(source))
-            new_source = replace(source, grant_revision=plugin._grant_versions[str(player.unique_id)])
+            new_source = replace(source, grant_revision=plugin._grant_revisions.get(str(player.unique_id)))
             self.assertTrue(plugin._authorize(new_source))
+
+    def test_revoke_regrant_survives_restart_and_never_revives_captured_work(self):
+        from dataclasses import replace
+
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = self.controller_fixture(directory)
+            player = self.controller_player()
+            plugin.server.online_players = [player]
+            self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
+            before_revoke = replace(plugin._principal(player), kind="run", run_id="run1")
+            self.assertTrue(plugin._controller_operation(["remove", f"xuid:{player.xuid}"])["ok"])
+            self.assertTrue(plugin._controller_operation(["add", player.name])["ok"])
+            after_regrant = replace(plugin._principal(player), kind="run", run_id="run2")
+
+            restarted = self.controller_fixture(directory)
+            restarted.server.online_players = [player]
+            self.assertEqual(restarted._grant_revisions.get(str(player.unique_id)), 1)
+            self.assertTrue(restarted._allows_control(player))
+            self.assertFalse(restarted._authorize(before_revoke))
+            self.assertTrue(restarted._authorize(after_regrant))
+            self.assertTrue(restarted._controller_operation(["remove", f"xuid:{player.xuid}"])["ok"])
+            self.assertTrue(restarted._controller_operation(["add", player.name])["ok"])
+            self.assertFalse(restarted._authorize(after_regrant))
+            self.assertEqual(self.controller_fixture(directory)._grant_revisions.get(str(player.unique_id)), 2)
+
+    def test_grant_revisions_load_beside_the_policy_and_a_corrupt_file_fails_closed(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state"
+            state.mkdir()
+            identity = "11111111-2222-4333-8444-555555555555"
+
+            def load():
+                plugin = self.module.EndbotPlugin()
+                plugin.config = {"authorization": {"controller-policy-file": str(state / "controller-policy.json")}}
+                plugin.data_folder = Path(directory) / "plugin-data"
+                plugin.logger = types.SimpleNamespace(info=lambda message: None)
+                plugin.save_default_config = lambda: None
+                plugin.on_load()
+                return plugin
+
+            self.assertEqual(load()._grant_revisions.get(identity), 0)
+            (state / "grant-revisions.json").write_text(
+                json.dumps({"version": 1, "revisions": {identity: 4}}), encoding="utf-8"
+            )
+            self.assertEqual(load()._grant_revisions.get(identity), 4)
+            (state / "grant-revisions.json").write_text("{corrupt", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                load()
 
     def test_controller_cannot_manage_access_even_with_external_permission(self):
         with tempfile.TemporaryDirectory() as directory:

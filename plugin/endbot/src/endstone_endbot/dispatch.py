@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from endbot_core.commands import ERROR, WARNING, CommandResult, reply, strip_colors
 from endbot_core.events import Event, EventLogSink, render
@@ -23,7 +24,12 @@ class ServerThreadBridge:
         self._open = True
         self._pending: set[Future] = set()
 
-    def call(self, callback: Callable[[], object]):
+    def call(self, callback: Callable[[], object], timeout: float | None = None):
+        """Run ``callback`` on the server thread and wait for it.
+
+        With ``timeout``, a stuck tick fails this call with TimeoutError and the
+        callback is skipped if the server thread reaches it later.
+        """
         future: Future = Future()
         with self._lock:
             if not self._open:
@@ -45,7 +51,12 @@ class ServerThreadBridge:
             self._schedule(invoke)
         except Exception as error:  # noqa: BLE001 - preserve scheduler failures for the waiting worker
             self._finish(future, error=error)
-        return future.result()
+        try:
+            return future.result(timeout)
+        except FutureTimeoutError:
+            self._finish(future, error=TimeoutError(f"the server thread did not answer within {timeout:g} s"))
+            # The callback may have finished first; then its own result stands.
+            return future.result()
 
     def post(self, callback: Callable[[], None]) -> bool:
         with self._lock:

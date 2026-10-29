@@ -26,6 +26,7 @@ directory may live inside it (fresh setup) or anywhere else (existing server).
 │  ├─ profiles/              Bot profiles (<uuid>.json)
 │  ├─ controllers.json       controller enrollment state (generated, see §3)
 │  ├─ controller-policy.json console-managed grants/revocations (generated, see §3)
+│  ├─ grant-revisions.json   grant revision per revoked controller identity (generated, see §3)
 │  ├─ generated/             files derived from endbot.toml on every start (runtime JSON, plugin config)
 │  └─ run/                   PID files and logs
 ├─ backups/                  setup/update backups of operator-owned BDS files
@@ -200,6 +201,12 @@ restart, and prevent a rejoin from restoring access. A pending GamerTag never en
 account renames itself to the pending name; run `add` while that account is online to clear its revocation. Runtime grants
 survive edits to the bootstrap list; use runtime `remove` to revoke them. Do not edit policy files while BDS runs.
 
+Each revoke also bumps that identity's grant revision in `state/grant-revisions.json`, beside the policy file, written
+atomically by the plugin. Work captured under an earlier revision stays refused after a regrant, including across
+restarts. The plugin reads the file only at start-up; a missing file counts every revision as 0, which is safe because
+no earlier work is running then. A corrupt file prevents plugin loading; with Endbot stopped, deleting it is a safe
+reset. Versions before this file ignore it.
+
 Changes update online players' control permission and command visibility immediately and recheck pending commands on
 the server thread. A revoke/regrant cycle also invalidates commands queued under the earlier grant and ends
 continuous `destroy` loops and script runs started under it. An operation
@@ -368,7 +375,8 @@ free. See [scripting](SCRIPTING.md) to enable scripts, and [installation](INSTAL
 - `<server>/version.txt` matches the lock; installed Endstone package version matches the lock.
 - Controllers: bootstrap bindings and pending entries; `controllers-effective` combines saved config/policy/legacy
   entries with decision reasons, or queries the running plugin with `--live` and a live supervisor. Legacy entries
-  lacking a resolved authenticated identity are conditional. Invalid policy is FAIL.
+  lacking a resolved authenticated identity are conditional. Invalid policy is FAIL, and so is an invalid
+  `grant-revisions.json` (`grant-revisions`).
 - Allow-list: when `allow-list` is not `true`, PASS (controllers are not filtered); when it is, PASS while every
   configured controller GamerTag is in `allowlist.json` (case-insensitive name match, or a bound controller's XUID in
   an entry's `xuid`), otherwise WARN naming each missing GamerTag and the fix (`endbot console allowlist add

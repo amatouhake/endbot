@@ -868,8 +868,8 @@ cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
-Status: **Planned, after BOT-020 and BOT-024; in the single BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery)**
-(2026-10-28 JST).
+Status: **Design agreed in [WEB.md](WEB.md), not implemented; after BOT-020 and BOT-024, in the single
+BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery)** (2026-10-29 JST).
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
 [web technology](DIRECTION.md#web-technology)); endbotd connects outbound over WebSocket. Accounts are created only from
@@ -889,7 +889,7 @@ UI from endbotd without Cloudflare ([other hosts](DIRECTION.md#other-hosts)); ot
 ## BOT-022: Events, watches and triggers
 
 Status: **Planned; framework agreed in [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)**
-(2026-10-28 JST).
+(2026-10-28 JST). Detailed design agreed in [EVENTS.md](EVENTS.md) (2026-10-29 JST).
 
 Event kinds in the operation registry (`category.action`, filters, payload, source, guarantee, visibility); a generic
 `watch(kind, filter)` with `w:wait{timeout=}`; observation only, never cancel or modify; triggers as separate bindings
@@ -907,7 +907,8 @@ accepts it, drop `patches/endstone/` and patched builds. Until then the patch st
 
 ## BOT-024: Permission model
 
-Status: **Design agreed — see [PERMISSIONS.md](PERMISSIONS.md); not implemented** (2026-10-28 JST).
+Status: **Design agreed — see [PERMISSIONS.md](PERMISSIONS.md); not implemented** (2026-10-28 JST). Step plan
+agreed in [PERMISSIONS.md](PERMISSIONS.md#steps) (2026-10-29 JST).
 
 Agreed: roles operator, scripter and controller (no viewer, no extra per-person permissions); a run's power is the
 invoker's authority intersected with the script's `requires {}` declaration; one ownership model for Bots, Groups,

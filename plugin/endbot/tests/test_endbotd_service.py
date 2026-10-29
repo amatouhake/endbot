@@ -38,6 +38,16 @@ class ServiceHarness(unittest.TestCase):
         (self.root / "endbotd.token").write_text(TOKEN + "\n", encoding="utf-8")
         self.control = FakeControl()
         self.logs = []
+        self.start_service()
+        self.server_thread = ServerThread()
+        self.addCleanup(self.server_thread.stop)
+        self.bridge = ServerThreadBridge(self.server_thread.schedule)
+        self.addCleanup(self.bridge.close)
+        self.mc = FakeServer()
+        self.views = []
+        self.configs = []
+
+    def start_service(self):
         config = EndbotdConfig(
             base=self.root, link_port=0, link_token_file=self.root / "endbotd.token", data_folder=self.root,
             authorization={"controller-policy-file": "controller-policy.json"},
@@ -46,13 +56,6 @@ class ServiceHarness(unittest.TestCase):
         self.service = EndbotService(config, control=self.control,
                                      log=lambda level, message: self.logs.append((level, message))).start()
         self.addCleanup(self.service.close)
-        self.server_thread = ServerThread()
-        self.addCleanup(self.server_thread.stop)
-        self.bridge = ServerThreadBridge(self.server_thread.schedule)
-        self.addCleanup(self.bridge.close)
-        self.mc = FakeServer()
-        self.views = []
-        self.configs = []
 
     def link(self, **overrides):
         options = {"host": "127.0.0.1", "port": self.service.link.address[1], "token_file": self.root / "endbotd.token",

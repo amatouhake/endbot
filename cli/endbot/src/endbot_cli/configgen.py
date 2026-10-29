@@ -284,6 +284,10 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
     plugin["hotbar-sync-resend-ticks"] = config.runtime.hotbar_sync_resend_ticks
     document.add("plugin", plugin)
 
+    run = tomlkit.table()
+    run["journal-file"] = _path_value(tomlkit, str((paths.state_run / "endbotd-runs.json").resolve()))
+    document.add("run", run)
+
     authorization = tomlkit.table()
     authorization["controller-gamertags"] = list(config.controllers.gamertags)
     authorization["controllers-file"] = _path_value(tomlkit, str(paths.state_controllers.resolve()))

@@ -6,6 +6,7 @@ Sections::
     [runtime]        host, port, token-file, timeout-seconds
     [plugin]         data-folder (Groups, scripts and script files, until step 4),
                      hotbar-sync-interval-ticks, hotbar-sync-resend-ticks
+    [run]            journal-file                    the run journal (P6)
     [authorization]  [limits]  [ui]  [scripting]      as the plugin config had them
 
 Relative paths resolve against the file's directory. Developers with a manual
@@ -51,6 +52,7 @@ class EndbotdConfig:
     runtime_token_file: Path = Path("control.token")
     runtime_timeout: float = 10.0
     data_folder: Path = Path(".")
+    journal_file: Path = Path("endbotd-runs.json")
     hotbar: dict = field(default_factory=dict)
     authorization: dict = field(default_factory=dict)
     limits: dict | None = None
@@ -67,7 +69,7 @@ class EndbotdConfig:
             candidate = Path(str(value if value is not None else default))
             return candidate if candidate.is_absolute() else base / candidate
 
-        link, runtime, plugin = (_table(document, name) for name in ("link", "runtime", "plugin"))
+        link, runtime, plugin, run = (_table(document, name) for name in ("link", "runtime", "plugin", "run"))
         timeout = runtime.get("timeout-seconds", 10.0)
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 300:
             raise ValueError("runtime.timeout-seconds must be a number from 0 to 300")
@@ -81,6 +83,7 @@ class EndbotdConfig:
             runtime_token_file=resolve(runtime.get("token-file"), "control.token"),
             runtime_timeout=float(timeout),
             data_folder=resolve(plugin.get("data-folder"), "."),
+            journal_file=resolve(run.get("journal-file"), "endbotd-runs.json"),
             hotbar={key: plugin[key] for key in ("hotbar-sync-interval-ticks", "hotbar-sync-resend-ticks")
                     if key in plugin},
             authorization=_table(document, "authorization"),

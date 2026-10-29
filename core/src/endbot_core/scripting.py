@@ -97,6 +97,8 @@ class ScriptService:
         self.notify = None
         # Publishes an Event to its sinks (chat, console log); set by the command runner.
         self.publish = None
+        # Called after a run starts or ends (endbotd's run journal).
+        self.on_runs_changed = None
 
     def _enabled(self):
         if not self.config.enabled:
@@ -323,6 +325,8 @@ class ScriptService:
                 target=self._run, args=(run, script, values), name="endbot-script-" + identity, daemon=True
             )
             run.thread.start()
+        if self.on_runs_changed:
+            self.on_runs_changed()
         return identity
 
     def _prepare(self, run, schema, values):
@@ -613,6 +617,8 @@ class ScriptService:
             with self._lock:
                 run.state = outcome_text(ended.data, _language(run.source))
                 self._runs.pop(run.identity, None)
+            if self.on_runs_changed:
+                self.on_runs_changed()
             if self.publish:
                 self.publish(ended)
 

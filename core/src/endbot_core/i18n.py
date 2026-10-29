@@ -675,6 +675,7 @@ JA: dict[str, str] = {
     "you do not have Bot control permission": "Bot の操作権限がありません",
     "command service is unavailable": "コマンドを受け付けられません",
     "Endbot service is restarting": "Endbot サービスを再起動しています",
+    "Endbot service restarted": "Endbot サービスが再起動しました",
     "Endbot plugin is disabled": "Endbot プラグインが無効になっています",
     "Command player is no longer online": "コマンドを出したプレイヤーがもういません",
     # World errors.

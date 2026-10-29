@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 from endbot_core.command_runner import AsyncCommandRunner
-from endbot_core.commands import strip_colors
+from endbot_core.commands import reply, strip_colors
 from endbot_core.control import RuntimeControlClient
 from endbot_core.events import LoggerSink
 from endbot_core.groups import GroupCommandService, GroupStore
@@ -32,6 +32,7 @@ from endbot_core.wire_views import decode_view, encode_view
 from endbotd import __version__
 from endbotd.authority import Authority
 from endbotd.config import EndbotdConfig
+from endbotd.journal import RunJournal
 
 LOGGER = logging.getLogger("endbotd")
 # Mining loops renew every 4 ticks, as they did on the BDS scheduler.
@@ -40,6 +41,11 @@ POLL_SECONDS = 0.2
 WORLD_SECONDS = 8.0
 DELIVERY_SECONDS = 5.0
 CLOSE_SECONDS = 10.0
+# Why the runs a previous endbotd left have ended (docs/ENDBOTD.md P6).
+RESTARTED = "Endbot service restarted"
+
+
+_CONTROLS = dict.fromkeys([*range(0x20), *range(0x7F, 0xA0)], " ")
 
 
 class _Sender:
@@ -110,6 +116,13 @@ class EndbotService:
             control = RuntimeControlClient(config.runtime_host, config.runtime_port, config.runtime_token_file,
                                            timeout=config.runtime_timeout)
         control = OwnedInputs(control)
+        self._inputs = control
+        journal_file = config.journal_file if config.journal_file.is_absolute() else config.base / config.journal_file
+        self.journal = RunJournal(journal_file, self._log)
+        # Read before anything can rewrite it; start() ends these runs.
+        self._journaled = self.journal.load()
+        # Runs ended by the restart whose owners hear about it if online at the plugin's first snapshot.
+        self._notices: list[dict] = []
         world = self.link.world
         data_folder = config.data_folder
         try:
@@ -149,6 +162,8 @@ class EndbotService:
     # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> EndbotService:
+        self._recover()
+        self._inputs.on_change = self.scripts.on_runs_changed = self._record_runs
         self.link.start()
         threading.Thread(target=self._poll_loop, name="endbotd-mining", daemon=True).start()
         return self
@@ -159,8 +174,53 @@ class EndbotService:
         self._closed.set()
         # Cleanup (stopping scripts, Group work and mining) still reaches the runtime.
         self.runner.close(timeout=CLOSE_SECONDS)
+        # A clean stop leaves only runs whose input cleanup did not finish for the next start.
+        self.journal.write([run for run in self._journal_runs() if run["channels"]], final=True)
         self.link.stop()
         self._delivery.shutdown(wait=False)
+
+    # -- run journal (docs/ENDBOTD.md P6) ------------------------------------
+
+    def _journal_runs(self) -> list[dict]:
+        return [{"run": run.identity, "name": run.name, "channels": self._inputs.owned(run.identity),
+                 "owner": {"playerId": run.source.player_id, "xuid": run.source.xuid, "name": run.source.name,
+                           "language": run.source.language}}
+                for run in self.scripts.active()]
+
+    def _record_runs(self) -> None:
+        self.journal.write(self._journal_runs())
+
+    def _recover(self) -> None:
+        """End the runs an unclean exit left: stop their channels, log each, and queue the owners' notices."""
+        runs, self._journaled = self._journaled, []
+        for run in runs:
+            name = strip_colors(run["name"]).translate(_CONTROLS)
+            self._inputs.adopt(run["run"], run["channels"])
+            try:
+                failures = self._inputs.cleanup(run["run"])
+            except Exception as error:  # noqa: BLE001 - a recovery failure must not stop endbotd's start
+                failures = [f"{type(error).__name__}: {error}"]
+            self._log("info", tr("en", "Script {name} ({run}) ended: {reason}", name=name, run=run["run"],
+                                 reason=RESTARTED))
+            if failures:
+                self._log("warning", f"Script {name} ({run['run']}): input cleanup failed: "
+                                     f"{'; '.join(failures)[:500]}")
+            if run["owner"]["playerId"] or run["owner"]["xuid"]:
+                self._notices.append({**run, "name": name})
+        self.journal.write([])
+
+    def _notify_restarted(self, records: list[dict]) -> None:
+        notices, self._notices = self._notices, []
+        for notice in notices:
+            owner = notice["owner"]
+            record = next((record for record in records
+                           if record["playerId"] == owner["playerId"]
+                           or (owner["xuid"] and record.get("xuid") == owner["xuid"])), None)
+            if record is not None:
+                language = owner["language"]
+                self.deliver(record["playerId"], [reply(tr(language, "Script {name} ({run}) ended: {reason}",
+                                                           name=notice["name"], run=notice["run"],
+                                                           reason=tr(language, RESTARTED)))])
 
     def _poll_loop(self) -> None:
         while not self._closed.wait(POLL_SECONDS):
@@ -172,6 +232,8 @@ class EndbotService:
         return self.authority.grant_revisions.get(player_id)
 
     def _presence(self, kind: str, records: list[dict]) -> None:
+        if kind == "snapshot" and self._notices:
+            self._notify_restarted(records)
         if kind in {"snapshot", "join"}:
             self._send_permissions(self.authority.joined(records, snapshot=kind == "snapshot"))
         elif kind == "quit":

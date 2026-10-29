@@ -907,7 +907,8 @@ accepts it, drop `patches/endstone/` and patched builds. Until then the patch st
 
 ## BOT-024: Permission model
 
-Status: **Design agreed — see [PERMISSIONS.md](PERMISSIONS.md); not implemented** (2026-10-28 JST).
+Status: **Design agreed — see [PERMISSIONS.md](PERMISSIONS.md); not implemented** (2026-10-28 JST). Step plan
+proposed in [PERMISSIONS.md](PERMISSIONS.md#steps) (2026-10-29 JST).
 
 Agreed: roles operator, scripter and controller (no viewer, no extra per-person permissions); a run's power is the
 invoker's authority intersected with the script's `requires {}` declaration; one ownership model for Bots, Groups,

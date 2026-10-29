@@ -119,6 +119,92 @@ reserve for players (exists today). Limits are the answer to amplification, not 
 Moving a scripter to controller keeps their scripts. An owner may always run their own scripts, private ones
 included, so they stay runnable by them but are no longer editable by them.
 
+## Steps
+
+Status: **Proposed** (2026-10-29 JST). Each step is split into PRs; a PR changes one thing for one reason and keeps
+main releasable. BOT-024 ships in the same release as BOT-020, BOT-021 and BOT-022, so a step may land between them,
+but no release is cut from main until the whole set is in. "Claude" marks security boundaries, cross-cutting
+authorization and migrations; "DeepSeek" marks pieces that can be handed over with a precise spec and acceptance
+tests, reviewed by Claude.
+
+Placement against the [endbotd steps](ENDBOTD.md#steps): today the two-layer check lives in the plugin
+(`EndbotPlugin._authorize`) and moves to endbotd in BOT-020 3c (P4). Anything that changes that check waits for 3c;
+anything that adds a store waits for BOT-020 4, so it joins `migrations.json` and the doctor `stores` check instead
+of inventing its own rollback; anything that changes `endbot controllers` waits for BOT-020 5, so it is written
+once, against the endbotd endpoint, not against the file request channel being removed.
+
+1. **Declarations in the registry.** Can land now, before endbotd.
+   - **1a. Every operation and Luau host request names its capability** in `operations.json` (schema-required
+     field). Today everything is in the basic set (`act.bot`, `read.world`, `wait`, `log`); the classes in the table
+     above are the only names. A test fails when an operation or a `runner/api.luau` request type has none
+     (principle 2). Nothing players see. *DeepSeek.*
+2. **Script declarations.** Can land before endbotd, but not while 3c is open: it touches `scripting.py`, which the
+   switch moves.
+   - **2a. `requires {}` in the runner and inspection.** Exactly once, before `params{}`; an unknown name, a second
+     call or a call after `params{}` is an inspection error naming it. Inspection returns the declaration with the
+     params schema. A run whose own `requires {}` differs from what inspection read stops before its first
+     operation (open point 3). Scripters see a new Luau function and its errors; existing scripts are unchanged.
+     *Claude.*
+   - **2b. Forms show the declaration** before a shared script runs, from the inspection result. Players see one
+     line on the run form when a script declares anything. *DeepSeek.*
+3. **Roles.** After BOT-020 3c and 4; 3c after BOT-020 5.
+   - **3a. Role store.** `state/controller-roles.json`, keyed by XUID, read by endbotd; a grant with no entry is
+     **scripter** (the migration rule), revoked grants keep no role (open point 1). Registered with the BOT-020 4
+     migration and doctor `stores` check. Nothing players see. *Claude.*
+   - **3b. Role in the principal and the check.** `Principal` carries the role, read at each action (open point 5);
+     the authoring operations (open point 6) refuse a controller with the authorization code, from every surface.
+     Nobody is a controller yet, so nothing players see. *Claude.*
+   - **3c. Assigning roles.** `--role scripter|controller` on `endbot controllers add` and the `botcontrollers` console
+     command, the same option changing an existing grant, the default **controller** for a new grant, and the role in
+     `endbot controllers list`. Operators see the option; new controllers can no longer author. *DeepSeek.*
+4. **Ownership of Bots and Groups.** After BOT-020 3c and 4. Scripts already follow the model.
+   - **4a. Ownership store** for Bots and Groups: owner and visibility by identity id, absent means unowned and shared
+     (open point 2); a Bot spawned by a run or trigger is owned by its invoker or the trigger's owner; `[permissions]
+     bots-default` and `groups-default` (open point 7). Nothing players see while the defaults are `shared`. *Claude.*
+   - **4b. Enforcement in target resolution**, per member for Groups, so a command, form, script or web call on
+     someone else's private Bot fails the same way (open point 4). Players see refusals only after someone makes an
+     item private. *Claude.*
+   - **4c. Owner commands.** `share` / `private` for Bots and Groups and console reassignment of owners for Bots,
+     Groups and scripts, with names from the [interface guide](INTERFACE_GUIDE.md). Players see the new subcommands.
+     *DeepSeek.*
+5. **Per-controller Bot limit.** After 4a, since it counts owned Bots: `[limits] max-bots-per-controller`, `0` meaning
+   no limit (the default). *DeepSeek.* The trigger and watch limits, trigger pinning and pausing, and triggers being
+   disabled on revoke ship with BOT-022; web sessions ending on revoke ship with BOT-021. Both build on 3b and 4b and
+   carry their own tests; they are not BOT-024 PRs.
+
+SECURITY.md is updated in the PR that changes what is enforced, not in a separate PR. Running scripts and jobs already
+end on revoke (the grant revision); no PR is needed for that row.
+
+**Validation in the single final pass** (not per PR): update a server with existing grants, Groups and scripts, and
+check every controller is a scripter and everything is shared as before; then roll back and check the old version
+starts and behaves as today. Live RakNet smoke on the locked pair: a controller-role account refused authoring from
+command, form and script menu; another person's private Bot refused identically from command, form and a shared script;
+a run spawning a Bot and that Bot's owner; a run stopped by a `requires {}` mismatch; revoke during a run. Human Windows
+Client check: the declaration line on the run form, the refusal messages, `controllers list` roles, and achievement
+history unaffected.
+
+### Open points for the steps
+
+1. **Where the role lives.** Recommended: a separate `state/controller-roles.json`, not a version 2
+   `controller-policy.json`, for the reason P4 gives: the current loader rejects an unknown version and unknown grant
+   fields, so a v2 policy breaks rollback, while an unknown file is ignored. After a rollback everyone acts as a
+   scripter, which is today's behavior.
+2. **Where Bot and Group ownership lives.** Recommended: a separate store, not new fields in runtime profiles (strict
+   `schemaVersion`) or `groups.json`. Consequence to put in the release notes: after a rollback, private Bots and
+   Groups are shared again.
+3. **How "unconditional top-level" is enforced.** Recommended: at run time, not by parsing source: `requires {}` must
+   come before `params{}`, once, and the run's declaration must equal the inspected one, so a conditional call cannot
+   widen a run.
+4. **Someone else's private items.** Recommended: Bots are visible in game anyway, so they stay listed and are refused
+   with the authorization code; private Groups are not visible in game, so they are left out of other people's lists
+   and resolve as not found.
+5. **Role changes during a run.** Recommended: the role is read at each authoring action; a role change does not bump
+   the grant revision, so runs and jobs continue (running is the same for both roles).
+6. **What counts as authoring.** Recommended: create, save, paste or book import, copy, rename, restore and `share`.
+   A controller may still run, `private` and delete their own scripts, which only narrows what others can use.
+7. **Setting names.** Recommended: `[permissions] bots-default` and `groups-default`, each `shared` (default) or
+   `private`.
+
 ## Not decided here
 
 Storage, calls between scripts and any other new Luau capability get their class and capability name when they are

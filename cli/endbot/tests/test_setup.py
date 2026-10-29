@@ -225,6 +225,9 @@ class ApplyTests(SetupTestCase):
         self.assertIn('language = "auto"', config)
         for name in ("secrets", "profiles", "generated", "run"):
             self.assertTrue((self.root / "state" / name).is_dir())
+        # A fresh instance starts in the state/ store layout (docs/ENDBOTD.md P7).
+        self.assertEqual((self.root / "state" / "migrations.json").read_text(encoding="utf-8"), '{"stores": 2}\n')
+        self.assertTrue((self.root / "scripts").is_dir())
 
         properties_text = (self.root / "server" / "server.properties").read_text(encoding="utf-8")
         self.assertIn("# Bedrock Dedicated Server properties", properties_text)
@@ -301,6 +304,8 @@ class ApplyTests(SetupTestCase):
     def test_apply_existing_equal_version_skips_bds_and_backs_up(self) -> None:
         server = build_bds_dir(self.root / "elsewhere", version="26.52", worlds=True)
         (server / "allowlist.json").write_text("[]\n", encoding="utf-8")
+        (server / "plugins" / "endbot").mkdir(parents=True)
+        (server / "plugins" / "endbot" / "groups.json").write_text("{}\n", encoding="utf-8")
         original_properties = (server / "server.properties").read_bytes()
         acquire = RecordingAcquire()
         code, out, err = self.run_setup(
@@ -310,8 +315,10 @@ class ApplyTests(SetupTestCase):
         self.assertEqual(acquire.calls, [])
         self.assertEqual((server / "server.properties").read_bytes(), original_properties)
 
-        backups = [entry for entry in self.paths.backups.iterdir() if entry.is_dir()]
+        backups = [entry for entry in self.paths.backups.iterdir()
+                   if entry.is_dir() and not entry.name.startswith("stores-")]
         self.assertEqual(len(backups), 1)
+        self.assertEqual(len(list(self.paths.backups.glob("stores-update-*"))), 1)
         manifest = backups[0] / "manifest.json"
         self.assertTrue(manifest.is_file())
         self.assertIn("backed up", out)
@@ -319,6 +326,8 @@ class ApplyTests(SetupTestCase):
 
         config = self.paths.endbot_toml.read_text(encoding="utf-8")
         self.assertIn(f"path = '{server}'", config)
+        # An existing server's plugin stores are carried into state/.
+        self.assertEqual((self.root / "state" / "groups.json").read_text(encoding="utf-8"), "{}\n")
 
     def test_apply_existing_older_version_runs_the_bds_step(self) -> None:
         server = build_bds_dir(self.root / "server", version="26.50")

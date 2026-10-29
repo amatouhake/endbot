@@ -13,6 +13,13 @@ section 6 backup runs first, then the new version's Endstone acquisition step
 moves the server to the new lock. Any other doctor FAIL keeps the old version
 current. ``--rollback`` switches ``app/current`` back to the most recent
 previous version directory still present in ``app/``.
+
+Both directions carry the Group and script stores (docs/ENDBOTD.md P7, see
+:mod:`endbot_cli.stores`) right before ``app/current`` switches: an update
+makes ``state/`` authoritative, a rollback writes the stores back to the
+plugin data folder and the script files back to the server's script folder.
+An update driven by a CLI from before endbotd cannot do this; the new version
+then migrates on its first ``endbot start`` or ``endbot setup``.
 """
 
 from __future__ import annotations
@@ -37,6 +44,9 @@ from endbot_cli.config import ConfigError, load_config
 from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import LAUNCHER_NAMES, InstancePaths
 from endbot_cli.runstate import RUNNING, STALE, clean_supervisor_pid, inspect_supervisor
+from endbot_cli.stores import StoreError, StoreLayout
+from endbot_cli.stores import migrate as migrate_stores
+from endbot_cli.stores import rollback as rollback_stores
 
 SUMS_NAME = "SHA256SUMS"
 APP_PREFIX = "app"
@@ -382,8 +392,13 @@ def run_update(
             doctor=doctor,
             acquire=acquire,
         )
-    except (UpdateError, BdsError, ConfigError) as error:
+    except (UpdateError, BdsError, ConfigError, StoreError) as error:
         return _fail(f"FAIL update: {error}")
+
+
+def _store_layout(paths: InstancePaths) -> StoreLayout:
+    config = load_config(paths.endbot_toml)
+    return StoreLayout.for_instance(paths, config.server.resolve(paths.root))
 
 
 def _run_update(
@@ -469,6 +484,8 @@ def _run_update(
             _print(f"update: fix the problems and re-run (or remove {target})")
             return 1
 
+        for message in migrate_stores(_store_layout(paths)):
+            _print(f"update: {message}")
         previous = current or "(none)"
         atomic_write_text(paths.app_current, f"{info.version}\n")
         for name in info.launchers:
@@ -564,6 +581,12 @@ def run_rollback(paths: InstancePaths, windows: bool | None = None) -> int:
     if not candidates:
         return _fail(f"FAIL update: no previous version directory is present in {app_root} (only {current})")
     previous = max(candidates, key=lambda entry: (entry.stat().st_mtime, entry.name))
+    # Carry Group and script changes back first; the previous version may predate state/ (P7).
+    try:
+        for message in rollback_stores(_store_layout(paths)):
+            _print(f"update: {message}")
+    except (StoreError, ConfigError) as error:
+        return _fail(f"FAIL update: {error}; app/current still names {current}")
     atomic_write_text(paths.app_current, f"{previous.name}\n")
     _print(f"update: app/current now names {previous.name} (was {current}; {current} is kept in app/)")
     _print("update: next steps: endbot doctor, then endbot start")

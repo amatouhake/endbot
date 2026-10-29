@@ -371,4 +371,6 @@ class EndbotdTokenTests(ConfigGenTestCase):
         self.assertEqual(self.paths.endbotd_token.read_text(encoding="utf-8"), token)
         endbotd = tomllib.loads(generated.endbotd_config.read_text(encoding="utf-8"))
         self.assertEqual(endbotd["link"]["port"], 19143)
-        self.assertEqual(Path(endbotd["plugin"]["data-folder"]), (self.server / "plugins" / "endbot").resolve())
+        self.assertNotIn("data-folder", endbotd["plugin"])
+        self.assertEqual(Path(endbotd["stores"]["directory"]), (self.root / "state").resolve())
+        self.assertEqual(Path(endbotd["stores"]["scripts-folder"]), (self.root / "scripts").resolve())

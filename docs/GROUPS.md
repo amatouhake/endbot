@@ -107,7 +107,7 @@ layout replaces the message-form layout whose title/content appeared blank in th
 - Shared groups use the existing controller permission. `/botgroup` and `/bot` go through the same authorization,
   grant-revision check and ordered worker. Sequential operations recheck authority before requests/between members;
   batched inputs recheck throughout preparation and immediately before submitting the batch.
-- Membership persists as immutable Bot UUIDs in the plugin data directory's `groups.json`, written atomically.
+- Membership persists as immutable Bot UUIDs in `state/groups.json` (the plugin data directory's `groups.json` before endbotd), written atomically.
   Rename keeps membership; a replacement Bot with the old name is not automatically a member.
 - The member list is fixed when a bulk operation starts. Member order stays stable while members go offline. A missing
   profile keeps its entry and produces an individual failure; `spawn` does not create a replacement for that entry.

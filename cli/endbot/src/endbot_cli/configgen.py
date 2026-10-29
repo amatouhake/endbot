@@ -278,11 +278,15 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
     document.add("runtime", runtime)
 
     plugin = tomlkit.table()
-    # Groups, scripts and script files stay in the plugin data folder until the store migration.
-    plugin["data-folder"] = _path_value(tomlkit, str(plugin_data.resolve()))
     plugin["hotbar-sync-interval-ticks"] = config.runtime.hotbar_sync_interval_ticks
     plugin["hotbar-sync-resend-ticks"] = config.runtime.hotbar_sync_resend_ticks
     document.add("plugin", plugin)
+
+    # endbotd reads only the state/ layout (docs/ENDBOTD.md P7); `endbot start` migrates before it starts.
+    stores = tomlkit.table()
+    stores["directory"] = _path_value(tomlkit, str((paths.root / "state").resolve()))
+    stores["scripts-folder"] = _path_value(tomlkit, str((paths.root / "scripts").resolve()))
+    document.add("stores", stores)
 
     authorization = tomlkit.table()
     authorization["controller-gamertags"] = list(config.controllers.gamertags)

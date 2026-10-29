@@ -244,8 +244,8 @@ manual client check; books remain the verified multi-line path.
 
 ### Script files
 
-To write scripts in a PC editor, the operator puts `<name>.luau` files directly in `scripts/` inside the plugin data
-folder (for a standard instance, `server/plugins/endbot/scripts/`, created at start-up). They are read when the
+To write scripts in a PC editor, the operator puts `<name>.luau` files directly in `<instance>/scripts/`, next to
+`endbot.toml` (created by setup and at start-up; before endbotd it was `server/plugins/endbot/scripts/`). They are read when the
 server starts and again by `/botscript reload` (console, any controller, or **Reload script files** in the script
 list); nothing watches the folder. Runs already going keep the source they started with.
 
@@ -264,7 +264,7 @@ list); nothing watches the folder. Runs already going keep the source they start
   The checks run on the command worker like saves, about 5 seconds at worst per file that hangs before `params`,
   so `/bot` commands wait during a reload of such a folder.
 
-Scripts are stored atomically in versioned `scripts.json` in the plugin data folder. Names are case-insensitive
+Scripts are stored atomically in versioned `state/scripts.json` (the plugin data folder before endbotd). Names are case-insensitive
 and follow Groups (1–16 ASCII letters/digits/underscores, starting with a letter/underscore). Disk write errors
 leave the previous file/in-memory version intact. There is no automatic resume or replay after restart.
 

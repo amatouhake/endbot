@@ -53,6 +53,10 @@ official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition
    then roll back and start; the rollback itself does not edit `endbot.toml`. Stored scripts and script files in the
    plugin data folder are kept and come back with 0.4.0.
 
+   The first endbotd version moves Groups and stored scripts to `state/` and script files to `<instance>/scripts/`
+   on its first `endbot start` (see [Operations §6a](OPERATIONS.md)). `endbot update --rollback` from it writes
+   them back to `server/plugins/endbot/` before switching, so changes made in between are kept.
+
    A fresh setup also adds every `--controller` GamerTag to `<instance>/server/allowlist.json` (a fresh BDS enables
    `allow-list=true` with an empty list and would otherwise reject the controllers). When adopting an existing server
    with `allow-list=true`, add yourself to the allow-list first: `endbot console allowlist add <GamerTag>` after
@@ -143,7 +147,7 @@ inside the dependency's build check rather than with an Endbot error.
    - Create an endbotd token (at least 32 random characters, e.g. `python -c "import secrets;
      print(secrets.token_urlsafe(32))"` into `endbotd.token`) and write an `endbotd.toml` (see
      `core/src/endbotd/config.py`): `[link]` port and `token-file`, `[runtime]` port and the runtime's
-     `control.token`, `[plugin] data-folder` = the server's `plugins/endbot` folder, and the human tester's UUID or
+     `control.token`, `[stores] directory` (Groups and stored scripts) and `scripts-folder` (script files), and the human tester's UUID or
      decimal XUID in one `[authorization]` allowlist. Do not make the tester an operator.
    - `plugins/endbot/config.toml`: an `[endbotd]` table with `port` (the link port) and `token-file` (the same
      `endbotd.token`). Two TOML traps found during the operator gate: Windows paths must use *single-quoted*

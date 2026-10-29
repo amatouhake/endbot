@@ -36,6 +36,8 @@ from endbot_cli.runstate import (
     read_last_exit,
     request_stop,
 )
+from endbot_cli.stores import StoreError, StoreLayout
+from endbot_cli.stores import migrate as migrate_stores
 from endbot_cli.supervisor import Supervisor, SupervisorOptions
 
 _STDIN_DEFAULT = object()
@@ -46,13 +48,10 @@ def first_start_tolerable(name: str, paths: InstancePaths) -> bool:
 
     The runtime creates the control token and the owner key pair after config
     generation, so a first start may not have them yet; the strict
-    ``[local-bot-auth]`` re-check runs again right before BDS starts. ``endbot
-    start`` creates the endbotd token, so setup's doctor run may not have it yet.
+    ``[local-bot-auth]`` re-check runs again right before BDS starts.
     """
 
     if name == "control-token" and not paths.control_token.exists():
-        return True
-    if name == "endbotd-token" and not paths.endbotd_token.exists():
         return True
     return name == "local-bot-auth" and not paths.owner_public_key.exists()
 
@@ -106,6 +105,12 @@ def run_start(
         clean_supervisor_pid(paths.state_run)
 
     server = config.server.resolve(paths.root)
+    try:
+        # The first start after an update from a version before endbotd moves the stores (P7 amendment).
+        for message in migrate_stores(StoreLayout.for_instance(paths, server)):
+            _print(message)
+    except StoreError as error:
+        return _fail(f"FAIL start: {error}")
     try:
         generated = generate_all(config, paths, server)
     except (ConfigGenerationError, ToolchainError) as error:

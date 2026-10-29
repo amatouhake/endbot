@@ -418,6 +418,38 @@ def check_grant_revisions(paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"{path} records {count}")
 
 
+def check_stores(paths: InstancePaths, server: Path | None) -> CheckResult:
+    """Which store layout is authoritative (docs/ENDBOTD.md P7): the marker and both layouts."""
+
+    from endbot_cli import stores
+
+    name = "stores"
+    layout = stores.StoreLayout.for_instance(paths, server if server is not None else paths.root / "server")
+    try:
+        marker = stores.read_marker(layout)
+    except stores.StoreError as error:
+        return CheckResult(FAIL, name, str(error))
+    state = f"state/ ({stores.describe(layout.state, layout.scripts)})"
+    if server is None:
+        plugin = "the plugin data folder (server directory unavailable)"
+    else:
+        plugin = f"the plugin data folder ({stores.describe(layout.plugin_data, layout.plugin_scripts)})"
+    if marker == stores.STATE_STORES:
+        left = stores.script_files(layout.plugin_scripts)
+        if left:
+            return CheckResult(
+                WARN, name, f"state/ is authoritative, but {len(left)} script files in {layout.plugin_scripts} "
+                f"are ignored; move them to {layout.scripts}",
+            )
+        return CheckResult(PASS, name, f"{state} is authoritative (stores 2); {plugin} is kept but not read")
+    # WARN, not FAIL: an update from a version before endbotd runs this doctor through the old CLI,
+    # which would refuse to switch on a FAIL it does not know (P7 amendment of 2026-10-29).
+    return CheckResult(
+        WARN, name, f"{plugin} is authoritative ({'stores 1' if marker else 'no ' + layout.marker.name}); "
+        "the next `endbot start` or `endbot setup` moves the stores into state/",
+    )
+
+
 def _load_plugin_config(server: Path) -> tuple[str | None, dict | None]:
     """Return ``(parse_error, document)``; both are None when the file does not exist yet."""
 
@@ -442,6 +474,9 @@ def check_plugin_port(server: Path, config: EndbotConfig, paths: InstancePaths) 
     if document is None:
         return CheckResult(SKIP, name, "plugins/endbot/config.toml is not generated yet (generated on every start)")
     link = document.get("endbotd")
+    if link is None and "runtime" in document:
+        # Written by a version before endbotd; start regenerates it. WARN so that version's update can switch.
+        return CheckResult(WARN, name, f"{plugin_config} predates endbotd; `endbot start` regenerates it")
     port = link.get("port") if isinstance(link, dict) else None
     if isinstance(port, bool) or not isinstance(port, int):
         return CheckResult(
@@ -473,7 +508,8 @@ def check_endbotd_token(paths: InstancePaths) -> CheckResult:
     try:
         token = paths.endbotd_token.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
-        return CheckResult(FAIL, name, f"{paths.endbotd_token} is missing; `endbot start` creates it")
+        # WARN: an update from a version before endbotd must not stop on a file only `endbot start` creates.
+        return CheckResult(WARN, name, f"{paths.endbotd_token} is missing; `endbot start` creates it")
     except (OSError, UnicodeDecodeError) as error:
         return CheckResult(FAIL, name, f"{paths.endbotd_token} cannot be read: {error}; fix the file permissions")
     if len(token) < 32:
@@ -804,6 +840,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
             results.extend(check_controllers(config, state))
             results.extend(check_effective_controllers(context, config, state, server))
     results.append(check_grant_revisions(paths))
+    results.append(check_stores(paths, server))
 
     if server is None:
         results.append(CheckResult(SKIP, "allowlist", "server directory is unavailable"))

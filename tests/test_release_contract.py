@@ -29,6 +29,15 @@ def _hashfiles_segments(workflow: str) -> list[str]:
 
 
 class ReleaseWheelContractTests(unittest.TestCase):
+    def test_every_package_install_run_passes_the_core_wheel(self) -> None:
+        # The installer refuses to run without all three wheel directories, so
+        # a missing flag only shows up late in a release candidate.
+        for name in ("ci.yml", "full-validation.yml", "release-candidate.yml"):
+            workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            for match in re.finditer(r"python scripts/test_package_install\.py(.*?)(?:\n\s*\n|\Z)", workflow, re.DOTALL):
+                with self.subTest(workflow=name, offset=match.start()):
+                    self.assertIn("--core-wheel-dir", match.group(1))
+
     def test_manifest_separates_current_artifact_from_historical_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "compatibility-manifest.json"

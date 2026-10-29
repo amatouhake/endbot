@@ -868,8 +868,8 @@ cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
-Status: **Planned, after BOT-020 and BOT-024; in the single BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery)**
-(2026-10-28 JST).
+Status: **Design agreed in [WEB.md](WEB.md), not implemented; after BOT-020 and BOT-024, in the single
+BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery)** (2026-10-29 JST).
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
 [web technology](DIRECTION.md#web-technology)); endbotd connects outbound over WebSocket. Accounts are created only from

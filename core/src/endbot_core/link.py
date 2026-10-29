@@ -639,6 +639,12 @@ class LinkServer:
             listener = self._listener
             cli, self._cli = self._cli, set()
         if listener is not None:
+            # On Linux, close() alone leaves a thread blocked in accept() holding the socket, which keeps
+            # listening: a stopped endbotd would still accept and drop connections instead of refusing them.
+            try:
+                listener.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass  # Windows: not connected; close() already stops listening there.
             listener.close()
         if link is not None:
             link.close("endbotd stopping")
@@ -657,6 +663,9 @@ class LinkServer:
             try:
                 sock, _ = self._listener.accept()
             except OSError:
+                return
+            if self._stopped:
+                sock.close()
                 return
             if not _peer_is_loopback(sock):
                 sock.close()

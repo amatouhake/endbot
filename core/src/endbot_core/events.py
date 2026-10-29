@@ -8,6 +8,7 @@ renders the same data its own way. Each kind has one renderer here.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from endbot_core.commands import DIM, WARNING, _language, reply
 from endbot_core.i18n import LocalizedError, tr
@@ -22,6 +23,25 @@ class Event:
     kind: str
     data: dict
     level: str = "info"
+
+
+class EventLogSink(Protocol):
+    """Where Event log lines go; endbotd will wire a file sink later."""
+
+    def write(self, level: str, line: str) -> None:
+        """Write one colour-stripped English line at ``level`` ("info", "warning" or "error")."""
+        ...
+
+
+class LoggerSink:
+    """Forward Event log lines to a logger."""
+
+    def __init__(self, logger) -> None:
+        self._logger = logger
+
+    def write(self, level: str, line: str) -> None:
+        """Write one line to ``level``, defaulting to ``info`` for an unknown level."""
+        getattr(self._logger, level, self._logger.info)(line)
 
 
 def reason(value) -> dict:

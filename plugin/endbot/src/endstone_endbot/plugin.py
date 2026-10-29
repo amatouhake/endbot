@@ -11,6 +11,7 @@ from endbot_core.commands import BotCommandService
 from endbot_core.control import RuntimeControlClient
 from endbot_core.controller_policy import ControllerPolicy
 from endbot_core.enrollment import ControllerEnrollment, _is_xuid
+from endbot_core.events import LoggerSink
 from endbot_core.grant_revisions import FILE_NAME as GRANT_REVISIONS_FILE
 from endbot_core.grant_revisions import GrantRevisions
 from endbot_core.groups import GroupCommandService, GroupStore
@@ -365,7 +366,7 @@ class EndbotPlugin(Plugin):
             self._server_thread,
             resolve_sender,
             authorize=self._authorize,
-            log=self._log_endbot,
+            log_sink=LoggerSink(self.logger),
             show_view=presenter.show_view,
             scripts=self._scripts,
         )
@@ -587,9 +588,6 @@ class EndbotPlugin(Plugin):
                 "x": float(location.x), "y": float(location.y), "z": float(location.z),
                 "yaw": float(location.yaw), "pitch": float(location.pitch), "dimension": location.dimension.name})
         return principal
-
-    def _log_endbot(self, level: str, message: str) -> None:
-        getattr(self.logger, level, self.logger.info)(message)
 
     def _apply_control_permission(self, player) -> None:
         identity = str(player.unique_id)

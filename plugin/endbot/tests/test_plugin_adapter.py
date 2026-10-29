@@ -181,6 +181,8 @@ class PluginAdapterTests(unittest.TestCase):
             plugin = self.module.EndbotPlugin()
             plugin.config = {"runtime": {"token-file": "control.token"}}
             plugin.data_folder = Path(directory)
+            plugin.logger = types.SimpleNamespace(
+                info=lambda message: None, warning=lambda message: None, error=lambda message: None)
             attachments: list[tuple[str, bool]] = []
             console = types.SimpleNamespace(
                 add_attachment=lambda owner, permission, value: attachments.append((permission, value))

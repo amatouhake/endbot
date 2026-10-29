@@ -4,8 +4,9 @@ Sections::
 
     [link]           host, port, token-file          the plugin link (P2)
     [runtime]        host, port, token-file, timeout-seconds
-    [plugin]         data-folder (Groups, scripts and script files, until step 4),
-                     hotbar-sync-interval-ticks, hotbar-sync-resend-ticks
+    [plugin]         hotbar-sync-interval-ticks, hotbar-sync-resend-ticks
+    [stores]         directory (groups.json, scripts.json: ``state/``), scripts-folder
+                     (the operator's ``.luau`` files: ``<instance>/scripts/``, S1)
     [run]            journal-file                    the run journal (P6)
     [authorization]  [limits]  [ui]  [scripting]      as the plugin config had them
 
@@ -51,7 +52,8 @@ class EndbotdConfig:
     runtime_port: int = DEFAULT_RUNTIME_PORT
     runtime_token_file: Path = Path("control.token")
     runtime_timeout: float = 10.0
-    data_folder: Path = Path(".")
+    stores_directory: Path = Path(".")
+    scripts_folder: Path = Path("scripts")
     journal_file: Path = Path("endbotd-runs.json")
     hotbar: dict = field(default_factory=dict)
     authorization: dict = field(default_factory=dict)
@@ -69,7 +71,9 @@ class EndbotdConfig:
             candidate = Path(str(value if value is not None else default))
             return candidate if candidate.is_absolute() else base / candidate
 
-        link, runtime, plugin, run = (_table(document, name) for name in ("link", "runtime", "plugin", "run"))
+        link, runtime, plugin, stores, run = (
+            _table(document, name) for name in ("link", "runtime", "plugin", "stores", "run")
+        )
         timeout = runtime.get("timeout-seconds", 10.0)
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 300:
             raise ValueError("runtime.timeout-seconds must be a number from 0 to 300")
@@ -82,7 +86,8 @@ class EndbotdConfig:
             runtime_port=_port(runtime, "runtime", DEFAULT_RUNTIME_PORT),
             runtime_token_file=resolve(runtime.get("token-file"), "control.token"),
             runtime_timeout=float(timeout),
-            data_folder=resolve(plugin.get("data-folder"), "."),
+            stores_directory=resolve(stores.get("directory"), "."),
+            scripts_folder=resolve(stores.get("scripts-folder"), "scripts"),
             journal_file=resolve(run.get("journal-file"), "endbotd-runs.json"),
             hotbar={key: plugin[key] for key in ("hotbar-sync-interval-ticks", "hotbar-sync-resend-ticks")
                     if key in plugin},

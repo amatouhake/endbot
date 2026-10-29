@@ -860,6 +860,13 @@ Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); steps 1 to 3b landed and st
 its own child and the plugin is the link client) is in review; 3d to 6 are not implemented** (2026-10-29 JST). No
 release from main until step 4 lands.
 
+Step 4 (store migration, P7 with its 2026-10-29 amendment): Groups and stored scripts move to `state/`, script files
+to `<instance>/scripts/`. **The release notes of the first endbotd release must state the rollback behaviour**:
+`endbot update --rollback` writes Groups, stored scripts and script files back to `server/plugins/endbot/` before
+switching, so changes made since the update are kept; the first `endbot start` after the update (not the update
+itself) performs the move; backups land in `backups/stores-*`. Update then rollback on a real instance is part of
+step 6.
+
 Step 3c link measurement (P5, 2026-10-29 JST, `scripts/link_rtt_probe.py`, Windows 11, Python 3.12, real
 `LinkServer`/`PluginLink` over loopback, a stand-in server thread running queued tasks once per 50 ms tick, an
 instant raycast, 8 s per row). The link itself costs little: with tasks run at once a `resolve_mining` round trip is

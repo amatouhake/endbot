@@ -1227,7 +1227,7 @@ class FileScriptTests(unittest.TestCase):
 
         self.runner = runner
         result = self.host.execute(["reload"], self.alice)
-        self.assertIn("Loaded 1 script files from plugins/endbot/scripts/", self.text(result))
+        self.assertIn("Loaded 1 script files from scripts/", self.text(result))
         for name in ("bad-name.luau", "empty.luau", "broken.luau", "latin.luau", "taken.luau"):
             self.assertIn(name, self.text(result))
         self.assertIn("Script files reloaded by Alice: 1 loaded", result.log_messages[0])

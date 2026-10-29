@@ -49,7 +49,8 @@ class ServiceHarness(unittest.TestCase):
 
     def start_service(self):
         config = EndbotdConfig(
-            base=self.root, link_port=0, link_token_file=self.root / "endbotd.token", data_folder=self.root,
+            base=self.root, link_port=0, link_token_file=self.root / "endbotd.token", stores_directory=self.root,
+            scripts_folder=self.root / "scripts",
             authorization={"controller-policy-file": "controller-policy.json"},
             ui={"language": "en"}, hotbar={"hotbar-sync-interval-ticks": 2},
         )

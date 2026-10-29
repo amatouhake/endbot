@@ -124,9 +124,9 @@ class EndbotService:
         # Runs ended by the restart whose owners hear about it if online at the plugin's first snapshot.
         self._notices: list[dict] = []
         world = self.link.world
-        data_folder = config.data_folder
+        stores = config.stores_directory
         try:
-            groups = GroupStore(data_folder / "groups.json")
+            groups = GroupStore(stores / "groups.json")
         except (ValueError, OSError) as error:
             # A broken groups file must not take /bot down with it.
             self._log("error", f"Groups disabled: groups.json could not be loaded ({error}); fix or move it "
@@ -137,12 +137,12 @@ class EndbotService:
             capacity=lambda bot_ids: tuple(world.capacity(sorted(bot_ids))),
         )
         try:
-            scripts = ScriptStore(data_folder / "scripts.json", script_config)
+            scripts = ScriptStore(stores / "scripts.json", script_config)
         except (ValueError, OSError, KeyError) as error:
             self._log("error", f"Scripts unavailable: scripts.json could not be loaded ({error})")
             scripts = None
-        self.scripts = ScriptService(script_config, scripts, self.commands, control, data_folder,
-                                     authorize=self.authority.authorize)
+        self.scripts = ScriptService(script_config, scripts, self.commands, control, config.base,
+                                     authorize=self.authority.authorize, files_directory=config.scripts_folder)
         if scripts is not None and script_config.enabled:
             # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
             try:

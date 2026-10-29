@@ -17,7 +17,7 @@ and it stops if you lose that permission.
 ## 1. Where to write a script
 
 **In a PC editor (recommended when you can reach the server's files).** Save `<name>.luau` in
-`server/plugins/endbot/scripts/` (UTF-8, any line endings), then run `/botscript reload` in game or at the console.
+`<instance>/scripts/`, next to `endbot.toml` (UTF-8, any line endings), then run `/botscript reload` in game or at the console.
 The name is the file name: 1 to 16 letters, digits and underscores, starting with a letter or underscore.
 Change the file and `reload` again whenever you edit it. These scripts are shared with every controller and
 read-only in game; see [script files](SCRIPTING.md#script-files).

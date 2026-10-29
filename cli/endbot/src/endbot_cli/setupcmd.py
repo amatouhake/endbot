@@ -37,6 +37,8 @@ from endbot_cli.properties import (
     verify_server_properties,
 )
 from endbot_cli.runstate import RUNNING, STALE, clean_supervisor_pid, inspect_supervisor
+from endbot_cli.stores import StoreError, StoreLayout
+from endbot_cli.stores import migrate as migrate_stores
 
 BDS_DOWNLOAD = "download"
 BDS_UPDATE = "update"
@@ -502,6 +504,12 @@ def _apply(
     create_state_dirs(paths)
     write_endbot_toml(paths, plan)
     _print(f"setup: wrote {paths.endbot_toml} and created state/{', state/'.join(STATE_SUBDIRS)}/")
+    # A fresh instance gets the state/ layout directly; --existing carries an older plugin's stores.
+    try:
+        for message in migrate_stores(StoreLayout.for_instance(paths, plan.server)):
+            _print(f"setup: {message}")
+    except StoreError as error:
+        return _fail(f"FAIL setup: {error}")
 
     _print("setup: doctor after apply:")
     fatal = report_doctor(paths, installed_endstone_version)

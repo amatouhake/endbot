@@ -81,12 +81,13 @@ class ScriptRun:
 
 class ScriptService:
     def __init__(
-        self, config, store, service, inputs, data_folder, authorize, *, process_factory=RunnerProcess, bootstrap=None
+        self, config, store, service, inputs, data_folder, authorize, *, process_factory=RunnerProcess, bootstrap=None,
+        files_directory=None,
     ):
         self.config, self.store, self.service, self.inputs = config, store, service, inputs
         self.executable = config.executable(data_folder)
         # The operator's `<name>.luau` files, loaded at start-up and on `reload`.
-        self.files_directory = Path(data_folder) / FILES_DIRECTORY
+        self.files_directory = Path(data_folder) / FILES_DIRECTORY if files_directory is None else Path(files_directory)
         self.authorize, self.process_factory = authorize, process_factory
         self.bootstrap = bootstrap
         self._runs = {}
@@ -715,7 +716,7 @@ class ScriptService:
             if operation == "reload" and not tail:
                 loaded, problems = self.reload_files(source)
                 lines = [tr(lang, "Loaded {count} script files from {folder}", count=len(loaded),
-                            folder=f"plugins/endbot/{FILES_DIRECTORY}/")]
+                            folder=f"{self.files_directory.name}/")]
                 lines += [f"{name}: {localize_error(error, lang)}" for name, error in problems]
                 english = [f"{name}: {error}" for name, error in problems]
                 return CommandResult(

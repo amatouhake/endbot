@@ -27,9 +27,13 @@ directory may live inside it (fresh setup) or anywhere else (existing server).
 │  ├─ controllers.json       controller enrollment state (generated, see §3)
 │  ├─ controller-policy.json console-managed grants/revocations (generated, see §3)
 │  ├─ grant-revisions.json   grant revision per revoked controller identity (generated, see §3)
+│  ├─ groups.json            Groups (written by endbotd)
+│  ├─ scripts.json           stored scripts (written by endbotd)
+│  ├─ migrations.json        store layout marker ({"stores": 2}, see §6a)
 │  ├─ generated/             files derived from endbot.toml on every start (runtime JSON, endbotd.toml)
 │  └─ run/                   PID files and logs
-├─ backups/                  setup/update backups of operator-owned BDS files
+├─ scripts/                  the operator's <name>.luau script files (read by endbotd)
+├─ backups/                  setup/update backups of operator-owned BDS files; stores-<direction>-<time>/ store copies
 └─ endbot / endbot.cmd       launcher: execs app/<current>/python with the endbot CLI
 ```
 
@@ -126,8 +130,8 @@ Generated on every `endbot start` (overwritten, never hand-edited):
   port read from `server.properties`.
 - `state/generated/endbotd.toml` — endbotd's config ([ENDBOTD.md](ENDBOTD.md)): authorization (pointing at
   `state/controllers.json` and the policy files), limits, UI language, scripting, the runtime it drives
-  (`state/secrets/control.token`) and its plugin link. Groups, scripts and script files are still read from
-  `<server>/plugins/endbot/` until the store migration (BOT-020 step 4).
+  (`state/secrets/control.token`), its plugin link and `[stores]`: Groups and stored scripts in `state/`, script
+  files in `<instance>/scripts/`.
 - `<server>/plugins/endbot/config.toml` — plugin config with only the `[endbotd]` link settings (loopback host,
   `link-port`, `state/secrets/endbotd.token`). The plugin no longer receives the runtime token.
 - `state/secrets/endbotd.token` — created once, like the runtime's control token; never printed or logged.
@@ -354,6 +358,23 @@ backup and preview before letting Endstone update BDS; any other doctor FAIL kee
 reported. `endbot update --rollback` switches `app/current` back to the most recent previous version directory present
 in `app/`. Updates refuse to run while a supervisor is running.
 
+Store layout ([ENDBOTD.md](ENDBOTD.md) P7). From the first endbotd version, Groups and stored scripts live in
+`state/groups.json` and `state/scripts.json`, and script files in `<instance>/scripts/`; `state/migrations.json`
+(`{"stores": 2}`) marks that layout as authoritative. Before it, they lived in `<server>/plugins/endbot/`
+(`groups.json`, `scripts.json`, `scripts/*.luau`). Moving between the layouts:
+
+- An update from a version before endbotd is driven by that version's CLI, so the new version moves the stores on
+  its first `endbot start` (or `endbot setup`): it backs up both layouts under `backups/stores-update-<time>/`,
+  copies the data files into `state/` and leaves the originals in place, moves the script files to
+  `<instance>/scripts/` with a `README.txt` left in the old folder, and writes the marker last. Later updates do the
+  same right before `app/current` switches.
+- `endbot update --rollback` first writes `state/groups.json` and `state/scripts.json` back to the plugin data
+  folder, moves the script files back to `<server>/plugins/endbot/scripts/`, removes the `README.txt` and sets the
+  marker to `{"stores": 1}` (backups under `backups/stores-rollback-<time>/`), then switches `app/current`. Group
+  and script changes made since the update are therefore kept.
+- Every step is idempotent: an interrupted move reports the cause, the old layout stays authoritative until the
+  marker is written, and running the same command again finishes it. `endbot doctor` reports the outcome (`stores`).
+
 Updating from 0.1.0: 0.1.1 doctor also requires `transport=nethernet` in `server.properties` (#36) and FAILs a world
 directory that exists without `level.dat` (#37). An instance missing either keeps 0.1.0 current and the update
 reports the FAIL; add `transport=nethernet` (BDS only accepts NetherNet in this release, so such an instance could not
@@ -390,7 +411,11 @@ free. See [scripting](SCRIPTING.md) to enable scripts, and [installation](INSTAL
 - Control token present and readable. endbotd token present (`endbotd-token`); `state/generated/endbotd.toml` matches
   the ports in `endbot.toml` (`endbotd-config`); the plugin config links to endbotd's port with endbotd's token and
   no longer carries runtime settings (`plugin-port`). `endbotd-link` reads the latest `endbotd.log`: a plugin link
-  refused for a protocol or operation-registry mismatch is a FAIL (mixed Endbot versions).
+  refused for a protocol or operation-registry mismatch is a FAIL (mixed Endbot versions). A missing endbotd token
+  or a plugin config written before endbotd is a WARN, since `endbot start` regenerates both.
+- Stores (`stores`): PASS when `state/migrations.json` makes `state/` authoritative; WARN while the plugin data
+  folder still is (the next `start` migrates) or when script files were left in the old folder; FAIL for an
+  unreadable marker or one written by a newer Endbot. Both layouts' contents are listed.
 - `<server>/version.txt` matches the lock; installed Endstone package version matches the lock.
 - Controllers: bootstrap bindings and pending entries; `controllers-effective` combines saved config/policy/legacy
   entries with decision reasons, or queries the running plugin with `--live` and a live supervisor. Legacy entries

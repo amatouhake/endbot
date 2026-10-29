@@ -190,6 +190,10 @@ missing plugin, so that change is small.
   format is unchanged, and the old version ignores `state/grant-revisions.json`. Without this step a rollback would
   silently lose every Group or script change made since the update.
 - **Fresh setup** writes the new layout directly.
+- **Amendment (operator-approved 2026-10-29):** the first update from a version before endbotd is driven by that
+  version's CLI, which has no migration step, so the new version runs the same copy, backup and marker step on its
+  first `endbot start` (before endbotd starts) or `endbot setup` when the marker is missing; the `stores` doctor check
+  reports the pending migration as a WARN so the old CLI still switches.
 - Every migration step is idempotent and checked by `endbot doctor` (`stores` check: marker, both layouts, which one
   is authoritative).
 

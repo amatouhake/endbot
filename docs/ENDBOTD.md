@@ -1,7 +1,7 @@
-# endbotd: design draft (BOT-020)
+# endbotd design (BOT-020)
 
-Status: **Draft for discussion** (2026-10-29 JST). Nothing here is implemented. Sections marked **Open** need the
-operator's decision before the step that depends on them starts.
+Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals and the recommended answers to
+the former open points (see [settled points](#settled-points)). Nothing here is implemented yet.
 
 This document turns [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-and-its-centre-moves-out-of-bds)
 into a concrete process split, protocol, migration and step plan. It changes nothing players can see, adds no web code
@@ -65,7 +65,7 @@ Start order: runtime → endbotd → BDS. endbotd needs the runtime to execute B
 endbotd to accept commands. The supervisor waits for `endbotd_ready` the same way it waits for
 `endbot_runtime_ready`.
 
-## Decisions proposed
+## Decisions
 
 ### P1. Process split: three children under a thin supervisor
 
@@ -110,7 +110,7 @@ fails one call, not the worker.
 
 ### P3. Shared code moves into one pure package
 
-A new package (working name `endbot_core`, under `core/`) holds everything that today is pure plugin code. endbotd
+A new package, `endbot_core` under `core/` (S4), holds everything that today is pure plugin code. endbotd
 runs it; the plugin imports only what it needs to render: the message catalog (`i18n`), the operation registry and
 the form builders that turn Outcome data into screens. Endstone imports stay confined to the plugin package. Both
 are installed into the same private Python, so there is one copy of the code and the registry hash always matches
@@ -172,7 +172,7 @@ missing plugin, so that change is small.
 | `server/plugins/endbot/scripts.json` | `state/scripts.json` |
 | `state/controller-policy.json` (v1) | `state/controller-policy.json` (v2, adds grant revisions) |
 | `state/controllers.json` | unchanged, now written by endbotd |
-| `server/plugins/endbot/scripts/*.luau` | see **Open O1** |
+| `server/plugins/endbot/scripts/*.luau` | `<instance>/scripts/*.luau` (S1) |
 | plugin `config.toml` `[authorization] [limits] [scripting] [ui]` | `state/generated/endbotd.toml`, generated from `endbot.toml` |
 | plugin `config.toml` `[runtime] token-file/host/port` | replaced by the endbotd link settings and `state/secrets/endbotd.token` |
 
@@ -205,17 +205,19 @@ what the plugin itself does (link state, world-call failures). `scripts/raknet_s
 itself and reads audit lines from the server log, so it must also start endbotd and read its log; that change lands
 in the same step as the move.
 
-## Open
+## Settled points
 
-- **O1. Where operator script files live.** Options: keep `server/plugins/endbot/scripts/` (no change for
-  operators, but endbotd reads into the server directory), or move to `<instance>/scripts/` (operator content
-  next to `endbot.toml`, not in `state/`, which Endbot manages). Recommendation: `<instance>/scripts/`, with the update
-  moving the files once and leaving a `README.txt` in the old folder pointing to the new one.
-- **O2. BDS exit policy.** Recommendation above: unchanged in BOT-020, revisited in BOT-021.
-- **O3. Manual (developer) installs.** Recommendation: developers run `endbotd` themselves
-  (`python -m endbotd --config ...`); the plugin has no in-process fallback in the product. An in-process mode would
-  keep two authorization paths alive.
-- **O4. Name of the shared package and its directory.** `endbot_core` under `core/` is a placeholder.
+Decided 2026-10-29 JST, following the recommendations of the draft.
+
+- **S1. Operator script files move to `<instance>/scripts/`**, next to `endbot.toml`: they are operator content,
+  so they belong neither in `state/` (managed by Endbot) nor in the server directory. The update moves the files once
+  and leaves a `README.txt` in the old folder pointing to the new one; a rollback moves them back.
+- **S2. BDS exit policy is unchanged in BOT-020**: the supervisor stops runtime and endbotd and exits with BDS's
+  code. Keeping endbotd running while BDS is stopped is revisited in BOT-021.
+- **S3. No in-process fallback.** Developers with a manual plugin install run endbotd themselves
+  (`python -m endbotd --config ...`); the product plugin always uses the link. An in-process mode would keep two
+  authorization paths alive. Tests use the in-process harness of step 2, which goes through the real protocol.
+- **S4. The shared package is `endbot_core`, in `core/`.**
 
 ## Steps
 
@@ -233,7 +235,7 @@ inside BDS.
    client; the runtime token leaves the plugin config. Grant revisions persist (policy v2). Measure the link round
    trip under mining load (P5).
 4. **Store migration.** `state/` layout, update and rollback in both directions, `migrations.json`, doctor `stores`
-   check, and the O1 move.
+   check, and the S1 move.
 5. **CLI controller management through endbotd.** Remove the file request channel.
 6. **Validation.** Live RakNet smoke on the locked pair (all existing `--scripting`, `--mining`, `--item-use` cases,
    plus: kill endbotd during a run and during `destroy continuous`, restart BDS's plugin link, update then roll back

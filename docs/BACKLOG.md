@@ -856,7 +856,7 @@ Steps, each about one PR, none meant to change what players see:
 
 ## BOT-020: endbotd outside BDS
 
-Status: **Design draft in [ENDBOTD.md](ENDBOTD.md), open points O1–O4 to decide; not implemented** (2026-10-29 JST).
+Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); not implemented** (2026-10-29 JST).
 Release grouping open, see [delivery](DIRECTION.md#delivery).
 
 Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,

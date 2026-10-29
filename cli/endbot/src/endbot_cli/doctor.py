@@ -387,6 +387,37 @@ def check_control_token(paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"{paths.control_token} is present and readable ({len(token)} characters)")
 
 
+def check_grant_revisions(paths: InstancePaths) -> CheckResult:
+    """``state/grant-revisions.json`` (docs/ENDBOTD.md P4); the plugin refuses to load when it is corrupt."""
+
+    from uuid import UUID
+
+    name = "grant-revisions"
+    path = paths.state_controllers.parent / "grant-revisions.json"
+    remedy = "the plugin will not load; stop Endbot and delete it, which safely resets every revision to 0"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return CheckResult(PASS, name, "no revocations recorded; every grant revision is 0")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return CheckResult(FAIL, name, f"{path} cannot be read ({error}); {remedy}")
+    entries = document.get("revisions", {}) if isinstance(document, dict) else None
+    try:
+        valid = (
+            document.get("version") == 1
+            and not set(document) - {"version", "revisions"}
+            and isinstance(entries, dict)
+            and len({str(UUID(key)) for key in entries}) == len(entries)
+            and all(type(value) is int and value >= 1 for value in entries.values())
+        )
+    except (AttributeError, ValueError):
+        valid = False
+    if not valid:
+        return CheckResult(FAIL, name, f"{path} is not a version 1 grant revisions file; {remedy}")
+    count = f"{len(entries)} revoked identit{'y' if len(entries) == 1 else 'ies'}"
+    return CheckResult(PASS, name, f"{path} records {count}")
+
+
 def _load_plugin_config(server: Path) -> tuple[str | None, dict | None]:
     """Return ``(parse_error, document)``; both are None when the file does not exist yet."""
 
@@ -676,6 +707,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
         else:
             results.extend(check_controllers(config, state))
             results.extend(check_effective_controllers(context, config, state, server))
+    results.append(check_grant_revisions(paths))
 
     if server is None:
         results.append(CheckResult(SKIP, "allowlist", "server directory is unavailable"))

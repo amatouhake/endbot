@@ -874,9 +874,14 @@ instant raycast, 8 s per row). The link itself costs little: with tasks run at o
 tick, about 50 ms per call; loops renew one after another, so a poll takes about 50 ms per active loop (1 loop: 49 ms
 p95; 4: 202 ms; 8: 403 ms; 32: 1.6 s) and from 4 loops on it overruns its 200 ms period. That is the in-process
 behaviour too: the plugin's poll worker waited one tick per loop for the raycast and another for the authorization
-check, which endbotd now makes without the server thread, so the switch does not slow renewal. P5's remedy, one
-batched `resolve_mining` world call per poll (one tick per poll instead of one per loop), is a follow-up, not part of
-3c. Live BDS numbers are part of step 6.
+check, which endbotd now makes without the server thread, so the switch does not slow renewal.
+
+P5's remedy is in place: endbotd's poll now sends every loop that needs a target in one `resolve_mining_batch` world
+call (link protocol 2), which the plugin answers in one server-thread task with a result or error per loop, so one bad
+loop ends only itself. Remeasured the same way (2026-10-29 JST, `--mode batch`, 8 s per row), a poll waits one tick
+whatever its size: with a 50 ms tick 1, 4, 8 and 32 loops take 49 ms p95 (at most 51 ms) and no poll overruns
+200 ms; with tasks run at once a 32-loop poll takes 0.71 ms p95. `--mode per-loop` keeps the old measurement. Live
+BDS numbers are part of step 6.
 Ships in the single BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery).
 
 Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,

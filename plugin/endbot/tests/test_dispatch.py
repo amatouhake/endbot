@@ -493,6 +493,37 @@ class DispatchTests(unittest.TestCase):
         # Commands with Bot-relative coordinates still require their sender.
         self.assertIn("no longer online", results["explicit"])
 
+    def test_mining_batch_runs_every_raycast_in_one_bridge_call(self):
+        bridge_calls, world_calls = [], []
+
+        class Bridge:
+            def call(self, callback):
+                bridge_calls.append(callback)
+                return callback()
+
+        class World:
+            def reachable_block(self, identity_id, block_type, reach):
+                world_calls.append(("reachable_block", identity_id, block_type, reach))
+                return [1, 64, 2]
+
+            def resolve_mining(self, identity_id, parameters, sender):
+                world_calls.append(("resolve_mining", identity_id, parameters, sender))
+                if identity_id == "missing":
+                    raise RuntimeError("gone")
+                return {"blockPosition": [1, 64, 2]}
+
+        world = ServerThreadWorld(World(), Bridge(), lambda source: None)
+        results = world.resolve_mining_batch([
+            {"identityId": "typed", "blockType": "minecraft:oak_log"},
+            {"identityId": "untyped", "blockType": None},
+            {"identityId": "missing", "blockType": None},
+        ])
+        self.assertEqual(len(bridge_calls), 1)
+        self.assertTrue(results[0]["target"]["turn"])
+        self.assertEqual(results[1]["target"]["blockPosition"], [1, 64, 2])
+        self.assertEqual(results[2]["error"]["code"], "failed")
+        self.assertEqual(len(world_calls), 4)
+
     def test_look_at_forwards_identity_id_across_the_bridge(self) -> None:
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

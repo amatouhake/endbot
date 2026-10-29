@@ -2,7 +2,9 @@ import unittest
 
 from endbot_core.commands import UNREACHABLE_POLL_LIMIT, WAITING_NOTICE_POLLS
 from endbot_core.control import RuntimeControlError
+from endbot_core.i18n import LocalizedError
 from endbot_core.limits import BotLimits
+from endbot_core.link import LinkError, error_from_wire, error_to_wire, resolve_mining_batch
 from plain_service import PlainCommandService
 
 
@@ -93,6 +95,9 @@ class FakeWorld:
             "pitch": 20.0,
             "dimension": "Overworld",
         }
+
+    def resolve_mining_batch(self, requests):
+        return resolve_mining_batch(self, requests)
 
     def queue_spawn_placement(self, identity_id, placement):
         self.placements.append((identity_id, placement))
@@ -869,6 +874,192 @@ class SeatLimitTests(unittest.TestCase):
         result = service.execute(["Bob", "spawn"], object())
         self.assertIn("created and connecting", result.message)
         self.assertIn("spawn", [call[0] for call in control.calls])
+
+
+class ResolverWorld:
+    """Raycast stand-in for the per-item resolver tests."""
+
+    def __init__(self):
+        self.calls = []
+
+    def reachable_block(self, identity_id, block_type, reach):
+        self.calls.append(("reachable_block", identity_id, block_type, reach))
+        if identity_id == "no-sight":
+            raise LocalizedError("No {block} in sight within {reach} blocks", block=block_type, reach=reach)
+        return [1, 64, 2]
+
+    def resolve_mining(self, identity_id, parameters, sender):
+        self.calls.append(("resolve_mining", identity_id, parameters, sender))
+        if identity_id == "no-block":
+            raise ValueError("Target is air/liquid or blocked by another block")
+        if identity_id == "boom":
+            raise RuntimeError("raycast failed")
+        return {"blockPosition": [1, 64, 2], "blockName": "minecraft:stone", "identityId": identity_id}
+
+
+class ResolveMiningBatchTests(unittest.TestCase):
+    def test_resolves_typed_then_untyped_requests_in_order(self):
+        world = ResolverWorld()
+        results = resolve_mining_batch(world, [
+            {"identityId": "typed", "blockType": "minecraft:oak_log"},
+            {"identityId": "untyped", "blockType": None},
+        ])
+        self.assertEqual(results, [
+            {"target": {"blockPosition": [1, 64, 2], "blockName": "minecraft:stone",
+                        "identityId": "typed", "turn": True}},
+            {"target": {"blockPosition": [1, 64, 2], "blockName": "minecraft:stone", "identityId": "untyped"}},
+        ])
+        self.assertEqual(world.calls, [
+            ("reachable_block", "typed", "minecraft:oak_log", 5.0),
+            ("resolve_mining", "typed", {"coordinates": [1, 64, 2]}, None),
+            ("resolve_mining", "untyped", {"continuous": True}, None),
+        ])
+
+    def test_typed_value_errors_wait_instead_of_failing(self):
+        results = resolve_mining_batch(ResolverWorld(), [
+            {"identityId": "no-sight", "blockType": "minecraft:oak_log"},
+            {"identityId": "no-block", "blockType": "minecraft:stone"},
+        ])
+        self.assertEqual(results, [{"target": None}, {"target": None}])
+
+    def test_one_item_failure_does_not_affect_the_others(self):
+        results = resolve_mining_batch(ResolverWorld(), [
+            {"identityId": "typed", "blockType": "minecraft:oak_log"},
+            {"identityId": "boom", "blockType": None},
+            {"identityId": "untyped", "blockType": None},
+        ])
+        self.assertIn("target", results[0])
+        self.assertIn("target", results[2])
+        self.assertEqual(results[1]["error"]["code"], "failed")
+
+    def test_error_items_decode_to_their_exception_class(self):
+        class World:
+            def resolve_mining(self, identity_id, parameters, sender):
+                if identity_id == "localized":
+                    raise LocalizedError("No {block} in sight", block="stone")
+                if identity_id == "invalid":
+                    raise ValueError("blocked")
+                raise RuntimeError("raycast failed")
+
+        results = resolve_mining_batch(World(), [
+            {"identityId": "localized"},
+            {"identityId": "invalid"},
+            {"identityId": "failed"},
+        ])
+        localized = error_from_wire(results[0]["error"])
+        self.assertIsInstance(localized, LocalizedError)
+        self.assertEqual((localized.template, localized.params), ("No {block} in sight", {"block": "stone"}))
+        self.assertIsInstance(error_from_wire(results[1]["error"]), ValueError)
+        failed = error_from_wire(results[2]["error"])
+        self.assertIsInstance(failed, LinkError)
+        self.assertEqual((failed.code, str(failed)), ("failed", "raycast failed"))
+
+    def test_malformed_requests_raise_before_any_world_call(self):
+        world = ResolverWorld()
+        for requests in (
+            None,
+            {"identityId": "typed", "blockType": None},
+            [None],
+            [{}],
+            [{"identityId": ""}],
+            [{"identityId": 3}],
+            [{"identityId": "typed", "blockType": 3}],
+            [{"identityId": "ok"}, {"identityId": "bad", "blockType": []}],
+        ):
+            with self.subTest(requests=requests), self.assertRaises(ValueError):
+                resolve_mining_batch(world, requests)
+        self.assertEqual(world.calls, [])
+
+
+class MiningBatchPollTests(unittest.TestCase):
+    def setUp(self):
+        self.control = FakeControl()
+        self.world = FakeWorld()
+        self.service = PlainCommandService(self.control, self.world)
+        names = ("Alice", "Bob", "Carol")
+        for name in names:
+            self.service.execute([name, "spawn"])
+            self.service.execute([name, "destroy", "continuous"])
+        self.names = names
+        self.loop_ids = {name: self.control.bots[name]["mining"]["loopId"] for name in names}
+
+    def install_batch(self, result_factory):
+        calls = []
+
+        def batch(requests):
+            calls.append([dict(request) for request in requests])
+            return result_factory(requests)
+
+        self.world.resolve_mining_batch = batch
+        self.world.resolve_mining = lambda *args: self.fail("poll_mining must not call resolve_mining directly")
+        return calls
+
+    def mine_calls(self, mode):
+        return [parameters for operation, parameters in self.control.calls
+                if operation == "mine" and parameters.get("mode") == mode]
+
+    def test_one_batch_call_retargets_every_looping_bot(self):
+        calls = self.install_batch(
+            lambda requests: [{"target": {"blockPosition": [1, 64, 2]}} for _ in requests]
+        )
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.assertEqual(calls, [[
+            {"identityId": self.control.bots[name]["identityId"], "blockType": None} for name in self.names
+        ]])
+        continues = self.mine_calls("continue")
+        self.assertEqual([parameters["loopId"] for parameters in continues],
+                         [self.loop_ids[name] for name in self.names])
+        self.assertTrue(all(parameters["blockPosition"] == [1, 64, 2] for parameters in continues))
+
+    def test_one_failed_item_ends_only_that_loop(self):
+        def results(requests):
+            return [
+                {"error": error_to_wire(RuntimeError("raycast failed"))}
+                if request["identityId"] == self.control.bots["Alice"]["identityId"]
+                else {"target": {"blockPosition": [1, 64, 2]}}
+                for request in requests
+            ]
+
+        calls = self.install_batch(results)
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertEqual(len(notices), 1)
+        self.assertIn("Alice", notices[0][2])
+        self.assertIn("raycast failed", notices[0][2])
+        self.assertEqual([parameters["loopId"] for parameters in self.mine_calls("stop")],
+                         [self.loop_ids["Alice"]])
+        self.service.poll_mining(lambda _: True)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([request["identityId"] for request in calls[1]],
+                         [self.control.bots[name]["identityId"] for name in ("Bob", "Carol")])
+
+    def test_a_failed_batch_call_ends_every_retargeting_loop_with_a_warning(self):
+        def failed(requests):
+            raise LinkError("timeout", "world call timed out")
+
+        calls = self.install_batch(failed)
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(notices), len(self.names))
+        self.assertTrue(all(notice[1] == "warning" for notice in notices))
+        self.assertTrue(all("world call timed out" in notice[2] for notice in notices))
+        self.assertEqual(len(self.mine_calls("stop")), len(self.names))
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.assertEqual(len(calls), 1)
+
+    def test_a_batch_result_of_the_wrong_shape_ends_every_loop(self):
+        calls = self.install_batch(lambda requests: [])
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(notices), len(self.names))
+        self.assertTrue(all("unexpected result" in notice[2] for notice in notices))
+
+    def test_active_loops_need_no_batch_call(self):
+        for name in self.names:
+            self.control.bots[name]["mining"]["state"] = "active"
+        calls = self.install_batch(lambda requests: self.fail("active loops must not be batched"))
+        self.assertEqual(self.service.poll_mining(lambda _: True), [])
+        self.assertEqual(calls, [])
+        self.assertEqual(len(self.mine_calls("continue")), len(self.names))
 
 
 if __name__ == "__main__":

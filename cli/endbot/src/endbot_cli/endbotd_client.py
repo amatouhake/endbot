@@ -20,7 +20,8 @@ from pathlib import Path
 
 from endbot_cli.runstate import RUNNING, inspect_supervisor
 
-PROTOCOL = 1
+# endbotd's link protocol (endbot_core.link.PROTOCOL); the CLI hello is refused on any other.
+PROTOCOL = 2
 HOST = "127.0.0.1"
 MAX_FRAME_BYTES = 1024 * 1024
 MIN_TOKEN_LENGTH = 32

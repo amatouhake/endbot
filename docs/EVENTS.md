@@ -1,6 +1,7 @@
 # Events, watches and triggers design (BOT-022)
 
-Status: **Design draft** (2026-10-29 JST), awaiting the operator's agreement. Nothing here is implemented.
+Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals and the recommended answers to
+the former open points (see [settled points](#settled-points)). Nothing here is implemented yet.
 
 This document turns [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
 into a registry format, a delivery path, watch and trigger semantics, and a step plan. It builds on endbotd
@@ -120,7 +121,7 @@ that, `guarantee.class` is one of:
 - **Bounds**: a watch or trigger filter covers one position or a box of at most `maxBlocks` (512); the server watches
   at most `[events] max-watched-blocks` positions in total (default from step 1's cost measurement, 4096 assumed).
   A watch that would exceed it fails at creation with the limit named.
-- **Who did it** (O1): `cause` is `player-break`, `player-place`, another measured cause, or `poll`; `bot` is set
+- **Who did it** (S1): `cause` is `player-break`, `player-place`, another measured cause, or `poll`; `bot` is set
   when a Bot did it. A human player's name is not in the payload, because it would reveal that player's position.
 
 ### E4. Delivery through the link
@@ -138,7 +139,7 @@ events     plugin → endbotd   {revision, epoch, tick, items: [{kind, ...payloa
   Items carry no owner: endbotd maps them to watches and triggers and applies visibility.
 - **Gaps.** A source is in a gap from a link drop, a new `epoch`, `dropped > 0`, a runtime restart or an endbotd
   restart until its next report. Every watch and trigger fed by that source records the gap (E5, E8). Occurrences
-  during a gap are not replayed or reconstructed (O4).
+  during a gap are not replayed or reconstructed (S4).
 - Runtime-sourced kinds (`bot.online`, `bot.offline`, `bot.died`) come from the runtime status endbotd already
   receives; if the runtime protocol has no push for them, step 6b adds one long-poll request rather than polling per
   watch. endbotd-sourced kinds (`server.started`, `schedule`, `job.finished`) are raised inside endbotd.
@@ -197,7 +198,7 @@ trigger = { name, owner (identity id), visibility (private|shared),
 - **A started run** has the owner's authority intersected with `approved.declaration`, the `trigger` channel and the
   online-independent layer, like any run. It counts toward the owner's concurrent-run limit; at the limit the start
   is skipped and counted.
-- **Revisions** (O5): the trigger runs the script's current revision while that revision's declaration is a subset of
+- **Revisions** (S5): the trigger runs the script's current revision while that revision's declaration is a subset of
   the approved one and its params still accept the stored arguments. Otherwise it pauses with the reason
   (`declaration grew`, `arguments no longer valid`) until the owner enables it again, which re-approves.
 - **Other pauses and disables**: the script deleted or no longer runnable by the owner → paused; the kind no longer in
@@ -229,7 +230,7 @@ trigger = { name, owner (identity id), visibility (private|shared),
 - `server.started` is raised on the first `hello` after BDS starts (a new `epoch` from a fresh plugin process, not a
   reconnect), so "on server start" triggers run once per BDS start.
 - With the web enabled and BDS stopped (WEB P10), `schedule` triggers do not start runs: Bot operations would fail
-  anyway. They are skipped and counted (O3).
+  anyway. They are skipped and counted (S3).
 
 ### E10. Commands, forms and the web
 
@@ -247,23 +248,22 @@ trigger = { name, owner (identity id), visibility (private|shared),
   WEB step 7's registry-driven form generator takes a field list, so step 7 here reuses it for filters. The web
   never shows occurrences live in BOT-022.
 
-## Open points
+## Settled points
 
-Each has a recommended answer; agreeing the document agrees the recommendation unless the operator says otherwise.
+Decided 2026-10-29 JST, following the recommendations of the draft.
 
-- **O1. Human players' names in `block.change`.** Recommended: omitted; only Bot names (`bot`) are given. A name next
-  to a coordinate tells a watcher where that player is, which PERMISSIONS puts in "not normally visible".
-- **O2. Default limits.** Recommended: those in E3, E5 and E8 (8 triggers and 32 watches per controller, 10 starts
-  per minute, a 20-tick cooldown, `skip`), with `max-watched-blocks` and `block-poll-ticks` set from step 1.
-- **O3. Triggers while BDS is stopped.** Recommended: none start; they are counted as skipped, and `server.started`
-  fires when BDS comes back.
-- **O4. Changes during a gap.** Recommended: reported as a gap, never reconstructed. Replaying from a stored baseline
-  would deliver changes late and out of order, and the gap result lets a script re-read.
-- **O5. Which revision a trigger runs.** PERMISSIONS says a trigger is "bound to the script revision its owner
-  approved" and pauses when an edit grows the declaration. Recommended reading: it runs the current revision while
-  the declaration does not grow (E7), not a frozen copy of the approved source. Pinning the exact source would pause
-  every trigger on every edit, including fixes to one's own script, and would require the store to keep old revisions
-  runnable.
+- **S1. Human players' names are not in `block.change`**; only Bot names (`bot`) are given. A name next to a
+  coordinate tells a watcher where that player is, which PERMISSIONS puts in "not normally visible".
+- **S2. Default limits** are those in E3, E5 and E8: 8 triggers and 32 watches per controller, 10 starts per minute,
+  a 20-tick cooldown and `skip`; `max-watched-blocks` and `block-poll-ticks` are set from step 1.
+- **S3. No trigger starts while BDS is stopped**; such starts are counted as skipped, and `server.started` fires when
+  BDS comes back.
+- **S4. Changes during a gap are reported as a gap, never reconstructed.** Replaying from a stored baseline would
+  deliver changes late and out of order, and the gap result lets a script re-read.
+- **S5. A trigger runs the script's current revision** while its declaration does not grow and its params accept the
+  stored arguments (E7); this is how PERMISSIONS' "bound to the script revision its owner approved" is read. Pinning
+  the exact source would pause every trigger on every edit, including fixes to one's own script, and would require
+  the store to keep old revisions runnable.
 
 ## Steps
 

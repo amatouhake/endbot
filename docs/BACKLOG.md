@@ -889,7 +889,7 @@ UI from endbotd without Cloudflare ([other hosts](DIRECTION.md#other-hosts)); ot
 ## BOT-022: Events, watches and triggers
 
 Status: **Planned; framework agreed in [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)**
-(2026-10-28 JST). Detailed design drafted in [EVENTS.md](EVENTS.md) (2026-10-29 JST), awaiting agreement.
+(2026-10-28 JST). Detailed design agreed in [EVENTS.md](EVENTS.md) (2026-10-29 JST).
 
 Event kinds in the operation registry (`category.action`, filters, payload, source, guarantee, visibility); a generic
 `watch(kind, filter)` with `w:wait{timeout=}`; observation only, never cancel or modify; triggers as separate bindings

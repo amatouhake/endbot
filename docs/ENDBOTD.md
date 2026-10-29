@@ -121,9 +121,13 @@ environment but never loaded into BDS.
 
 ### P4. Authorization state moves to endbotd; presence replaces in-memory revisions
 
-- **Grant revision is persisted** per XUID in the controller policy (policy file version 2). Today it lives in
-  plugin memory, which was enough while every run died with BDS; it is not once runs, and later triggers, outlive BDS
-  restarts. A revoke bumps it; a regrant never revives work holding the old value.
+- **Grant revision is persisted** per controller identity in its own file, `state/grant-revisions.json`. Today it
+  lives in plugin memory, which was enough while every run died with BDS; it is not once runs, and later triggers,
+  outlive BDS restarts. A revoke bumps it; a regrant never revives work holding the old value. A separate file, not
+  a version 2 of `controller-policy.json`: a pre-endbotd version rejects an unknown policy version, so a v2 policy
+  would break a rollback, while an unknown file is simply ignored and the old version falls back to its in-memory
+  revisions. A missing or reset file counts every revision as 0. That is safe because the file is read only at
+  start-up, when no work from before can still be running.
 - **Session revision comes from presence.** The plugin reports a full snapshot on every (re)connect with a new
   `epoch`, then `join`, `quit` and permission-relevant changes. endbotd derives each player's session revision from
   `(epoch, join counter)`. Because presence and commands share one ordered stream, a command can never be checked
@@ -170,7 +174,8 @@ missing plugin, so that change is small.
 |---|---|
 | `server/plugins/endbot/groups.json` | `state/groups.json` |
 | `server/plugins/endbot/scripts.json` | `state/scripts.json` |
-| `state/controller-policy.json` (v1) | `state/controller-policy.json` (v2, adds grant revisions) |
+| `state/controller-policy.json` (v1) | unchanged (v1) |
+| grant revisions in plugin memory | `state/grant-revisions.json` (new, see P4) |
 | `state/controllers.json` | unchanged, now written by endbotd |
 | `server/plugins/endbot/scripts/*.luau` | `<instance>/scripts/*.luau` (S1) |
 | plugin `config.toml` `[authorization] [limits] [scripting] [ui]` | `state/generated/endbotd.toml`, generated from `endbot.toml` |
@@ -180,8 +185,9 @@ missing plugin, so that change is small.
   switches, copy the plugin data files into `state/`, write `state/migrations.json` (`{"stores": 2}`), back the
   originals up under `backups/`, and leave the originals in place. The new version reads only `state/`.
 - **Rollback** (`endbot update --rollback` from an endbotd version): the current CLI, which knows both layouts,
-  writes `state/` back to the plugin data folder (policy v2 → v1 drops only the grant revisions, which the old
-  version keeps in memory), resets the marker, then switches `app/current`. Without this step a rollback would
+  writes the Groups and scripts in `state/` back to the plugin data folder and the script files back to the
+  server's script folder, resets the marker, then switches `app/current`. The controller files need nothing: their
+  format is unchanged, and the old version ignores `state/grant-revisions.json`. Without this step a rollback would
   silently lose every Group or script change made since the update.
 - **Fresh setup** writes the new layout directly.
 - Every migration step is idempotent and checked by `endbot doctor` (`stores` check: marker, both layouts, which one
@@ -221,26 +227,39 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
 
 ## Steps
 
-Each step is about one PR, keeps main releasable and changes nothing players see. Steps 1–2 still run everything
-inside BDS.
+The design's steps, each split into PRs. A PR changes one thing for one reason, keeps main releasable and changes
+nothing players see. PRs up to 3b still run everything inside BDS.
 
-1. **Pure package.** Move the pure modules into the shared package; the plugin imports them. Move script-menu views
-   out of `ScriptService` into Outcome data plus plugin-side screens (the BOT-019 step 5 rule, applied to
-   `/botscript`). No behavior change.
-2. **Link protocol with an in-process harness.** Define the link messages, a Python client and server, and the
+1. **Pure package.**
+   - **1a. Script-menu views out of `ScriptService`.** Menu results become Outcome data and the in-game layer builds
+     the screens, the BOT-019 step 5 rule applied to `/botscript`. A refactor with no behavior change.
+   - **1b. Move into `endbot_core`.** File moves and imports only; no logic changes in the same PR, so the diff
+     reviews as a move.
+2. **Link protocol with an in-process harness.** One PR: the link messages, a Python client and server, and the
    plugin-side adapter (presence, world calls, deliveries, permissions). Tests run core and adapter through the real
    protocol over a socket pair with fake Endstone objects. The product still calls the core in process.
-3. **endbotd process.** Add the `endbotd` entry, the supervisor child with ready line and restarts, `endbotd.toml`
-   and `endbotd.token` generation, the doctor checks, the run journal and the log move. The plugin becomes the link
-   client; the runtime token leaves the plugin config. Grant revisions persist (policy v2). Measure the link round
-   trip under mining load (P5).
-4. **Store migration.** `state/` layout, update and rollback in both directions, `migrations.json`, doctor `stores`
-   check, and the S1 move.
-5. **CLI controller management through endbotd.** Remove the file request channel.
+3. **endbotd process.**
+   - **3a. Persist grant revisions** in `state/grant-revisions.json` (P4), still inside the plugin. Independent of
+     the process split.
+   - **3b. A pluggable Event log sink**, so the switch only redirects it (P9).
+   - **3c. The switch.** The `endbotd` entry, the supervisor child with ready line and restarts, `endbotd.toml` and
+     `endbotd.token` generation, doctor checks, the plugin as the link client, the runtime token leaving the
+     plugin config, the log moving to `endbotd.log`, and `scripts/raknet_spike.py` starting endbotd. Stores are
+     still read from their current paths. This cannot be split without a state that does not run. Measure the link
+     round trip under mining load here (P5).
+   - **3d. Run journal and restart recovery** (P6).
+4. **Store migration.** One PR: the `state/` layout, update and rollback in both directions, `migrations.json`, the
+   doctor `stores` check and the S1 script-folder move. Update and rollback share one mechanism and are tested
+   together.
+5. **CLI controller management through endbotd.** One PR; removes the file request channel (P8).
 6. **Validation.** Live RakNet smoke on the locked pair (all existing `--scripting`, `--mining`, `--item-use` cases,
    plus: kill endbotd during a run and during `destroy continuous`, restart BDS's plugin link, update then roll back
    with Groups and scripts changed in between). Human Windows Client check: commands, forms, script menus and
-   messages unchanged; a refused command while endbotd restarts; achievement history unaffected.
+   messages unchanged; a refused command while endbotd restarts; achievement history unaffected. Recorded in a docs
+   PR, like the checkpoint 1 record.
+
+**No release between 3c and 4.** The first release with endbotd must already carry the store migration and its
+rollback, so main is not released from 3c until 4 has landed. Releasing after 3a or 3b is fine.
 
 ## Not in BOT-020
 

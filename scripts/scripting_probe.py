@@ -51,7 +51,7 @@ def configure_fixture(root: Path, output: Path, environment: dict):
 
 
 def submit_save(plugin, name, source):
-    from endstone_endbot.script_forms import ScriptGuard
+    from endbot_core.script_forms import ScriptGuard
 
     # Exactly the capability the paste form supplies. AsyncCommandRunner executes
     # ScriptService's inspect/check/save branch on its normal ordered worker.
@@ -60,8 +60,8 @@ def submit_save(plugin, name, source):
 
 
 def install_probe(plugin_class):
+    from endbot_core.script_forms import TEMPLATES
     from endstone.level import Location
-    from endstone_endbot.script_forms import TEMPLATES
 
     original_enable = plugin_class.on_enable
 

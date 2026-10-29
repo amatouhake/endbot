@@ -7,18 +7,16 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
-from endbot_core import forms
+from endbot_core import forms, script_forms
 from endbot_core.commands import ERROR, error_code, reply
 from endbot_core.groups import Group
 from endbot_core.i18n import localize_error
+from endbot_core.menu_views import menu_view
 from endbot_core.principal import Principal
+from endbot_core.script_books import pages_to_source
+from endbot_core.script_config import ScriptConfig
 from endbot_core.script_store import FILE_OWNER, Script, ScriptStore
-
-from endstone_endbot import script_forms
-from endstone_endbot.menu_views import menu_view
-from endstone_endbot.script_books import pages_to_source
-from endstone_endbot.script_config import ScriptConfig
-from endstone_endbot.scripting import ScriptService
+from endbot_core.scripting import ScriptService
 
 
 class FakeInputs:

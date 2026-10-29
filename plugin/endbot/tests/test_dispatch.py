@@ -3,11 +3,12 @@ import threading
 import unittest
 from pathlib import Path
 
+from endbot_core.command_runner import AsyncCommandRunner
 from endbot_core.commands import CommandResult, reply, strip_colors
 from endbot_core.events import Event, LoggerSink, reason
 from endbot_core.principal import Principal
 
-from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
+from endstone_endbot.dispatch import ServerThreadBridge, ServerThreadWorld
 
 
 class ScheduledCallbacks:
@@ -110,7 +111,7 @@ class DispatchTests(unittest.TestCase):
     def test_script_routing_passes_the_captured_principal_to_scripts(self):
         from types import SimpleNamespace
 
-        from endstone_endbot.script_config import ScriptConfig
+        from endbot_core.script_config import ScriptConfig
 
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
@@ -134,8 +135,7 @@ class DispatchTests(unittest.TestCase):
         from types import SimpleNamespace
 
         from endbot_core.forms import BotListView
-
-        from endstone_endbot.script_config import ScriptConfig
+        from endbot_core.script_config import ScriptConfig
 
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)

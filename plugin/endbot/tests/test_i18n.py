@@ -16,11 +16,11 @@ from endbot_core.commands import (
 )
 from endbot_core.events import render
 from endbot_core.i18n import JA, Text, language_setting, localize_error, resolve_language, tr
+from endbot_core.script_forms import TEMPLATES
 from plain_service import PlainCommandService
 from test_command_service import FakeControl, FakeWorld
 
 from endstone_endbot.inventory_sync import EQUIPMENT_SLOTS
-from endstone_endbot.script_forms import TEMPLATES
 
 SOURCE = Path(__file__).resolve().parents[1] / "src" / "endstone_endbot"
 

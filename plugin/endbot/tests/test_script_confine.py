@@ -13,11 +13,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from endbot_core import script_confine as confine
 from endbot_core.i18n import LocalizedError, localize_error
-
-from endstone_endbot import script_confine as confine
-from endstone_endbot.script_config import PROCESS_HEADROOM, ScriptConfig
-from endstone_endbot.script_process import RunnerProcess
+from endbot_core.script_config import PROCESS_HEADROOM, ScriptConfig
+from endbot_core.script_process import RunnerProcess
 
 MIB = 1024 * 1024
 
@@ -188,9 +187,9 @@ class LaunchTests(unittest.TestCase):
     def test_fail_closed_before_launch_or_before_any_script_input(self):
         for stage in ("setup", "popen", "attach"):
             with (self.subTest(stage=stage),
-                  patch("endstone_endbot.script_process.Confinement") as factory,
-                  patch("endstone_endbot.script_process.subprocess.Popen") as popen,
-                  self.assertLogs("endstone_endbot.script_process", level="ERROR")):
+                  patch("endbot_core.script_process.Confinement") as factory,
+                  patch("endbot_core.script_process.subprocess.Popen") as popen,
+                  self.assertLogs("endbot_core.script_process", level="ERROR")):
                 factory.return_value.popen_kwargs = {}
                 factory.return_value.runner_args = []
                 popen.return_value.poll.return_value = None
@@ -216,9 +215,9 @@ class LaunchTests(unittest.TestCase):
 
     def test_attach_precedes_load_os_settings_stay_in_host_and_close_releases(self):
         order = []
-        with (patch("endstone_endbot.script_process.Confinement") as factory,
-              patch("endstone_endbot.script_process.subprocess.Popen") as popen,
-              patch("endstone_endbot.script_process.threading.Thread")):
+        with (patch("endbot_core.script_process.Confinement") as factory,
+              patch("endbot_core.script_process.subprocess.Popen") as popen,
+              patch("endbot_core.script_process.threading.Thread")):
             factory.return_value.popen_kwargs = {}
             factory.return_value.runner_args = ["--max-address-space", "123"]
             factory.return_value.attach.side_effect = lambda process: order.append("attach")
@@ -235,9 +234,9 @@ class LaunchTests(unittest.TestCase):
             factory.return_value.close.assert_called_once()
 
     def test_exec_enomem_reports_allocation_failure_without_retry(self):
-        with (patch("endstone_endbot.script_process.Confinement") as factory,
-              patch("endstone_endbot.script_process.subprocess.Popen", side_effect=OSError(errno.ENOMEM, "ENOMEM")),
-              self.assertLogs("endstone_endbot.script_process", level="ERROR")):
+        with (patch("endbot_core.script_process.Confinement") as factory,
+              patch("endbot_core.script_process.subprocess.Popen", side_effect=OSError(errno.ENOMEM, "ENOMEM")),
+              self.assertLogs("endbot_core.script_process", level="ERROR")):
             factory.return_value.popen_kwargs = {}
             factory.return_value.runner_args = []
             with self.assertRaisesRegex(LocalizedError, "process memory allocation failed"):
@@ -247,8 +246,8 @@ class LaunchTests(unittest.TestCase):
     def test_opt_out_launches_without_platform_setup(self):
         for platform in ("linux", "win32", "unsupported"):
             with (self.subTest(platform=platform), patch.object(confine.sys, "platform", platform),
-                  patch("endstone_endbot.script_process.subprocess.Popen") as popen,
-                  patch("endstone_endbot.script_process.threading.Thread")):
+                  patch("endbot_core.script_process.subprocess.Popen") as popen,
+                  patch("endbot_core.script_process.threading.Thread")):
                 executable = Mock(is_file=lambda: True)
                 process = RunnerProcess(
                     executable, "source", "api", {}, ScriptConfig(os_confinement=False).limits()
@@ -260,8 +259,8 @@ class LaunchTests(unittest.TestCase):
 
     def test_linux_launch_passes_limits_as_argv_without_child_callback(self):
         with (patch.object(confine.sys, "platform", "linux"), patch.object(os, "getpid", return_value=1234),
-              patch("endstone_endbot.script_process.subprocess.Popen") as popen,
-              patch("endstone_endbot.script_process.threading.Thread")):
+              patch("endbot_core.script_process.subprocess.Popen") as popen,
+              patch("endbot_core.script_process.threading.Thread")):
             executable = Mock(is_file=lambda: True)
             process = RunnerProcess(executable, "source", "api", {}, ScriptConfig(cpu_seconds=2).limits())
             self.assertEqual(popen.call_args.args[0], [
@@ -277,12 +276,12 @@ class LaunchTests(unittest.TestCase):
             {"type": "error", "phase": "confinement", "message": "confinement failed: parent PID changed"},
         ):
             with (self.subTest(event=event), patch.object(confine.sys, "platform", "linux"),
-                  patch("endstone_endbot.script_process.subprocess.Popen") as popen,
-                  patch("endstone_endbot.script_process.threading.Thread")):
+                  patch("endbot_core.script_process.subprocess.Popen") as popen,
+                  patch("endbot_core.script_process.threading.Thread")):
                 process = RunnerProcess(Mock(is_file=lambda: True), "source", "api", {}, ScriptConfig().limits())
                 popen.return_value.poll.return_value = None
                 popen.return_value.stdout.readline.return_value = json.dumps(event).encode() + b"\n"
-                with self.assertLogs("endstone_endbot.script_process", level="ERROR"):
+                with self.assertLogs("endbot_core.script_process", level="ERROR"):
                     process._read()
                 popen.return_value.kill.assert_called_once()
                 with self.assertRaisesRegex(LocalizedError, "OS confinement failed") as caught:

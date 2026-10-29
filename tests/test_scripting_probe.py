@@ -122,7 +122,7 @@ class ScriptingProbeTests(unittest.TestCase):
             self.assertEqual((ROOT / "plugin/endbot/src/endstone_endbot/plugin.py").read_bytes(), original)
 
     def test_saves_submit_same_guarded_action_as_paste_form_without_touching_store(self):
-        from endstone_endbot.script_forms import ScriptGuard
+        from endbot_core.script_forms import ScriptGuard
 
         principal = object()
         plugin = SimpleNamespace(_command_runner=SimpleNamespace(submit=Mock(return_value=True)),
@@ -270,7 +270,7 @@ class FakeBds:
         self.write_state()
 
     def write_state(self):
-        from endstone_endbot.script_forms import TEMPLATES
+        from endbot_core.script_forms import TEMPLATES
 
         (self.output / "scripting-state.json").write_text(json.dumps({
             "id": self.fixture_id, "sequence": self.sequence, "origin": [0.5, 200, 0.5],

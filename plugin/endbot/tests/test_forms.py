@@ -624,6 +624,31 @@ class PresenterTests(unittest.TestCase):
         {text: c for _, text, c in confirm.items}["Despawn"](self.player)
         self.assertEqual(self.submitted, [["Alice", "despawn"]])
 
+    def test_a_script_menu_outcome_builds_its_screen_here(self):
+        # Script screens carry form builders, which are functions and cannot cross the endbotd
+        # link, so endbotd delivers the outcome data and the plugin builds the screen (BOT-020).
+        submitted = []
+
+        def submit(player, argv, command="bot", **_) -> None:
+            submitted.append((command, argv))
+
+        presenter = FormPresenter(submit, lambda: ("Steve",), FakeFormModule(), language=lambda player: "en")
+        data = {
+            "menu": "scriptParameters",
+            "lang": "en",
+            "script": {"name": "hop", "source": "params {}\n", "revision": "r1", "owner": "xuid:1",
+                       "owner_name": "Alice", "visibility": "shared", "history": [], "saved_at": 0},
+            "schema": [{"name": "times", "type": "number", "default": 3}],
+            "groups": [],
+            "bots": [],
+        }
+        presenter.show_view(self.player, forms.ScriptMenuView(data))
+        modal = self.player.forms[-1]
+        self.assertEqual(type(modal).__name__, "ModalForm")
+        self.assertEqual(modal.kwargs["title"], "hop")
+        modal.kwargs["on_submit"](self.player, json.dumps(["5"]))
+        self.assertEqual(submitted, [("botscript", ["run", "hop", "times=5"])])
+
     def test_list_view_renders_bot_buttons(self):
         self.presenter.show_view(self.player, forms.BotListView(({"name": "Alice", "connectionState": "online"},)))
         form = self.player.forms[-1]

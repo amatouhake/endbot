@@ -12,7 +12,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from endbot_core import script_forms
-from endbot_core.forms import BotListView, BotView, GroupTarget, Run, menu_argv
+from endbot_core.forms import BotListView, BotView, GroupTarget, Run, ScriptMenuView, menu_argv
 from endbot_core.group_forms import GroupGuard
 from endbot_core.script_store import Revision, Script
 
@@ -31,8 +31,16 @@ def _script(data: dict) -> Script:
     )
 
 
+SCRIPT_MENUS = ("scripts", "script", "scriptLines", "scriptImport", "scriptExport", "scriptHistory",
+                "scriptParameters")
+
+
 def script_view(data: dict):
-    """The /botscript screen a menu outcome describes, or None for another outcome."""
+    """The /botscript screen a menu outcome describes, or None for another outcome.
+
+    Called where forms are rendered (the plugin), not in endbotd: a script screen carries form
+    builders, which are functions and cannot cross the endbotd link.
+    """
     menu, lang = data.get("menu"), data.get("lang", "en")
     if menu == "scripts":
         scripts = tuple(
@@ -80,9 +88,9 @@ def menu_view(result, principal, scripting: bool = False):
     """The view a menu outcome opens for ``principal``, or None for any other outcome."""
     data = result.data if isinstance(result.data, dict) else {}
     menu = data.get("menu")
-    view = script_view(data)
-    if view is not None:
-        return view
+    if menu in SCRIPT_MENUS:
+        # Script screens are built where forms are rendered; see script_view.
+        return ScriptMenuView(data)
     incoming = getattr(principal, "group_guard", None)
     returning = bool(getattr(incoming, "return_to_management", False))
     if menu == "bots":

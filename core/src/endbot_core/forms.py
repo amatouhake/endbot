@@ -50,6 +50,18 @@ class BotListView:
 
 
 @dataclass(frozen=True, slots=True)
+class ScriptMenuView:
+    """Runtime data for a /botscript menu screen; produced off the server thread.
+
+    Script screens carry form builders (``ModalScreen.build``), which are functions and cannot
+    cross the endbotd link, so the outcome crosses as data and the plugin builds the screen
+    (docs/ENDBOTD.md P3: the plugin keeps the form builders that turn outcome data into screens).
+    """
+
+    data: dict
+
+
+@dataclass(frozen=True, slots=True)
 class BotView:
     """Runtime data for one Bot's action screen; produced off the server thread."""
 

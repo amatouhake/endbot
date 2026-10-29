@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from endbot_core import forms, group_forms
+from endbot_core import forms, group_forms, menu_views
 from endbot_core.commands import DIM, ERROR, RESET, reply
 from endbot_core.i18n import localize_error, tr
 from endbot_core.operations import command_text
@@ -45,6 +45,11 @@ class FormPresenter:
             screen = view
         elif isinstance(view, forms.BotListView):
             screen = forms.bot_list_screen(view, lang)
+        elif isinstance(view, forms.ScriptMenuView):
+            # Script screens carry form builders, so they are built here, not in endbotd.
+            screen = menu_views.script_view(view.data)
+            if screen is None:
+                return
         elif isinstance(view, group_forms.GroupListView):
             screen = group_forms.group_list_screen(view, lang)
         elif isinstance(view, group_forms.GroupView):

@@ -233,10 +233,14 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     import time
 
     def observed():
-        try:
-            return json.loads((output / "mining-state.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        # The plugin replaces this file every tick; on Windows a read can meet the
+        # replace. Retry briefly instead of reporting an empty observation.
+        for _ in range(20):
+            try:
+                return json.loads((output / "mining-state.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                time.sleep(0.01)
+        return {}
 
     def request(data):
         temporary = output / "mining-request.tmp"

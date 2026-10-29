@@ -19,7 +19,7 @@ from endbot_core.control import RuntimeControlError
 from endbot_core.events import Event, render
 from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import LocalizedError, localize_error
-from endbot_core.menu_views import menu_view
+from endbot_core.menu_views import menu_view, script_view
 from endbot_core.operations import OPERATIONS, operation_argv
 from endbot_core.principal import Principal
 from endbot_core.script_config import ScriptConfig
@@ -28,6 +28,12 @@ from endbot_core.script_params import arguments, declarations
 from endbot_core.script_process import RunnerProcess
 from endbot_core.script_store import Script, ScriptStore
 from endbot_core.scripting import ScriptRun, ScriptService
+
+
+def screen(result, source):
+    """The /botscript screen the plugin builds for a menu outcome (the outcome itself is data)."""
+    view = menu_view(result, source)
+    return script_view(view.data) if isinstance(view, forms.ScriptMenuView) else view
 
 
 class ConfigStorageParamsTests(unittest.TestCase):
@@ -1117,24 +1123,24 @@ class OwnershipTests(unittest.TestCase):
         self.save(self.alice, "mine", "params {}\nlog('a')\n")
         label = "Edit all at once (UI pack)..."
         result = self.host.execute(["edit", "mine"], self.alice)
-        self.assertNotIn(label, [item.text for item in menu_view(result, self.alice).items])
+        self.assertNotIn(label, [item.text for item in screen(result, self.alice).items])
         host = ScriptService(replace(self.config, ui_pack_editor=True), self.store, None, None, self.path.parent,
                              lambda source: True, process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
-        view = menu_view(host.execute(["edit", "mine"], self.alice), self.alice)
+        view = screen(host.execute(["edit", "mine"], self.alice), self.alice)
         self.assertIn(label, [item.text for item in view.items])
         script = self.store.get("mine")
         guard = script_forms.ScriptGuard(script.revision, "mine", edit=True, page=1)
         saved = host.execute(["save", "mine", "params {}\nlog('b')\n"], replace(self.alice, group_guard=guard))
-        self.assertIn(label, [item.text for item in menu_view(saved, self.alice).items])
+        self.assertIn(label, [item.text for item in screen(saved, self.alice).items])
 
     def test_saves_from_menus_come_back_to_the_editor_or_the_new_script(self):
         result = self.save(self.alice, "mine", "params {}\nlog('a')\n")
-        self.assertEqual(menu_view(result, self.alice).title, "mine")
+        self.assertEqual(screen(result, self.alice).title, "mine")
         script = self.store.get("mine")
         guard = script_forms.ScriptGuard(script.revision, "mine", edit=True, page=1)
         result = self.host.execute(["save", "mine", "params {}\n"], replace(self.alice, group_guard=guard))
         self.assertTrue(result.accepted)
-        self.assertIn("Tap a line", menu_view(result, self.alice).content)
+        self.assertIn("Tap a line", screen(result, self.alice).content)
         # Saving with the old revision again is refused instead of overwriting.
         stale = self.host.execute(["save", "mine", "params {}\n-- x"], replace(self.alice, group_guard=guard))
         self.assertIn("changed", self.text(stale))
@@ -1557,7 +1563,7 @@ class BookTests(unittest.TestCase):
         script = self.store.get("mine")
         self.world.item = FakeItem("minecraft:writable_book", ["params {}\n-- v2"])
         result = self.host.execute(["import", "mine"], self.menu(self.alice, revision=script.revision, name="mine"))
-        confirm = menu_view(result, self.alice)
+        confirm = screen(result, self.alice)
         self.assertIsInstance(confirm, forms.ConfirmScreen)
         self.assertIn("(2 lines) with the book below (2 lines)", confirm.content)
         self.assertIn("§72§r -- v2", confirm.content)
@@ -1579,7 +1585,7 @@ class BookTests(unittest.TestCase):
         self.world.item = FakeItem("minecraft:writable_book", ["my long draft", ""])
         self.assertIn("add overwrite", self.text(self.host.execute(["export", "mine"], self.alice)))
         result = self.host.execute(["export", "mine"], self.menu(self.alice, revision=revision, name="mine"))
-        confirm = menu_view(result, self.alice)
+        confirm = screen(result, self.alice)
         self.assertIsInstance(confirm, forms.ConfirmScreen)
         self.assertIn("(2 pages)", confirm.content)
         self.assertIn("my long draft", confirm.content)

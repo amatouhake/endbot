@@ -1,10 +1,11 @@
 """Form views and guards as plain JSON for the endbotd link (docs/ENDBOTD.md P2).
 
-endbotd builds a result's view (``menu_views``) and the plugin renders it, so
-views, screens and form guards cross the link. They are frozen dataclasses
-from a fixed set of core modules; each one travels tagged with its class, and
-tuples and mappings keep their shape, so the plugin rebuilds equal objects.
-Anything outside that set is refused instead of guessed.
+endbotd builds a result's view (``menu_views``) where a view model is enough and the plugin
+turns it into a screen; screens that need form builders (``ModalScreen.build``) are built where
+forms are rendered, so their builders never have to cross the link. Views, screens and form
+guards that do cross travel as frozen dataclasses from a fixed set of core modules; each one
+travels tagged with its class, and tuples and mappings keep their shape, so the plugin rebuilds
+equal objects. Anything outside that set is refused instead of guessed.
 """
 
 from __future__ import annotations

@@ -7,16 +7,17 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
-from endbot_core import forms, script_forms
+from endbot_core import forms, menu_views, script_forms
 from endbot_core.commands import ERROR, error_code, reply
 from endbot_core.groups import Group
 from endbot_core.i18n import localize_error
-from endbot_core.menu_views import menu_view
+from endbot_core.menu_views import menu_view, script_view
 from endbot_core.principal import Principal
 from endbot_core.script_books import pages_to_source
 from endbot_core.script_config import ScriptConfig
 from endbot_core.script_store import FILE_OWNER, Script, ScriptStore
 from endbot_core.scripting import ScriptService
+from endbot_core.wire_views import decode_view, encode_view
 
 
 class FakeInputs:
@@ -55,7 +56,10 @@ class ScriptMenuViewTests(unittest.TestCase):
 
     def screen(self, result, source=None):
         self.assertIsNone(result.view)
-        return menu_view(result, source or self.alice)
+        view = menu_view(result, source or self.alice)
+        # The outcome crosses as data; script screens are built where forms are rendered.
+        self.assertIsInstance(view, forms.ScriptMenuView)
+        return script_view(view.data)
 
     def script(self, name="mine"):
         return self.store.get(name)
@@ -203,6 +207,31 @@ class ScriptMenuViewTests(unittest.TestCase):
         texts = [item.text for item in screen.items]
         self.assertIn("patrol (file, shared)", texts)
         self.assertIn("legacy (unowned, shared)", texts)
+
+    def test_every_script_outcome_crosses_to_the_plugin_as_data(self):
+        # A script screen carries ModalScreen.build, a function, so it cannot cross the endbotd
+        # link (encode_view refuses it). The outcome crosses as data and the plugin builds the
+        # screen; this test is the guard for the whole set, not one menu.
+        schema = [{"name": "bot", "type": "bot"}, {"name": "text", "type": "string", "default": "x"}]
+        self.host.inspect = lambda script, source: schema
+        outcomes = {
+            "scripts": self.host.execute(["menu"], self.alice),
+            "script": self.host.execute(["menu", "mine"], self.alice),
+            "scriptLines": self.host.execute(["edit", "mine"], self.alice),
+            "scriptImport": self.host.execute(["import", "mine"], replace(self.alice, group_guard=self.guard())),
+            "scriptExport": self.host.execute(["export", "mine"], replace(self.alice, group_guard=self.guard())),
+            "scriptHistory": self.host.execute(["history", "mine"],
+                                               replace(self.alice, group_guard=self.guard(edit=True, page=1))),
+            "scriptParameters": self.host.execute(["parameters", "mine"], self.alice),
+        }
+        self.assertEqual(set(outcomes), set(menu_views.SCRIPT_MENUS))
+        for menu, result in outcomes.items():
+            with self.subTest(menu=menu):
+                self.assertIsNone(result.view)
+                view = menu_view(result, self.alice)
+                self.assertEqual(view, forms.ScriptMenuView(result.data))
+                self.assertEqual(decode_view(json.loads(json.dumps(encode_view(view)))), view)
+                self.assertIsNotNone(script_view(view.data))
 
     def test_unchanged_book_result_with_a_script_guard_has_no_view(self):
         # Pre-existing path: the import action carries a ScriptGuard and an

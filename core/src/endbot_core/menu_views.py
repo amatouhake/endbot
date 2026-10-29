@@ -12,7 +12,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from endbot_core import script_forms
-from endbot_core.forms import BotListView, BotView, GroupTarget, Run, menu_argv
+from endbot_core.forms import BotListView, BotView, GroupTarget, Run, ScriptMenuView, menu_argv
 from endbot_core.group_forms import GroupGuard
 from endbot_core.script_store import Revision, Script
 
@@ -31,32 +31,64 @@ def _script(data: dict) -> Script:
     )
 
 
+def _list(data: dict, lang: str):
+    scripts = tuple(
+        SimpleNamespace(name=row["name"], revision=row["revision"], owner_name=row["owner_name"],
+                        visibility=row["visibility"], file=row["file"], own=row["own"])
+        for row in data.get("scripts", ())
+    )
+    return script_forms.list_screen(scripts, lang, own=lambda script: script.own)
+
+
+def _screen(data: dict, lang: str):
+    return script_forms.script_screen(_script(data["script"]), lang, data["editable"], data["book_export"])
+
+
+def _lines(data: dict, lang: str):
+    return script_forms.lines_screen(_script(data["script"]), data["page"], lang, data["whole_editor"])
+
+
+def _import(data: dict, lang: str):
+    return script_forms.import_confirm_screen(_script(data["script"]), data["text"], lang)
+
+
+def _export(data: dict, lang: str):
+    return script_forms.export_confirm_screen(_script(data["script"]), data["pages"], data["text"], lang)
+
+
+def _history(data: dict, lang: str):
+    return script_forms.history_screen(_script(data["script"]), data["editable"], lang)
+
+
+def _parameters(data: dict, lang: str):
+    groups = tuple(SimpleNamespace(name=row["name"], identity=row["identity"], members=tuple(row["members"]))
+                   for row in data.get("groups", ()))
+    return script_forms.run_screen(_script(data["script"]), data["schema"], groups, data["bots"],
+                                   data.get("origin"), lang)
+
+
+# One table drives both the crossing decision (menu_view) and the screen builder (script_view), so a
+# new /botscript menu cannot be added to one and forgotten in the other.
+SCRIPT_MENUS = {
+    "scripts": _list,
+    "script": _screen,
+    "scriptLines": _lines,
+    "scriptImport": _import,
+    "scriptExport": _export,
+    "scriptHistory": _history,
+    "scriptParameters": _parameters,
+}
+
+
 def script_view(data: dict):
-    """The /botscript screen a menu outcome describes, or None for another outcome."""
-    menu, lang = data.get("menu"), data.get("lang", "en")
-    if menu == "scripts":
-        scripts = tuple(
-            SimpleNamespace(name=row["name"], revision=row["revision"], owner_name=row["owner_name"],
-                            visibility=row["visibility"], file=row["file"], own=row["own"])
-            for row in data.get("scripts", ())
-        )
-        return script_forms.list_screen(scripts, lang, own=lambda script: script.own)
-    if menu == "script":
-        return script_forms.script_screen(_script(data["script"]), lang, data["editable"], data["book_export"])
-    if menu == "scriptLines":
-        return script_forms.lines_screen(_script(data["script"]), data["page"], lang, data["whole_editor"])
-    if menu == "scriptImport":
-        return script_forms.import_confirm_screen(_script(data["script"]), data["text"], lang)
-    if menu == "scriptExport":
-        return script_forms.export_confirm_screen(_script(data["script"]), data["pages"], data["text"], lang)
-    if menu == "scriptHistory":
-        return script_forms.history_screen(_script(data["script"]), data["editable"], lang)
-    if menu == "scriptParameters":
-        groups = tuple(SimpleNamespace(name=row["name"], identity=row["identity"], members=tuple(row["members"]))
-                       for row in data.get("groups", ()))
-        return script_forms.run_screen(_script(data["script"]), data["schema"], groups, data["bots"],
-                                       data.get("origin"), lang)
-    return None
+    """The /botscript screen a menu outcome describes, or None for another outcome.
+
+    Called where forms are rendered (the plugin), not in endbotd: a script screen carries form
+    builders, which are functions and cannot cross the endbotd link.
+    """
+    menu = data.get("menu")
+    build = SCRIPT_MENUS.get(menu) if isinstance(menu, str) else None
+    return None if build is None else build(data, data.get("lang", "en"))
 
 
 def group_view_back(view: BotView, group: dict, guard: GroupGuard) -> BotView:
@@ -80,9 +112,9 @@ def menu_view(result, principal, scripting: bool = False):
     """The view a menu outcome opens for ``principal``, or None for any other outcome."""
     data = result.data if isinstance(result.data, dict) else {}
     menu = data.get("menu")
-    view = script_view(data)
-    if view is not None:
-        return view
+    if menu in SCRIPT_MENUS:
+        # Script screens are built where forms are rendered; see script_view.
+        return ScriptMenuView(data)
     incoming = getattr(principal, "group_guard", None)
     returning = bool(getattr(incoming, "return_to_management", False))
     if menu == "bots":

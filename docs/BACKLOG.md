@@ -856,9 +856,9 @@ Steps, each about one PR, none meant to change what players see:
 
 ## BOT-020: endbotd outside BDS
 
-Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); step 1b (the `endbot_core` package) in progress, the rest not
+Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); step 1b (the `endbot_core` package, #130) landed, the rest not
 implemented** (2026-10-29 JST).
-Release grouping open, see [delivery](DIRECTION.md#delivery).
+Ships in the single BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery).
 
 Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,
 Luau runner orchestration and the operation log. The plugin becomes a world adapter: it renders in-game UI, forwards
@@ -868,7 +868,7 @@ cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
-Status: **Planned, after BOT-020 and BOT-024; release grouping open, see [delivery](DIRECTION.md#delivery)**
+Status: **Planned, after BOT-020 and BOT-024; in the single BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery)**
 (2026-10-28 JST).
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:

@@ -307,8 +307,10 @@ checkpoint; whether a checkpoint ships on its own or together with later ones is
    migration in both directions.
 3. BOT-024 (permission model: roles, ownership, script declarations), before anything reaches the web or runs
    unattended.
-4. BOT-021 (web) and BOT-022 (watches first; persistent triggers need step 2). Their order is open. Localhost mode
-   follows the web.
+4. BOT-021 (web), then BOT-022 (watches first; persistent triggers need step 2). Localhost mode follows the web.
+
+Decided 2026-10-29 JST: these four steps (BOT-020, BOT-024, BOT-021, BOT-022) ship together as one release once all
+of them are done, with one validation pass; no checkpoint in between is released on its own.
 
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

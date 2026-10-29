@@ -189,11 +189,13 @@ Stop the server after the first start, then configure:
    `stun-servers` (default `stun:stun.l.google.com:19302`); Endstone's config migration adds it to an existing
    `endstone.toml` on upgrade. It is only used with `transport=nethernet` behind NAT so clients learn the server's
    public address, and loopback smoke needs no change there.
-3. `plugins\endbot\config.toml` (written by the first start): set `[runtime].token-file` to the runtime's
-   `control.token` (absolute path) and keep `host = "127.0.0.1"`, `port = 19142`. Add the human tester's UUID or
-   decimal XUID to one `[authorization]` allowlist; do not make the tester an operator. To capture the XUID, let the
-   tester join once and read `Player connected: <name>, xuid: <xuid>` from the server log; the plugin reads its
-   allowlist at load, so restart the server after editing.
+3. endbotd: write an `endbotd.toml` (`[link]` port and `token-file`, `[runtime]` port 19142 and the runtime's
+   `control.token`, `[plugin] data-folder` = `plugins\endbot`) and an `endbotd.token` of at least 32 random
+   characters, and point `plugins\endbot\config.toml` `[endbotd]` at the same port and token file. Add the human
+   tester's UUID or decimal XUID to one `[authorization]` allowlist in `endbotd.toml`; do not make the tester an
+   operator. To capture the XUID, let the tester join once and read `Player connected: <name>, xuid: <xuid>` from the
+   server log; endbotd reads its allowlist at start, so restart it after editing. Start it with
+   `python -m endbotd --config endbotd.toml` before the server.
 
 Restart the server. The log shows the Endbot plugin enabling, and `Local bot authentication is enabled for issuer
 'endbot://local-bot'` on the first login attempt. The runtime must be running before any `/bot <name> spawn`.

@@ -53,10 +53,11 @@ def configure_fixture(root: Path, output: Path, environment: dict):
 def submit_save(plugin, name, source):
     from endbot_core.script_forms import ScriptGuard
 
-    # Exactly the capability the paste form supplies. AsyncCommandRunner executes
-    # ScriptService's inspect/check/save branch on its normal ordered worker.
-    principal = plugin._principal(plugin.server.command_sender, command="botscript", group_guard=ScriptGuard(edit=True))
-    return plugin._command_runner.submit(["save", name, source], principal, command="botscript")
+    # Exactly the capability the paste form supplies, sent over the endbotd link like a form
+    # reply; endbotd's ordered worker runs ScriptService's inspect/check/save branch.
+    plugin._submit_bot(plugin.server.command_sender, ["save", name, source], command="botscript",
+                       group_guard=ScriptGuard(edit=True))
+    return True
 
 
 def install_probe(plugin_class):

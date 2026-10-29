@@ -5,7 +5,10 @@ RakNet is the default here; ``--transport nethernet`` runs the same checks over
 NetherNet LAN discovery (the product default), which needs UDP 7551 free.
 
 Uses the active Python's exactly pinned patched Endstone and installed plugin,
-the repository runtime, and Endstone's normal BDS acquisition. Never adopts an
+the repository runtime and endbotd, and Endstone's normal BDS acquisition.
+Start order follows the supervisor: runtime, endbotd, BDS. endbotd's output is
+kept in ``endbotd.log`` and also copied, prefixed ``[endbotd]``, into
+``server.log``, so audit lines and BDS lines stay one ordered stream to read. Never adopts an
 existing server, weakens online authentication, or certifies Xbox achievements.
 Raw logs, keys, Bot profiles and the report belong in an ignored output directory.
 """
@@ -24,6 +27,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -42,10 +46,13 @@ from endbot_cli.bds import install_locked_bds
 from endbot_cli.config import (
     ControllersConfig,
     EndbotConfig,
+    EndbotdConfig,
     RuntimeConfig,
     ServerConfig,
 )
 from endbot_cli.configgen import (
+    ensure_endbotd_token,
+    generate_endbotd_config,
     generate_endstone_config,
     generate_plugin_config,
 )
@@ -110,6 +117,26 @@ def observed_position(
             raise ConsumerError("BDS exited during position observation")
         time.sleep(0.02)
     raise ConsumerError("timed out waiting for BDS position observation")
+
+
+def copy_endbotd_output(process: subprocess.Popen, endbotd_log, server_log, ready: threading.Event) -> None:
+    """Keep endbotd's lines in endbotd.log and, prefixed, in the one stream the probes read."""
+    for line in process.stdout:
+        endbotd_log.write(line)
+        endbotd_log.flush()
+        if '"endbotd_ready"' in line:
+            ready.set()
+        server_log.write(f"[endbotd] {line}")
+        server_log.flush()
+
+
+def stop_endbotd(process: subprocess.Popen) -> None:
+    """endbotd stops when its stdin closes, after ending its runs and mining loops."""
+    try:
+        process.stdin.close()
+    except OSError:
+        pass
+    process.wait(timeout=20)
 
 
 def check_locked_endstone() -> dict:
@@ -187,6 +214,11 @@ def exercise(
             ROOT / "core/src/endbot_core/controller_policy.py",
             ROOT / "plugin/endbot/src/endstone_endbot/dispatch.py",
             ROOT / "core/src/endbot_core/command_runner.py",
+            ROOT / "core/src/endbot_core/link.py",
+            ROOT / "core/src/endbot_core/wire_views.py",
+            ROOT / "core/src/endbotd/authority.py",
+            ROOT / "core/src/endbotd/service.py",
+            ROOT / "plugin/endbot/src/endstone_endbot/link_adapter.py",
             ROOT / "runtime/scripts/raknet-auth-probe.js",
             ROOT / "endstone.lock",
             ROOT / "runtime/package-lock.json",
@@ -201,7 +233,7 @@ def exercise(
     if scripting:
         sources = [ROOT / "scripts/scripting_probe.py", ROOT / "runner/main.cpp", ROOT / "runner/api.luau",
                    ROOT / "runner/luau.lock.json", scripting_runner, scripting_runner.with_name("api.luau")]
-        sources.extend((ROOT / "plugin/endbot/src/endstone_endbot").glob("script*.py"))
+        sources.extend((ROOT / "core/src/endbot_core").glob("script*.py"))
         for source in sources:
             relative = source.relative_to(ROOT).as_posix()
             report["source_sha256"][relative] = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -227,6 +259,9 @@ def exercise(
     while ipv6_port == server_port:
         ipv6_port = free_port(socket.SOCK_DGRAM)
     control_port = free_port(socket.SOCK_STREAM)
+    link_port = free_port(socket.SOCK_STREAM)
+    while link_port == control_port:
+        link_port = free_port(socket.SOCK_STREAM)
     edit_properties(
         server / "server.properties",
         {
@@ -259,7 +294,7 @@ def exercise(
     )
     (output / "endbot.toml").write_text(
         f"[server]\npath='{server if reused else 'server'}'\ntransport='{transport}'\n[controllers]\ngamertags=[]\n"
-        f"[runtime]\ncontrol-port={control_port}\n",
+        f"[runtime]\ncontrol-port={control_port}\n[endbotd]\nlink-port={link_port}\n",
         encoding="utf-8",
     )
     configfile = output / "runtime.json"
@@ -315,11 +350,12 @@ def exercise(
         from scripting_probe import configure_fixture as configure_scripting
 
         configure_scripting(ROOT, output, environment)
-    runtime = bds = None
+    runtime = bds = endbotd = None
     token = None
     with (
         (output / "runtime.log").open("w", encoding="utf-8") as runtime_log,
         (output / "server.log").open("w", encoding="utf-8") as server_log,
+        (output / "endbotd.log").open("w", encoding="utf-8") as endbotd_log,
     ):
         try:
             report["stage"] = "runtime initialization"
@@ -350,13 +386,32 @@ def exercise(
                 ServerConfig(str(server) if reused else "server", transport),
                 ControllersConfig(()),
                 RuntimeConfig(control_port),
+                EndbotdConfig(link_port),
             )
-            plugin_config, _ = generate_plugin_config(server, paths, config)
+            ensure_endbotd_token(paths)
+            endbotd_config, _ = generate_endbotd_config(server, paths, config)
+            generate_plugin_config(server, paths, config)
             if scripting:
                 from scripting_probe import enable_config
 
-                enable_config(plugin_config, scripting_runner)
+                enable_config(endbotd_config, scripting_runner)
             generate_endstone_config(server, paths)
+            report["stage"] = "endbotd initialization"
+            endbotd = subprocess.Popen(
+                [sys.executable, "-m", "endbotd", "--config", str(endbotd_config)],
+                env=environment,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                start_new_session=os.name != "nt",
+            )
+            endbotd_ready = threading.Event()
+            threading.Thread(target=copy_endbotd_output, args=(endbotd, endbotd_log, server_log, endbotd_ready),
+                             daemon=True).start()
+            wait_for("endbotd ready", endbotd_ready.is_set, 30, endbotd)
             report["stage"] = "BDS startup"
             bds = subprocess.Popen(
                 [
@@ -390,6 +445,7 @@ def exercise(
                 180,
                 bds,
             )
+            wait_for("plugin linked to endbotd", lambda: "Endbot linked to endbotd" in logtext(), 30, bds)
             version = re.search(r"Version: ([\d.]+)", logtext())
             build = re.search(r"Build ID: (\d+)", logtext())
             if not version or version.group(1) != lock["bds"]["version"]:
@@ -865,10 +921,11 @@ def exercise(
             report["stage"] = "clean shutdown"
             console(bds, "stop")
             bds.wait(timeout=45)
+            stop_endbotd(endbotd)
             control_request(control_port, token, "shutdown")
             runtime.wait(timeout=15)
-            if bds.returncode or runtime.returncode:
-                raise ConsumerError("server/runtime did not exit cleanly")
+            if bds.returncode or endbotd.returncode or runtime.returncode:
+                raise ConsumerError("server/endbotd/runtime did not exit cleanly")
             report["clean_shutdown"] = True
         finally:
             (paths.state_run / "supervisor.pid").unlink(missing_ok=True)
@@ -879,6 +936,11 @@ def exercise(
                     bds.wait(timeout=45)
                 except (OSError, subprocess.TimeoutExpired):
                     terminate_owned_tree(bds)
+            if endbotd is not None and endbotd.poll() is None:
+                try:
+                    stop_endbotd(endbotd)
+                except subprocess.TimeoutExpired:
+                    terminate_owned_tree(endbotd)
             if runtime is not None and runtime.poll() is None:
                 try:
                     if token:

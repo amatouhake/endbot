@@ -264,6 +264,12 @@ class EndstoneWorld:
     def clear_pending_placement(self, identity_id: str) -> None:
         self._pending_placements.pop(UUID(identity_id), None)
 
+    def capacity(self, bot_ids) -> tuple[int, int]:
+        """``(max-players, humans online)``; Bots are known by their profile UUID."""
+        bot_ids = frozenset(bot_ids)
+        humans = sum(1 for player in self.server.online_players if str(player.unique_id) not in bot_ids)
+        return int(self.server.max_players), humans
+
     def apply_pending_placement(self, player) -> bool:
         placement = self._pending_placements.get(player.unique_id)
         if not placement:

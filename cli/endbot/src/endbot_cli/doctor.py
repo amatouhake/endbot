@@ -431,7 +431,9 @@ def _load_plugin_config(server: Path) -> tuple[str | None, dict | None]:
     return None, document
 
 
-def check_plugin_port(server: Path, config: EndbotConfig) -> CheckResult:
+def check_plugin_port(server: Path, config: EndbotConfig, paths: InstancePaths) -> CheckResult:
+    """The plugin dials endbotd: same link port and the same token file as endbotd.toml."""
+
     name = "plugin-port"
     plugin_config = server / "plugins" / "endbot" / "config.toml"
     error, document = _load_plugin_config(server)
@@ -439,22 +441,104 @@ def check_plugin_port(server: Path, config: EndbotConfig) -> CheckResult:
         return CheckResult(FAIL, name, error)
     if document is None:
         return CheckResult(SKIP, name, "plugins/endbot/config.toml is not generated yet (generated on every start)")
-    runtime = document.get("runtime")
-    port = runtime.get("port") if isinstance(runtime, dict) else None
+    link = document.get("endbotd")
+    port = link.get("port") if isinstance(link, dict) else None
     if isinstance(port, bool) or not isinstance(port, int):
         return CheckResult(
             FAIL,
             name,
-            f"key 'runtime.port' in {plugin_config} must be an integer; delete the file to regenerate on start",
+            f"key 'endbotd.port' in {plugin_config} must be an integer; delete the file to regenerate on start",
         )
-    if port != config.runtime.control_port:
+    if port != config.endbotd.link_port:
         return CheckResult(
             FAIL,
             name,
-            f"plugin port {port} does not match 'runtime.control-port' {config.runtime.control_port} in endbot.toml; "
+            f"plugin link port {port} does not match 'endbotd.link-port' {config.endbotd.link_port} in endbot.toml; "
             "delete plugins/endbot/config.toml to regenerate it on start",
         )
-    return CheckResult(PASS, name, f"plugin and runtime agree on control port {port}")
+    token_file = link.get("token-file")
+    if not isinstance(token_file, str) or Path(token_file).resolve() != paths.endbotd_token.resolve():
+        return CheckResult(
+            FAIL, name, f"the plugin does not read {paths.endbotd_token}; delete {plugin_config} to regenerate it"
+        )
+    if "runtime" in document:
+        return CheckResult(
+            FAIL, name, f"{plugin_config} still carries the runtime token settings; delete it to regenerate it"
+        )
+    return CheckResult(PASS, name, f"the plugin links to endbotd on port {port}")
+
+
+def check_endbotd_token(paths: InstancePaths) -> CheckResult:
+    name = "endbotd-token"
+    try:
+        token = paths.endbotd_token.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return CheckResult(FAIL, name, f"{paths.endbotd_token} is missing; `endbot start` creates it")
+    except (OSError, UnicodeDecodeError) as error:
+        return CheckResult(FAIL, name, f"{paths.endbotd_token} cannot be read: {error}; fix the file permissions")
+    if len(token) < 32:
+        return CheckResult(FAIL, name, f"{paths.endbotd_token} is too short; delete it and run `endbot start`")
+    return CheckResult(PASS, name, f"{paths.endbotd_token} is present and readable ({len(token)} characters)")
+
+
+def _load_endbotd_config(paths: InstancePaths) -> tuple[str | None, dict | None]:
+    target = paths.state_generated / "endbotd.toml"
+    try:
+        return None, tomllib.loads(target.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, None
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        return f"{target} cannot be parsed: {error}; delete it to regenerate on start", None
+
+
+def check_endbotd_config(config: EndbotConfig, paths: InstancePaths) -> CheckResult:
+    name = "endbotd-config"
+    target = paths.state_generated / "endbotd.toml"
+    error, document = _load_endbotd_config(paths)
+    if error is not None:
+        return CheckResult(FAIL, name, error)
+    if document is None:
+        return CheckResult(SKIP, name, f"{target} is not generated yet (generated on every start)")
+    link, runtime = document.get("link"), document.get("runtime")
+    if not isinstance(link, dict) or not isinstance(runtime, dict):
+        return CheckResult(FAIL, name, f"{target} lacks [link] or [runtime]; delete it to regenerate on start")
+    if link.get("port") != config.endbotd.link_port or runtime.get("port") != config.runtime.control_port:
+        return CheckResult(
+            FAIL, name, f"{target} does not match the ports in endbot.toml; delete it to regenerate on start"
+        )
+    return CheckResult(
+        PASS, name, f"endbotd listens on port {link['port']} and drives the runtime on port {runtime['port']}"
+    )
+
+
+def check_endbotd_link(paths: InstancePaths) -> CheckResult:
+    """Read the latest endbotd.log: a refused plugin link means mixed versions (docs/ENDBOTD.md P2)."""
+
+    name = "endbotd-link"
+    logs = paths.state_run / "logs"
+    try:
+        latest = max((entry for entry in logs.iterdir() if (entry / "endbotd.log").is_file()),
+                     key=lambda entry: entry.name, default=None)
+    except OSError:
+        latest = None
+    if latest is None:
+        return CheckResult(SKIP, name, "no endbotd.log yet (written on every start)")
+    try:
+        lines = (latest / "endbotd.log").read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as error:
+        return CheckResult(WARN, name, f"{latest / 'endbotd.log'} cannot be read: {error}")
+    refused = [line for line in lines if "Endbot plugin link refused" in line]
+    if any("another link protocol" in line or "different operation registries" in line or "speaks link protocol"
+           in line for line in refused):
+        return CheckResult(
+            FAIL, name, f"endbotd refused the plugin: {refused[-1].split('refused: ', 1)[-1]}; the plugin and "
+            "endbotd come from different Endbot versions (reinstall with `endbot update`)"
+        )
+    if refused:
+        return CheckResult(WARN, name, f"endbotd refused a plugin link: {refused[-1].split('refused: ', 1)[-1]}")
+    if any("linked" in line and "Endbot plugin" in line for line in lines):
+        return CheckResult(PASS, name, f"the plugin linked to endbotd in the start of {latest.name}")
+    return CheckResult(SKIP, name, f"the plugin had not linked yet in the start of {latest.name}")
 
 
 def check_allowlist(
@@ -609,13 +693,19 @@ def check_effective_controllers(context, config, state, server) -> list[CheckRes
         return [CheckResult(FAIL, name, str(error))]
 
 
-def check_controllers_legacy(server: Path) -> CheckResult:
+def check_controllers_legacy(server: Path, paths: InstancePaths) -> CheckResult:
+    """Legacy entries live in endbotd.toml, or in the plugin config before the first endbotd start."""
+
     name = "controllers-legacy"
-    error, document = _load_plugin_config(server)
+    error, document = _load_endbotd_config(paths)
     if error is not None:
-        return CheckResult(SKIP, name, "plugins/endbot/config.toml cannot be parsed (see plugin-port)")
+        return CheckResult(SKIP, name, "state/generated/endbotd.toml cannot be parsed (see endbotd-config)")
     if document is None:
-        return CheckResult(SKIP, name, "plugins/endbot/config.toml is not generated yet (generated on every start)")
+        error, document = _load_plugin_config(server)
+        if error is not None:
+            return CheckResult(SKIP, name, "plugins/endbot/config.toml cannot be parsed (see plugin-port)")
+    if document is None:
+        return CheckResult(SKIP, name, "endbotd.toml is not generated yet (generated on every start)")
     authorization = document.get("authorization")
     if not isinstance(authorization, dict):
         return CheckResult(PASS, name, "no legacy [authorization] pre-bound entries")
@@ -690,11 +780,17 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
         if config is None:
             results.append(CheckResult(SKIP, "plugin-port", "endbot.toml is invalid"))
         else:
-            results.append(check_plugin_port(server, config))
-        results.append(check_controllers_legacy(server))
+            results.append(check_plugin_port(server, config, paths))
+        results.append(check_controllers_legacy(server, paths))
 
     results.append(check_endstone_version(context))
     results.append(check_control_token(paths))
+    results.append(check_endbotd_token(paths))
+    if config is None:
+        results.append(CheckResult(SKIP, "endbotd-config", "endbot.toml is invalid"))
+    else:
+        results.append(check_endbotd_config(config, paths))
+    results.append(check_endbotd_link(paths))
 
     state: ControllerState | None = None
     if config is None:

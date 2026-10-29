@@ -38,6 +38,7 @@ level-name=world
 """
 
 CONTROL_TOKEN = "test-control-token-0123456789abcdef0123456789"
+ENDBOTD_TOKEN = "test-endbotd-token-0123456789abcdef0123456789"
 
 FAKE_BDS_PROPERTIES = """\
 # Bedrock Dedicated Server properties
@@ -162,6 +163,7 @@ def build_instance(root: Path, lock: LockData) -> InstancePaths:
     paths.owner_private_key.write_bytes(private_pem)
     paths.owner_public_key.write_bytes(public_pem)
     paths.control_token.write_text(CONTROL_TOKEN, encoding="utf-8")
+    paths.endbotd_token.write_text(ENDBOTD_TOKEN, encoding="utf-8")
     write_endstone_toml(server)
     return paths
 
@@ -201,6 +203,10 @@ def write_runtime_config(
 
 def fake_runtime_command(runtime_config: Path) -> list[str]:
     return [sys.executable, str(FAKES_DIR / "fakeruntime.py"), "--config", str(runtime_config)]
+
+
+def fake_endbotd_command() -> list[str]:
+    return [sys.executable, str(FAKES_DIR / "fakeendbotd.py")]
 
 
 def fake_server_command() -> list[str]:

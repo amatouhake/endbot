@@ -140,15 +140,19 @@ inside the dependency's build check rather than with an Endbot error.
    - `endstone.toml`: set the `[local-bot-auth]` table from the unpacked `config/endstone.local-auth.example.toml`
      with `enabled = true` and `public-key-file` pointing at the runtime's `owner-public.pem`. Only the public key
      is ever configured in Endstone. The `[network]` `stun-servers` default needs no change for local/loopback use.
-   - `plugins/endbot/config.toml` (written by the first start): set `[runtime].token-file` to the runtime's
-     `control.token` (absolute path), keep loopback host/port, and add the human tester's UUID or decimal XUID to
-     one `[authorization]` allowlist. Do not make the tester an operator. Two TOML traps found during the
-     operator gate: Windows paths must use *single-quoted* literal strings
-     (`token-file = 'C:\endbot\secrets\control.token'`) because backslashes in double-quoted strings are
-     escapes, and XUIDs must be *strings* (`allowed-xuids = ["2535466722952312"]`), not bare numbers.
-4. Start the runtime first, then the server. The runtime prints `endbot_runtime_ready` when its loopback control
-   socket listens; the server log reports `Accepted local bot '...'` on Bot login and the human joins through the
-   normal Microsoft/Xbox path.
+   - Create an endbotd token (at least 32 random characters, e.g. `python -c "import secrets;
+     print(secrets.token_urlsafe(32))"` into `endbotd.token`) and write an `endbotd.toml` (see
+     `core/src/endbotd/config.py`): `[link]` port and `token-file`, `[runtime]` port and the runtime's
+     `control.token`, `[plugin] data-folder` = the server's `plugins/endbot` folder, and the human tester's UUID or
+     decimal XUID in one `[authorization]` allowlist. Do not make the tester an operator.
+   - `plugins/endbot/config.toml`: an `[endbotd]` table with `port` (the link port) and `token-file` (the same
+     `endbotd.token`). Two TOML traps found during the operator gate: Windows paths must use *single-quoted*
+     literal strings (`token-file = 'C:\endbot\secrets\endbotd.token'`) because backslashes in double-quoted
+     strings are escapes, and XUIDs must be *strings* (`allowed-xuids = ["2535466722952312"]`), not bare numbers.
+4. Start the runtime first, then endbotd (`python -m endbotd --config endbotd.toml`), then the server. The runtime
+   prints `endbot_runtime_ready` and endbotd `endbotd_ready` when they listen; the server log reports
+   `Endbot linked to endbotd`, then `Accepted local bot '...'` on Bot login, and the human joins through the normal
+   Microsoft/Xbox path.
 
 ### Native Windows install and start
 

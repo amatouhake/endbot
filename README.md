@@ -141,8 +141,10 @@ cp runtime/endbot-runtime.example.json endbot-runtime.json
 node runtime/src/cli.js --config endbot-runtime.json
 ```
 
-The runtime creates its control token and owner key on first start. Configure the plugin's `[runtime].token-file` to
-the same token file and configure patched Endstone with the exported owner public key. All control traffic is bound to
+The runtime creates its control token and owner key on first start. endbotd (`python -m endbotd --config
+endbotd.toml`, from `core/`) drives the runtime with that token and accepts the plugin's link with its own
+`endbotd.token`; configure patched Endstone with the exported owner public key. Managed instances generate all of
+this on `endbot start`. All control traffic is bound to
 loopback; remote binds are rejected. Paths in the example are resolved relative to the copied configuration file.
 
 Before starting a server, run the scoped property check:

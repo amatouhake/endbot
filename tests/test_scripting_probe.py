@@ -102,11 +102,11 @@ class ScriptingProbeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
-            config = output / "config.toml"
-            config.write_text('[runtime]\nport=12345\n[ui]\nlanguage="ja"\n', encoding="utf-8")
+            config = output / "endbotd.toml"
+            config.write_text('[link]\nport=12345\n[ui]\nlanguage="ja"\n', encoding="utf-8")
             enable_config(config, output / "runner.exe")
             document = tomllib.loads(config.read_text(encoding="utf-8"))
-            self.assertEqual(document["runtime"], {"port": 12345})
+            self.assertEqual(document["link"], {"port": 12345})
             self.assertEqual(document["ui"], {"language": "ja"})
             self.assertEqual(document["scripting"], {"enabled": True, "runner": str(output / "runner.exe"), "interrupt-budget": 10000})
             source = output / "mining-plugin/endstone_endbot/plugin.py"
@@ -124,15 +124,10 @@ class ScriptingProbeTests(unittest.TestCase):
     def test_saves_submit_same_guarded_action_as_paste_form_without_touching_store(self):
         from endbot_core.script_forms import ScriptGuard
 
-        principal = object()
-        plugin = SimpleNamespace(_command_runner=SimpleNamespace(submit=Mock(return_value=True)),
-                                 server=SimpleNamespace(command_sender=object()),
-                                 _principal=Mock(return_value=principal))
+        plugin = SimpleNamespace(_submit_bot=Mock(), server=SimpleNamespace(command_sender=object()))
         self.assertTrue(submit_save(plugin, "line", "params {}"))
-        plugin._principal.assert_called_once_with(plugin.server.command_sender, command="botscript",
-                                                  group_guard=ScriptGuard(edit=True))
-        plugin._command_runner.submit.assert_called_once_with(["save", "line", "params {}"], principal,
-                                                              command="botscript")
+        plugin._submit_bot.assert_called_once_with(plugin.server.command_sender, ["save", "line", "params {}"],
+                                                   command="botscript", group_guard=ScriptGuard(edit=True))
 
     def test_installed_fixture_samples_sdk_locations_and_submits_each_save_once(self):
         callbacks = []

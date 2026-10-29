@@ -12,12 +12,12 @@ from endbot_core.forms import BotView
 from endbot_core.group_forms import GroupListView, GroupView, ResultView
 from endbot_core.group_results import CACHE_SIZE, HISTORY_SIZE, GroupResult, MemberResult, ResultStore
 from endbot_core.groups import Group, GroupCommandService, GroupStore
+from endbot_core.menu_views import menu_view
 from test_command_service import FakeWorld
 from test_forms import FakeFormModule, FakePlayer, buttons
 from test_groups import GroupControl, messages
 
 from endstone_endbot.form_adapter import FormPresenter
-from endstone_endbot.menu_views import menu_view
 
 
 def screen(result, source):

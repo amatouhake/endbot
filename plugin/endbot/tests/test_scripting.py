@@ -13,31 +13,29 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from endbot_core import forms
+from endbot_core import forms, script_forms
 from endbot_core.commands import HELP_TOPICS, CommandResult, parse_command, strip_colors
 from endbot_core.control import RuntimeControlError
 from endbot_core.events import Event, render
 from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import LocalizedError, localize_error
+from endbot_core.menu_views import menu_view
 from endbot_core.operations import OPERATIONS, operation_argv
 from endbot_core.principal import Principal
+from endbot_core.script_config import ScriptConfig
+from endbot_core.script_inputs import OwnedInputs
+from endbot_core.script_params import arguments, declarations
+from endbot_core.script_process import RunnerProcess
 from endbot_core.script_store import Script, ScriptStore
-
-from endstone_endbot import script_forms
-from endstone_endbot.menu_views import menu_view
-from endstone_endbot.script_config import ScriptConfig
-from endstone_endbot.script_inputs import OwnedInputs
-from endstone_endbot.script_params import arguments, declarations
-from endstone_endbot.script_process import RunnerProcess
-from endstone_endbot.scripting import ScriptRun, ScriptService
+from endbot_core.scripting import ScriptRun, ScriptService
 
 
 class ConfigStorageParamsTests(unittest.TestCase):
-    def test_default_runner_uses_product_name_inside_plugin_package(self):
+    def test_default_runner_uses_product_name_inside_core_package(self):
         executable = ScriptConfig().executable(Path("data"))
         self.assertEqual(executable.name, "endbot-luau-runner.exe" if sys.platform == "win32" else "endbot-luau-runner")
         self.assertEqual(executable.parent.name, "runner")
-        self.assertEqual(executable.parent.parent.name, "endstone_endbot")
+        self.assertEqual(executable.parent.parent.name, "endbot_core")
 
     def test_startup_defaults_and_strict_settings(self):
         self.assertFalse(ScriptConfig.from_config({}).enabled)
@@ -301,10 +299,10 @@ class FakeRunner:
 class RunnerPipeTests(unittest.TestCase):
     def test_zero_wall_time_has_no_watchdog_positive_wall_time_has_one(self):
         for milliseconds in (0, 2000):
-            with patch("endstone_endbot.script_process.subprocess.Popen") as popen, \
-                 patch("endstone_endbot.script_process.Confinement") as confinement, \
-                 patch("endstone_endbot.script_process.threading.Thread"), \
-                 patch("endstone_endbot.script_process.threading.Timer") as timer:
+            with patch("endbot_core.script_process.subprocess.Popen") as popen, \
+                 patch("endbot_core.script_process.Confinement") as confinement, \
+                 patch("endbot_core.script_process.threading.Thread"), \
+                 patch("endbot_core.script_process.threading.Timer") as timer:
                 confinement.return_value.popen_kwargs = {}
                 confinement.return_value.runner_args = []
                 process = RunnerProcess(
@@ -454,7 +452,7 @@ class LifecycleTests(unittest.TestCase):
         identity = self.start([{"type": "wait", "id": 2, "ticks": 100000}])
         run = self.host.active()[0]
         self.assertIsNone(run.deadline)
-        with patch("endstone_endbot.scripting.time.monotonic", return_value=10**12):
+        with patch("endbot_core.scripting.time.monotonic", return_value=10**12):
             self.host._alive(run)
         self.host.stop(self.source, identity)
         self.wait_finished()
@@ -486,7 +484,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_log_budget_drops_logs_past_the_limit_with_one_notice(self):
         self.host.config = replace(self.config, operations_per_second=100000)
-        with patch("endstone_endbot.scripting.LOG_LINES", 3):
+        with patch("endbot_core.scripting.LOG_LINES", 3):
             self.start([*({"type": "log", "text": f"line {i}"} for i in range(6)), {"type": "done"}])
             self.wait_finished()
         logs = [line for line in self.logs() if "line " in line or "log limit" in line]
@@ -522,7 +520,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(len([line for line in self.logs() if "line " in line]), 13)
         # The next window shows the next line with the count of those held back.
         run = ScriptRun("r", "test", self.source, chat_window=1.0, chat_lines=10, chat_skipped=2)
-        with patch("endstone_endbot.scripting.time.monotonic", return_value=7.0):
+        with patch("endbot_core.scripting.time.monotonic", return_value=7.0):
             self.assertTrue(self.host._chat_log(run))
         self.assertEqual(self.host._skipped_logs(run), 2)
         self.assertEqual(run.chat_skipped, 0)
@@ -814,7 +812,7 @@ class LifecycleTests(unittest.TestCase):
             clock[0] += seconds
         with patch.object(self.raw, "request", return_value=status) as request, \
              patch.object(self.host, "_wait", side_effect=pause), \
-             patch("endstone_endbot.scripting.time.monotonic", side_effect=lambda: clock[0]):
+             patch("endbot_core.scripting.time.monotonic", side_effect=lambda: clock[0]):
             result = self.host._wait_mining(run, {"target": "Alice", "timeout": 1})
         self.assertEqual(result["reason"], "timeout")
         self.assertEqual(request.call_count, 1)
@@ -1457,13 +1455,13 @@ class BookWorld:
         self.item, self.written = item, None
 
     def held_book_pages(self, player_id, writable=False):
-        from endstone_endbot.script_books import book_pages
+        from endbot_core.script_books import book_pages
 
         return book_pages(self.item, writable)
 
     def fill_held_book(self, player_id, pages, expected=None):
         # fill_book's checks without the endstone.nbt write.
-        from endstone_endbot.script_books import written
+        from endbot_core.script_books import written
 
         current = self.held_book_pages(player_id, writable=True)
         if written(current) and current != expected:
@@ -1489,7 +1487,7 @@ class BookTests(unittest.TestCase):
         return " ".join(result.messages)
 
     def test_pages_round_trip_by_whole_lines(self):
-        from endstone_endbot.script_books import BOOK_PAGE_CHARS, pages_to_source, source_to_pages
+        from endbot_core.script_books import BOOK_PAGE_CHARS, pages_to_source, source_to_pages
 
         self.assertEqual(pages_to_source(["a\nb", "c\n", "d", "  "]), "a\nb\nc\nd\n")
         source = "".join(f"line {index} " + "x" * 40 + "\n" for index in range(30))
@@ -1621,7 +1619,7 @@ class BookTests(unittest.TestCase):
         self.assertEqual(strip_colors(result.messages[0]), "/botscript run plain")
 
     def test_fill_book_writes_pages_into_the_item_tag(self):
-        from endstone_endbot.script_books import fill_book
+        from endbot_core.script_books import fill_book
 
         nbt = types.ModuleType("endstone.nbt")
         nbt.CompoundTag, nbt.ListTag, nbt.StringTag = dict, list, FakeTag

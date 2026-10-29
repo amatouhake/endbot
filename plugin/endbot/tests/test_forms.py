@@ -4,15 +4,16 @@ import types
 import unittest
 
 from endbot_core import forms
+from endbot_core.command_runner import AsyncCommandRunner
 from endbot_core.commands import BotCommandService, CommandResult, parse_command, strip_colors
 from endbot_core.i18n import tr
+from endbot_core.menu_views import menu_view
 from endbot_core.principal import Principal
 from plain_service import PlainCommandService
 from test_command_service import FakeControl, FakeWorld
 
-from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge
+from endstone_endbot.dispatch import ServerThreadBridge
 from endstone_endbot.form_adapter import FormPresenter
-from endstone_endbot.menu_views import menu_view
 
 ONLINE = {
     "identityId": "00000000-0000-4000-8000-000000000001",
@@ -470,9 +471,8 @@ class FakePlayer:
 
 class PresenterTests(unittest.TestCase):
     def test_script_paste_view_routes_save_with_capability_and_does_not_echo_source(self):
+        from endbot_core.script_forms import line_screen
         from endbot_core.script_store import Script
-
-        from endstone_endbot.script_forms import line_screen
 
         submitted = []
         presenter = FormPresenter(lambda player, argv, **kwargs: submitted.append((argv, kwargs)),
@@ -497,9 +497,8 @@ class PresenterTests(unittest.TestCase):
         self.assertEqual(strip_colors(forms.MULTILINE_MARKER), "")
 
     def test_script_menus_echo_only_commands_a_player_could_type(self):
+        from endbot_core.script_forms import run_screen, script_screen
         from endbot_core.script_store import Script
-
-        from endstone_endbot.script_forms import run_screen, script_screen
 
         presenter = FormPresenter(lambda player, argv, **kwargs: None, form_module=FakeFormModule())
         player = FakePlayer()

@@ -410,7 +410,7 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertTrue(plugin._authorize(as_job(plugin._principal(player))))
 
     def test_principal_captures_grant_origin_language_and_copies_form_values(self):
-        from endstone_endbot.script_forms import ScriptGuard
+        from endbot_core.script_forms import ScriptGuard
 
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)

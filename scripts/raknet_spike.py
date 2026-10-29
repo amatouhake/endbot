@@ -186,6 +186,7 @@ def exercise(
             ROOT / "plugin/endbot/src/endstone_endbot/plugin.py",
             ROOT / "core/src/endbot_core/controller_policy.py",
             ROOT / "plugin/endbot/src/endstone_endbot/dispatch.py",
+            ROOT / "core/src/endbot_core/command_runner.py",
             ROOT / "runtime/scripts/raknet-auth-probe.js",
             ROOT / "endstone.lock",
             ROOT / "runtime/package-lock.json",

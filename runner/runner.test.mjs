@@ -263,7 +263,7 @@ test('operator API reference matches the operation table shipped in the plugin',
 });
 
 test('all menu templates compile and execute with the real generated API', async () => {
-  const forms = await readFile(new URL('../plugin/endbot/src/endstone_endbot/script_forms.py', import.meta.url), 'utf8');
+  const forms = await readFile(new URL('../core/src/endbot_core/script_forms.py', import.meta.url), 'utf8');
   for (const [title, args] of [['Group row', {group:'#miners',origin:'1 64 2'}], ['Simple patrol', {name:'Alice',ticks:1}],
     ['Mine at spots', {name:'Alice',start:'1 64 2',spots:2,step:4,blocks:2}]]) {
     const source = new RegExp(`"${title}": """([\\s\\S]*?)"""`).exec(forms)?.[1];

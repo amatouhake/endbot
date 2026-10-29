@@ -5,8 +5,7 @@ from dataclasses import dataclass
 
 from endbot_core import forms as f
 from endbot_core.i18n import tr
-
-from endstone_endbot.script_params import declarations
+from endbot_core.script_params import declarations
 
 
 @dataclass(frozen=True)

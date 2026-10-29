@@ -9,9 +9,8 @@ import threading
 import time
 
 from endbot_core.i18n import LocalizedError
-
-from endstone_endbot.script_config import FRAME_BYTES
-from endstone_endbot.script_confine import Confinement
+from endbot_core.script_config import FRAME_BYTES
+from endbot_core.script_confine import Confinement
 
 LOGGER = logging.getLogger(__name__)
 

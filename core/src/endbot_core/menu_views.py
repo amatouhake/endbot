@@ -11,11 +11,10 @@ from __future__ import annotations
 from dataclasses import replace
 from types import SimpleNamespace
 
+from endbot_core import script_forms
 from endbot_core.forms import BotListView, BotView, GroupTarget, Run, menu_argv
 from endbot_core.group_forms import GroupGuard
 from endbot_core.script_store import Revision, Script
-
-from endstone_endbot import script_forms
 
 
 def _script(data: dict) -> Script:

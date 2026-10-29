@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/amatouhake/endbot/plugin/endbot/src/endstone_endbot/operations.schema.json",
+  "$id": "https://github.com/amatouhake/endbot/core/src/endbot_core/operations.schema.json",
   "title": "Endbot operation registry",
   "description": "operations.json: every operation, the shapes of its typed parameters and their command clauses, and the reserved Bot names. Python (operations.py), the Luau bootstrap (runner/api.luau) and the operator reference read it; later the web Worker generates its types from it.",
   "type": "object",

@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "plugin" / "endbot" / "src"))
+sys.path.insert(0, str(ROOT / "core" / "src"))
 
 from endbot_core.control import RuntimeControlClient
 

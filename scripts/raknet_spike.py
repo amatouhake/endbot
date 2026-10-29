@@ -177,14 +177,14 @@ def exercise(
             ROOT / "runtime/src/inventory-sync.js",
             ROOT / "runtime/src/packets.js",
             ROOT / "runtime/src/lifecycle.js",
-            ROOT / "plugin/endbot/src/endstone_endbot/commands.py",
+            ROOT / "core/src/endbot_core/commands.py",
             ROOT / "plugin/endbot/src/endstone_endbot/world.py",
             ROOT / "plugin/endbot/src/endstone_endbot/inventory_sync.py",
             ROOT / "scripts/mining_probe.py",
             ROOT / "scripts/item_use_probe.py",
             ROOT / "scripts/entity_probe.py",
             ROOT / "plugin/endbot/src/endstone_endbot/plugin.py",
-            ROOT / "plugin/endbot/src/endstone_endbot/controller_policy.py",
+            ROOT / "core/src/endbot_core/controller_policy.py",
             ROOT / "plugin/endbot/src/endstone_endbot/dispatch.py",
             ROOT / "runtime/scripts/raknet-auth-probe.js",
             ROOT / "endstone.lock",
@@ -193,7 +193,7 @@ def exercise(
     }
     if groups:
         for relative in (
-            "scripts/group_probe.py", "plugin/endbot/src/endstone_endbot/groups.py",
+            "scripts/group_probe.py", "core/src/endbot_core/groups.py",
             "runtime/src/control-server.js",
         ):
             report["source_sha256"][relative] = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
@@ -294,7 +294,7 @@ def exercise(
     )
     environment = os.environ.copy()
     environment["PYTHONPATH"] = os.pathsep.join(
-        [str(ROOT / "plugin/endbot/src"), str(ROOT / "cli/endbot/src")]
+        [str(ROOT / "plugin/endbot/src"), str(ROOT / "core/src"), str(ROOT / "cli/endbot/src")]
     )
     environment["PYTHONIOENCODING"] = "utf-8"
     if mining or inventory or item_use or inventory_stack or scripting or entity:

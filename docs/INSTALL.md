@@ -81,7 +81,8 @@ contains exactly:
 | --- | --- |
 | `endstone-0.11.13+endbot.1-*-manylinux_*.whl` | Patched Endstone for Linux x86_64 (CPython 3.12), repaired to a `manylinux_*` platform tag. CI-built. Use this wheel on Linux; it does not install on Windows. |
 | `endstone-0.11.13+endbot.1-*-win_amd64.whl` | Patched Endstone for Windows x64 (CPython 3.12). CI-built by the release-candidate workflow's Windows job from the same `endstone.lock` + `patches/endstone/` inputs as the Linux wheel. Use this wheel on Windows; it does not install on Linux. |
-| `endstone_endbot-0.4.0-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.13+endbot.1`, so pip cannot substitute official unpatched `0.11.13`. |
+| `endstone_endbot-0.4.0-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.13+endbot.1`, so pip cannot substitute official unpatched `0.11.13`, and exactly the `endbot-core` wheel of the same release. |
+| `endbot_core-0.4.0-*.whl` | Shared, Endstone-free Endbot logic the plugin imports. Platform-independent; not on any package index. |
 | `endbot-runtime-0.4.0.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
 | `endbot-config-0.4.0.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
 | `ENDSTONE_LICENSE` | Upstream Endstone license carried from the pinned checkout. |
@@ -107,11 +108,11 @@ Requirements: Python 3.12, Node.js 24+, git, cmake, and a C++ compiler. Docker i
 `raknet-native` from source when no published prebuild matches the platform; without it the install fails
 inside the dependency's build check rather than with an Endbot error.
 
-1. Create a virtual environment and install the two wheels offline from the candidate directory. The repaired
+1. Create a virtual environment and install the three wheels offline from the candidate directory. The repaired
    Endstone wheel carries no LLVM runtime dependency:
    ```bash
    python3 -m venv .venv && . .venv/bin/activate
-   python -m pip install ./endstone-0.11.13+endbot.1-*.whl ./endstone_endbot-0.4.0-*.whl
+   python -m pip install ./endstone-0.11.13+endbot.1-*.whl ./endstone_endbot-0.4.0-*.whl ./endbot_core-0.4.0-*.whl
    python -c "import importlib.metadata as m; print(m.version('endstone'))"
    ```
    Expected: `0.11.13+endbot.1`. Never install official `endstone==0.11.13` into this environment.
@@ -165,8 +166,9 @@ Each platform installs its own Endstone wheel from the candidate; the remaining 
    and runtime DLL and install-tested with the plugin in a fresh venv. (Building patched Endstone from
    source remains a development-only path documented in [`WINDOWS_DEV.md`](WINDOWS_DEV.md), not the
    install path.) Verify `0.11.13+endbot.1` before continuing.
-2. Install the candidate plugin wheel into the same environment (`python -m pip install
-   .\endstone_endbot-0.4.0-*.whl`); it is platform-independent and still pins the exact patched Endstone version.
+2. Install the candidate plugin and core wheels into the same environment (`python -m pip install
+   .\endstone_endbot-0.4.0-*.whl .\endbot_core-0.4.0-*.whl`); both are platform-independent, and the plugin still
+   pins the exact patched Endstone version.
 3. Unpack `endbot-runtime-0.4.0.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for
    the pinned tarball dependency URL; see [`WINDOWS_DEV.md`](WINDOWS_DEV.md)), copy the example runtime
    configuration outside the unpacked tree, and start the runtime with Node 24+.

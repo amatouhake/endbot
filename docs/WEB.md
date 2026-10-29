@@ -1,6 +1,7 @@
 # Web design (BOT-021)
 
-Status: **Design draft** (2026-10-29 JST), awaiting the operator's agreement. Nothing here is implemented.
+Status: **Design draft** (2026-10-29 JST). The former open points O1–O5 are settled (see [settled points](#settled-points));
+the trusted external site (P12) and open point O6 await the operator's agreement. Nothing here is implemented.
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -104,7 +105,7 @@ browser ↔ endbotd        JSON with {v, id, type, ...}:
 |---|---|
 | `accounts.json` | account id, XUID, random 32-byte WebAuthn user handle, created |
 | `passkeys.json` | credential id, COSE public key, sign count, RP ID, transports, created, last used, label |
-| `sessions.json` | SHA-256 of the session token, account, created, last seen, device label |
+| `sessions.json` | SHA-256 of the session token, account, how it was created (`passkey` or `site`), created, last seen, device label |
 
 - Link codes and WebAuthn challenges live in memory only; an endbotd restart voids them, which costs a retry.
 - The user handle is random, never the XUID, so an authenticator or a synced passkey provider does not learn it.
@@ -228,21 +229,127 @@ The supervisor policy change ENDBOTD S2 deferred to BOT-021:
 - **Never on the web:** grants, revocations, role changes, owner reassignment, BDS start and stop, `endbot` CLI
   operations. The web principal is never the console, even for the operator's own XUID.
 
+### P12. Trusted external site (optional, off by default)
+
+The site from Decision 4: an operator who already signs players in on their own site (for example with Microsoft
+OAuth) lets it prove the XUID instead of the in-game code. endbotd verifies the site's signature; the Worker only
+relays.
+
+**Configuration** in `endbot.toml`, copied into `endbotd.toml`:
+
+```toml
+[web.trusted-site]
+enabled = false
+name = "Alice's site"                    # shown on the sign-in button
+mode = "link"                            # "link" or "sign-in"
+issuer = "https://alice.example"         # the iss claim, and the only Origin accepted on the return POST
+start-url = "https://alice.example/endbot/start"
+keys = [ { kid = "2026-10", public-key-file = "trusted-site/2026-10.pem" } ]   # P-384 public keys
+```
+
+Key files live under the instance directory, not in the repository. A key is a P-384 public key in PEM;
+`endbot doctor` checks every listed file, the curve, that `kid`s are unique, that `issuer` and `start-url` are
+`https://`, and that no more than two keys are listed. The private key never touches the Endbot PC; the deployment
+guide shows how to make one with OpenSSL and gives a short reference signer.
+
+**Rotation:** add the new key next to the old one and restart endbotd (config is read at start), switch the site to the
+new `kid`, then remove the old key and restart again. Removing a key refuses every assertion signed with it at once.
+On suspected exposure: remove the key, restart, and run `endbot web revoke --site-sessions`, which deletes every
+session issued through the site (P5 marks each session with how it was created).
+
+**Flow.** It always starts at the Endbot web, so endbotd can bind the assertion to one browser:
+
+```text
+1. browser  GET  /auth/site/start            Worker → endbotd: new nonce (128 bits, single use, 2 minutes)
+            ◀── 303 to start-url?nonce=…&return=<origin>/auth/site/return
+                 + cookie __Host-endbot_site=<nonce id>; Secure; HttpOnly; SameSite=None; Path=/auth/site; Max-Age=120
+2. site     signs the user in its own way, then serves an auto-submitted form:
+            POST <origin>/auth/site/return   assertion=<compact JWS>
+3. Worker   accepts this POST only with Origin == issuer and the site cookie; relays both to endbotd
+4. endbotd  verifies (below), consumes the nonce, then links, registers a passkey, or issues a session (mode)
+```
+
+A link started on the operator's site ("open the Endbot web") sends the user to `/auth/site/start` first; the site
+needs no second integration. The site cookie is `SameSite=None` because a cross-site POST would not carry a stricter
+one; it identifies a pending nonce and grants nothing. The session cookie (P5) is unchanged.
+
+**The assertion** is a compact JWS. Header: `alg` exactly `ES384`, a `kid` from the configured keys, `typ`
+`endbot-site+jwt`; `crit` and any other `alg` are refused. Claims, all required:
+
+| Claim | Check |
+|---|---|
+| `iss` | equals `issuer` |
+| `aud` | equals the configured web origin exactly |
+| `sub` | the XUID, a non-empty decimal string |
+| `gtg` | the GamerTag the site knows; informational (below) |
+| `nonce` | the pending nonce bound to this browser's site cookie; consumed on the first attempt, valid or not |
+| `iat`, `exp` | `exp - iat` at most 120 s; 30 s clock skew; not expired |
+
+The endbotd-issued nonce replaces Decision 4's `jti`: it is single use, expires with the flow, dies with an endbotd
+restart (so no replay cache has to survive one), and binds the assertion to the browser that started the flow, so an
+assertion copied out of the site's logs cannot be used elsewhere (open point O6).
+
+**The grant rule holds unchanged.** endbotd accepts an assertion only when `sub` is an XUID that already holds a
+controller grant bound by an Xbox-authenticated join, at the current grant revision, and the same check runs again on
+every request (P5). A site claim never binds a pending GamerTag to an XUID, never creates a grant and never changes a
+role. `gtg` is not used for authorization; a mismatch with the bound GamerTag is logged to the console.
+
+**Modes:**
+
+- **link:** the assertion replaces the in-game code. The browser continues into passkey registration for that XUID's
+  account (created if missing); later sign-ins use the passkey. A session is issued only after a passkey is registered.
+- **sign-in:** the assertion issues a session directly (marked `via: site`) for that XUID's account, created if
+  missing; no passkey is needed. Lifetimes are those of P5. Adding a device or removing a passkey needs a site sign-in
+  less than 5 minutes old, as P5 asks for a recent passkey assertion.
+
+In both modes `/botweb link` and passkeys keep working, so an outage of the site never locks a player out who has a
+passkey.
+
+**Revocation** follows P6. A controller revocation ends sessions and the site path is refused until a regrant. As
+Decision 4 says, `/botweb unlink` and `endbot web revoke <GamerTag>` end the current account and sessions only: with
+the site enabled it can vouch again at the next sign-in. To keep someone out, revoke their controller grant or have
+the site stop vouching. `endbot web revoke` prints this when the site is enabled.
+
+**Rate limits** (P7 applies too): `/auth/site/*` shares the Worker's `/auth/*` buckets; endbotd holds at most 100
+pending nonces and each nonce allows one verification, so junk POSTs without a started flow cost one lookup and lock
+nobody out. Verification failures after a nonce match are logged to the console (rate-limited log lines), naming the
+reason but never the assertion.
+
+**Failure modes:**
+
+| Failure | Browser sees | Console log |
+|---|---|---|
+| Site disabled, or its config invalid | no site button; `/auth/site/*` returns 404 | doctor FAIL on invalid config; endbotd keeps the site path off |
+| Missing or wrong site cookie, nonce unknown or expired | "Sign-in expired, try again" | — |
+| Unknown `kid`, bad signature, wrong `alg`, `iss` or `aud` | "The site's sign-in was refused" | the reason and the `kid` |
+| Expired assertion | "Sign-in expired, try again" | clock skew hint |
+| XUID without a controller grant | "This account has no Endbot access" | the XUID |
+| Site down | the site's own error page | — |
+
+**SECURITY.md must state:** the site is off by default; whoever controls the site or its private key can sign in as
+any XUID that holds a controller grant, so enabling it is an explicit trust decision; it can never create or widen a
+grant or role; assertions are ES384, audience-bound, at most 120 s, single use and bound to the browser by the nonce;
+the private key stays on the site; keys rotate by listing two and removing the old one; and keeping someone out means
+revoking their grant, not only their web account.
+
+## Settled points
+
+Decided 2026-10-29 JST.
+
+- **S1. Pairing installs endbotd's public link key directly** instead of a pairing secret (P1), refining Decision 3.
+- **S2. endbotd keeps running when BDS exits** with the web enabled; `--exit-with-bds` restores today's exit (P10).
+- **S3. Sessions** last 7 days idle and 30 days absolute; adding a device or removing a passkey needs a passkey
+  assertion less than 5 minutes old (P5).
+- **S4. The trusted external site is in this release** (P12), optional and off by default; the operator will use it.
+- **S5. The Cloudflare API token is never stored**; it is prompted at deploy, rotate-key and update (P9).
+
 ## Open points
 
-Each has a recommended answer; the draft is written as if the recommendation is accepted.
-
-- **O1. Pairing by direct public-key install instead of a pairing secret** (P1). Recommended: yes. It refines
-  Decision 3's wording, removes a bootstrap race and leaves no secret on Cloudflare.
-- **O2. Supervisor default when BDS exits with the web enabled** (P10). Recommended: keep endbotd running, with
-  `--exit-with-bds` to opt out. Alternative: keep today's exit as default and make keeping endbotd opt-in.
-- **O3. Session lifetime** (P5). Recommended: 7 days idle, 30 days absolute, recent passkey assertion (5 minutes) for
-  add-device and passkey removal. Shorter is safer on shared PCs; longer means fewer sign-ins on phones.
-- **O4. The trusted external site** (Decision 4, optional and off by default). Recommended: not in this release; add
-  it after the web ships. It is a second way to prove a link, a second security boundary to validate, and no operator
-  needs it yet.
-- **O5. Storing the Cloudflare API token** (P9). Recommended: never; prompt at deploy, rotate and update. The cost is
-  one prompt per update. Alternative: the OS credential store, which would let `endbot update` redeploy unattended.
+- **O6. The site must echo an endbotd nonce** (P12). Recommended: yes. Your site then takes `nonce` and `return` from
+  the start redirect and puts `nonce` into the assertion, instead of minting its own `jti`; in exchange a leaked
+  assertion is useless outside the browser that started the flow and no replay cache must survive restarts.
+  Alternative: Decision 4's site-minted `jti` with a persisted replay cache, which lets the site POST without the
+  start redirect but accepts a leaked assertion for up to 120 s.
 
 ## Steps
 
@@ -257,12 +364,17 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
      revocation hooks (P6). Claude.
    - **2b. WebAuthn and sessions** (P4, P5): the pinned Python WebAuthn library, ceremonies, session tokens, the `web`
      principal's channel condition, rate limits in endbotd (P7). Claude. Tests use a software authenticator.
+   - **2c. Trusted external site** (P12): `[web.trusted-site]` config and doctor checks, nonces, ES384 JWS
+     verification (the existing local-bot-auth verifier's rules where they apply), both modes,
+     `endbot web revoke --site-sessions`, failure codes. Claude only (security boundary). Negative tests for every
+     row of the claim table and the failure table.
 3. **Link and relay.**
    - **3a. Protocol schema** (P2): `docs/WEB_PROTOCOL.md`, a JSON Schema, TypeScript generation in CI. Claude.
    - **3b. endbotd link client**: `websockets`, handshake and signing, reconnect with backoff, multiplexing, version
      refusal, display cache. Claude.
    - **3c. Worker and Durable Object** (Hono, Hibernation API): routing, cookie, Origin checks, headers, coarse rate
-     limits, relay. Claude writes the auth, cookie and relay paths; the static-asset serving and Vitest
+     limits, relay, the `/auth/site/*` routes with their own cookie and Origin rule. Claude writes the auth, cookie,
+     site and relay paths; the static-asset serving and Vitest
      (`@cloudflare/vitest-pool-workers`) coverage are delegable.
 4. **Deploy.** `endbot web deploy|rotate-key` through the Cloudflare API, token handling (P9), domain-change
    confirmation (P4), doctor checks (link up, protocol match, origin configured). Delegable against this document,
@@ -277,15 +389,18 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
 8. **`endbot update` integration** (P9): redeploy after update and rollback, the offline-web message. Delegable.
 9. **Documentation.** `docs/WEB_DEPLOY.md` (account, token permissions, `workers.dev` or custom domain, the
    domain-change warning, revocation, what Cloudflare stores, troubleshooting); SECURITY.md gains the web boundary.
-   The deployment guide is delegable; the SECURITY.md section is Claude.
+   `WEB_DEPLOY.md` also covers the trusted site: key generation, the start/return contract, a reference signer and
+   rotation. The deployment guide is delegable; the SECURITY.md section and the site contract are Claude.
 10. **Validation**, inside the combined release pass. Live deploy to the operator's Cloudflare account, the operator
     entering the token. Check: link on a phone and a PC, add-device, cross-device QR sign-in, revoke during an open
     session and during a run, domain change forcing re-registration, mismatched protocol refused, rate limits, BDS
-    stopped with web status and script editing working, a Worker with a wrong link key refused. Recorded in a docs PR.
+    stopped with web status and script editing working, a Worker with a wrong link key refused. With the operator's
+    real site: both modes, key rotation with two keys, a replayed or foreign-browser assertion refused, an XUID
+    without a grant refused, `endbot web revoke` while the site still vouches. Recorded in a docs PR.
 
 ## Not in BOT-021
 
-Localhost mode and LAN access (after the web, [other hosts](DIRECTION.md#other-hosts)); the trusted external site
-(O4); Microsoft sign-in; offline editing or any Cloudflare-side store beyond the display cache; web administration of
+Localhost mode and LAN access (after the web, [other hosts](DIRECTION.md#other-hosts)); Microsoft sign-in in Endbot
+itself (the trusted site can provide it); site-to-site API access; offline editing or any Cloudflare-side store beyond the display cache; web administration of
 grants, roles or owners; BDS start and stop from the web; event kinds and triggers on the web (BOT-022 adds them to
 the same protocol); other deployment targets.

@@ -756,7 +756,10 @@ server teleports; continuing operations return their job and `job:wait{timeout=}
 `0.11.13+endbot.1` / BDS `1.26.52.3`, `scripts/raknet_spike.py --scripting`, case `waits`): `waitOnline{timeout}`,
 timed move and interval jump (`duration elapsed`), `stop`, `replaced`, teleport `arrived`, a Group move job and a
 timeout that leaves the job running all passed. That run found and fixed job ids arriving as floats through the runner
-and Group batch replies without job ids. Still open: `use hold`, counted attack, and death and disconnect reasons.
+and Group batch replies without job ids. Human Windows Client check (2026-10-29 JST, RakNet, locked pair, local build of main `fcc330e` applied with
+`endbot update`): a file script waiting on online, move, jump,
+teleport and a timeout reported each result in chat and ended normally. Still open: `use hold`, counted attack, and
+death and disconnect reasons.
 
 Scripts can wait for mining jobs (`waitMining`) and for Bots to come online, but a timed `move`, `use hold`, `attack`
 or `interact` repetition, and a teleport's arrival, are only covered by guessing with `wait(ticks)`. Add waits that end
@@ -801,6 +804,11 @@ the pack active. Do not enable `ui-pack-editor` by default or ship the pack in r
 Status: **Done** (2026-10-29 JST); design agreed 2026-10-28. Steps 1–7 landed: `Principal` and one authorization
 check, `execute(Operation, Principal)`, the formatter and round-trip test, outcome `code` and query `data`, menu outcomes
 as data (`menu_views`), Events with chat and log sinks, and `operations.schema.json` checked against Python and Luau.
+Human Windows Client check (2026-10-29 JST, RakNet, locked pair, local build of main `fcc330e` applied with
+`endbot update`): Bot, Group, member and Group-management menus and their back navigation, form echoes, the
+destroy waiting and count-reached notices in Japanese with an English console log, and revoke/regrant from the console
+(commands refused at once, a running `destroy continuous` stopped with the revocation notice and stayed stopped after
+the regrant) all passed with no issues found.
 
 Today the de facto API is `/bot` argv text: forms build command text, scripts turn typed operations back into argv
 (`operation_argv`) to be parsed again, results are localized prose with `data` on some queries only, `view` couples the
@@ -918,6 +926,9 @@ how (console only, or a delegated admin); how revocation propagates to runs, tri
 ## BOT-025: Reserved Bot names
 
 Status: **Done** (2026-10-29 JST); decided in [interface guide D3](INTERFACE_GUIDE.md#d3-command-roots).
+Human Windows Client check (2026-10-29 JST, RakNet, locked pair, local build of main `fcc330e` applied with
+`endbot update`): `/bot list spawn`, a rename to `menu` and a form spawn named `ping` were each refused with
+the reserved-name message.
 
 `/bot help <anything>` always opens help, so a Bot named `help` cannot be addressed, and `/bot help status` is
 ambiguous by nature (help topic or operation). Reserve `help`, `list`, `ping` and `menu` as Bot names: the registry

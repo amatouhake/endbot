@@ -36,11 +36,8 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from uuid import uuid4
 
 from endbot_cli.control_client import RuntimeControlClient, RuntimeControlError
-from endbot_cli.controller_requests import SESSION_FILE, dispatch_requests, prune_requests
-from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.processes import kill_process_tree, spawn_child
 from endbot_cli.runstate import (
     CONSOLE_REQUEST,
@@ -162,7 +159,6 @@ class Supervisor:
         self._server_proc: subprocess.Popen | None = None
         self._log_dir: Path | None = None
         self._exit_record: dict = {}
-        self._controller_session = str(uuid4())
 
     # -- control -----------------------------------------------------------
 
@@ -190,9 +186,6 @@ class Supervisor:
             "serverExit": None,
             "unclean": False,
         }
-        # Files from an earlier supervisor session can never be answered or replayed.
-        prune_requests(options.run_dir)
-        atomic_write_text(options.run_dir / SESSION_FILE, json.dumps({"session": self._controller_session}) + "\n")
         write_pid_file(options.run_dir / SUPERVISOR_PID, os.getpid())
         if self._stdin is not None:
             threading.Thread(target=self._stdin_reader, daemon=True, name="supervisor-stdin").start()
@@ -201,8 +194,7 @@ class Supervisor:
         finally:
             self._record_exit()
             write_last_exit(options.run_dir, self._exit_record)
-            for name in (SUPERVISOR_PID, RUNTIME_PID, ENDBOTD_PID, SERVER_PID, STOP_REQUEST, CONSOLE_REQUEST,
-                         SESSION_FILE):
+            for name in (SUPERVISOR_PID, RUNTIME_PID, ENDBOTD_PID, SERVER_PID, STOP_REQUEST, CONSOLE_REQUEST):
                 try:
                     (options.run_dir / name).unlink()
                 except FileNotFoundError:
@@ -387,8 +379,6 @@ class Supervisor:
             pass
 
     def _pump_console(self) -> None:
-        if self._server_proc is not None and self._server_proc.poll() is None:
-            dispatch_requests(self.options.run_dir, self._controller_session, self._send_console_line)
         for line in consume_console_lines(self.options.run_dir):
             self._send_console_line(line)
         while True:

@@ -551,7 +551,7 @@ class EffectiveControllersTests(DoctorTestCase):
         with (
             patch("endbot_cli.runstate.inspect_supervisor", return_value=SupervisorState(RUNNING, 123)),
             patch(
-                "endbot_cli.controller_requests.controller_request",
+                "endbot_cli.endbotd_client.controllers_request",
                 return_value={
                     "ok": True,
                     "entries": [{"name": "LiveOwner", "state": "revoked", "reason": "revoked UUID"}],

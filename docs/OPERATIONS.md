@@ -184,18 +184,21 @@ endbot controllers remove "Player With Spaces"
 endbot controllers list
 ```
 
-The CLI waits for the plugin's execution result and prints it in that terminal. Success exits with 0; a rejected change
-exits with 1. Results also appear in the active BDS console/log. A timeout or interrupted connection reports an unknown
-outcome; inspect `controllers list` before retrying a mutation. Requests are not automatically retried. The same
+The CLI connects to endbotd's loopback endpoint (the `[endbotd] link-port`, authenticated with
+`state/secrets/endbotd.token`), runs the change in endbotd as the server console and prints the result in that terminal.
+Success exits with 0; a rejected change exits with 1. Changes are also recorded in `endbotd.log`. While endbotd is down
+(the supervisor restarts it) the CLI says so at once instead of waiting. A timeout or a connection lost after the
+request was sent reports an unknown outcome; inspect `controllers list` before retrying a mutation. Requests are not
+automatically retried, and endbotd refuses a request id that was already used on the connection. The same
 `botcontrollers add|remove|list` commands work directly on the BDS console. Only a real server console sender may
 administer access; controllers and operator players cannot grant or revoke access. Bot operation applies to all Bots,
-with no per-Bot ACL. Restart the supervisor/BDS after deploying this version to enable the result channel.
+with no per-Bot ACL.
 
 `controllers list` shows effective states (`allowed`, `revoked`, `pending`, `denied`, or `conditional`) and their reasons,
 including runtime grants, bootstrap bindings and explicit identity revocations. Online authenticated players use the
 same decision as the command handler. Unresolved legacy identity entries are conditional: their full identity/name
 checks happen on an authenticated join. `endbot doctor` combines saved config, bindings, runtime policy and legacy
-allowlists for the next start; `endbot doctor --live` queries the running plugin when a supervisor is present. It labels
+allowlists for the next start; `endbot doctor --live` queries the running endbotd when a supervisor is present. It labels
 the source so an un-reloaded TOML edit is not confused with current server access. Corrupt saved policy fails doctor.
 
 An online authenticated target is bound by XUID immediately. An unknown offline GamerTag is pending until its first
@@ -281,7 +284,8 @@ advertised-port following disabled. Both paths use the same local-bot authentica
 `state/run/console.request` (appended by `endbot console`, one line per request, forwarded to the BDS console and
 truncated by the supervisor) reach the BDS console. `endbot stop` writes `state/run/stop.request` and waits (default
 120 s) for the supervisor recorded in `state/run/supervisor.pid` to exit; Ctrl+C triggers the same stop sequence
-locally. `endbot stop`, `endbot console`, and `endbot controllers add|remove|list` require a live supervisor;
+locally. `endbot stop` and `endbot console` require a live supervisor, and `endbot controllers add|remove|list` a
+live supervisor and endbotd;
 `endbot controllers reset` requires it to be stopped. Stale supervisor PIDs are diagnosed/cleaned as appropriate.
 
 Stop sequence: `stop` on the BDS console (up to 60 s), then endbotd (its stdin is closed; it ends its script runs,
@@ -418,7 +422,7 @@ free. See [scripting](SCRIPTING.md) to enable scripts, and [installation](INSTAL
   unreadable marker or one written by a newer Endbot. Both layouts' contents are listed.
 - `<server>/version.txt` matches the lock; installed Endstone package version matches the lock.
 - Controllers: bootstrap bindings and pending entries; `controllers-effective` combines saved config/policy/legacy
-  entries with decision reasons, or queries the running plugin with `--live` and a live supervisor. Legacy entries
+  entries with decision reasons, or queries the running endbotd with `--live` and a live supervisor. Legacy entries
   lacking a resolved authenticated identity are conditional. Invalid policy is FAIL, and so is an invalid
   `grant-revisions.json` (`grant-revisions`).
 - Allow-list: when `allow-list` is not `true`, PASS (controllers are not filtered); when it is, PASS while every

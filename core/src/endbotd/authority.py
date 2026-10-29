@@ -19,7 +19,6 @@ from pathlib import Path
 
 from endbot_core.authorization import AllowedPlayers
 from endbot_core.controller_policy import ControllerPolicy
-from endbot_core.controller_requests import execute_request
 from endbot_core.enrollment import ControllerEnrollment, _is_xuid
 from endbot_core.grant_revisions import FILE_NAME as GRANT_REVISIONS_FILE
 from endbot_core.grant_revisions import GrantRevisions
@@ -38,7 +37,6 @@ class Authority:
         controllers: ControllerEnrollment | None = None,
         policy: ControllerPolicy,
         grant_revisions: GrantRevisions | None = None,
-        requests_directory: Path | None = None,
         log: Callable[[str, str], None] | None = None,
     ) -> None:
         self.presence = presence
@@ -47,7 +45,6 @@ class Authority:
         self.policy = policy
         # Beside the policy, so an Endbot instance keeps it in state/; read only here, at start-up.
         self.grant_revisions = grant_revisions or GrantRevisions(policy.path.parent / GRANT_REVISIONS_FILE)
-        self.requests_directory = requests_directory
         self._log = log or (lambda level, message: None)
         self.lock = threading.RLock()
         # The control permission last sent per online player.
@@ -59,11 +56,8 @@ class Authority:
         policy = ControllerPolicy.from_config(authorization, base)
         if controllers.bindings_path is not None and controllers.bindings_path.resolve() == policy.path.resolve():
             raise ValueError("controllers-file and controller-policy-file must be different files")
-        requests = authorization.get("controller-requests-directory")
-        if requests is not None:
-            requests = Path(requests) if Path(requests).is_absolute() else base / requests
         return cls(presence, allowed=AllowedPlayers.from_config(authorization), controllers=controllers,
-                   policy=policy, requests_directory=requests, log=log)
+                   policy=policy, log=log)
 
     # -- decisions -----------------------------------------------------------
 
@@ -152,22 +146,7 @@ class Authority:
 
     def manage(self, args: list[str]) -> tuple[list[str], Permissions]:
         """Run ``botcontrollers`` from the console; returns its lines and permission changes."""
-        permissions: Permissions = []
-
-        def operation(arguments, target=None):
-            result, changed = self.operation(arguments, target)
-            permissions.extend(changed)
-            return result
-
-        if args and args[0] == "request":
-            try:
-                if len(args) != 2 or self.requests_directory is None:
-                    raise ValueError("controller result channel is unavailable")
-                result = execute_request(self.requests_directory, args[1], operation)
-            except (OSError, ValueError, TypeError, KeyError) as error:
-                return [f"Endbot: controller request failed: {error}"], permissions
-        else:
-            result = operation(args)
+        result, permissions = self.operation(args)
         return list(result["messages"]), permissions
 
     def operation(self, args: list[str], target: str | None = None) -> tuple[dict, Permissions]:

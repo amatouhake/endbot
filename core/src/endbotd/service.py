@@ -105,7 +105,7 @@ class EndbotService:
             config.link_host, config.link_port, load_token(config.link_token_file), version=__version__,
             config={"language": self._language_setting, "hotbar": dict(config.hotbar)},
             on_submit=self._submit, on_presence=self._presence, grant_revision=self._grant_revision,
-            log=self._log, world_timeout=world_timeout,
+            log=self._log, world_timeout=world_timeout, cli_handlers={"controllers": self._cli_controllers},
         )
         self.authority = Authority.from_config(self.link.presence, config.authorization, config.base, log=self._log)
         for gamertag in self.authority.controllers.pending():
@@ -269,6 +269,25 @@ class EndbotService:
             self.deliver(to, [f"Endbot: {tr(principal.language, 'command service is unavailable')}"])
             return {"accepted": False, "code": "unavailable"}
         return {"accepted": True, "code": "ok"}
+
+    # -- the endbot CLI (its connection's ordered thread) ---------------------
+
+    def _cli_controllers(self, body: dict) -> dict:
+        """``endbot controllers add|remove|list`` (P8): run as the console, answered on the CLI connection."""
+        operation, target = body.get("operation"), body.get("target")
+        if operation not in {"add", "remove", "list"}:
+            raise ValueError("expected add, remove or list")
+        if operation == "list":
+            if target is not None:
+                raise ValueError("list takes no target")
+        elif not isinstance(target, str) or not target.strip() or not target.isprintable() or len(target) > 256:
+            raise ValueError("a non-empty printable target of at most 256 characters is required")
+        # The target is one whole name; it is never reparsed as console text.
+        result, permissions = self.authority.operation([operation], target)
+        self._send_permissions(permissions)
+        if operation != "list":
+            self._log("info", f"endbot CLI controllers {operation}: {result['messages'][0]}")
+        return {"ok": result["ok"], "messages": list(result["messages"]), "entries": result.get("entries", [])}
 
     # -- toward the plugin (the delivery thread) ----------------------------
 

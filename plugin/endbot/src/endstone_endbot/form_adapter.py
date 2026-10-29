@@ -6,12 +6,15 @@ leaves through ``submit``, the same entry typed /bot commands use.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from endbot_core import forms, group_forms, menu_views
 from endbot_core.commands import DIM, ERROR, RESET, reply
 from endbot_core.i18n import localize_error, tr
 from endbot_core.operations import command_text
+
+LOGGER = logging.getLogger(__name__)
 
 # /botscript form steps that are not commands a player could type.
 SCRIPT_FORM_STEPS = {("parameters",), ("edit",), ("save",)}
@@ -49,6 +52,9 @@ class FormPresenter:
             # Script screens carry form builders, so they are built here, not in endbotd.
             screen = menu_views.script_view(view.data)
             if screen is None:
+                # The outcome and SCRIPT_MENUS disagree; say so instead of showing nothing.
+                LOGGER.warning("no screen for script menu %r; endbotd sent an outcome the plugin cannot build",
+                               view.data.get("menu"))
                 return
         elif isinstance(view, group_forms.GroupListView):
             screen = group_forms.group_list_screen(view, lang)

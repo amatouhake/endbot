@@ -16,6 +16,8 @@ class OwnedInputs:
         self.control = control
         self._local = threading.local()
         self._owners = {}
+        # Called after a request or cleanup may have changed ownership (endbotd's run journal).
+        self.on_change = None
 
     @contextmanager
     def scope(self, run_id, check, pins=None):
@@ -54,6 +56,7 @@ class OwnedInputs:
                             scope,
                             uncertain=True,
                         )
+            self._changed()
             raise
         if method == "groupInputBatch":
             for request, response in zip(params["requests"], result["results"]):
@@ -61,7 +64,25 @@ class OwnedInputs:
                     self._record(request["method"], request["params"], response["result"], scope)
         else:
             self._record(method, params, result, scope)
+        self._changed()
         return result
+
+    def _changed(self):
+        if self.on_change is not None:
+            self.on_change()
+
+    def owned(self, run_id):
+        """The channels ``run_id`` owns: dicts of identityId, channel, name and loopId."""
+        return [
+            {"identityId": identity, "channel": channel, "name": entry[1], "loopId": entry[2]}
+            for (identity, channel), entry in tuple(self._owners.items())
+            if entry[0] == run_id
+        ]
+
+    def adopt(self, run_id, channels):
+        """Own ``channels`` (as ``owned`` lists them) for ``run_id``, so ``cleanup`` stops them."""
+        for item in channels:
+            self._owners[(item["identityId"], item["channel"])] = (run_id, item.get("name"), item.get("loopId"))
 
     def _record(self, method, params, result, scope, *, uncertain=False):
         if not isinstance(result, dict):
@@ -140,4 +161,5 @@ class OwnedInputs:
                         if owned[0] == run_id:
                             self._owners.pop(key, None)
                     break
+        self._changed()
         return failures

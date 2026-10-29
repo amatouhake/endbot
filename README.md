@@ -158,6 +158,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Product direction](docs/DIRECTION.md)
 - [Interface guide](docs/INTERFACE_GUIDE.md)
 - [Permission model](docs/PERMISSIONS.md)
+- [endbotd design](docs/ENDBOTD.md)
 - [Installing from release artifacts](docs/INSTALL.md)
 - [Security model](docs/SECURITY.md)
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)

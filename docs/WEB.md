@@ -1,7 +1,7 @@
 # Web design (BOT-021)
 
-Status: **Design draft** (2026-10-29 JST). The former open points O1–O5 are settled (see [settled points](#settled-points));
-the trusted external site (P12) and open point O6 await the operator's agreement. Nothing here is implemented.
+Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
+the answers to the former open points (see [settled points](#settled-points)). Nothing here is implemented.
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -61,7 +61,7 @@ browser ──HTTPS──▶ Worker (Hono: static UI, cookie, Origin check, rate
 
 This refines Decision 3's "pairing secret": because deploy runs next to endbotd, it can install the public key
 directly. There is no bootstrap window in which whoever holds a pairing secret could pair first, and nothing secret
-leaves the PC (open point O1).
+leaves the PC (S1).
 
 **Link handshake.** endbotd opens `wss://<origin>/link`. The Durable Object sends
 `{t: "challenge", protocol, nonce, origin}`; endbotd answers
@@ -147,7 +147,7 @@ whose stored RP ID differs from the current one.
 - The session token is 256 random bits; endbotd stores only its SHA-256. The cookie is
   `__Host-endbot_session=<token>; Secure; HttpOnly; SameSite=Strict; Path=/`. The `__Host-` prefix keeps any other
   host, including other Workers under the same `workers.dev` account subdomain, from setting it.
-- Lifetimes: 7 days idle, 30 days absolute (open point O3). `last seen` is written at most once an hour.
+- Lifetimes: 7 days idle, 30 days absolute (S3). `last seen` is written at most once an hour.
 - **CSRF:** `SameSite=Strict`; the Worker refuses every non-GET request and every WebSocket upgrade whose `Origin` is
   not exactly the configured origin, and state-changing HTTP calls also need `Content-Type: application/json`, which
   forces a CORS preflight that the Worker never grants. The WebSocket upgrade check also closes cross-site WebSocket
@@ -211,7 +211,7 @@ The supervisor policy change ENDBOTD S2 deferred to BOT-021:
   logs the exit code and accepts two supervisor console commands: `start` (start runtime, then BDS, in the usual
   order) and `exit` (stop endbotd and exit with BDS's last code). `endbot stop` stops everything, as today.
 - Without the web, BDS exit stops everything, as today. `--exit-with-bds` restores that behavior for operators who run
-  Endbot under a service manager that restarts on exit (open point O2).
+  Endbot under a service manager that restarts on exit (S2).
 - While BDS is stopped, the web shows "server stopped", status and logs, and edits scripts. Bot operations fail with
   the temporary-failure code. Starting BDS stays on the console: controllers are not operators.
 - endbotd already survives a missing plugin and runtime (ENDBOTD P2, P4, P6); only the supervisor changes.
@@ -287,7 +287,7 @@ one; it identifies a pending nonce and grants nothing. The session cookie (P5) i
 
 The endbotd-issued nonce replaces Decision 4's `jti`: it is single use, expires with the flow, dies with an endbotd
 restart (so no replay cache has to survive one), and binds the assertion to the browser that started the flow, so an
-assertion copied out of the site's logs cannot be used elsewhere (open point O6).
+assertion copied out of the site's logs cannot be used elsewhere (S6).
 
 **The grant rule holds unchanged.** endbotd accepts an assertion only when `sub` is an XUID that already holds a
 controller grant bound by an Xbox-authenticated join, at the current grant revision, and the same check runs again on
@@ -342,14 +342,8 @@ Decided 2026-10-29 JST.
   assertion less than 5 minutes old (P5).
 - **S4. The trusted external site is in this release** (P12), optional and off by default; the operator will use it.
 - **S5. The Cloudflare API token is never stored**; it is prompted at deploy, rotate-key and update (P9).
-
-## Open points
-
-- **O6. The site must echo an endbotd nonce** (P12). Recommended: yes. Your site then takes `nonce` and `return` from
-  the start redirect and puts `nonce` into the assertion, instead of minting its own `jti`; in exchange a leaked
-  assertion is useless outside the browser that started the flow and no replay cache must survive restarts.
-  Alternative: Decision 4's site-minted `jti` with a persisted replay cache, which lets the site POST without the
-  start redirect but accepts a leaked assertion for up to 120 s.
+- **S6. The site echoes an endbotd-issued nonce** instead of minting its own `jti` (P12): a leaked assertion is useless
+  outside the browser that started the flow, and no replay cache must survive restarts.
 
 ## Steps
 

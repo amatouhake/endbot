@@ -868,7 +868,7 @@ cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
-Status: **Design draft in [WEB.md](WEB.md), awaiting agreement; after BOT-020 and BOT-024, shipping in one release
+Status: **Design agreed in [WEB.md](WEB.md), not implemented; after BOT-020 and BOT-024, shipping in one release
 with them and BOT-022** (2026-10-29 JST).
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:

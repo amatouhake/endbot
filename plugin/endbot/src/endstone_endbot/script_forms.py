@@ -403,18 +403,29 @@ def _typed_argument(name, value):
     return f'{name}="{text}"' if not text or any(c.isspace() for c in text) else f"{name}={text}"
 
 
-def run_screen(script, schema, groups, bots, origin, lang="en"):
+def parameter_choices(schema, groups, bots):
+    """Dropdown options for each selectable parameter; refuses a form with no target for one."""
     schema = declarations(schema)
-    controls, choices = [], {}
+    choices = {}
     for name, spec in schema.items():
-        kind, default = spec["type"], spec.get("default", "")
-        label = tr(lang, "{name} ({kind})", name=name, kind=kind)
+        kind = spec["type"]
         if kind in {"group", "bot", "choice"}:
             options = (tuple("#" + g.name for g in groups) if kind == "group" else tuple(b["name"] for b in bots)
                        if kind == "bot" else tuple(spec["choices"]))
             if not options:
                 raise f.FormResponseError("No targets available for script parameters")
             choices[name] = options
+    return schema, choices
+
+
+def run_screen(script, schema, groups, bots, origin, lang="en"):
+    schema, choices = parameter_choices(schema, groups, bots)
+    controls = []
+    for name, spec in schema.items():
+        kind, default = spec["type"], spec.get("default", "")
+        label = tr(lang, "{name} ({kind})", name=name, kind=kind)
+        if kind in {"group", "bot", "choice"}:
+            options = choices[name]
             controls.append(f.Dropdown(label, options, options.index(default) if default in options else 0))
         elif kind == "boolean":
             controls.append(f.Toggle(label, default if type(default) is bool else False))

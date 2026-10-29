@@ -223,6 +223,30 @@ class ScriptService:
     def can_run(self, script, source):
         return script.visibility == "shared" or self.can_edit(script, source)
 
+    @staticmethod
+    def _script_data(script, *, history=False):
+        """A script's plain menu fields; the in-game layer builds the screen from them."""
+        data = {
+            "name": script.name,
+            "source": script.source,
+            "revision": script.revision,
+            "owner": script.owner,
+            "owner_name": script.owner_name,
+            "visibility": script.visibility,
+            "saved_at": script.saved_at,
+        }
+        if history:
+            data["history"] = [
+                {"revision": row.revision, "source": row.source, "saved_at": row.saved_at}
+                for row in script.history
+            ]
+        return data
+
+    @staticmethod
+    def _menu_data(menu, lang, **fields):
+        """A menu outcome: plain data, never a view; menu_views builds the screen."""
+        return {"menu": menu, "lang": lang, **fields}
+
     def _visible(self, source):
         return tuple(script for script in self.store.list() if self.can_run(script, source))
 
@@ -722,18 +746,25 @@ class ScriptService:
                 self.store.save(tail[0], tail[1], guard.revision, self.owner_key(source), self._who(source))
                 # Menus continue where the save came from: the line editor page, or the new script.
                 saved = self.store.get(tail[0])
-                view = None
+                data = None
                 if source.player_id is not None:
-                    view = (script_forms.lines_screen(saved, min(guard.page, script_forms.edit_pages(saved)), lang,
-                                                       self.config.ui_pack_editor)
+                    data = (self._menu_data("scriptLines", lang, script=self._script_data(saved),
+                                            page=min(guard.page, script_forms.edit_pages(saved)),
+                                            whole_editor=self.config.ui_pack_editor)
                             if guard.page is not None
-                            else script_forms.script_screen(saved, lang, True, self.config.book_export))
+                            else self._menu_data("script", lang, script=self._script_data(saved), editable=True,
+                                                 book_export=self.config.book_export))
                 return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
-                                     log_messages=(f"Script {tail[0]} saved by {self._who(source)}",), view=view)
+                                     log_messages=(f"Script {tail[0]} saved by {self._who(source)}",), data=data)
             if operation == "menu" and not tail:
                 self._player(source)
-                return CommandResult(True, view=script_forms.list_screen(
-                    self._visible(source), lang, own=lambda script: script.owner == self.owner_key(source)))
+                scripts = [
+                    {"name": script.name, "revision": script.revision, "owner_name": script.owner_name,
+                     "visibility": script.visibility, "file": script.file,
+                     "own": script.owner == self.owner_key(source)}
+                    for script in self._visible(source)
+                ]
+                return CommandResult(True, data=self._menu_data("scripts", lang, scripts=scripts))
             if not tail:
                 raise LocalizedError("Use /botscript help")
             if operation == "import" and len(tail) == 1:
@@ -763,7 +794,8 @@ class ScriptService:
                                                          name=existing.name)),))
                 if existing is not None and menu:
                     if guard.book is None:
-                        return CommandResult(True, view=script_forms.import_confirm_screen(existing, text, lang))
+                        return CommandResult(True, data=self._menu_data(
+                            "scriptImport", lang, script=self._script_data(existing), text=text))
                     if guard.book != text:
                         raise LocalizedError("The book changed; check it again")
                 revision = existing.revision if existing else None
@@ -772,12 +804,14 @@ class ScriptService:
                 self._check(source)
                 self.store.save(name, text, revision, self.owner_key(source), self._who(source))
                 lines = len(text.splitlines())
+                data = (self._menu_data("script", lang, script=self._script_data(self.store.get(name)),
+                                        editable=True, book_export=self.config.book_export)
+                        if isinstance(guard, script_forms.ScriptGuard) else None)
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} imported from the book ({lines} lines)", name=name,
                                     lines=lines)),),
                     log_level="info", log_messages=(f"Script {name} imported from a book by {self._who(source)}",),
-                    view=script_forms.script_screen(self.store.get(name), lang, True, self.config.book_export)
-                    if isinstance(guard, script_forms.ScriptGuard) else None)
+                    data=data)
             if operation == "copy" and len(tail) == 2:
                 # Copies start private and belong to the copier; the original is untouched.
                 original = self._script(tail[0], source)
@@ -801,8 +835,9 @@ class ScriptService:
                     raise LocalizedError("Script source page is out of range")
                 if operation == "edit":
                     self._player(source)
-                    return CommandResult(True, view=script_forms.lines_screen(script, page, lang,
-                                                                              self.config.ui_pack_editor))
+                    return CommandResult(True, data=self._menu_data(
+                        "scriptLines", lang, script=self._script_data(script), page=page,
+                        whole_editor=self.config.ui_pack_editor))
                 text = script_forms.source_pages(script)[page - 1]
                 return CommandResult(True, (reply(f"{script.name} ({page}/{total})\n{text}"),))
             if operation == "export" and (len(tail) == 1 or len(tail) == 2 and tail[1].lower() == "overwrite"):
@@ -817,8 +852,9 @@ class ScriptService:
                 if written(current):
                     if len(tail) == 1:
                         if isinstance(guard, script_forms.ScriptGuard):
-                            return CommandResult(True, view=script_forms.export_confirm_screen(
-                                script, current, pages_to_source(current), lang))
+                            return CommandResult(True, data=self._menu_data(
+                                "scriptExport", lang, script=self._script_data(script), pages=list(current),
+                                text=pages_to_source(current)))
                         raise LocalizedError("The book and quill is not empty; hold an empty one or add overwrite")
                     menu_pages = guard.book if isinstance(guard, script_forms.ScriptGuard) else None
                     expected = list(menu_pages) if menu_pages is not None else current
@@ -838,8 +874,9 @@ class ScriptService:
                     log_messages=(f"Script {script.name} is now {visibility} by {self._who(source)}",))
             if operation == "history" and len(tail) == 1:
                 if source.player_id is not None and isinstance(guard, script_forms.ScriptGuard):
-                    return CommandResult(True, view=script_forms.history_screen(
-                        script, self.can_edit(script, source), lang))
+                    return CommandResult(True, data=self._menu_data(
+                        "scriptHistory", lang, script=self._script_data(script, history=True),
+                        editable=self.can_edit(script, source)))
                 lines = [script_forms.revision_line(i, r, lang) for i, r in enumerate(script.history, start=1)]
                 return CommandResult(True, (reply(f"{script.name}: " + ("; ".join(lines) or tr(
                     lang, "no earlier revisions"))),))
@@ -898,11 +935,18 @@ class ScriptService:
                         )
                     bots = bot_profiles(self.inputs)
                     groups = self.service.groups.groups if self.service.groups else ()
-                    view = script_forms.run_screen(script, schema, groups, bots, source.origin, lang)
+                    # The no-target refusal must stay in this try, where its reply is delivered.
+                    script_forms.parameter_choices(schema, groups, bots)
+                    data = self._menu_data(
+                        "scriptParameters", lang, script=self._script_data(script), schema=schema,
+                        groups=[{"identity": group.identity, "name": group.name, "members": list(group.members)}
+                                for group in groups],
+                        bots=bots, origin=source.origin)
                 else:
-                    view = script_forms.script_screen(
-                        script, lang, self.can_edit(script, source), self.config.book_export)
-                return CommandResult(True, view=view)
+                    data = self._menu_data(
+                        "script", lang, script=self._script_data(script),
+                        editable=self.can_edit(script, source), book_export=self.config.book_export)
+                return CommandResult(True, data=data)
             raise LocalizedError("Use /botscript help")
         except (ValueError, RuntimeError, OSError) as error:
             return CommandResult(True, (reply(localize_error(error, lang), color=ERROR),), accepted=False,

@@ -24,6 +24,7 @@ from endbot_core.principal import Principal
 from endbot_core.script_store import Script, ScriptStore
 
 from endstone_endbot import script_forms
+from endstone_endbot.menu_views import menu_view
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
 from endstone_endbot.script_params import arguments, declarations
@@ -1116,24 +1117,25 @@ class OwnershipTests(unittest.TestCase):
     def test_line_editor_offers_the_whole_script_field_from_config(self):
         self.save(self.alice, "mine", "params {}\nlog('a')\n")
         label = "Edit all at once (UI pack)..."
-        self.assertNotIn(label, [item.text for item in self.host.execute(["edit", "mine"], self.alice).view.items])
+        result = self.host.execute(["edit", "mine"], self.alice)
+        self.assertNotIn(label, [item.text for item in menu_view(result, self.alice).items])
         host = ScriptService(replace(self.config, ui_pack_editor=True), self.store, None, None, self.path.parent,
                              lambda source: True, process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
-        view = host.execute(["edit", "mine"], self.alice).view
+        view = menu_view(host.execute(["edit", "mine"], self.alice), self.alice)
         self.assertIn(label, [item.text for item in view.items])
         script = self.store.get("mine")
         guard = script_forms.ScriptGuard(script.revision, "mine", edit=True, page=1)
         saved = host.execute(["save", "mine", "params {}\nlog('b')\n"], replace(self.alice, group_guard=guard))
-        self.assertIn(label, [item.text for item in saved.view.items])
+        self.assertIn(label, [item.text for item in menu_view(saved, self.alice).items])
 
     def test_saves_from_menus_come_back_to_the_editor_or_the_new_script(self):
         result = self.save(self.alice, "mine", "params {}\nlog('a')\n")
-        self.assertEqual(result.view.title, "mine")
+        self.assertEqual(menu_view(result, self.alice).title, "mine")
         script = self.store.get("mine")
         guard = script_forms.ScriptGuard(script.revision, "mine", edit=True, page=1)
         result = self.host.execute(["save", "mine", "params {}\n"], replace(self.alice, group_guard=guard))
         self.assertTrue(result.accepted)
-        self.assertIn("Tap a line", result.view.content)
+        self.assertIn("Tap a line", menu_view(result, self.alice).content)
         # Saving with the old revision again is refused instead of overwriting.
         stale = self.host.execute(["save", "mine", "params {}\n-- x"], replace(self.alice, group_guard=guard))
         self.assertIn("changed", self.text(stale))
@@ -1542,6 +1544,7 @@ class BookTests(unittest.TestCase):
             result = self.host.execute(["import", "mine"], source)
             self.assertIn("already has the book's source", self.text(result))
             self.assertIsNone(result.view)
+            self.assertIsNone(menu_view(result, source))
         self.assertEqual(self.store.get("mine").revision, script.revision)
 
     def test_copy_names_fit_the_name_limit(self):
@@ -1555,7 +1558,7 @@ class BookTests(unittest.TestCase):
         script = self.store.get("mine")
         self.world.item = FakeItem("minecraft:writable_book", ["params {}\n-- v2"])
         result = self.host.execute(["import", "mine"], self.menu(self.alice, revision=script.revision, name="mine"))
-        confirm = result.view
+        confirm = menu_view(result, self.alice)
         self.assertIsInstance(confirm, forms.ConfirmScreen)
         self.assertIn("(2 lines) with the book below (2 lines)", confirm.content)
         self.assertIn("§72§r -- v2", confirm.content)
@@ -1576,7 +1579,8 @@ class BookTests(unittest.TestCase):
         revision = self.store.get("mine").revision
         self.world.item = FakeItem("minecraft:writable_book", ["my long draft", ""])
         self.assertIn("add overwrite", self.text(self.host.execute(["export", "mine"], self.alice)))
-        confirm = self.host.execute(["export", "mine"], self.menu(self.alice, revision=revision, name="mine")).view
+        result = self.host.execute(["export", "mine"], self.menu(self.alice, revision=revision, name="mine"))
+        confirm = menu_view(result, self.alice)
         self.assertIsInstance(confirm, forms.ConfirmScreen)
         self.assertIn("(2 pages)", confirm.content)
         self.assertIn("my long draft", confirm.content)

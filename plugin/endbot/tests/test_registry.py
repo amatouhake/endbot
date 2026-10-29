@@ -1,7 +1,7 @@
 import unittest
 from uuid import UUID
 
-from endstone_endbot.registry import BotIdentity, BotRegistry
+from endbot_core.registry import BotIdentity, BotRegistry
 
 
 class BotRegistryTests(unittest.TestCase):

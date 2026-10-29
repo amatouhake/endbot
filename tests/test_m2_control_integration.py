@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "plugin" / "endbot" / "src"))
 
-from endstone_endbot.control import RuntimeControlClient
+from endbot_core.control import RuntimeControlClient
 
 
 class M2ControlIntegrationTests(unittest.TestCase):

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
-from endstone_endbot.enrollment import Binding, _is_xuid
+from endbot_core.enrollment import Binding, _is_xuid
 
 
 def controller_name(value: str) -> str:

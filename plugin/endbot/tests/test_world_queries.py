@@ -1,9 +1,9 @@
 import unittest
 from types import SimpleNamespace
 
+from endbot_core.commands import CommandSyntaxError, parse_command
 from plain_service import PlainCommandService
 
-from endstone_endbot.commands import CommandSyntaxError, parse_command
 from endstone_endbot.world import EndstoneWorld
 
 BOT = {"identityId": "00000000-0000-4000-8000-000000000001", "name": "Alice", "desiredState": "online",
@@ -251,7 +251,7 @@ class SelectorTests(unittest.TestCase):
         self.assertEqual(parse_command(["Alice", "attack"]).operation, "action")
 
     def test_reachable_block_needs_line_of_sight_and_known_types(self):
-        from endstone_endbot.i18n import LocalizedError
+        from endbot_core.i18n import LocalizedError
 
         log = Block("minecraft:oak_log")
         stone = Block("minecraft:stone")
@@ -350,7 +350,7 @@ class SelectorCommandTests(unittest.TestCase):
 
 class RepetitionTests(unittest.TestCase):
     def test_targeted_repetition_and_strict_at(self):
-        from endstone_endbot.commands import CommandSyntaxError
+        from endbot_core.commands import CommandSyntaxError
 
         attack = parse_command(["Alice", "attack", "@zombie", "interval", "20", "for", "200"])
         self.assertEqual(attack.operation, "action")

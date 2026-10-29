@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from endstone_endbot.enrollment import ControllerEnrollment, EnrollmentError, load_bindings, parse_gamertags
+from endbot_core.enrollment import ControllerEnrollment, EnrollmentError, load_bindings, parse_gamertags
 
 OWNER_XUID = "2535469543141592"
 OWNER_UUID = "63572362-0c83-5f0a-8cec-e1b788101798"

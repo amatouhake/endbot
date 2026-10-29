@@ -49,11 +49,12 @@ jobs:
             exit 1
           fi
 
-      - name: Test and build plugin
+      - name: Test and build core, plugin
         env:
-          PYTHONPATH: plugin/endbot/src
+          PYTHONPATH: plugin/endbot/src:core/src
         run: |
           python -m unittest discover -s plugin/endbot/tests -v
+          python -m build --wheel --outdir dist/core core
           python -m build --wheel --outdir dist/plugin plugin/endbot
 
       - name: Test and build CLI

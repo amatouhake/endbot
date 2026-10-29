@@ -3,8 +3,9 @@
 import time
 from dataclasses import dataclass
 
-from endstone_endbot import forms as f
-from endstone_endbot.i18n import tr
+from endbot_core import forms as f
+from endbot_core.i18n import tr
+
 from endstone_endbot.script_params import declarations
 
 

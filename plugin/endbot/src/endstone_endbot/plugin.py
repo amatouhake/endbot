@@ -6,27 +6,27 @@ from pathlib import Path
 from typing import ClassVar
 from uuid import UUID
 
+from endbot_core.authorization import AllowedPlayers
+from endbot_core.commands import BotCommandService
+from endbot_core.control import RuntimeControlClient
+from endbot_core.controller_policy import ControllerPolicy
+from endbot_core.enrollment import ControllerEnrollment, _is_xuid
+from endbot_core.groups import GroupCommandService, GroupStore
+from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, resolve_language, tr
+from endbot_core.limits import BotLimits
+from endbot_core.principal import Principal
+from endbot_core.script_store import ScriptStore
 from endstone.command import Command, CommandSender, ConsoleCommandSender
 from endstone.event import PlayerJoinEvent, PlayerQuitEvent, event_handler
 from endstone.plugin import Plugin
 
-from endstone_endbot.authorization import AllowedPlayers
-from endstone_endbot.commands import BotCommandService
-from endstone_endbot.control import RuntimeControlClient
-from endstone_endbot.controller_policy import ControllerPolicy
 from endstone_endbot.controller_requests import execute_request
 from endstone_endbot.dispatch import AsyncCommandRunner, ServerThreadBridge, ServerThreadWorld
-from endstone_endbot.enrollment import ControllerEnrollment, _is_xuid
 from endstone_endbot.form_adapter import FormPresenter
-from endstone_endbot.groups import GroupCommandService, GroupStore
-from endstone_endbot.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, resolve_language, tr
 from endstone_endbot.inventory_sync import PACKET_ID as INVENTORY_PACKET_ID
 from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings, unsupported_payload
-from endstone_endbot.limits import BotLimits
-from endstone_endbot.principal import Principal
 from endstone_endbot.script_config import ScriptConfig
 from endstone_endbot.script_inputs import OwnedInputs
-from endstone_endbot.script_store import ScriptStore
 from endstone_endbot.scripting import ScriptService
 from endstone_endbot.world import EndstoneWorld, unsupported
 

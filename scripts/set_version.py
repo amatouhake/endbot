@@ -18,6 +18,7 @@ from packaging.version import Version
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_PACKAGES = (
     ("plugin/endbot/pyproject.toml", "plugin/endbot/src/endstone_endbot/__init__.py"),
+    ("core/pyproject.toml", "core/src/endbot_core/__init__.py"),
     ("cli/endbot/pyproject.toml", "cli/endbot/src/endbot_cli/__init__.py"),
 )
 NPM_VERSION = re.compile(r"^\d+\.\d+\.\d+(-(alpha|beta|rc)\.\d+)?$")
@@ -50,6 +51,11 @@ def set_version(version: str) -> str:
     for pyproject, module in PYTHON_PACKAGES:
         replace_once(ROOT / pyproject, r'^version = "[^"]+"$', f'version = "{python_version}"')
         replace_once(ROOT / module, r'^__version__ = "[^"]+"$', f'__version__ = "{python_version}"')
+    replace_once(
+        ROOT / "plugin/endbot/pyproject.toml",
+        r'"endbot-core==[^"]+"',
+        f'"endbot-core=={python_version}"',
+    )
     return python_version
 
 

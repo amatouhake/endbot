@@ -5,11 +5,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from endbot_core.commands import strip_colors
+from endbot_core.control import RuntimeControlError
+from endbot_core.groups import GroupCommandService, GroupStore
 from test_command_service import FakeControl, FakeWorld
-
-from endstone_endbot.commands import strip_colors
-from endstone_endbot.control import RuntimeControlError
-from endstone_endbot.groups import GroupCommandService, GroupStore
 
 
 def messages(result):
@@ -47,7 +46,7 @@ class GroupStoreTests(unittest.TestCase):
         self.store.create("miners")
         before = self.path.read_bytes()
         with (
-            patch("endstone_endbot.groups.os.replace", side_effect=OSError("disk unavailable")),
+            patch("endbot_core.groups.os.replace", side_effect=OSError("disk unavailable")),
             self.assertRaises(OSError),
         ):
             self.store.create("farmers")
@@ -115,7 +114,7 @@ class GroupServiceTests(unittest.TestCase):
         self.store.remove("miners", identity.upper())
         self.assertNotIn(identity, self.store.get("miners").members)
         with patch.object(self.store, "_save", side_effect=PermissionError(13, "denied", r"C:\secret\groups.json")), \
-                self.assertLogs("endstone_endbot.groups", level="ERROR") as logs:
+                self.assertLogs("endbot_core.groups", level="ERROR") as logs:
             text = messages(self.manage("create", "#other"))
         self.assertIn("Groups could not be saved", text)
         self.assertNotIn("secret", text)

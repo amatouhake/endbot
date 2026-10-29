@@ -6,7 +6,7 @@ a book and quill the player already holds, never creating items, and overwrites
 written pages only when they are the ones the player confirmed.
 """
 
-from endstone_endbot.i18n import LocalizedError
+from endbot_core.i18n import LocalizedError
 
 BOOK_PAGE_CHARS = 256
 BOOK_PAGES = 50

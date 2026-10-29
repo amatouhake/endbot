@@ -6,16 +6,16 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+from endbot_core import forms
+from endbot_core.commands import parse_command, strip_colors
+from endbot_core.groups import GroupCommandService, GroupStore
+from endbot_core.i18n import JA, tr
 from plain_service import PlainCommandService
 from test_command_service import FakeControl, FakeWorld
 from test_forms import FakeFormModule, FakePlayer
 from test_groups import GroupControl, messages
 
-from endstone_endbot import forms
-from endstone_endbot.commands import parse_command, strip_colors
 from endstone_endbot.form_adapter import FormPresenter
-from endstone_endbot.groups import GroupCommandService, GroupStore
-from endstone_endbot.i18n import JA, tr
 
 
 def drop_result(selector):

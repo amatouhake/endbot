@@ -2,13 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from endbot_core.commands import CommandSyntaxError, parse_command, strip_colors
+from endbot_core.forms import BotView, ModalScreen, Show, bot_screen, modal_commands
+from endbot_core.groups import GroupCommandService, GroupStore
 from plain_service import PlainCommandService
 from test_command_service import FakeWorld
 from test_groups import GroupControl
-
-from endstone_endbot.commands import CommandSyntaxError, parse_command, strip_colors
-from endstone_endbot.forms import BotView, ModalScreen, Show, bot_screen, modal_commands
-from endstone_endbot.groups import GroupCommandService, GroupStore
 
 BOT = {"identityId": "00000000-0000-4000-8000-000000000001", "name": "Alice", "desiredState": "online",
        "connectionState": "online"}

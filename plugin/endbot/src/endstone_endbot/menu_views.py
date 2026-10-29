@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from endstone_endbot.forms import BotListView, BotView, GroupTarget, Run, menu_argv
-from endstone_endbot.group_forms import GroupGuard
+from endbot_core.forms import BotListView, BotView, GroupTarget, Run, menu_argv
+from endbot_core.group_forms import GroupGuard
 
 
 def group_view_back(view: BotView, group: dict, guard: GroupGuard) -> BotView:

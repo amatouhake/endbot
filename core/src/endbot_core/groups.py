@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from endstone_endbot.commands import (
+from endbot_core.commands import (
     ERROR,
     BotCommandService,
     CommandResult,
@@ -22,10 +22,10 @@ from endstone_endbot.commands import (
     reply,
     strip_colors,
 )
-from endstone_endbot.control import RuntimeControlError, bot_profiles
-from endstone_endbot.group_forms import GroupListView, GroupView, ResultView
-from endstone_endbot.group_results import PAGE_SIZE, MemberResult, ResultStore
-from endstone_endbot.i18n import LocalizedError, localize_error, tr
+from endbot_core.control import RuntimeControlError, bot_profiles
+from endbot_core.group_forms import GroupListView, GroupView, ResultView
+from endbot_core.group_results import PAGE_SIZE, MemberResult, ResultStore
+from endbot_core.i18n import LocalizedError, localize_error, tr
 
 GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}\Z")
 # Indexes stay under 10 digits: a larger number is never a member and must not reach int().

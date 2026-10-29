@@ -78,9 +78,10 @@ jobs:
             --output-dir dist/endstone
           uv run --with auditwheel==6.2.0 \
             python scripts/inspect_linux_wheel.py dist/endstone/endstone-*.whl
+          python -m build --wheel --outdir dist/core core
           python -m build --wheel --outdir dist/plugin plugin/endbot
           python -m build --wheel --outdir dist/cli cli/endbot
-          python scripts/test_package_install.py --endstone-wheel-dir dist/endstone --plugin-wheel-dir dist/plugin
+          python scripts/test_package_install.py --endstone-wheel-dir dist/endstone --plugin-wheel-dir dist/plugin --core-wheel-dir dist/core
           mkdir -p staging/linux
           cp dist/endstone/*.whl staging/linux/
           cp build/endstone-patched/LICENSE staging/linux/ENDSTONE_LICENSE
@@ -102,6 +103,7 @@ jobs:
             --platform linux-x86_64 \
             --endstone-wheel dist/endstone/endstone-*.whl \
             --plugin-wheel dist/plugin/endstone_endbot-*.whl \
+            --core-wheel dist/core/endbot_core-*.whl \
             --cli-wheel dist/cli/endbot-*.whl \
             --endstone-license staging/linux/ENDSTONE_LICENSE \
             --runner-dir build/runner-stage \
@@ -131,6 +133,7 @@ jobs:
           path: |
             dist/bundle/
             dist/plugin/
+            dist/core/
             dist/cli/
           if-no-files-found: error
 
@@ -173,7 +176,7 @@ jobs:
 
       - name: Verify source and prepare Endstone
         env:
-          PYTHONPATH: plugin/endbot/src
+          PYTHONPATH: core/src;plugin/endbot/src
         run: |
           python scripts/check_portability.py
           python -m unittest discover -s tests -v
@@ -186,9 +189,10 @@ jobs:
             --output-dir dist/endstone \
             --build-selector cp312-win_amd64
           python scripts/inspect_windows_wheel.py dist/endstone/endstone-*.whl
+          python -m build --wheel --outdir dist/core core
           python -m build --wheel --outdir dist/plugin plugin/endbot
           python -m build --wheel --outdir dist/cli cli/endbot
-          python scripts/test_package_install.py --endstone-wheel-dir dist/endstone --plugin-wheel-dir dist/plugin
+          python scripts/test_package_install.py --endstone-wheel-dir dist/endstone --plugin-wheel-dir dist/plugin --core-wheel-dir dist/core
           mkdir -p staging/windows
           cp dist/endstone/*.whl staging/windows/
           cp build/endstone-patched/LICENSE staging/windows/ENDSTONE_LICENSE
@@ -208,6 +212,7 @@ jobs:
             --platform windows-x86_64 \
             --endstone-wheel dist/endstone/endstone-*.whl \
             --plugin-wheel dist/plugin/endstone_endbot-*.whl \
+            --core-wheel dist/core/endbot_core-*.whl \
             --cli-wheel dist/cli/endbot-*.whl \
             --endstone-license staging/windows/ENDSTONE_LICENSE \
             --runner-dir build/runner-stage \
@@ -303,8 +308,8 @@ jobs:
           mkdir -p dist
           cp staging/linux/*.whl staging/windows/*.whl dist/
           cp staging/linux/ENDSTONE_LICENSE dist/ENDSTONE_LICENSE
-          cp staging/bundle-linux/plugin/*.whl staging/bundle-linux/cli/*.whl dist/
-          python scripts/test_package_install.py --endstone-wheel-dir staging/linux --plugin-wheel-dir staging/bundle-linux/plugin
+          cp staging/bundle-linux/plugin/*.whl staging/bundle-linux/core/*.whl staging/bundle-linux/cli/*.whl dist/
+          python scripts/test_package_install.py --endstone-wheel-dir staging/linux --plugin-wheel-dir staging/bundle-linux/plugin --core-wheel-dir staging/bundle-linux/core
           cp staging/bundle-linux/bundle/* staging/bundle-windows/* dist/
           tar -czf "dist/endbot-runtime-${CANDIDATE_VERSION}.tar.gz" \
             -C runtime package.json package-lock.json README.md endbot-runtime.example.json scripts src

@@ -4,9 +4,9 @@
 The bundle lets an operator run Endbot without installing Python or Node.js
 and without ever running pip/npm: it carries a private CPython 3.12 (from
 ``packaging/toolchain.lock.json``) with the patched Endstone wheel, the
-``endstone-endbot`` plugin wheel and the ``endbot`` CLI wheel preinstalled, a
-private Node.js 24 runtime, and the runtime tree with production
-``node_modules`` prebuilt. Release candidates also pass ``--runner-dir`` with
+``endstone-endbot`` plugin wheel, the ``endbot-core`` shared wheel and the
+``endbot`` CLI wheel preinstalled, a private Node.js 24 runtime, and the runtime
+tree with production ``node_modules`` prebuilt. Release candidates also pass ``--runner-dir`` with
 the native Luau runner staged by ``node runner/build.mjs --out <dir>``.
 Local builds may omit that option (scripting then needs a separate runner).
 
@@ -214,14 +214,14 @@ def npm_supports_allow_remote(node: Path, npm_cli: Path) -> bool:
     return "--allow-remote" in completed.stdout
 
 
-def install_python_wheels(python: Path, endstone_wheel: Path | None, plugin_wheel: Path, cli_wheel: Path, freeze_path: Path) -> None:
+def install_python_wheels(python: Path, endstone_wheel: Path | None, plugin_wheel: Path, core_wheel: Path, cli_wheel: Path, freeze_path: Path) -> None:
     # Install the release wheels themselves with no index so the exact local
     # files win, then resolve their remaining third-party dependencies
     # (the CLI needs cryptography; Endstone has its own) from the index
     # without ever compiling: binary wheels only. The local wheel files are
-    # passed again so intra-bundle pins (the plugin's exact endstone pin,
-    # which is not on any index) resolve to the bundled wheels.
-    wheels = [str(wheel) for wheel in (endstone_wheel, plugin_wheel, cli_wheel) if wheel is not None]
+    # passed again so intra-bundle pins (the plugin's exact endstone and
+    # endbot-core pins, which are not on any index) resolve to the bundled wheels.
+    wheels = [str(wheel) for wheel in (endstone_wheel, plugin_wheel, core_wheel, cli_wheel) if wheel is not None]
     run(str(python), "-m", "pip", "install", "--no-index", "--no-deps", *wheels)
     if endstone_wheel is not None:
         run(str(python), "-m", "pip", "install", "--only-binary=:all:", *wheels)
@@ -229,7 +229,7 @@ def install_python_wheels(python: Path, endstone_wheel: Path | None, plugin_whee
         # Local-validation path only (never CI): without the Endstone wheel
         # the plugin's exact endstone pin cannot resolve, so only the CLI
         # wheel's third-party dependencies are installed here.
-        run(str(python), "-m", "pip", "install", "--only-binary=:all:", str(cli_wheel))
+        run(str(python), "-m", "pip", "install", "--only-binary=:all:", str(core_wheel), str(cli_wheel))
     completed = run(str(python), "-m", "pip", "freeze", capture=True)
     freeze_path.write_text(completed.stdout, encoding="utf-8")
 
@@ -741,6 +741,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--platform", required=True, choices=PLATFORMS)
     parser.add_argument("--endstone-wheel", type=Path, help="patched Endstone wheel for the target platform")
     parser.add_argument("--plugin-wheel", type=Path, required=True, help="endstone-endbot plugin wheel (pure Python)")
+    parser.add_argument("--core-wheel", type=Path, required=True, help="endbot-core shared wheel (pure Python)")
     parser.add_argument("--cli-wheel", type=Path, required=True, help="endbot CLI wheel (pure Python)")
     parser.add_argument("--endstone-license", type=Path, default=None, help="ENDSTONE_LICENSE file for licenses/")
     parser.add_argument(
@@ -780,8 +781,9 @@ def main(argv: list[str] | None = None) -> int:
         elif not args.allow_missing_endstone:
             raise BundleError("an --endstone-wheel is required (or pass --allow-missing-endstone for local validation)")
         plugin_wheel = args.plugin_wheel.resolve()
+        core_wheel = args.core_wheel.resolve()
         cli_wheel = args.cli_wheel.resolve()
-        for label, wheel in (("plugin", plugin_wheel), ("cli", cli_wheel)):
+        for label, wheel in (("plugin", plugin_wheel), ("core", core_wheel), ("cli", cli_wheel)):
             if not wheel.is_file():
                 raise BundleError(f"--{label}-wheel {wheel} does not exist")
         runner_dir = args.runner_dir.resolve() if args.runner_dir is not None else None
@@ -803,7 +805,7 @@ def main(argv: list[str] | None = None) -> int:
         python = bundled_python(python_dir, args.platform)
         node = bundled_node(node_dir, args.platform)
 
-        install_python_wheels(python, endstone_wheel, plugin_wheel, cli_wheel, app_version / "python-freeze.txt")
+        install_python_wheels(python, endstone_wheel, plugin_wheel, core_wheel, cli_wheel, app_version / "python-freeze.txt")
         build_runtime(node, find_npm_cli(node_dir), app_version / "runtime")
         prune_bundle(python_dir, node_dir, app_version / "runtime", args.platform)
         write_launchers(bundle_root, args.platform, args.version)

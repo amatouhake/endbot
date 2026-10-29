@@ -51,15 +51,22 @@ def file_url_to_path(url: str) -> Path:
     return Path(url2pathname(parsed.path)).resolve()
 
 
-def verify_install(endstone_wheel: Path, plugin_wheel: Path, expected_version: str, report_path: Path) -> None:
+def verify_install(
+    endstone_wheel: Path,
+    plugin_wheel: Path,
+    core_wheel: Path,
+    expected_version: str,
+    report_path: Path,
+) -> None:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     installed = {item["metadata"]["name"]: item for item in report["install"]}
-    if set(installed) != {"endstone", "endstone-endbot"}:
+    if set(installed) != {"endstone", "endstone-endbot", "endbot-core"}:
         raise InstallTestError(f"offline paired install contained unexpected distributions: {sorted(installed)}")
 
     expected_wheels = {
         "endstone": endstone_wheel.resolve(),
         "endstone-endbot": plugin_wheel.resolve(),
+        "endbot-core": core_wheel.resolve(),
     }
     for name, expected_wheel in expected_wheels.items():
         source_url = installed[name]["download_info"]["url"]
@@ -76,6 +83,8 @@ def verify_install(endstone_wheel: Path, plugin_wheel: Path, expected_version: s
     requirements = plugin_distribution.requires or []
     if f"endstone=={expected_version}" not in requirements:
         raise InstallTestError("installed plugin does not require the exact patched Endstone version")
+    if not any(requirement.startswith("endbot-core==") for requirement in requirements):
+        raise InstallTestError("installed plugin does not require the exact shared endbot-core version")
     entry_points = [entry for entry in plugin_distribution.entry_points if entry.group == "endstone" and entry.name == "endbot"]
     if len(entry_points) != 1:
         raise InstallTestError("installed plugin does not expose exactly one endbot entry point")
@@ -86,11 +95,12 @@ def verify_install(endstone_wheel: Path, plugin_wheel: Path, expected_version: s
     print(json.dumps({"endstone": expected_version, "entry_point": entry_points[0].value}, sort_keys=True))
 
 
-def integration_test(endstone_wheel_dir: Path, plugin_wheel_dir: Path) -> None:
+def integration_test(endstone_wheel_dir: Path, plugin_wheel_dir: Path, core_wheel_dir: Path) -> None:
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     expected_version = lock["endstone"]["package_version"]
     endstone_wheel = one_wheel(endstone_wheel_dir, "endstone")
     plugin_wheel = one_wheel(plugin_wheel_dir, "endstone_endbot")
+    core_wheel = one_wheel(core_wheel_dir, "endbot_core")
     if sys.platform.startswith("linux") and (
         "manylinux_" not in endstone_wheel.name or "-linux_" in endstone_wheel.name
     ):
@@ -126,6 +136,7 @@ def integration_test(endstone_wheel_dir: Path, plugin_wheel_dir: Path) -> None:
             str(report_path),
             str(endstone_wheel),
             str(plugin_wheel),
+            str(core_wheel),
             capture=True,
         )
         print(output, end="")
@@ -138,6 +149,8 @@ def integration_test(endstone_wheel_dir: Path, plugin_wheel_dir: Path) -> None:
             str(endstone_wheel),
             "--plugin-wheel",
             str(plugin_wheel),
+            "--core-wheel",
+            str(core_wheel),
             "--expected-version",
             expected_version,
             "--report",
@@ -149,9 +162,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endstone-wheel-dir", type=Path)
     parser.add_argument("--plugin-wheel-dir", type=Path)
+    parser.add_argument("--core-wheel-dir", type=Path)
     parser.add_argument("--verify-installed", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--endstone-wheel", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--plugin-wheel", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--core-wheel", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--expected-version", help=argparse.SUPPRESS)
     parser.add_argument("--report", type=Path, help=argparse.SUPPRESS)
     return parser.parse_args()
@@ -161,13 +176,14 @@ def main() -> int:
     args = parse_args()
     try:
         if args.verify_installed:
-            if not all((args.endstone_wheel, args.plugin_wheel, args.expected_version, args.report)):
+            if not all((args.endstone_wheel, args.plugin_wheel, args.core_wheel, args.expected_version, args.report)):
                 raise InstallTestError("installed verification arguments are incomplete")
-            verify_install(args.endstone_wheel, args.plugin_wheel, args.expected_version, args.report)
+            verify_install(args.endstone_wheel, args.plugin_wheel, args.core_wheel, args.expected_version,
+                           args.report)
         else:
-            if not args.endstone_wheel_dir or not args.plugin_wheel_dir:
-                raise InstallTestError("both wheel directories are required")
-            integration_test(args.endstone_wheel_dir, args.plugin_wheel_dir)
+            if not args.endstone_wheel_dir or not args.plugin_wheel_dir or not args.core_wheel_dir:
+                raise InstallTestError("all three wheel directories are required")
+            integration_test(args.endstone_wheel_dir, args.plugin_wheel_dir, args.core_wheel_dir)
     except (InstallTestError, OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
         print(f"package-install-test: ERROR: {error}", file=sys.stderr)
         return 1

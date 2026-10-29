@@ -36,7 +36,7 @@ class UiPackTests(unittest.TestCase):
         self.assertEqual(sorted(check_pack()), ["manifest.json", "ui/server_form.json"])
 
     def test_marker_matches_the_plugin(self) -> None:
-        forms = (ROOT / "plugin/endbot/src/endstone_endbot/forms.py").read_text(encoding="utf-8")
+        forms = (ROOT / "core/src/endbot_core/forms.py").read_text(encoding="utf-8")
         self.assertEqual(re.search(r'^MULTILINE_MARKER = "([^"]+)"$', forms, re.MULTILINE).group(1), MULTILINE_MARKER)
 
     def test_build_is_reproducible_and_holds_only_the_pack(self) -> None:

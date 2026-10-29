@@ -22,8 +22,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import uuid4
 
-from endstone_endbot.groups import group_name
-from endstone_endbot.i18n import LocalizedError
+from endbot_core.groups import group_name
+from endbot_core.i18n import LocalizedError
 
 HISTORY = 10
 FILE_OWNER = "file"

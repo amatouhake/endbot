@@ -84,7 +84,7 @@ jobs:
 
       - name: Run Endbot tests
         env:
-          PYTHONPATH: plugin/endbot/src
+          PYTHONPATH: plugin/endbot/src:core/src
         run: |
           python scripts/check_portability.py
           python -m unittest discover -s tests -v
@@ -185,10 +185,12 @@ jobs:
 
       - name: Build plugin and test paired installation
         run: |
+          python -m build --wheel --outdir dist/core core
           python -m build --wheel --outdir dist/plugin plugin/endbot
           python scripts/test_package_install.py \
             --endstone-wheel-dir dist/endstone \
-            --plugin-wheel-dir dist/plugin
+            --plugin-wheel-dir dist/plugin \
+            --core-wheel-dir dist/core
 
       - name: Test in a clean Linux consumer without LLVM
         run: >-
@@ -199,6 +201,7 @@ jobs:
           python scripts/test_package_install.py
           --endstone-wheel-dir dist/endstone
           --plugin-wheel-dir dist/plugin
+          --core-wheel-dir dist/core
 
       - name: Save validated Endstone wheel
         if: steps.endstone-wheel-cache.outputs.cache-hit != 'true'

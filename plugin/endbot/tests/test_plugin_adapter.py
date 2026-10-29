@@ -6,7 +6,7 @@ import types
 import unittest
 from pathlib import Path
 
-from endstone_endbot.principal import Principal
+from endbot_core.principal import Principal
 
 
 class FakePlugin:
@@ -261,7 +261,7 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertTrue((Path(directory) / "controllers.json").is_file())
 
     def controller_fixture(self, directory):
-        from endstone_endbot.controller_policy import ControllerPolicy
+        from endbot_core.controller_policy import ControllerPolicy
 
         plugin = self.module.EndbotPlugin()
         plugin._controller_policy = ControllerPolicy(Path(directory) / "policy.json")
@@ -369,7 +369,7 @@ class PluginAdapterTests(unittest.TestCase):
                 self.assertEqual(bool(warnings), warned)
 
     def test_mining_loop_survives_controller_logoff_but_not_revocation(self):
-        from endstone_endbot.principal import as_job
+        from endbot_core.principal import as_job
 
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)
@@ -390,7 +390,7 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertTrue(plugin._authorize(as_job(Principal())))
 
     def test_revoke_and_regrant_never_revive_an_older_job(self):
-        from endstone_endbot.principal import as_job
+        from endbot_core.principal import as_job
 
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)
@@ -472,7 +472,7 @@ class PluginAdapterTests(unittest.TestCase):
             self.assertFalse(plugin._controller_policy.path.exists())
 
     def test_pending_grant_binds_on_join_and_revocation_overrides_bootstrap(self):
-        from endstone_endbot.enrollment import ControllerEnrollment
+        from endbot_core.enrollment import ControllerEnrollment
 
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)
@@ -504,14 +504,14 @@ class PluginAdapterTests(unittest.TestCase):
             console = FakeConsole()
             command = FakeCommand("botcontrollers")
             plugin.on_command(console, command, ["add", player.name])
-            with patch("endstone_endbot.controller_policy.os.replace", side_effect=OSError("disk failure")):
+            with patch("endbot_core.controller_policy.os.replace", side_effect=OSError("disk failure")):
                 plugin.on_command(console, command, ["remove", player.name])
             self.assertTrue(plugin._allows_control(player))
             self.assertEqual(player.permission_values[-1], ("endbot.command.control", True))
             self.assertIn("disk failure", console.messages[-1])
 
     def test_revocation_overrides_legacy_uuid_and_xuid_permissions(self):
-        from endstone_endbot.authorization import AllowedPlayers
+        from endbot_core.authorization import AllowedPlayers
 
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)
@@ -600,8 +600,7 @@ class PluginAdapterTests(unittest.TestCase):
         self.addCleanup(sys.path.remove, cli_source)
         from endbot_cli.controller_status import load_policy, saved_report
         from endbot_cli.controllers import load_controllers
-
-        from endstone_endbot.enrollment import ControllerEnrollment
+        from endbot_core.enrollment import ControllerEnrollment
 
         with tempfile.TemporaryDirectory() as directory:
             plugin = self.controller_fixture(directory)

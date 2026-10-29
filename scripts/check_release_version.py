@@ -36,6 +36,7 @@ def validate_release_version(candidate: str) -> None:
         "version"
     ]
     cli = tomllib.loads((ROOT / "cli/endbot/pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    core = tomllib.loads((ROOT / "core/pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     module = plugin_module_version()
 
     errors: list[str] = []
@@ -51,11 +52,21 @@ def validate_release_version(candidate: str) -> None:
             errors.append(f"candidate {candidate!r} does not match CLI package version {cli!r}")
     except InvalidVersion as error:
         errors.append(f"CLI version is not PEP 440 compatible: {error}")
+    try:
+        if Version(candidate) != Version(core):
+            errors.append(f"candidate {candidate!r} does not match core package version {core!r}")
+    except InvalidVersion as error:
+        errors.append(f"core version is not PEP 440 compatible: {error}")
     if module != plugin:
         errors.append(f"plugin module version {module!r} does not match package version {plugin!r}")
     cli_module = module_version("cli/endbot/src/endbot_cli/__init__.py")
     if cli_module != cli:
         errors.append(f"CLI module version {cli_module!r} does not match package version {cli!r}")
+    core_module = module_version("core/src/endbot_core/__init__.py")
+    if core_module != core:
+        errors.append(f"core module version {core_module!r} does not match package version {core!r}")
+    if f'"endbot-core=={core}"' not in (ROOT / "plugin/endbot/pyproject.toml").read_text(encoding="utf-8"):
+        errors.append(f"plugin does not pin the exact core package version {core!r}")
     if errors:
         raise ValueError("; ".join(errors))
 

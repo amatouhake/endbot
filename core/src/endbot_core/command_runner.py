@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from endbot_core.commands import ERROR, WARNING, CommandResult, reply, strip_colors
 from endbot_core.events import Event, EventLogSink, render
@@ -106,7 +107,8 @@ class AsyncCommandRunner:
                 return False
         return True
 
-    def close(self) -> None:
+    def close(self, timeout: float = 0.0) -> None:
+        """Stop taking work and queue cleanup; wait up to ``timeout`` seconds for it to finish."""
         with self._lock:
             if not self._open:
                 return
@@ -118,9 +120,15 @@ class AsyncCommandRunner:
                 self._service.cancel_groups()
             if hasattr(self._service, "close"):
                 self._executor.submit(self._service.close)
+            drained = self._executor.submit(lambda: None)
         # Queued commands check _open; cleanup follows any in-flight request.
         self._executor.shutdown(wait=False)
         self._poll_executor.shutdown(wait=False)
+        if timeout > 0:
+            try:
+                drained.result(timeout)
+            except FutureTimeoutError:
+                pass
 
     def _execute(self, arguments: list[str], source: Principal, command: str = "bot") -> None:
         with self._lock:

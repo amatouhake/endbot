@@ -174,3 +174,6 @@ class ServerThreadWorld:
 
     def assert_name_available(self, name, identity_id=None):
         return self._bridge.call(lambda: self._world.assert_name_available(name, identity_id))
+
+    def capacity(self, bot_ids):
+        return self._bridge.call(lambda: self._world.capacity(bot_ids))

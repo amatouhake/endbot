@@ -1,12 +1,17 @@
 """Regenerating the derived configuration files on every start (docs/OPERATIONS.md section 2).
 
-Three files are derived from ``endbot.toml`` plus ``state/`` and rewritten
+Four files are derived from ``endbot.toml`` plus ``state/`` and rewritten
 atomically on every ``endbot start``:
 
 - ``state/generated/endbot-runtime.json`` — the runtime config;
-- ``<server>/plugins/endbot/config.toml`` — the plugin config;
+- ``state/generated/endbotd.toml`` — endbotd's config (docs/ENDBOTD.md P7):
+  authorization, limits, UI, scripting, the runtime it drives and the link;
+- ``<server>/plugins/endbot/config.toml`` — the plugin config, which now holds
+  only the endbotd link settings (the runtime token no longer reaches BDS);
 - the ``[local-bot-auth]`` table in ``<server>/endstone.toml`` — everything
   else in that file (other tables, keys, comments) is preserved via tomlkit.
+
+``state/secrets/endbotd.token`` is created once, like the runtime's token.
 
 Paths are written as TOML literal strings so Windows backslashes need no
 escaping (a path containing a single quote cannot be a TOML literal string and
@@ -16,6 +21,8 @@ falls back to a basic string).
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,6 +56,7 @@ class GeneratedConfigs:
     runtime_config: Path
     plugin_config: Path
     endstone_config: Path
+    endbotd_config: Path | None = None
     messages: list[str] = field(default_factory=list)
 
 
@@ -170,24 +178,31 @@ def generate_runtime_config(
     return target
 
 
-def _read_legacy_allowlists(plugin_config: Path) -> tuple[list[str], list[str], str | None]:
-    """Preserve rc.1 ``allowed-uuids`` / ``allowed-xuids`` pre-bound entries."""
+def _read_legacy_allowlists(*configs: Path) -> tuple[list[str], list[str], str | None]:
+    """Preserve rc.1 ``allowed-uuids`` / ``allowed-xuids`` pre-bound entries.
 
-    try:
-        document = tomllib.loads(plugin_config.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return [], [], None
-    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
-        return (
-            [],
-            [],
-            (
-                f"WARN config-gen: {plugin_config} cannot be parsed ({error}); "
-                "legacy [authorization] pre-bound entries are not preserved"
-            ),
-        )
-    authorization = document.get("authorization", {})
-    if not isinstance(authorization, dict):
+    The first of ``configs`` with an ``[authorization]`` table carries them:
+    the plugin config before the first endbotd start, endbotd.toml after it.
+    """
+
+    for config in configs:
+        try:
+            document = tomllib.loads(config.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+            return (
+                [],
+                [],
+                (
+                    f"WARN config-gen: {config} cannot be parsed ({error}); "
+                    "legacy [authorization] pre-bound entries are not preserved"
+                ),
+            )
+        authorization = document.get("authorization")
+        if isinstance(authorization, dict):
+            break
+    else:
         return [], [], None
 
     def strings(key: str) -> list[str]:
@@ -199,14 +214,76 @@ def _read_legacy_allowlists(plugin_config: Path) -> tuple[list[str], list[str], 
     return strings("allowed-uuids"), strings("allowed-xuids"), None
 
 
-def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotConfig) -> tuple[Path, list[str]]:
-    """Write ``<server>/plugins/endbot/config.toml`` (section 2); return it plus warnings."""
+def ensure_endbotd_token(paths: InstancePaths) -> Path:
+    """Create ``state/secrets/endbotd.token`` once; a short one is replaced. The token is never printed."""
+
+    token_file = paths.endbotd_token
+    try:
+        if len(token_file.read_text(encoding="utf-8").strip()) >= 32:
+            return token_file
+    except FileNotFoundError:
+        pass
+    except (OSError, UnicodeDecodeError) as error:
+        raise ConfigGenerationError(f"{token_file} cannot be read: {error}; fix the file permissions") from error
+    token_file.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(token_file, secrets.token_urlsafe(32) + "\n")
+    if os.name != "nt":
+        os.chmod(token_file, 0o600)
+    return token_file
+
+
+def _bundled_runner(paths: InstancePaths, config: EndbotConfig) -> str:
+    runner = config.scripting.runner
+    if runner:
+        return runner
+    # The installed CLI belongs to the running version, even if app/current changes.
+    app_dir = next(
+        (
+            parent.parent for parent in Path(__file__).resolve().parents
+            if parent.name == "python" and parent.parent.parent.name == "app"
+        ),
+        None,
+    )
+    if app_dir is None:  # source checkout / development invocation
+        app_dir = _app_dir(paths)
+    if app_dir is not None:
+        candidate = app_dir / "runner" / (
+            "endbot-luau-runner.exe" if sys.platform == "win32" else "endbot-luau-runner"
+        )
+        if candidate.is_file():
+            return str(candidate.resolve())
+    return ""
+
+
+def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotConfig) -> tuple[Path, list[str]]:
+    """Write ``state/generated/endbotd.toml`` (docs/ENDBOTD.md P7); return it plus warnings."""
 
     tomlkit = _tomlkit()
-    plugin_config = server / "plugins" / "endbot" / "config.toml"
-    legacy_uuids, legacy_xuids, warning = _read_legacy_allowlists(plugin_config)
+    target = paths.state_generated / "endbotd.toml"
+    plugin_data = server / "plugins" / "endbot"
+    legacy_uuids, legacy_xuids, warning = _read_legacy_allowlists(plugin_data / "config.toml", target)
 
     document = tomlkit.document()
+    link = tomlkit.table()
+    link["host"] = CONTROL_HOST
+    link["port"] = config.endbotd.link_port
+    link["token-file"] = _path_value(tomlkit, str(paths.endbotd_token.resolve()))
+    document.add("link", link)
+
+    runtime = tomlkit.table()
+    runtime["host"] = CONTROL_HOST
+    runtime["port"] = config.runtime.control_port
+    runtime["token-file"] = _path_value(tomlkit, str(paths.control_token.resolve()))
+    runtime["timeout-seconds"] = PLUGIN_TIMEOUT_SECONDS
+    document.add("runtime", runtime)
+
+    plugin = tomlkit.table()
+    # Groups, scripts and script files stay in the plugin data folder until the store migration.
+    plugin["data-folder"] = _path_value(tomlkit, str(plugin_data.resolve()))
+    plugin["hotbar-sync-interval-ticks"] = config.runtime.hotbar_sync_interval_ticks
+    plugin["hotbar-sync-resend-ticks"] = config.runtime.hotbar_sync_resend_ticks
+    document.add("plugin", plugin)
+
     authorization = tomlkit.table()
     authorization["controller-gamertags"] = list(config.controllers.gamertags)
     authorization["controllers-file"] = _path_value(tomlkit, str(paths.state_controllers.resolve()))
@@ -220,15 +297,6 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
     authorization["allowed-xuids"] = legacy_xuids
     document.add("authorization", authorization)
 
-    runtime = tomlkit.table()
-    runtime["token-file"] = _path_value(tomlkit, str(paths.control_token.resolve()))
-    runtime["host"] = CONTROL_HOST
-    runtime["port"] = config.runtime.control_port
-    runtime["timeout-seconds"] = PLUGIN_TIMEOUT_SECONDS
-    runtime["hotbar-sync-interval-ticks"] = config.runtime.hotbar_sync_interval_ticks
-    runtime["hotbar-sync-resend-ticks"] = config.runtime.hotbar_sync_resend_ticks
-    document.add("runtime", runtime)
-
     limits = tomlkit.table()
     limits["max-bots"] = config.limits.max_bots
     limits["reserved-player-slots"] = config.limits.reserved_player_slots
@@ -240,7 +308,7 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
 
     scripting = tomlkit.table()
     scripting["enabled"] = config.scripting.enabled
-    # Omit defaults as before; forward explicit resource-limit overrides to the plugin.
+    # Omit defaults as before; forward explicit resource-limit overrides.
     for key, value, default in (
         ("os-confinement", config.scripting.os_confinement, True),
         ("process-memory-bytes", config.scripting.process_memory_bytes, 268435456),
@@ -252,31 +320,28 @@ def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotCon
     ):
         if value != default:
             scripting[key] = value
-    runner = config.scripting.runner
-    if not runner:
-        # The installed CLI belongs to the running version, even if app/current changes.
-        app_dir = next(
-            (
-                parent.parent for parent in Path(__file__).resolve().parents
-                if parent.name == "python" and parent.parent.parent.name == "app"
-            ),
-            None,
-        )
-        if app_dir is None:  # source checkout / development invocation
-            app_dir = _app_dir(paths)
-        if app_dir is not None:
-            candidate = app_dir / "runner" / (
-                "endbot-luau-runner.exe" if sys.platform == "win32" else "endbot-luau-runner"
-            )
-            if candidate.is_file():
-                runner = str(candidate.resolve())
+    runner = _bundled_runner(paths, config)
     if runner:
         scripting["runner"] = _path_value(tomlkit, runner)
     document.add("scripting", scripting)
 
+    atomic_write_text(target, tomlkit.dumps(document))
+    return target, [warning] if warning else []
+
+
+def generate_plugin_config(server: Path, paths: InstancePaths, config: EndbotConfig) -> Path:
+    """Write ``<server>/plugins/endbot/config.toml``: only how the plugin reaches endbotd."""
+
+    tomlkit = _tomlkit()
+    plugin_config = server / "plugins" / "endbot" / "config.toml"
+    document = tomlkit.document()
+    endbotd = tomlkit.table()
+    endbotd["host"] = CONTROL_HOST
+    endbotd["port"] = config.endbotd.link_port
+    endbotd["token-file"] = _path_value(tomlkit, str(paths.endbotd_token.resolve()))
+    document.add("endbotd", endbotd)
     atomic_write_text(plugin_config, tomlkit.dumps(document))
-    warnings = [warning] if warning else []
-    return plugin_config, warnings
+    return plugin_config
 
 
 def generate_endstone_config(server: Path, paths: InstancePaths) -> Path:
@@ -319,15 +384,20 @@ def generate_all(config: EndbotConfig, paths: InstancePaths, server: Path) -> Ge
         )
     identity = read_server_identity(server) if config.server.transport == "nethernet" else None
     runtime_config = generate_runtime_config(paths, config, server_port, identity)
-    plugin_config, plugin_messages = generate_plugin_config(server, paths, config)
-    messages = [*messages, *plugin_messages]
+    ensure_endbotd_token(paths)
+    # endbotd.toml first: it carries legacy entries out of the old plugin config before that is rewritten.
+    endbotd_config, endbotd_messages = generate_endbotd_config(server, paths, config)
+    plugin_config = generate_plugin_config(server, paths, config)
+    messages = [*messages, *endbotd_messages]
     endstone_config = generate_endstone_config(server, paths)
     messages.append(
-        f"PASS config-gen: generated {runtime_config}, {plugin_config}, [local-bot-auth] in {endstone_config}"
+        f"PASS config-gen: generated {runtime_config}, {endbotd_config}, {plugin_config}, "
+        f"[local-bot-auth] in {endstone_config}"
     )
     return GeneratedConfigs(
         runtime_config=runtime_config,
         plugin_config=plugin_config,
         endstone_config=endstone_config,
+        endbotd_config=endbotd_config,
         messages=messages,
     )

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from fakeinstance import (
     LineFeed,
+    fake_endbotd_command,
     fake_runtime_command,
     fake_server_command,
     free_port,
@@ -61,6 +62,7 @@ class SupervisorTestCase(unittest.TestCase):
             "run_dir": self.run_dir,
             "runtime_command": tuple(fake_runtime_command(self.runtime_config)),
             "server_command": tuple(fake_server_command()),
+            "endbotd_command": tuple(fake_endbotd_command()),
             "control_token_file": self.token_path,
             "control_host": "127.0.0.1",
             "control_port": self.port,

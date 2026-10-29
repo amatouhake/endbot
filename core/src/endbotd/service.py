@@ -1,0 +1,254 @@
+"""endbotd's service: the control plane the plugin used to run inside BDS (docs/ENDBOTD.md P4, P5).
+
+It owns authorization, Groups, scripting and the ordered command worker, and
+reaches the world only through the plugin link. Outbound traffic to the plugin
+(chat lines, form views, control permissions) leaves on one delivery thread,
+in the order it was produced, so the link's ordered thread never waits on the
+plugin.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+
+from endbot_core.command_runner import AsyncCommandRunner
+from endbot_core.commands import strip_colors
+from endbot_core.control import RuntimeControlClient
+from endbot_core.events import LoggerSink
+from endbot_core.groups import GroupCommandService, GroupStore
+from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, tr
+from endbot_core.limits import BotLimits
+from endbot_core.link import LinkError, LinkServer, Submission, load_token
+from endbot_core.principal import Principal
+from endbot_core.script_config import ScriptConfig
+from endbot_core.script_inputs import OwnedInputs
+from endbot_core.script_store import ScriptStore
+from endbot_core.scripting import ScriptService
+from endbot_core.wire_views import decode_view, encode_view
+from endbotd import __version__
+from endbotd.authority import Authority
+from endbotd.config import EndbotdConfig
+
+LOGGER = logging.getLogger("endbotd")
+# Mining loops renew every 4 ticks, as they did on the BDS scheduler.
+POLL_SECONDS = 0.2
+# Below the link's request deadline, so a stuck server tick fails one world call, not the worker.
+WORLD_SECONDS = 8.0
+DELIVERY_SECONDS = 5.0
+CLOSE_SECONDS = 10.0
+
+
+class _Sender:
+    """A player or the console, reached through the plugin with ``deliver``."""
+
+    def __init__(self, service: EndbotService, to: str) -> None:
+        self.to = to
+        self._service = service
+
+    def send_message(self, message: str) -> None:
+        self._service.deliver_now(self.to, [message])
+
+
+class _LocalBridge:
+    """What the command worker expects of the server thread: ``call`` runs under the
+    authorization lock, ``post`` queues on the delivery thread."""
+
+    def __init__(self, lock: threading.RLock, delivery: ThreadPoolExecutor) -> None:
+        self._lock = lock
+        self._delivery = delivery
+
+    def call(self, callback, timeout=None):
+        with self._lock:
+            return callback()
+
+    def post(self, callback) -> bool:
+        try:
+            self._delivery.submit(callback)
+        except RuntimeError:
+            return False
+        return True
+
+
+class EndbotService:
+    def __init__(self, config: EndbotdConfig, *, control=None, log: Callable[[str, str], None] | None = None,
+                 world_timeout: float = WORLD_SECONDS) -> None:
+        self.config = config
+        self._log = log or (lambda level, message: getattr(LOGGER, level, LOGGER.info)(message))
+        try:
+            self._language_setting = language_setting(config.ui.get("language"))
+        except ValueError as error:
+            self._language_setting = DEFAULT_LANGUAGE_SETTING
+            self._log("warning", f"{error}; using {DEFAULT_LANGUAGE_SETTING}")
+        try:
+            limits = BotLimits.from_config(config.limits)
+        except ValueError as error:
+            # A limits typo must not take /bot down with it; use the safe defaults.
+            limits = BotLimits()
+            self._log("warning", f"Invalid [limits] config: {error}; using the default limits")
+        try:
+            script_config = ScriptConfig.from_config(config.scripting)
+        except (TypeError, ValueError) as error:
+            # A scripting typo must not take /bot down with it; scripts stay off.
+            script_config = ScriptConfig()
+            self._log("warning", f"Invalid [scripting] config: {error}; scripting is disabled")
+        self.link = LinkServer(
+            config.link_host, config.link_port, load_token(config.link_token_file), version=__version__,
+            config={"language": self._language_setting, "hotbar": dict(config.hotbar)},
+            on_submit=self._submit, on_presence=self._presence, grant_revision=self._grant_revision,
+            log=self._log, world_timeout=world_timeout,
+        )
+        self.authority = Authority.from_config(self.link.presence, config.authorization, config.base, log=self._log)
+        for gamertag in self.authority.controllers.pending():
+            self._log("info", f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
+        self._delivery = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbotd-delivery")
+        self._closed = threading.Event()
+        if control is None:
+            control = RuntimeControlClient(config.runtime_host, config.runtime_port, config.runtime_token_file,
+                                           timeout=config.runtime_timeout)
+        control = OwnedInputs(control)
+        world = self.link.world
+        data_folder = config.data_folder
+        try:
+            groups = GroupStore(data_folder / "groups.json")
+        except (ValueError, OSError) as error:
+            # A broken groups file must not take /bot down with it.
+            self._log("error", f"Groups disabled: groups.json could not be loaded ({error}); fix or move it "
+                               "and restart Endbot")
+            groups = None
+        self.commands = GroupCommandService(
+            control, world, groups, authorize=self.authority.authorize, limits=limits,
+            capacity=lambda bot_ids: tuple(world.capacity(sorted(bot_ids))),
+        )
+        try:
+            scripts = ScriptStore(data_folder / "scripts.json", script_config)
+        except (ValueError, OSError, KeyError) as error:
+            self._log("error", f"Scripts unavailable: scripts.json could not be loaded ({error})")
+            scripts = None
+        self.scripts = ScriptService(script_config, scripts, self.commands, control, data_folder,
+                                     authorize=self.authority.authorize)
+        if scripts is not None and script_config.enabled:
+            # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
+            try:
+                self.scripts.files_directory.mkdir(exist_ok=True)
+                loaded, problems = self.scripts.reload_files()
+                self._log("info", f"Loaded {len(loaded)} script files from {self.scripts.files_directory}")
+                for name, error in problems:
+                    self._log("warning", f"Script file {name} skipped: {error}")
+            except (LocalizedError, OSError) as error:
+                self._log("error", f"Script files unavailable: {error}")
+        self.runner = AsyncCommandRunner(
+            self.commands, _LocalBridge(self.authority.lock, self._delivery), self._resolve_sender,
+            authorize=self.authority.authorize, log_sink=LoggerSink(LOGGER), show_view=self._show_view,
+            scripts=self.scripts,
+        )
+
+    # -- lifecycle -----------------------------------------------------------
+
+    def start(self) -> EndbotService:
+        self.link.start()
+        threading.Thread(target=self._poll_loop, name="endbotd-mining", daemon=True).start()
+        return self
+
+    def close(self) -> None:
+        if self._closed.is_set():
+            return
+        self._closed.set()
+        # Cleanup (stopping scripts, Group work and mining) still reaches the runtime.
+        self.runner.close(timeout=CLOSE_SECONDS)
+        self.link.stop()
+        self._delivery.shutdown(wait=False)
+
+    def _poll_loop(self) -> None:
+        while not self._closed.wait(POLL_SECONDS):
+            self.runner.poll()
+
+    # -- link callbacks (the link's ordered thread) -------------------------
+
+    def _grant_revision(self, player_id: str) -> int:
+        return self.authority.grant_revisions.get(player_id)
+
+    def _presence(self, kind: str, records: list[dict]) -> None:
+        if kind in {"snapshot", "join"}:
+            self._send_permissions(self.authority.joined(records, snapshot=kind == "snapshot"))
+        elif kind == "quit":
+            for record in records:
+                self.authority.quit(record["playerId"])
+
+    def _submit(self, submission: Submission) -> dict:
+        principal = submission.principal
+        if submission.guard is not None:
+            try:
+                principal = replace(principal, group_guard=decode_view(submission.guard))
+            except ValueError as error:
+                raise LinkError("invalid", f"invalid form guard: {error}") from None
+        to = principal.player_id or "console"
+        if principal.kind == "player":
+            record = self.link.presence.player(principal.player_id)
+            with self.authority.lock:
+                allowed = record is not None and self.authority.allows(record)
+            if not allowed:
+                self.deliver(to, [f"Endbot: {tr(principal.language, 'you do not have Bot control permission')}"])
+                return {"accepted": False, "code": "unauthorized"}
+        if submission.root == "botcontrollers":
+            if not principal.console:
+                self.deliver(to, ["Endbot: controller management is available only from the server console"])
+                return {"accepted": False, "code": "unauthorized"}
+            lines, permissions = self.authority.manage(list(submission.argv or ()))
+            self.deliver("console", lines)
+            self._send_permissions(permissions)
+            return {"accepted": True, "code": "ok"}
+        if submission.argv is None:
+            raise LinkError("unsupported", "operation submissions are not supported yet")
+        if not self.runner.submit(list(submission.argv), principal, command=submission.root):
+            self.deliver(to, [f"Endbot: {tr(principal.language, 'command service is unavailable')}"])
+            return {"accepted": False, "code": "unavailable"}
+        return {"accepted": True, "code": "ok"}
+
+    # -- toward the plugin (the delivery thread) ----------------------------
+
+    def _resolve_sender(self, source: Principal):
+        if source.player_id is None:
+            return _Sender(self, "console")
+        return _Sender(self, source.player_id) if self.link.presence.player(source.player_id) else None
+
+    def _show_view(self, sender: _Sender, view) -> None:
+        try:
+            wire = encode_view(view)
+        except TypeError as error:
+            self._log("warning", f"A form view could not be sent to the plugin: {error}")
+            return
+        self.deliver_now(sender.to, [], wire)
+
+    def deliver(self, to: str, lines: list[str]) -> None:
+        """Queue chat lines behind every earlier delivery."""
+        try:
+            self._delivery.submit(self.deliver_now, to, lines)
+        except RuntimeError:
+            pass
+
+    def deliver_now(self, to: str, lines: list[str], view: dict | None = None) -> None:
+        if to == "console":
+            lines = [strip_colors(line) for line in lines]
+        try:
+            self.link.deliver(to, lines, view, timeout=DELIVERY_SECONDS)
+        except LinkError as error:
+            if error.code != "unavailable":
+                self._log("warning", f"Delivery to the plugin failed: {error}")
+
+    def _send_permissions(self, permissions: list[tuple[str, bool]]) -> None:
+        def send(player_id: str, allowed: bool) -> None:
+            try:
+                self.link.permission(player_id, allowed, timeout=DELIVERY_SECONDS)
+            except LinkError as error:
+                if error.code != "unavailable":
+                    self._log("warning", f"Control permission update failed: {error}")
+
+        for player_id, allowed in permissions:
+            try:
+                self._delivery.submit(send, player_id, allowed)
+            except RuntimeError:
+                return

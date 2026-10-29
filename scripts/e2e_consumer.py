@@ -235,6 +235,10 @@ def session(
         wait_for(
             "Endbot plugin enabled in BDS", lambda: "Enabling endbot" in server_log_text(instance), 300, supervisor
         )
+        wait_for(
+            "Endbot plugin linked to endbotd", lambda: "Endbot linked to endbotd" in server_log_text(instance), 60,
+            supervisor,
+        )
 
         if spawn:
             control_request(port, token, "spawn", name=bot)
@@ -268,7 +272,7 @@ def session(
         if supervisor.returncode != 0:
             raise ConsumerError(f"supervisor exited {supervisor.returncode}")
         record = json.loads((instance / "state" / "run" / "last-exit.json").read_text(encoding="utf-8"))
-        if record.get("unclean") or record.get("runtimeExit") != 0 or record.get("serverExit") != 0:
+        if record.get("unclean") or any(record.get(key) != 0 for key in ("runtimeExit", "endbotdExit", "serverExit")):
             raise ConsumerError(f"stop was not clean: {record}")
         log(f"ok: clean stop ({label})")
     finally:

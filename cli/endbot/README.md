@@ -143,11 +143,12 @@ achievement unlocks remain explicit manual validation gates (docs/ACHIEVEMENTS.m
 ## endbot start / stop / console (section 5a)
 
 `endbot start` regenerates `state/generated/endbot-runtime.json`,
-`<server>/plugins/endbot/config.toml`, and the `[local-bot-auth]` table in
+`state/generated/endbotd.toml`, `<server>/plugins/endbot/config.toml` (only the
+endbotd link settings), and the `[local-bot-auth]` table in
 `<server>/endstone.toml` (section 2), runs the fail-fast doctor checks (any
 FAIL, and any `<server>/version.txt` mismatch with `endstone.lock`, refuses the
-start and points at `endbot update`), then supervises the Endbot runtime and
-Endstone/BDS in the foreground. The very first start creates the control token
+start and points at `endbot update`), then supervises the Endbot runtime,
+endbotd and Endstone/BDS in the foreground, started in that order. The very first start creates the control token
 and owner key pair in `state/secrets/` (the runtime does this) before
 `[local-bot-auth]` is re-checked and BDS starts.
 

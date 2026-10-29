@@ -16,10 +16,11 @@ from typing import Any
 from endbot_cli.compat import tomllib
 
 DEFAULT_CONTROL_PORT = 19142
+DEFAULT_LINK_PORT = 19143
 DEFAULT_CHUNK_RADIUS = 5
 DEFAULT_TRANSPORT = "nethernet"
 TRANSPORTS = ("nethernet", "raknet")
-SECTIONS = ("server", "controllers", "runtime", "limits", "ui", "scripting")
+SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting")
 LANGUAGES = ("auto", "en", "ja")
 DEFAULT_LANGUAGE = "auto"
 
@@ -54,6 +55,11 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EndbotdConfig:
+    link_port: int = DEFAULT_LINK_PORT
+
+
+@dataclass(frozen=True, slots=True)
 class LimitsConfig:
     max_bots: int = 0
     reserved_player_slots: int = 1
@@ -82,6 +88,7 @@ class EndbotConfig:
     server: ServerConfig
     controllers: ControllersConfig
     runtime: RuntimeConfig
+    endbotd: EndbotdConfig = EndbotdConfig()
     limits: LimitsConfig = LimitsConfig()
     ui: UiConfig = UiConfig()
     scripting: ScriptingConfig = ScriptingConfig()
@@ -228,6 +235,21 @@ def _load_limits(path: Path, document: dict[str, Any]) -> LimitsConfig:
     return LimitsConfig(max_bots=max_bots, reserved_player_slots=reserved)
 
 
+def _load_endbotd(path: Path, document: dict[str, Any], runtime: RuntimeConfig) -> EndbotdConfig:
+    table = document.get("endbotd", {})
+    if not isinstance(table, dict):
+        raise _fail(path, "endbotd", "must be a table", "write it as an [endbotd] section")
+    _reject_unknown_keys(path, table, "endbotd", ("link-port",))
+    value = table.get("link-port", DEFAULT_LINK_PORT)
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 65535:
+        raise _fail(path, "endbotd.link-port", f"must be an integer from 1 to 65535, found {value!r}",
+                    f"use a free loopback TCP port, e.g. link-port = {DEFAULT_LINK_PORT}")
+    if value == runtime.control_port:
+        raise _fail(path, "endbotd.link-port", "must differ from runtime.control-port",
+                    f"use another port, e.g. link-port = {DEFAULT_LINK_PORT}")
+    return EndbotdConfig(link_port=value)
+
+
 def _load_ui(path: Path, document: dict[str, Any]) -> UiConfig:
     table = document.get("ui", {})
     if not isinstance(table, dict):
@@ -311,10 +333,12 @@ def load_config(path: Path) -> EndbotConfig:
             raise _fail(
                 path, key, "is not recognized", f"remove it or fix the spelling (known keys: {', '.join(SECTIONS)})"
             )
+    runtime = _load_runtime(path, document)
     return EndbotConfig(
         server=_load_server(path, document),
         controllers=_load_controllers(path, document),
-        runtime=_load_runtime(path, document),
+        runtime=runtime,
+        endbotd=_load_endbotd(path, document, runtime),
         limits=_load_limits(path, document),
         ui=_load_ui(path, document),
         scripting=_load_scripting(path, document),

@@ -22,12 +22,12 @@ directory may live inside it (fresh setup) or anywhere else (existing server).
 │  └─ runner/                native endbot-luau-runner[.exe] and trusted api.luau, prebuilt in CI
 ├─ app/current               text file naming the active <version> (no symlink privileges needed on Windows)
 ├─ state/                    persistent Endbot state, never replaced by update
-│  ├─ secrets/               owner-private.pem, owner-public.pem, control.token
+│  ├─ secrets/               owner-private.pem, owner-public.pem, control.token, endbotd.token
 │  ├─ profiles/              Bot profiles (<uuid>.json)
 │  ├─ controllers.json       controller enrollment state (generated, see §3)
 │  ├─ controller-policy.json console-managed grants/revocations (generated, see §3)
 │  ├─ grant-revisions.json   grant revision per revoked controller identity (generated, see §3)
-│  ├─ generated/             files derived from endbot.toml on every start (runtime JSON, plugin config)
+│  ├─ generated/             files derived from endbot.toml on every start (runtime JSON, endbotd.toml)
 │  └─ run/                   PID files and logs
 ├─ backups/                  setup/update backups of operator-owned BDS files
 └─ endbot / endbot.cmd       launcher: execs app/<current>/python with the endbot CLI
@@ -57,6 +57,9 @@ control-port = 19142       # loopback only
 chunk-radius = 5           # requested Bot chunk radius, integer 2..32
 hotbar-sync-interval-ticks = 4  # server-side hotbar reads, integer 1..1200
 hotbar-sync-resend-ticks = 20   # unchanged corrections, integer 1..72000
+
+[endbotd]
+link-port = 19143          # loopback port where endbotd accepts the plugin link; must differ from control-port
 
 [limits]
 max-bots = 0               # Bots online or connecting; 0 = no separate Bot cap, N = cap
@@ -106,8 +109,8 @@ On the tested BDS baseline, a request for 3 chunks was raised to 5; the default 
 
 `hotbar-sync-interval-ticks` controls how often the plugin reads each online Bot's nine hotbar slots on the server
 thread. `hotbar-sync-resend-ticks` controls periodic unchanged-state corrections; changes are sent at the next read.
-Both settings are shared across Bots, default to 4/20 when omitted, and apply after a server restart. Managed instances
-generate them into the plugin config; manual plugin installs use the same keys under `[runtime]` there.
+Both settings are shared across Bots, default to 4/20 when omitted, and apply after a restart. Managed instances
+generate them into `state/generated/endbotd.toml` (`[plugin]`), and endbotd hands them to the plugin when it links.
 Resends happen only at reads, so their spacing rounds up to a multiple of the read interval (and is never shorter than
 one read interval). At 20 TPS, 4 ticks is about 0.2 seconds and 20 ticks about one second; low TPS increases wall time.
 
@@ -121,8 +124,13 @@ Generated on every `endbot start` (overwritten, never hand-edited):
 
 - `state/generated/endbot-runtime.json` — runtime config pointing at `state/secrets`, `state/profiles`, and the BDS
   port read from `server.properties`.
-- `<server>/plugins/endbot/config.toml` — plugin config pointing at `state/secrets/control.token` and
-  `state/controllers.json`.
+- `state/generated/endbotd.toml` — endbotd's config ([ENDBOTD.md](ENDBOTD.md)): authorization (pointing at
+  `state/controllers.json` and the policy files), limits, UI language, scripting, the runtime it drives
+  (`state/secrets/control.token`) and its plugin link. Groups, scripts and script files are still read from
+  `<server>/plugins/endbot/` until the store migration (BOT-020 step 4).
+- `<server>/plugins/endbot/config.toml` — plugin config with only the `[endbotd]` link settings (loopback host,
+  `link-port`, `state/secrets/endbotd.token`). The plugin no longer receives the runtime token.
+- `state/secrets/endbotd.token` — created once, like the runtime's control token; never printed or logged.
 - The `[local-bot-auth]` table in `<server>/endstone.toml` — `enabled = true`, current issuer/audience defaults, and
   `public-key-file` pointing at `state/secrets/owner-public.pem`. Other `endstone.toml` tables are left as the
   operator wrote them.
@@ -257,27 +265,35 @@ advertised-port following disabled. Both paths use the same local-bot authentica
 3. Check `<server>/version.txt` equals the locked BDS version. On mismatch, refuse and point at `endbot update`
    (never let Endstone update BDS implicitly during start).
 4. Start the runtime, wait for its `endbot_runtime_ready` line.
-5. Start Endstone/BDS (Endstone's own `python -m endstone -s <server>` entry, non-interactive, through
+5. Start endbotd (`python -m endbotd --config state/generated/endbotd.toml` from the same `app/<version>/python`),
+   wait for its `endbotd_ready` line. endbotd owns authorization, Groups, scripting and Bot command execution; the
+   plugin inside BDS links to it and refuses every Endbot command ("Endbot service is restarting") while it is down.
+6. Start Endstone/BDS (Endstone's own `python -m endstone -s <server>` entry, non-interactive, through
    `endbot_cli.endstone_entry`, which only repoints the relocated interpreter's `LIBDIR` on Linux), record PIDs, stdout/stderr logs, and exit
    codes under `state/run/`.
-6. Desired-online Bots reconnect through the runtime's existing lifecycle.
+7. Desired-online Bots reconnect through the runtime's existing lifecycle.
 
-`endbot start` stays in the foreground and supervises both children. Lines typed on its stdin and lines queued in
+`endbot start` stays in the foreground and supervises all three children. Lines typed on its stdin and lines queued in
 `state/run/console.request` (appended by `endbot console`, one line per request, forwarded to the BDS console and
 truncated by the supervisor) reach the BDS console. `endbot stop` writes `state/run/stop.request` and waits (default
 120 s) for the supervisor recorded in `state/run/supervisor.pid` to exit; Ctrl+C triggers the same stop sequence
 locally. `endbot stop`, `endbot console`, and `endbot controllers add|remove|list` require a live supervisor;
 `endbot controllers reset` requires it to be stopped. Stale supervisor PIDs are diagnosed/cleaned as appropriate.
 
-Stop sequence: `stop` on the BDS console (up to 60 s), then a graceful runtime `shutdown` over the control port
-(up to 15 s). A timeout escalates to killing that process tree and is reported as an UNCLEAN stop with exit code 1.
-Bots keep their desired-online state and resume on the next start. Per-start logs live in `state/run/logs/<start>/`
-(`runtime.log`, `server.log`; the last 10 starts are kept) and the latest exit codes in `state/run/last-exit.json`.
+Stop sequence: `stop` on the BDS console (up to 60 s), then endbotd (its stdin is closed; it ends its script runs,
+Group work and mining loops, up to 20 s), then a graceful runtime `shutdown` over the control port (up to 15 s). A
+timeout escalates to killing that process tree and is reported as an UNCLEAN stop with exit code 1. Bots keep their
+desired-online state and resume on the next start. Per-start logs live in `state/run/logs/<start>/` (`runtime.log`,
+`endbotd.log`, `server.log`; the last 10 starts are kept) and the latest exit codes in `state/run/last-exit.json`.
+The supervisor echoes runtime and endbotd lines with `[runtime]` and `[endbotd]` prefixes. Audit lines, script run
+logs and run ends are written by endbotd, so they appear in `endbotd.log`, not in the BDS console or `server.log`.
 
-Supervision policy: when BDS exits on its own, the runtime is stopped gracefully and `endbot start` exits with BDS's
-exit code; BDS is never auto-restarted. When the runtime exits unexpectedly while BDS runs, the supervisor restarts
-it with exponential backoff (1 s, 2 s, 4 s ... capped at 30 s); after 5 failures within a 5-minute window it stops
-BDS and exits non-zero.
+Supervision policy: when BDS exits on its own, endbotd and the runtime are stopped gracefully and `endbot start`
+exits with BDS's exit code; BDS is never auto-restarted. When the runtime or endbotd exits unexpectedly while BDS
+runs, the supervisor restarts it with exponential backoff (1 s, 2 s, 4 s ... capped at 30 s); a replacement that
+does not become ready counts as another failure, and after 5 failures of one child within a 5-minute window it stops
+BDS and exits non-zero. While endbotd restarts, the plugin keeps the control permissions it last applied and
+reconnects on its own; endbotd's script runs and mining loops end with it (mining stops at the runtime lease).
 
 ## 6. Setup
 
@@ -371,7 +387,10 @@ free. See [scripting](SCRIPTING.md) to enable scripts, and [installation](INSTAL
   flags (existing `scripts/preflight.py` checks move here); plus the runtime transport requirement
   `transport` matching `[server].transport` (separate from safety; RakNet also requires a valid `server-port`).
 - `endstone.toml [local-bot-auth]` enabled with a readable P-384 public key matching `state/secrets/owner-private.pem`.
-- Control token present and readable; runtime and plugin agree on port.
+- Control token present and readable. endbotd token present (`endbotd-token`); `state/generated/endbotd.toml` matches
+  the ports in `endbot.toml` (`endbotd-config`); the plugin config links to endbotd's port with endbotd's token and
+  no longer carries runtime settings (`plugin-port`). `endbotd-link` reads the latest `endbotd.log`: a plugin link
+  refused for a protocol or operation-registry mismatch is a FAIL (mixed Endbot versions).
 - `<server>/version.txt` matches the lock; installed Endstone package version matches the lock.
 - Controllers: bootstrap bindings and pending entries; `controllers-effective` combines saved config/policy/legacy
   entries with decision reasons, or queries the running plugin with `--live` and a live supervisor. Legacy entries

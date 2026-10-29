@@ -7,9 +7,8 @@ changes), forwards commands with ``submit`` and answers endbotd's ``world``,
 threads never touch Endstone objects.
 
 Presence reports and the snapshot are queued from the server thread, so they
-reach endbotd in the order the server saw them. Nothing here is wired into the
-plugin yet: the product still calls the core in process until the switch
-(step 3c).
+reach endbotd in the order the server saw them. Form views and guards cross
+the link through :mod:`endbot_core.wire_views`.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ from endbot_core.link import (
     require_loopback,
 )
 from endbot_core.principal import Principal
+from endbot_core.wire_views import decode_view
 
 from endstone_endbot.dispatch import ServerThreadBridge, ServerThreadWorld
 
@@ -80,6 +80,7 @@ class PluginLink:
         resolve_sender: Callable[[Principal], object],
         show_view: Callable[[object, dict], None] | None = None,
         log: Callable[[str, str], None] | None = None,
+        on_config: Callable[[dict], None] | None = None,
         call_deadline: float = 5.0,
         retry: tuple[float, float] = (1.0, 30.0),
     ) -> None:
@@ -93,6 +94,7 @@ class PluginLink:
         self._world = ServerThreadWorld(world, _DeadlineBridge(bridge, call_deadline), resolve_sender)
         self._show_view = show_view
         self._log = log or (lambda level, message: None)
+        self._on_config = on_config
         self._deadline = call_deadline
         self._retry = retry
         # Reentrant: a send that overflows closes the link, whose callback takes this lock.
@@ -159,6 +161,8 @@ class PluginLink:
             connection.close("presence snapshot failed")
             raise
         self.config = result.get("config") if isinstance(result.get("config"), dict) else {}
+        if self._on_config is not None:
+            self._on_config(self.config)
         self._log("info", f"Endbot linked to endbotd {result.get('endbotdVersion')}")
 
     def _go_live(self, connection: LinkConnection, epoch: str) -> None:
@@ -253,6 +257,11 @@ class PluginLink:
             raise LinkError("invalid", "a view goes to a player as an object")
         if view is not None and self._show_view is None:
             raise LinkError("unsupported", "this plugin cannot show views")
+        if view is not None:
+            try:
+                view = decode_view(view)
+            except ValueError as error:
+                raise LinkError("invalid", f"invalid view: {error}") from None
         return {"delivered": self._bridge.call(lambda: self._deliver_now(to, lines, view), timeout=self._deadline)}
 
     def _deliver_now(self, to: str, lines: list[str], view: dict | None) -> bool:

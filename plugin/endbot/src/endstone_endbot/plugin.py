@@ -1,38 +1,35 @@
-"""Thin Endstone adapter for Endbot commands."""
+"""Thin Endstone adapter for Endbot commands: the world end of the endbotd link (docs/ENDBOTD.md P2).
 
-import shlex
-from dataclasses import replace
+The plugin registers the commands, reports presence, forwards command lines
+and form replies to endbotd, answers its world calls on the server thread,
+renders forms and delivers chat. It holds no policy and no store; while
+endbotd is down every Endbot command is refused and the last control
+permissions stay as they were.
+"""
+
 from pathlib import Path
 from typing import ClassVar
 from uuid import UUID
 
-from endbot_core.authorization import AllowedPlayers
-from endbot_core.command_runner import AsyncCommandRunner
-from endbot_core.commands import BotCommandService
-from endbot_core.control import RuntimeControlClient
-from endbot_core.controller_policy import ControllerPolicy
-from endbot_core.enrollment import ControllerEnrollment, _is_xuid
-from endbot_core.events import LoggerSink
-from endbot_core.grant_revisions import FILE_NAME as GRANT_REVISIONS_FILE
-from endbot_core.grant_revisions import GrantRevisions
-from endbot_core.groups import GroupCommandService, GroupStore
-from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, resolve_language, tr
-from endbot_core.limits import BotLimits
+from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, language_setting, resolve_language, tr
+from endbot_core.link import LinkError
 from endbot_core.principal import Principal
-from endbot_core.script_config import ScriptConfig
-from endbot_core.script_inputs import OwnedInputs
-from endbot_core.script_store import ScriptStore
-from endbot_core.scripting import ScriptService
+from endbot_core.wire_views import encode_view
 from endstone.command import Command, CommandSender, ConsoleCommandSender
 from endstone.event import PlayerJoinEvent, PlayerQuitEvent, event_handler
 from endstone.plugin import Plugin
 
-from endstone_endbot.controller_requests import execute_request
-from endstone_endbot.dispatch import ServerThreadBridge, ServerThreadWorld
+from endstone_endbot import __version__
+from endstone_endbot.dispatch import ServerThreadBridge
 from endstone_endbot.form_adapter import FormPresenter
 from endstone_endbot.inventory_sync import PACKET_ID as INVENTORY_PACKET_ID
 from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings, unsupported_payload
+from endstone_endbot.link_adapter import PluginLink
 from endstone_endbot.world import EndstoneWorld, unsupported
+
+ROOTS = frozenset({"bot", "botgroup", "botscript", "botcontrollers"})
+# Below endbotd's world-call deadline, so a stuck tick fails one call (docs/ENDBOTD.md P2).
+CALL_DEADLINE_SECONDS = 5.0
 
 COMMAND_USAGES = [
     # Each usage becomes one native BDS overload, matched before Python runs.
@@ -227,171 +224,91 @@ class EndbotPlugin(Plugin):
 
     def __init__(self) -> None:
         super().__init__()
-        self._bot_commands = BotCommandService()
-        self._allowed_players = AllowedPlayers()
-        self._controllers = ControllerEnrollment((), None)
         self._world = None
         self._server_thread = None
-        self._command_runner = None
-        self._controller_policy = None
-        self._controller_requests_directory = None
-        self._control_attachments = {}
-        self._control_granted = {}
-        self._authorization_versions = {}
+        self._link = None
         self._inventory_warning = False
         self._hotbar_interval = 4
+        self._hotbar_countdown = 4
         self._hotbar_tick = 0
         self._hotbar_publisher = HotbarPublisher()
+        # Replaced by endbotd's [ui] language when the link opens.
         self._language_setting = DEFAULT_LANGUAGE_SETTING
-        self._limits = BotLimits()
-        self._script_config = ScriptConfig()
-        self._scripts = None
-        self._grant_revisions = GrantRevisions()
 
     def on_load(self) -> None:
         self.save_default_config()
-        try:
-            self._script_config = ScriptConfig.from_config(self.config.get("scripting", {}))
-        except (TypeError, ValueError) as error:
-            # A scripting typo must not take /bot down with it; scripts stay off.
-            self._script_config = ScriptConfig()
-            self.logger.warning(f"Invalid [scripting] config: {error}; scripting is disabled")
-        try:
-            self._language_setting = language_setting((self.config.get("ui") or {}).get("language"))
-        except ValueError as error:
-            self._language_setting = DEFAULT_LANGUAGE_SETTING
-            self.logger.warning(f"{error}; using {DEFAULT_LANGUAGE_SETTING}")
-        try:
-            self._limits = BotLimits.from_config(self.config.get("limits"))
-        except ValueError as error:
-            # A limits typo must not take /bot down with it; use the safe defaults.
-            self._limits = BotLimits()
-            self.logger.warning(f"Invalid [limits] config: {error}; using the default limits")
-        authorization = self.config.get("authorization", {})
-        self._allowed_players = AllowedPlayers.from_config(authorization)
-        self._controllers = ControllerEnrollment.from_config(authorization, self.data_folder)
-        self._controller_policy = ControllerPolicy.from_config(authorization, self.data_folder)
-        requests = authorization.get("controller-requests-directory")
-        if requests is not None:
-            self._controller_requests_directory = Path(requests)
-            if not self._controller_requests_directory.is_absolute():
-                self._controller_requests_directory = self.data_folder / self._controller_requests_directory
-        if (
-            self._controllers.bindings_path is not None
-            and self._controllers.bindings_path.resolve() == self._controller_policy.path.resolve()
-        ):
-            raise ValueError("controllers-file and controller-policy-file must be different files")
-        # Beside the policy, so an Endbot instance keeps it in state/; read only here, at start-up.
-        self._grant_revisions = GrantRevisions(self._controller_policy.path.parent / GRANT_REVISIONS_FILE)
-        for gamertag in self._controllers.pending():
-            self.logger.info(f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
 
     def on_enable(self) -> None:
-        runtime = self.config.get("runtime", {})
-        self._hotbar_interval, resend_ticks = sync_settings(runtime)
-        self._hotbar_publisher = HotbarPublisher(resend_ticks)
-        self._hotbar_tick = 0
-        token_file = Path(str(runtime.get("token-file", "control.token")))
+        settings = self.config.get("endbotd", {})
+        token_file = Path(str(settings.get("token-file", "endbotd.token")))
         if not token_file.is_absolute():
             token_file = self.data_folder / token_file
-        control = RuntimeControlClient(
-            host=str(runtime.get("host", "127.0.0.1")),
-            port=int(runtime.get("port", 19142)),
-            token_file=token_file,
-            timeout=float(runtime.get("timeout-seconds", 10.0)),
-        )
-        control = OwnedInputs(control)
         self._world = EndstoneWorld(self.server)
         self._server_thread = ServerThreadBridge(lambda task: self.server.scheduler.run_task(self, task))
+        # Forms resolve to ordinary command arguments and re-enter through _submit_bot.
+        presenter = FormPresenter(
+            self._submit_bot,
+            lambda: tuple(str(player.name) for player in self.server.online_players),
+            language=self._language,
+        )
 
         def resolve_sender(source: Principal):
             if source.player_id is not None:
                 return self.server.get_player(UUID(source.player_id))
             return self.server.command_sender
 
-        def authorized_sender(source: Principal):
-            if source.run_id is not None:
-                if not self._authorize(source):
-                    raise LocalizedError("Script authority was revoked")
-                return resolve_sender(source)
-            return resolve_sender(source) if self._authorize(source) else None
-
-        command_world = ServerThreadWorld(self._world, self._server_thread, authorized_sender)
-        # Forms resolve to ordinary /bot arguments and re-enter through _submit_bot.
-        presenter = FormPresenter(
-            self._submit_bot,
-            lambda: tuple(str(player.name) for player in self.server.online_players),
-            language=self._language,
-        )
-        try:
-            groups = GroupStore(self.data_folder / "groups.json")
-        except (ValueError, OSError) as error:
-            # A broken groups file must not take /bot down with it.
-            self.logger.error(f"Groups disabled: groups.json could not be loaded ({error}); fix or move it and reload")
-            groups = None
-        def bot_capacity(bot_ids: frozenset[str]) -> tuple[int, int]:
-            """``(max-players, humans online)``; Bots are known by their profile UUID."""
-
-            def measure() -> tuple[int, int]:
-                players = self.server.online_players
-                humans = sum(1 for player in players if str(player.unique_id) not in bot_ids)
-                return int(self.server.max_players), humans
-
-            return self._server_thread.call(measure)
-
-        self._bot_commands = GroupCommandService(
-            control, command_world, groups,
-            authorize=lambda source: self._server_thread.call(lambda: self._authorize(source)),
-            limits=self._limits,
-            capacity=bot_capacity,
-        )
-        try:
-            scripts = ScriptStore(self.data_folder / "scripts.json", self._script_config)
-        except (ValueError, OSError, KeyError) as error:
-            self.logger.error(f"Scripts unavailable: scripts.json could not be loaded ({error})")
-            scripts = None
-        self._scripts = ScriptService(self._script_config, scripts, self._bot_commands, control, self.data_folder,
-            authorize=lambda source: self._server_thread.call(lambda: self._authorize(source)))
-        if scripts is not None and self._script_config.enabled:
-            # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
-            try:
-                self._scripts.files_directory.mkdir(exist_ok=True)
-                loaded, problems = self._scripts.reload_files()
-                self.logger.info(f"Loaded {len(loaded)} script files from {self._scripts.files_directory}")
-                for name, error in problems:
-                    self.logger.warning(f"Script file {name} skipped: {error}")
-            except (LocalizedError, OSError) as error:
-                self.logger.error(f"Script files unavailable: {error}")
-        self._command_runner = AsyncCommandRunner(
-            self._bot_commands,
-            self._server_thread,
-            resolve_sender,
-            authorize=self._authorize,
-            log_sink=LoggerSink(self.logger),
+        self._link = PluginLink(
+            host=str(settings.get("host", "127.0.0.1")),
+            port=int(settings.get("port", 19143)),
+            token_file=token_file,
+            plugin_version=__version__,
+            plugin=self,
+            server=self.server,
+            bridge=self._server_thread,
+            world=self._world,
+            resolve_sender=resolve_sender,
             show_view=presenter.show_view,
-            scripts=self._scripts,
+            log=self._log_endbot,
+            on_config=self._apply_link_config,
+            call_deadline=CALL_DEADLINE_SECONDS,
         )
-        self.server.scheduler.run_task(self, self._command_runner.poll, delay=4, period=4)
-        self.server.scheduler.run_task(
-            self, self._publish_hotbars, delay=self._hotbar_interval, period=self._hotbar_interval
-        )
+        self.server.scheduler.run_task(self, self._hotbar_ticker, delay=1, period=1)
         # The server console belongs to the operator who installed Endbot; it
         # gets the control permission directly. Operator players do not.
         self.server.command_sender.add_attachment(self, "endbot.command.control", True)
         self.server.command_sender.add_attachment(self, "endbot.command.controllers", True)
         self.register_events(self)
-        for player in self.server.online_players:
-            self._join_controller(player)
+        # The first link sends a snapshot of everyone already online.
+        self._link.start()
 
     def on_disable(self) -> None:
-        if self._command_runner is not None:
-            self._command_runner.close()
-            self._command_runner = None
+        if self._link is not None:
+            self._link.stop()
+            self._link = None
         if self._server_thread is not None:
             self._server_thread.close()
             self._server_thread = None
-        self._control_attachments.clear()
-        self._control_granted.clear()
+
+    def _apply_link_config(self, config: dict) -> None:
+        """endbotd's settings for the in-game layer; any link thread."""
+        try:
+            self._language_setting = language_setting(config.get("language"))
+        except ValueError as error:
+            self._log_endbot("warning", f"{error}; using {DEFAULT_LANGUAGE_SETTING}")
+        try:
+            interval, resend = sync_settings(config.get("hotbar") or {})
+        except ValueError as error:
+            self._log_endbot("warning", f"Invalid hotbar settings from endbotd: {error}")
+        else:
+            self._hotbar_interval = interval
+            self._hotbar_publisher.resend_ticks = resend
+
+    def _hotbar_ticker(self) -> None:
+        self._hotbar_countdown -= 1
+        if self._hotbar_countdown > 0:
+            return
+        self._hotbar_countdown = self._hotbar_interval
+        self._publish_hotbars()
 
     def _publish_hotbars(self) -> None:
         # online-mode guarantees normal humans have Xbox identities. Only
@@ -419,302 +336,23 @@ class EndbotPlugin(Plugin):
     def on_player_join(self, event: PlayerJoinEvent) -> None:
         player = event.player
         self._hotbar_publisher.previous.pop(str(player.unique_id), None)
-        self._join_controller(player)
+        if self._link is not None:
+            self._link.player_joined(player)
         if self._world is not None:
             self._world.apply_pending_placement(player)
 
-    def _join_controller(self, player) -> None:
-        player_uuid, xuid = str(player.unique_id), str(player.xuid)
-        self._authorization_versions[player_uuid] = self._authorization_versions.get(player_uuid, 0) + 1
-        policy = self._controller_policy
-        if policy is not None:
-            policy.enroll(player.name, xuid, player_uuid)
-        if _is_xuid(xuid) and (
-            policy is None or (not policy.denied(xuid, player_uuid) and not policy.name_denied(player.name))
-        ):
-            _, binding = self._controllers.authorize(player.name, xuid, player_uuid)
-            if binding is not None:
-                self.logger.info(f"Bound controller {binding.gamertag} through Xbox authentication.")
-        self._apply_control_permission(player)
-
-    def _allows_control(self, player) -> bool:
-        return self._control_decision(player.name, str(player.xuid), str(player.unique_id))[0]
-
-    def _control_decision(self, name, xuid, player_uuid) -> tuple[bool, str]:
-        if not _is_xuid(xuid):
-            return False, "Xbox authentication required"
-        policy = self._controller_policy
-        if policy is not None:
-            if xuid in policy.state.denied_xuids:
-                return False, "revoked XUID"
-            if player_uuid in policy.state.denied_uuids:
-                return False, "revoked UUID"
-            if policy.grants(xuid):
-                return True, "runtime grant"
-            if policy.name_denied(name):
-                return False, "revoked GamerTag"
-        if any(binding.xuid == xuid for binding in self._controllers.bindings):
-            return True, "bootstrap binding"
-        if xuid in self._allowed_players.xuids:
-            return True, "legacy XUID allowlist"
-        if player_uuid in self._allowed_players.uuids:
-            return True, "legacy UUID allowlist"
-        return False, "not enrolled"
-
-    def _controller_report(self) -> list[dict]:
-        policy = self._controller_policy
-        rows, seen_xuids, seen_names, seen_uuids = [], set(), set(), set()
-        online = list(self.server.online_players)
-        bindings = (*self._controllers.bindings, *policy.state.grants)
-        # Prefer the latest runtime-bound name, then the authenticated online name.
-        for binding in reversed(bindings):
-            if binding.xuid in seen_xuids:
-                continue
-            player = next((entry for entry in online if str(entry.xuid) == binding.xuid), None)
-            name = player.name if player is not None else binding.gamertag
-            identity = str(player.unique_id) if player is not None else binding.uuid
-            allowed, reason = self._control_decision(name, binding.xuid, identity)
-            rows.append(
-                {
-                    "name": name,
-                    "state": "allowed" if allowed else "revoked",
-                    "reason": reason,
-                    "xuid": binding.xuid,
-                    "uuid": identity,
-                    "online": player is not None,
-                }
-            )
-            seen_xuids.add(binding.xuid)
-            seen_uuids.add(identity)
-            seen_names.add(binding.gamertag.casefold())
-            seen_names.add(name.casefold())
-        for player in online:
-            xuid, identity = str(player.xuid), str(player.unique_id)
-            if not _is_xuid(xuid) or xuid in seen_xuids:
-                continue
-            allowed, reason = self._control_decision(player.name, xuid, identity)
-            rows.append(
-                {
-                    "name": player.name,
-                    "state": "allowed" if allowed else "denied",
-                    "reason": reason,
-                    "xuid": xuid,
-                    "uuid": identity,
-                    "online": True,
-                }
-            )
-            seen_xuids.add(xuid)
-            seen_uuids.add(identity)
-            seen_names.add(player.name.casefold())
-        for name in (*self._controllers.pending(), *policy.state.pending, *policy.state.denied_names):
-            if name.casefold() in seen_names:
-                continue
-            revoked = policy.name_denied(name)
-            rows.append(
-                {
-                    "name": name,
-                    "state": "revoked" if revoked else "pending",
-                    "reason": "revoked GamerTag" if revoked else "awaiting first Xbox-authenticated join",
-                }
-            )
-            seen_names.add(name.casefold())
-        for kind, configured, denied, seen in (
-            ("xuid", self._allowed_players.xuids, policy.state.denied_xuids, seen_xuids),
-            ("uuid", self._allowed_players.uuids, policy.state.denied_uuids, seen_uuids),
-        ):
-            for identity in sorted(set(configured) | set(denied)):
-                if identity in seen:
-                    continue
-                revoked = identity in denied
-                rows.append(
-                    {
-                        "name": f"{kind}:{identity}",
-                        "state": "revoked" if revoked else "conditional",
-                        "reason": f"revoked {kind.upper()}"
-                        if revoked
-                        else f"legacy {kind.upper()} allowlist; requires Xbox authentication and identity checks",
-                    }
-                )
-        return sorted(rows, key=lambda row: row["name"].casefold())
-
-    def _authorize(self, principal: Principal) -> bool:
-        """Two layers for every principal; server thread only.
-
-        Every principal except the console needs a grant at the grant revision
-        it captured, so a revoke and regrant never revive older work. Then an
-        in-game player must still be online with an unchanged authorization
-        revision; runs and jobs outlive their owner's session and are checked
-        by the identity captured when they started.
-        """
-        if principal.console:
-            return True
-        if principal.player_id is None or principal.grant_revision != self._grant_revisions.get(principal.player_id):
-            return False
-        player = self.server.get_player(UUID(principal.player_id))
-        if principal.kind == "player":
-            return (
-                player is not None
-                and self._allows_control(player)
-                and principal.authorization_revision == self._authorization_versions.get(principal.player_id, 0)
-            )
-        if player is not None:
-            return self._allows_control(player)
-        return self._control_decision(principal.name or "", principal.xuid or "", principal.player_id)[0]
-
-    def _principal(self, sender, *, command: str = "bot", group_guard=None) -> Principal:
-        """Capture who sent a command; server thread only. The console stays English."""
-        if not hasattr(sender, "unique_id"):
-            principal = Principal("console")
-        else:
-            player_id = str(sender.unique_id)
-            principal = Principal(
-                "player",
-                name=str(getattr(sender, "name", None) or "") or None,
-                xuid=str(getattr(sender, "xuid", None) or "") or None,
-                grant_revision=self._grant_revisions.get(player_id),
-                language=self._language(sender),
-                player_id=player_id,
-                authorization_revision=self._authorization_versions.get(player_id, 0),
-            )
-        # A guard reaches the console too: the scripting probe saves through the paste form's guard.
-        if group_guard is not None:
-            # A form's guard is copied, so later edits to the form cannot reach the queued command.
-            if getattr(group_guard, "values", None) is not None:
-                group_guard = replace(group_guard, values=dict(group_guard.values),
-                                      targets=dict(group_guard.targets or {}))
-            principal = replace(principal, group_guard=group_guard)
-        if command == "botscript" and hasattr(sender, "location"):
-            location = sender.location
-            principal = replace(principal, origin={
-                "x": float(location.x), "y": float(location.y), "z": float(location.z),
-                "yaw": float(location.yaw), "pitch": float(location.pitch), "dimension": location.dimension.name})
-        return principal
-
-    def _apply_control_permission(self, player) -> None:
-        identity = str(player.unique_id)
-        allowed = self._allows_control(player)
-        previous = self._control_granted.get(identity, False)
-        if previous != allowed:
-            self._authorization_versions[identity] = self._authorization_versions.get(identity, 0) + 1
-        self._control_granted[identity] = allowed
-        attachment = self._control_attachments.get(identity)
-        if attachment is not None:
-            attachment.set_permission("endbot.command.control", allowed)
-        elif allowed:
-            attachment = player.add_attachment(self, "endbot.command.control", True)
-            if attachment is not None:
-                self._control_attachments[identity] = attachment
-        player.update_commands()
-
     @event_handler
     def on_player_quit(self, event: PlayerQuitEvent) -> None:
-        identity = str(event.player.unique_id)
-        self._control_attachments.pop(identity, None)
-        self._control_granted.pop(identity, None)
-        self._authorization_versions[identity] = self._authorization_versions.get(identity, 0) + 1
-
-    def _manage_controllers(self, sender: CommandSender, args: list[str]) -> None:
-        if not isinstance(sender, ConsoleCommandSender):
-            sender.send_message("Endbot: controller management is available only from the server console")
-            return
-        if args and args[0] == "request":
-            try:
-                if len(args) != 2 or self._controller_requests_directory is None:
-                    raise ValueError("controller result channel is unavailable")
-                result = execute_request(self._controller_requests_directory, args[1], self._controller_operation)
-            except (OSError, ValueError, TypeError, KeyError) as error:
-                sender.send_message(f"Endbot: controller request failed: {error}")
-                return
-        else:
-            result = self._controller_operation(args)
-        for message in result["messages"]:
-            sender.send_message(message)
-
-    def _controller_operation(self, args: list[str], target: str | None = None) -> dict:
-        """Run a console operation; ``target`` is an already-validated whole name."""
-        try:
-            if self._controller_policy is None:
-                raise ValueError("controller policy is unavailable")
-            if not args or args == ["list"]:
-                rows = self._controller_report()
-                messages = ["Endbot controllers (live effective authorization):"]
-                messages.extend(
-                    f"{row['name']}: {row['state']} - {row['reason']}" + (" (online)" if row.get("online") else "")
-                    for row in rows
-                )
-                if not rows:
-                    messages.append("none; the server console remains authorized")
-                return {"ok": True, "messages": messages, "entries": rows}
-            operation = args[0].lower()
-            if target is None and len(args) >= 2:
-                # Console text: quoted names may contain spaces.
-                target = " ".join(shlex.split(" ".join(args[1:])))
-            if operation not in {"add", "remove"} or not target:
-                raise ValueError("Use botcontrollers list|add <GamerTag>|remove <GamerTag|xuid:id|uuid:id>")
-            player = next(
-                (entry for entry in self.server.online_players if entry.name.casefold() == target.casefold()), None
-            )
-            if operation == "add":
-                binding = next(
-                    (
-                        entry
-                        for entry in (*self._controllers.bindings, *self._controller_policy.state.grants)
-                        if entry.gamertag.casefold() == target.casefold()
-                    ),
-                    None,
-                )
-                if player is not None:
-                    self._controller_policy.add(target, xuid=str(player.xuid), player_uuid=str(player.unique_id))
-                elif binding is not None:
-                    self._controller_policy.add(target, xuid=binding.xuid, player_uuid=binding.uuid)
-                else:
-                    self._controller_policy.add(target)
-            else:
-                # Separate grant revisions survive logout/rejoin and restarts. A revoke/regrant
-                # never revives a run holding the old revision, including offline runs.
-                before = self._controller_report()
-                self._controller_policy.remove(
-                    target,
-                    known=self._controllers.bindings,
-                    configured=self._controllers.gamertags,
-                    xuid=str(player.xuid) if player is not None else None,
-                    player_uuid=str(player.unique_id) if player is not None else None,
-                )
-                denied = self._controller_policy.state
-                self._grant_revisions.bump(
-                    row["uuid"]
-                    for row in before
-                    if row.get("uuid")
-                    and (row.get("xuid") in denied.denied_xuids
-                         or row.get("uuid") in denied.denied_uuids
-                         or row.get("name", "").casefold() in denied.denied_names)
-                )
-            for entry in self.server.online_players:
-                self._apply_control_permission(entry)
-            state = "updated" if operation == "add" else "revoked"
-            rows = self._controller_report()
-            details = [
-                f"{row['name']}: {row['state']} - {row['reason']}"
-                for row in rows
-                if row["name"].casefold() == target.casefold()
-            ]
-            return {"ok": True, "messages": [f"Endbot: controller {target} {state}", *details], "entries": rows}
-        except (OSError, ValueError, TypeError) as error:
-            return {"ok": False, "messages": [f"Endbot: controller change failed: {error}"]}
+        if self._link is not None:
+            self._link.player_quit(event.player)
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
-        if command.name == "botscript":
-            self._submit_bot(sender, args, command="botscript")
-            return True
-        if command.name == "botcontrollers":
-            self._manage_controllers(sender, args)
-            return True
-        if command.name == "botgroup":
-            self._submit_bot(sender, args, command="botgroup")
-            return True
-        if command.name != "bot":
+        if command.name not in ROOTS:
             return False
-        self._submit_bot(sender, args)
+        if command.name == "botcontrollers" and not isinstance(sender, ConsoleCommandSender):
+            sender.send_message("Endbot: controller management is available only from the server console")
+            return True
+        self._submit_bot(sender, args, command=command.name)
         return True
 
     def _language(self, sender) -> str:
@@ -727,15 +365,53 @@ class EndbotPlugin(Plugin):
             locale = None
         return resolve_language(self._language_setting, locale)
 
+    def _principal(self, sender, *, command: str = "bot") -> Principal:
+        """Who typed it, as the link carries it; server thread only. endbotd adds the rest."""
+        if not hasattr(sender, "unique_id"):
+            return Principal("console")
+        origin = None
+        if command == "botscript" and hasattr(sender, "location"):
+            location = sender.location
+            origin = {"x": float(location.x), "y": float(location.y), "z": float(location.z),
+                      "yaw": float(location.yaw), "pitch": float(location.pitch),
+                      "dimension": location.dimension.name}
+        return Principal("player", language=self._language(sender), player_id=str(sender.unique_id), origin=origin)
+
+    def _log_endbot(self, level: str, message: str) -> None:
+        getattr(self.logger, level, self.logger.info)(message)
+
     def _submit_bot(self, sender, args: list[str], *, command: str = "bot", group_guard=None) -> None:
-        """Shared entry for typed /bot commands and form submissions."""
-        if not isinstance(sender, ConsoleCommandSender) and (
-            not hasattr(sender, "unique_id") or not self._allows_control(sender)
-        ):
+        """Shared entry for typed commands and form submissions: forward them to endbotd."""
+        if not isinstance(sender, ConsoleCommandSender) and not hasattr(sender, "unique_id"):
             sender.send_message(f"Endbot: {tr(self._language(sender), 'you do not have Bot control permission')}")
             return
-        submitted = self._command_runner is not None and self._command_runner.submit(
-            args, self._principal(sender, command=command, group_guard=group_guard), command=command
-        )
-        if not submitted:
-            sender.send_message(f"Endbot: {tr(self._language(sender), 'command service is unavailable')}")
+        language = self._language(sender)
+        restarting = f"Endbot: {tr(language, 'Endbot service is restarting')}"
+        try:
+            # A form's guard is encoded now, so later edits to the form cannot reach the queued command.
+            guard = None if group_guard is None else encode_view(group_guard)
+            if self._link is None:
+                raise LinkError("unavailable", "Endbot service is restarting")
+            answer = self._link.submit(command, self._principal(sender, command=command), argv=list(args),
+                                       guard=guard)
+        except LinkError:
+            sender.send_message(restarting)
+            return
+        except TypeError as error:
+            self._log_endbot("warning", f"A form guard could not be sent to endbotd: {error}")
+            sender.send_message(f"Endbot: {tr(language, 'command service is unavailable')}")
+            return
+        player_id = getattr(sender, "unique_id", None)
+
+        def answered(future) -> None:
+            bridge = self._server_thread
+            if future.exception() is not None and bridge is not None:
+                # The link dropped before endbotd took the command; tell whoever typed it.
+                bridge.post(lambda: self._tell(player_id, restarting))
+
+        answer.add_done_callback(answered)
+
+    def _tell(self, player_id, message: str) -> None:
+        target = self.server.command_sender if player_id is None else self.server.get_player(player_id)
+        if target is not None:
+            target.send_message(message)

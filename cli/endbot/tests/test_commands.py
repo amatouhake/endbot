@@ -23,6 +23,7 @@ from pathlib import Path
 from fakeinstance import (
     FAKES_DIR,
     build_instance,
+    fake_endbotd_command,
     fake_runtime_command,
     fake_server_command,
     free_port,
@@ -90,6 +91,7 @@ class CommandTestCase(unittest.TestCase):
             "install_signal_handlers": False,
             "runtime_command": fake_runtime_command(self.runtime_config),
             "server_command": fake_server_command(),
+            "endbotd_command": fake_endbotd_command(),
             "installed_endstone_version": lambda: load_lock().endstone_package_version,
             "ready_timeout": 15.0,
             "stop_timeout": 8.0,
@@ -399,6 +401,7 @@ class EndToEndTests(CommandTestCase):
         options = {
             "runtime_command": fake_runtime_command(self.runtime_config),
             "server_command": fake_server_command(),
+            "endbotd_command": fake_endbotd_command(),
             "installed_endstone_version": load_lock().endstone_package_version,
             "ready_timeout": 15.0,
             "stop_timeout": 8.0,

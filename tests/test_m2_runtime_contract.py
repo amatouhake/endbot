@@ -4,20 +4,22 @@
 import json
 import pathlib
 import subprocess
-import tomllib
+import sys
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(ROOT / "core" / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "core" / "src"))
 
 
 class M2RuntimeContractTests(unittest.TestCase):
     def test_control_deadlines_cover_bounded_session_replacement(self):
+        from endbotd.config import EndbotdConfig
+
         runtime = json.loads((ROOT / "runtime" / "endbot-runtime.example.json").read_text())
-        plugin = tomllib.loads(
-            (ROOT / "plugin" / "endbot" / "src" / "endstone_endbot" / "config.toml").read_text()
-        )
         replacement_bound_seconds = 5 + runtime["reconnect"]["sessionReplacementDelayMs"] / 1000
-        plugin_timeout = plugin["runtime"]["timeout-seconds"]
+        # endbotd is the runtime's control client now; the plugin never talks to the runtime.
+        plugin_timeout = EndbotdConfig(base=ROOT).runtime_timeout
         runtime_timeout = runtime["controlRequestTimeoutMs"] / 1000
         self.assertGreater(plugin_timeout, replacement_bound_seconds)
         self.assertGreater(runtime_timeout, replacement_bound_seconds)

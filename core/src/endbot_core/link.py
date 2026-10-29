@@ -53,7 +53,7 @@ WORLD_METHODS = frozenset({
     "default_spawn", "resolve_spawn_placement", "queue_spawn_placement", "clear_pending_placement", "observe",
     "target", "block_info", "reachable_block", "find_blocks", "describe_entities", "inventory", "held_book_pages",
     "fill_held_book", "teleport", "look_at", "resolve_interaction", "resolve_mining", "resolve_dismount",
-    "assert_name_available",
+    "assert_name_available", "capacity",
 })
 
 

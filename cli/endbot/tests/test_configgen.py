@@ -15,6 +15,7 @@ from endbot_cli.config import load_config
 from endbot_cli.configgen import (
     DEFAULT_SERVER_PORT,
     generate_all,
+    generate_endbotd_config,
     generate_endstone_config,
     generate_plugin_config,
     generate_runtime_config,
@@ -41,27 +42,27 @@ class RuntimeConfigTests(ConfigGenTestCase):
     def test_hotbar_settings_reach_generated_plugin_config(self):
         with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
             config.write("hotbar-sync-interval-ticks=10\nhotbar-sync-resend-ticks=40\n")
-        target, warnings = generate_plugin_config(self.server, self.paths, self.config())
-        runtime = tomllib.loads(target.read_text(encoding="utf-8"))["runtime"]
-        self.assertEqual(runtime["hotbar-sync-interval-ticks"], 10)
-        self.assertEqual(runtime["hotbar-sync-resend-ticks"], 40)
+        target, warnings = generate_endbotd_config(self.server, self.paths, self.config())
+        plugin = tomllib.loads(target.read_text(encoding="utf-8"))["plugin"]
+        self.assertEqual(plugin["hotbar-sync-interval-ticks"], 10)
+        self.assertEqual(plugin["hotbar-sync-resend-ticks"], 40)
         self.assertEqual(warnings, [])
 
     def test_ui_language_reaches_generated_plugin_config(self):
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         self.assertEqual(tomllib.loads(target.read_text(encoding="utf-8"))["ui"], {"language": "auto"})
         with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
             config.write('\n[ui]\nlanguage = "ja"\n')
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         self.assertEqual(tomllib.loads(target.read_text(encoding="utf-8"))["ui"], {"language": "ja"})
 
     def test_limits_reach_generated_plugin_config(self):
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         limits = tomllib.loads(target.read_text(encoding="utf-8"))["limits"]
         self.assertEqual(limits, {"max-bots": 0, "reserved-player-slots": 1})
         with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
             config.write("\n[limits]\nmax-bots = 6\nreserved-player-slots = 2\n")
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         limits = tomllib.loads(target.read_text(encoding="utf-8"))["limits"]
         self.assertEqual(limits, {"max-bots": 6, "reserved-player-slots": 2})
 
@@ -172,7 +173,7 @@ class PluginConfigTests(ConfigGenTestCase):
         with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
             config.write("\n[scripting]\nos-confinement=false\nprocess-memory-bytes=0\ncpu-seconds=3\nbook-export=false\n"
                          "chat-logs=false\nui-pack-editor=true\nreplies=\"all\"\n")
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         table = tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]
         self.assertFalse(table["os-confinement"])
         self.assertEqual(table["process-memory-bytes"], 0)
@@ -190,7 +191,7 @@ class PluginConfigTests(ConfigGenTestCase):
                 .replace('replies="all"', 'replies="failures"'),
             encoding="utf-8",
         )
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         table = tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]
         self.assertNotIn("os-confinement", table)
         self.assertNotIn("process-memory-bytes", table)
@@ -209,16 +210,16 @@ class PluginConfigTests(ConfigGenTestCase):
         )
         runner.parent.mkdir(parents=True)
         runner.write_bytes(b"fixture-runner")
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         scripting = tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]
         self.assertEqual(scripting, {"enabled": False, "runner": str(runner.resolve())})
 
     def test_unbundled_runner_keeps_plugin_default_and_explicit_override_wins(self):
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         self.assertEqual(tomllib.loads(target.read_text(encoding="utf-8"))["scripting"], {"enabled": False})
         with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
             config.write("\n[scripting]\nenabled=true\nrunner='custom/runner'\n")
-        target, _ = generate_plugin_config(self.server, self.paths, self.config())
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         self.assertEqual(
             tomllib.loads(target.read_text(encoding="utf-8"))["scripting"],
             {"enabled": True, "runner": "custom/runner"},
@@ -235,14 +236,14 @@ class PluginConfigTests(ConfigGenTestCase):
         binary.parent.mkdir(parents=True)
         binary.write_bytes(b"running-version")
         with patch("endbot_cli.configgen.__file__", str(module)):
-            target, _ = generate_plugin_config(self.server, self.paths, self.config())
+            target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         self.assertEqual(
             tomllib.loads(target.read_text(encoding="utf-8"))["scripting"]["runner"], str(binary.resolve())
         )
 
     def test_gamertags_and_paths_are_written_with_literal_paths(self) -> None:
         write_endbot_toml(self.root, gamertags='["First", "Second"]', control_port=19999)
-        target, warnings = generate_plugin_config(self.server, self.paths, self.config())
+        target, warnings = generate_endbotd_config(self.server, self.paths, self.config())
         self.assertEqual(warnings, [])
         text = target.read_text(encoding="utf-8")
         document = tomllib.loads(text)
@@ -274,19 +275,25 @@ class PluginConfigTests(ConfigGenTestCase):
             'allowed-xuids = ["2535412345678901", 7]\n',
             encoding="utf-8",
         )
-        generate_plugin_config(self.server, self.paths, self.config())
-        document = tomllib.loads(target.read_text(encoding="utf-8"))
+        generated, _ = generate_endbotd_config(self.server, self.paths, self.config())
+        document = tomllib.loads(generated.read_text(encoding="utf-8"))
         self.assertEqual(document["authorization"]["allowed-uuids"], ["11111111-2222-3333-4444-555555555555"])
+        self.assertEqual(document["authorization"]["allowed-xuids"], ["2535412345678901"])
+        # Once the plugin config holds only the link, endbotd.toml carries them forward.
+        generate_plugin_config(self.server, self.paths, self.config())
+        self.assertNotIn("authorization", tomllib.loads(target.read_text(encoding="utf-8")))
+        generated, _ = generate_endbotd_config(self.server, self.paths, self.config())
+        document = tomllib.loads(generated.read_text(encoding="utf-8"))
         self.assertEqual(document["authorization"]["allowed-xuids"], ["2535412345678901"])
 
     def test_unparseable_legacy_file_warns_and_defaults_to_empty(self) -> None:
         target = self.server / "plugins" / "endbot" / "config.toml"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("{not toml", encoding="utf-8")
-        _target, warnings = generate_plugin_config(self.server, self.paths, self.config())
+        generated, warnings = generate_endbotd_config(self.server, self.paths, self.config())
         self.assertEqual(len(warnings), 1)
         self.assertIn("not preserved", warnings[0])
-        document = tomllib.loads(target.read_text(encoding="utf-8"))
+        document = tomllib.loads(generated.read_text(encoding="utf-8"))
         self.assertEqual(document["authorization"]["allowed-uuids"], [])
 
 
@@ -348,3 +355,20 @@ class GenerateAllTests(ConfigGenTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EndbotdTokenTests(ConfigGenTestCase):
+    def test_plugin_config_holds_only_the_link_and_the_token_is_made_once(self) -> None:
+        generated = generate_all(self.config(), self.paths, self.server)
+        plugin = tomllib.loads(generated.plugin_config.read_text(encoding="utf-8"))
+        self.assertEqual(set(plugin), {"endbotd"})
+        self.assertEqual(plugin["endbotd"]["port"], 19143)
+        self.assertEqual(Path(plugin["endbotd"]["token-file"]), self.paths.endbotd_token.resolve())
+        token = self.paths.endbotd_token.read_text(encoding="utf-8")
+        self.assertGreaterEqual(len(token.strip()), 32)
+        self.assertNotIn(token.strip(), "\n".join(generated.messages))
+        generate_all(self.config(), self.paths, self.server)
+        self.assertEqual(self.paths.endbotd_token.read_text(encoding="utf-8"), token)
+        endbotd = tomllib.loads(generated.endbotd_config.read_text(encoding="utf-8"))
+        self.assertEqual(endbotd["link"]["port"], 19143)
+        self.assertEqual(Path(endbotd["plugin"]["data-folder"]), (self.server / "plugins" / "endbot").resolve())

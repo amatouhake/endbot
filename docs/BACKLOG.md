@@ -856,9 +856,11 @@ Steps, each about one PR, none meant to change what players see:
 
 ## BOT-020: endbotd outside BDS
 
-Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); steps 1 to 3b landed and step 3c (the switch: endbotd runs as
-its own child and the plugin is the link client) is in review; 3d to 6 are not implemented** (2026-10-29 JST). No
-release from main until step 4 lands.
+Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); steps 1 to 5 landed (endbotd runs as its own child with the
+plugin as the link client, Groups and stored scripts live in `state/`, and CLI controller management goes through
+endbotd), and step 6 (validation) is in progress** (2026-10-30 JST). The autonomous live smoke passed; the first human
+Windows client pass failed on the script menus, and #150 fixes it for a rebuilt candidate — see
+[ENDBOTD_VALIDATION.md](ENDBOTD_VALIDATION.md).
 
 Step 4 (store migration, P7 with its 2026-10-29 amendment): Groups and stored scripts move to `state/`, script files
 to `<instance>/scripts/`. **The release notes of the first endbotd release must state the rollback behaviour**:

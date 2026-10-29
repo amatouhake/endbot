@@ -856,9 +856,9 @@ Steps, each about one PR, none meant to change what players see:
 
 ## BOT-020: endbotd outside BDS
 
-Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); steps 1 to 6 landed (endbotd runs as its own child with the
+Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); steps 1 to 5 landed (endbotd runs as its own child with the
 plugin as the link client, Groups and stored scripts live in `state/`, and CLI controller management goes through
-endbotd) and step 6's validation is in progress** (2026-10-30 JST). The autonomous live smoke passed; the first human
+endbotd), and step 6 (validation) is in progress** (2026-10-30 JST). The autonomous live smoke passed; the first human
 Windows client pass failed on the script menus, and #150 fixes it for a rebuilt candidate — see
 [ENDBOTD_VALIDATION.md](ENDBOTD_VALIDATION.md).
 

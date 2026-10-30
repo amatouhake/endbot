@@ -274,6 +274,19 @@ while true do
 end
 ''')
         save("runaway", "params {}\nwhile true do end\n")
+        # BOT-024 2a: the basic set may be declared and changes nothing; a capability that does not exist yet is an
+        # inspection error naming it, so the save is refused.
+        save("declares", 'requires { "act.bot", "wait" }\nparams {}\nwait(1)\nlog("declared")\n')
+        offset = len(log())
+        submit_fixture(output, wait, {"id": "save-observes", "action": "save", "name": "observes",
+                                      "source": 'requires { "observe.chat" }\nparams {}\n'})
+        wait("unknown capability refused",
+             lambda: "Unknown capability in requires: observe.chat" in log()[offset:], 15)
+        if "Script observes saved" in log()[offset:]:
+            raise ConsumerError("a script declaring an unknown capability was saved")
+        declared_run, declared_offset = start("declares", "")
+        results["requires"] = {"run_id": declared_run,
+                               "output": ended("declares", declared_run, declared_offset, "completed")}
         results["list_output"] = command("botscript list", "line", "patrol", "runaway")
         results["idle_runs_output"] = command("botscript runs", "No active script runs")
         suffix = f' {GROUP} "{origin[0]} {origin[1]} {origin[2]}" 3'

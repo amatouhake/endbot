@@ -1,7 +1,8 @@
 # Permission model
 
-Status: **Agreed design, not implemented** (2026-10-28 JST). Backlog item BOT-024. It extends the
-[product direction](DIRECTION.md); [SECURITY.md](SECURITY.md) describes what is enforced today.
+Status: **Implemented** (steps 1a to 5, 2026-10-30 JST); design agreed 2026-10-28. Backlog item BOT-024. It extends
+the [product direction](DIRECTION.md); [SECURITY.md](SECURITY.md) describes what is enforced today, and
+[PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md) records the live smoke and the human checks still open.
 
 ## Today
 
@@ -186,7 +187,8 @@ once, against the endbotd endpoint, not against the file request channel being r
 SECURITY.md is updated in the PR that changes what is enforced, not in a separate PR. Running scripts and jobs already
 end on revoke (the grant revision); no PR is needed for that row.
 
-**Validation in the single final pass** (not per PR): update a server with existing grants, Groups and scripts, and
+**Validation in the single final pass** (not per PR; the autonomous part and the human checklist are in
+[PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md)): update a server with existing grants, Groups and scripts, and
 check every controller is a scripter and everything is shared as before; then roll back and check the old version
 starts and behaves as today. Live RakNet smoke on the locked pair: a controller-role account refused authoring from
 command, form and script menu; another person's private Bot refused identically from command, form and a shared script;

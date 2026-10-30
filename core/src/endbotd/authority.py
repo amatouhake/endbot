@@ -19,6 +19,8 @@ from pathlib import Path
 
 from endbot_core.authorization import AllowedPlayers
 from endbot_core.controller_policy import ControllerPolicy
+from endbot_core.controller_roles import FILE_NAME as ROLES_FILE
+from endbot_core.controller_roles import ControllerRoles
 from endbot_core.enrollment import ControllerEnrollment, _is_xuid
 from endbot_core.grant_revisions import FILE_NAME as GRANT_REVISIONS_FILE
 from endbot_core.grant_revisions import GrantRevisions
@@ -37,6 +39,7 @@ class Authority:
         controllers: ControllerEnrollment | None = None,
         policy: ControllerPolicy,
         grant_revisions: GrantRevisions | None = None,
+        roles: ControllerRoles | None = None,
         log: Callable[[str, str], None] | None = None,
     ) -> None:
         self.presence = presence
@@ -45,6 +48,7 @@ class Authority:
         self.policy = policy
         # Beside the policy, so an Endbot instance keeps it in state/; read only here, at start-up.
         self.grant_revisions = grant_revisions or GrantRevisions(policy.path.parent / GRANT_REVISIONS_FILE)
+        self.roles = roles or ControllerRoles(policy.path.parent / ROLES_FILE)
         self._log = log or (lambda level, message: None)
         self.lock = threading.RLock()
         # The control permission last sent per online player.
@@ -83,6 +87,10 @@ class Authority:
 
     def allows(self, record: dict) -> bool:
         return self.control_decision(record.get("name") or "", record.get("xuid") or "", record["playerId"])[0]
+
+    def role(self, xuid: str) -> str:
+        """The stored role for ``xuid``; a grant with no entry is a scripter."""
+        return self.roles.role(xuid)
 
     def authorize(self, principal: Principal) -> bool:
         """Two layers for every principal.
@@ -201,6 +209,14 @@ class Authority:
                 row["uuid"]
                 for row in before
                 if row.get("uuid")
+                and (row.get("xuid") in denied.denied_xuids
+                     or row.get("uuid") in denied.denied_uuids
+                     or row.get("name", "").casefold() in denied.denied_names)
+            )
+            self.roles.forget(
+                row.get("xuid")
+                for row in before
+                if row.get("xuid")
                 and (row.get("xuid") in denied.denied_xuids
                      or row.get("uuid") in denied.denied_uuids
                      or row.get("name", "").casefold() in denied.denied_names)

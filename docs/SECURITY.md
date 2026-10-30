@@ -82,11 +82,10 @@ differs, so a conditional `requires {}` cannot widen what was shown.
 Bot beyond it is refused with the conflict outcome before the runtime creates a profile, a Bot a script run creates
 counts for the run's invoker, reconnecting an existing Bot is never limited, and the console is never limited.
 
-Controller CLI requests use one atomic file per random request ID, bound to the current supervisor session. The
-supervisor validates and removes a request from the queue before forwarding its ID to the console-only plugin handler;
-only that handler executes the operation and writes the correlated result atomically. Old-session requests are rejected,
-mutations are never automatically retried, and unknown outcomes require inspection before a manual retry. Transient
-request/result files belong to private instance state. This does not add a network listener or player administration API.
+`endbot controllers` connects to endbotd directly over its loopback link with the instance's endbotd token, and endbotd
+performs and answers the request. A request whose answer is lost reports an unknown outcome; mutations are never
+retried automatically, and endbotd refuses a request id already used on the connection. This adds no network listener
+beyond endbotd's loopback link and no player administration API.
 
 Controllers are configured by Xbox GamerTag but authorized by XUID. A configured GamerTag stays pending until a player
 with that name joins through Microsoft/Xbox authentication with a non-empty decimal XUID; the plugin then records the

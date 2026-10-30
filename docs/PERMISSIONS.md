@@ -4,7 +4,7 @@ Status: **Implemented** (steps 1a to 5, 2026-10-30 JST); design agreed 2026-10-2
 the [product direction](DIRECTION.md); [SECURITY.md](SECURITY.md) describes what is enforced today, and
 [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md) records the live smoke and the human checks still open.
 
-## Today
+## Before 0.5.0
 
 The console (the operator) can do everything, and only the console grants or revokes access. A controller holds one
 permission, `endbot.command.control`, bound to their XUID with a revision that changes on every grant or revoke.

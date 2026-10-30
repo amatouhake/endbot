@@ -99,8 +99,9 @@ item. Importing from a book is always available while scripting is enabled.
 also when the section or a key is absent) keeps today's behavior, and `private` keeps a new item visible and
 usable only by its owner. The owner is recorded in `state/ownership.json`; an item with no entry there is
 unowned and shared, and Bots and Groups created from the console stay unowned. The setting applies to new
-items only and takes effect on the next start. Nothing is refused by this setting until enforcement lands in
-the following step.
+items only and takes effect on the next start. Someone else's private Bot or Group is refused (a private Group
+resolves as not found), and `forget`, `rename` and `visibility` on someone else's Bot stay with its owner and the
+console even when it is shared (see [PERMISSIONS.md](PERMISSIONS.md)).
 
 `[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
 (default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value
@@ -216,8 +217,8 @@ Success exits with 0; a rejected change exits with 1. Changes are also recorded 
 request was sent reports an unknown outcome; inspect `controllers list` before retrying a mutation. Requests are not
 automatically retried, and endbotd refuses a request id that was already used on the connection. The same
 `botcontrollers add|remove|list` commands work directly on the BDS console. Only a real server console sender may
-administer access; controllers and operator players cannot grant or revoke access. Bot operation applies to all Bots,
-with no per-Bot ACL.
+administer access; controllers and operator players cannot grant or revoke access. Which Bots a controller may operate
+follows ownership and visibility (`[permissions]` above).
 
 `controllers list` shows effective states (`allowed`, `revoked`, `pending`, `denied`, or `conditional`) and their reasons,
 including runtime grants, bootstrap bindings and explicit identity revocations. Online authenticated players use the

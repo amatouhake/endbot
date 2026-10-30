@@ -16,6 +16,8 @@ from pathlib import Path
 
 REGISTRY = json.loads(Path(__file__).with_name("operations.json").read_text(encoding="utf-8"))
 OPERATIONS = REGISTRY["operations"]
+CAPABILITIES = REGISTRY["capabilities"]
+HOST_REQUESTS = REGISTRY["hostRequests"]
 # Root command words that would shadow a Bot of the same name (interface guide D3).
 RESERVED_BOT_NAMES = frozenset(REGISTRY["reservedBotNames"])
 ALIASES = {"teleport": "tp"}

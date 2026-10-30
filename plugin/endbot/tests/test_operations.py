@@ -7,7 +7,9 @@ from pathlib import Path
 from endbot_core import operations
 from endbot_core.commands import parse_command
 from endbot_core.operations import (
+    CAPABILITIES,
     GROUPS,
+    HOST_REQUESTS,
     OPERATIONS,
     ROOT_OPERATIONS,
     Operation,
@@ -168,13 +170,44 @@ class RegistrySchemaTests(unittest.TestCase):
                        "prefix": []}]},
             {"Move": [{"positional": [], "options": {}, "prefix": []}]},
         ):
-            registry = {"operations": operations_table, "reservedBotNames": []}
+            registry = {"operations": operations_table, "capabilities": CAPABILITIES,
+                        "hostRequests": HOST_REQUESTS, "reservedBotNames": []}
             with self.subTest(registry=registry), self.assertRaises(AssertionError):
                 check(registry, self.schema, self.schema)
-        for registry in ({"operations": OPERATIONS}, {**operations.REGISTRY, "reservedBotNames": ["List"]},
+        for registry in ({"operations": OPERATIONS, "capabilities": CAPABILITIES, "hostRequests": HOST_REQUESTS},
+                         {**operations.REGISTRY, "reservedBotNames": ["List"]},
                          {**operations.REGISTRY, "extra": 1}):
             with self.subTest(registry=registry), self.assertRaises(AssertionError):
                 check(registry, self.schema, self.schema)
+
+    def test_the_checker_requires_capabilities_and_host_requests(self):
+        for registry in (
+            {key: value for key, value in operations.REGISTRY.items() if key != "capabilities"},
+            {key: value for key, value in operations.REGISTRY.items() if key != "hostRequests"},
+            {**operations.REGISTRY, "capabilities": {**CAPABILITIES, "status": "act.everything"}},
+            {**operations.REGISTRY, "hostRequests": {**HOST_REQUESTS, "params": "none"}},
+        ):
+            with self.subTest(registry=registry), self.assertRaises(AssertionError):
+                check(registry, self.schema, self.schema)
+
+    def test_every_operation_names_its_capability(self):
+        self.assertEqual(set(CAPABILITIES), set(OPERATIONS))
+
+    def test_every_luau_host_request_names_its_capability(self):
+        api = (REPOSITORY / "runner" / "api.luau").read_text(encoding="utf-8")
+        # log() sends through emitLog instead of request(); that is why the set adds "log" below.
+        self.assertIn("emitLog(", api)
+        sent = set(re.findall(r'request\(\{type = "(\w+)"', api)) | {"log"}
+        self.assertEqual(sent, set(HOST_REQUESTS))
+        scripting = (SOURCE / "scripting.py").read_text(encoding="utf-8")
+        run_loop = scripting[scripting.index("    def _run("):scripting.index("    def _chat_log(")]
+        handled = set(re.findall(r'kind == "(\w+)"', run_loop))
+        handled |= {name for group in re.findall(r"kind in \{([^}]*)\}", run_loop)
+                    for name in re.findall(r'"(\w+)"', group)}
+        # done and error end the run rather than ask the host for anything; params is the declaration,
+        # which _schema reads before the request loop starts.
+        self.assertIn('event.get("type") != "params"', scripting)
+        self.assertEqual((handled - {"done", "error"}) | {"params"}, set(HOST_REQUESTS))
 
     def test_python_validates_exactly_the_schema_types(self):
         self.assertEqual({spec["type"] for shapes in OPERATIONS.values() for shape in shapes

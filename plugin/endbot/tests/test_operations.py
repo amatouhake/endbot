@@ -205,7 +205,7 @@ class RegistrySchemaTests(unittest.TestCase):
         handled |= {name for group in re.findall(r"kind in \{([^}]*)\}", run_loop)
                     for name in re.findall(r'"(\w+)"', group)}
         # done and error end the run rather than ask the host for anything; params is the declaration,
-        # which _schema reads before the request loop starts.
+        # which _declaration reads before the request loop starts.
         self.assertIn('event.get("type") != "params"', scripting)
         self.assertEqual((handled - {"done", "error"}) | {"params"}, set(HOST_REQUESTS))
 

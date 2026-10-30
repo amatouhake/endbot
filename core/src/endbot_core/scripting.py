@@ -7,6 +7,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import NamedTuple
 from uuid import uuid4
 
 from endbot_core import script_forms
@@ -27,7 +28,7 @@ from endbot_core.group_forms import GroupGuard
 from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.operations import OPERATIONS, Operation
 from endbot_core.script_books import pages_to_source, source_to_pages, written
-from endbot_core.script_params import arguments, declarations
+from endbot_core.script_params import arguments, declarations, required
 from endbot_core.script_process import RunnerProcess
 from endbot_core.script_store import FILE_SUFFIX, Script, load_files
 
@@ -52,6 +53,13 @@ CHAT_LOG_SECONDS = 5
 SCRIPT_TARGET = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
 
 
+class Declaration(NamedTuple):
+    """What inspection reads from a script: its ``params`` schema and the capabilities it ``requires``."""
+
+    schema: list
+    requires: tuple
+
+
 def _clean(text, limit):
     """Script-controlled text for one log/chat line: no colors, control characters (CR/LF/ESC) or overflow."""
     return re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", strip_colors(str(text)))[:limit]
@@ -69,6 +77,8 @@ class ScriptRun:
     calls: deque = field(default_factory=deque)
     thread: object = None
     parameter_targets: dict = field(default_factory=dict)
+    # The requires {} the inspection that started this run read; None when no inspection did.
+    requires: tuple | None = None
     bot_pins: dict = field(default_factory=dict)
     log_lines: int = 0
     log_bytes: int = 0
@@ -131,7 +141,7 @@ class ScriptService:
             limits["wallMs"] = wall_seconds * 1000
         return self.process_factory(self.executable, source, bootstrap, OPERATIONS, limits)
 
-    def _schema(self, process, source, canceled, deadline):
+    def _declaration(self, process, source, canceled, deadline):
         event = process.receive(deadline, canceled, lambda: self._check(source))
         if event.get("type") != "params" or event.get("id") != 1:
             if event.get("type") == "done":
@@ -143,6 +153,8 @@ class ScriptService:
                 "Script parameters must be an array", "Invalid script parameter declarations",
                 "Invalid script parameter name", "Duplicate script parameter name",
                 "Unknown script parameter type", "Invalid script parameter default",
+                "requires expects a list of capability names", "declare requires before params",
+                "declare requires exactly once",
             }:
                 raise LocalizedError(
                     "Script parameter declaration at {location}: {error}", location=match[1], error=Text(match[2])
@@ -152,7 +164,15 @@ class ScriptService:
             )
         schema = event.get("schema")
         declarations(schema)
-        return schema
+        return Declaration(schema, required(event.get("requires")))
+
+    def _inspect(self, script, source):
+        seconds = min(5, self.config.wall_seconds or 5)
+        process = self._process(script.source, seconds)
+        try:
+            return self._declaration(process, source, threading.Event(), time.monotonic() + seconds)
+        finally:
+            process.close()
 
     def _reserve(self, source):
         """Check the concurrency limits; the caller holds the lock and then takes the slot."""
@@ -170,12 +190,7 @@ class ScriptService:
             controller = self._reserve(source)
             self._inspecting[controller] = self._inspecting.get(controller, 0) + 1
         try:
-            seconds = min(5, self.config.wall_seconds or 5)
-            process = self._process(script.source, seconds)
-            try:
-                return self._schema(process, source, threading.Event(), time.monotonic() + seconds)
-            finally:
-                process.close()
+            return self._inspect(script, source)
         finally:
             with self._lock:
                 self._inspecting[controller] -= 1
@@ -305,7 +320,7 @@ class ScriptService:
             return
         raise LocalizedError("Script {name} already exists", name=name)
 
-    def start(self, script, values, source, targets=None):
+    def start(self, script, values, source, targets=None, requires=None):
         self._enabled()
         self._check(source)
         if len(script.source.encode("utf-8")) > self.config.max_script_bytes:
@@ -320,6 +335,7 @@ class ScriptService:
                 source,
                 deadline=time.monotonic() + self.config.wall_seconds if self.config.wall_seconds else None,
                 parameter_targets=dict(targets or {}),
+                requires=requires,
             )
             self._runs[identity] = run
             run.thread = threading.Thread(
@@ -532,7 +548,12 @@ class ScriptService:
         process, outcome = None, reason("completed")
         try:
             process = self._process(script.source)
-            schema = self._schema(process, run.source, run.canceled, run.deadline)
+            declaration = self._declaration(process, run.source, run.canceled, run.deadline)
+            # S3: a run started from an inspection (a menu, later a trigger) must declare what that inspection
+            # read, or it stops here, before its first operation; a conditional requires {} cannot widen it.
+            if run.requires is not None and declaration.requires != run.requires:
+                raise LocalizedError("Script requires changed between inspection and run")
+            schema = declaration.schema
             args = self.ordered(lambda: self._prepare(run, schema, values))
             self._alive(run)
             process.send({"type": "reply", "id": 1, "accepted": True, "args": args})
@@ -918,7 +939,9 @@ class ScriptService:
                     else tail[1:]
                 )
                 targets = guard.targets if isinstance(guard, script_forms.ScriptGuard) else None
-                run = self.start(script, values, source, targets)
+                # A run form carries the declaration its inspection read; the run is held to it (S3).
+                requires = guard.requires if isinstance(guard, script_forms.ScriptGuard) else None
+                run = self.start(script, values, source, targets, requires)
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} started: {run}", name=script.name, run=run)),),
                     log_level="info",
@@ -927,10 +950,11 @@ class ScriptService:
             if operation in {"menu", "parameters"} and len(tail) == 1:
                 self._player(source)
                 if operation == "parameters":
-                    schema = self.inspect(script, source)
+                    declaration = self.inspect(script, source)
+                    schema = declaration.schema
                     if not schema:
                         # No parameters: an empty form cannot be submitted, so start the run.
-                        run = self.start(script, [], source, None)
+                        run = self.start(script, [], source, None, declaration.requires)
                         return CommandResult(
                             True,
                             # The menu echoes no internal `parameters` step; show the command this was.
@@ -947,7 +971,7 @@ class ScriptService:
                         "scriptParameters", lang, script=self._script_data(script), schema=schema,
                         groups=[{"identity": group.identity, "name": group.name, "members": list(group.members)}
                                 for group in groups],
-                        bots=bots, origin=source.origin)
+                        bots=bots, origin=source.origin, requires=list(declaration.requires))
                 else:
                     data = self._menu_data(
                         "script", lang, script=self._script_data(script),

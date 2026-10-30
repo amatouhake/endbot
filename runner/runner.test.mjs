@@ -327,6 +327,28 @@ test('declaration errors retain params call line and never reach the body', asyn
   }
 });
 
+test('requires is declared once before params and travels with the params request', async () => {
+  const run = startRun('requires { "observe.chat", "wait" }\nparams {}');
+  assert.equal((await run.done).type, 'done');
+  assert.deepEqual(run.events[0].requires, ['observe.chat', 'wait']);
+  const none = startRun('params {}');
+  assert.equal((await none.done).type, 'done');
+  assert.deepEqual(none.events[0].requires, []);
+  for (const [source, message] of [
+    ['params {}\nrequires {}', 'declare requires before params'],
+    ['requires {}\nrequires {}\nparams {}', 'declare requires exactly once'],
+    ['requires "observe.chat"\nparams {}', 'requires expects a list of capability names'],
+    ['requires { chat = "observe.chat" }\nparams {}', 'requires expects a list of capability names'],
+    ['requires { "wait", "wait" }\nparams {}', 'requires expects a list of capability names'],
+    ['requires { 1 }\nparams {}', 'requires expects a list of capability names'],
+  ]) {
+    const failed = startRun(source);
+    const result = await failed.done;
+    assert.equal(result.type, 'error', source);
+    assert.match(result.message, new RegExp(`^script:\\d+: ${message}$`), source);
+  }
+});
+
 test('host independently validates array schemas before accepting arguments', () => {
   for (const [schema, message] of [
     [{}, /must be an array/],

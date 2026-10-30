@@ -20,14 +20,14 @@ from endbot_core.events import Event, render
 from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import LocalizedError, localize_error
 from endbot_core.menu_views import menu_view, script_view
-from endbot_core.operations import OPERATIONS, operation_argv
+from endbot_core.operations import CAPABILITIES, HOST_REQUESTS, OPERATIONS, operation_argv
 from endbot_core.principal import Principal
 from endbot_core.script_config import ScriptConfig
 from endbot_core.script_inputs import OwnedInputs
-from endbot_core.script_params import arguments, declarations
+from endbot_core.script_params import BASIC_CAPABILITIES, arguments, declarations, required
 from endbot_core.script_process import RunnerProcess
 from endbot_core.script_store import Script, ScriptStore
-from endbot_core.scripting import ScriptRun, ScriptService
+from endbot_core.scripting import Declaration, ScriptRun, ScriptService
 
 
 def screen(result, source):
@@ -169,6 +169,32 @@ class ConfigStorageParamsTests(unittest.TestCase):
             arguments([], [1], groups=groups, bots=[])
         with self.assertRaisesRegex(LocalizedError, "Unknown script argument"):
             arguments([], {"x": 1}, groups=groups, bots=[])
+
+    def test_requires_names_the_capabilities_beyond_the_basic_set(self):
+        self.assertEqual(required(None), ())
+        self.assertEqual(required(["wait", "log", "act.bot", "read.world"]), ())
+        for names, message in (
+            ("observe.chat", "requires expects a list"),
+            ([1], "requires expects a list"),
+            (["wait", "wait"], "requires expects a list"),
+            (["wait"] * 33, "requires expects a list"),
+            (["observe.chat"], "Unknown capability"),
+            (["act.everything"], "Unknown capability"),
+        ):
+            with self.subTest(names=names), self.assertRaisesRegex(LocalizedError, message) as caught:
+                required(names)
+            self.assertNotEqual(localize_error(caught.exception, "ja"), caught.exception.template)
+        # Order does not make a different declaration.
+        with patch("endbot_core.script_params.DECLARED_CAPABILITIES", frozenset({"observe.chat", "observe.presence"})):
+            self.assertEqual(required(["observe.presence", "wait", "observe.chat"]),
+                             required(["observe.chat", "observe.presence"]))
+
+    def test_the_basic_set_is_fixed_and_covers_what_the_registry_names(self):
+        # S8: the basic set is these four. The registry may only use them, so a capability it gains is never basic
+        # by being used there; it has to be added to the declared set, which scripts must name.
+        self.assertEqual(BASIC_CAPABILITIES, {"act.bot", "read.world", "wait", "log"})
+        self.assertLessEqual(set(CAPABILITIES.values()), BASIC_CAPABILITIES)
+        self.assertLessEqual(set(HOST_REQUESTS.values()) - {"operation", "declaration"}, BASIC_CAPABILITIES)
 
 
 class OperationParityTests(unittest.TestCase):
@@ -595,6 +621,30 @@ class LifecycleTests(unittest.TestCase):
         self.start([{"type": "waitOnline", "id": 2, "target": "x" * 5000}])
         self.wait_finished()
         self.assertTrue(any("Invalid script target" in line for line in self.logs()))
+
+    def test_inspection_returns_the_requires_declaration_with_the_schema(self):
+        self.runner.events.queue[0]["requires"] = ["read.world", "wait"]
+        declaration = self.host.inspect(Script("draft", "params {}", "r1"), self.source)
+        # The basic set needs no declaration, so naming it declares nothing beyond it.
+        self.assertEqual(declaration, Declaration([], ()))
+        self.runner = FakeRunner([])
+        self.runner.events.queue[0]["requires"] = ["observe.chat"]
+        with self.assertRaises(LocalizedError) as raised:
+            self.host.inspect(Script("draft", "params {}", "r1"), self.source)
+        self.assertEqual(raised.exception.template, "Unknown capability in requires: {name}")
+
+    def test_a_run_whose_requires_differs_from_its_inspection_stops_before_any_operation(self):
+        self.runner = FakeRunner([self.op(2, "move", {"direction": "forward"}), {"type": "done"}])
+        self.host.start(Script("test", "params {}", "r1"), [], self.source, requires=("observe.chat",))
+        self.wait_finished()
+        self.assertEqual(self.raw.calls, [])
+        self.assertEqual(self.runner.replies, [])
+        self.assertTrue(any("Script requires changed between inspection and run" in line for line in self.logs()))
+        # The same run held to the declaration it makes proceeds.
+        self.runner = FakeRunner([self.op(2, "move", {"direction": "forward"}), {"type": "done"}])
+        self.host.start(Script("test", "params {}", "r1"), [], self.source, requires=())
+        self.wait_finished()
+        self.assertTrue(any(op == "move" for op, _ in self.raw.calls))
 
     def test_inspection_holds_a_run_slot_while_it_runs(self):
         self.host.config = replace(self.config, controller_runs=1)
@@ -1612,16 +1662,17 @@ class BookTests(unittest.TestCase):
 
     def test_a_parameterless_script_starts_from_the_menu(self):
         self.store.save("plain", "params {}\n")
-        self.host.inspect = lambda script, source: []
+        self.host.inspect = lambda script, source: Declaration([], ())
         started = []
 
-        def start(script, values, source, targets):
-            started.append((script.name, values, targets))
+        def start(script, values, source, targets, requires=None):
+            started.append((script.name, values, targets, requires))
             return "run-9"
 
         self.host.start = start
         result = self.host.execute(["parameters", "plain"], self.alice)
-        self.assertEqual(started, [("plain", [], None)])
+        # The run is held to the declaration this inspection read (S3).
+        self.assertEqual(started, [("plain", [], None, ())])
         self.assertIn("Script plain started: run-9", self.text(result))
         self.assertEqual(strip_colors(result.messages[0]), "/botscript run plain")
 

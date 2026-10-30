@@ -64,7 +64,7 @@ def _parameters(data: dict, lang: str):
     groups = tuple(SimpleNamespace(name=row["name"], identity=row["identity"], members=tuple(row["members"]))
                    for row in data.get("groups", ()))
     return script_forms.run_screen(_script(data["script"]), data["schema"], groups, data["bots"],
-                                   data.get("origin"), lang)
+                                   data.get("origin"), lang, requires=tuple(data.get("requires", ())))
 
 
 # One table drives both the crossing decision (menu_view) and the screen builder (script_view), so a

@@ -144,7 +144,12 @@ once, against the endbotd endpoint, not against the file request channel being r
      call or a call after `params{}` is an inspection error naming it. Inspection returns the declaration with the
      params schema. A run whose own `requires {}` differs from what inspection read stops before its first
      operation (S3). Scripters see a new Luau function and its errors; existing scripts are unchanged.
-     *Claude.*
+     *Claude.* **Landed** (2026-10-30 JST). Until events add `observe.*`, the basic names are accepted and ignored
+     and every other name is unknown (S8); the basic set is fixed in code, not derived from the registry. A
+     declaration is a set (order does not matter, a duplicate is an error). The comparison applies to runs started
+     from an inspection: the run form carries the declaration in its guard, the parameterless menu start passes it,
+     and triggers will; a typed `/botscript run` is held to its own declaration, which it cannot widen beyond its
+     invoker either.
    - **2b. Forms show the declaration** before a shared script runs, from the inspection result. Players see one
      line on the run form when a script declares anything. *DeepSeek.*
 3. **Roles.** After BOT-020 3c and 4; 3c after BOT-020 5.

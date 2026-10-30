@@ -293,6 +293,17 @@ The runner/host protocol carries `schema` as a JSON array, including `[]` for no
 `{"name":"spacing","type":"number","default":2}` (a choice adds `"choices":[...]`). The plugin validates this array
 again before forms or execution.
 
+A script that needs a capability beyond the basic set declares it with `requires { "name", ... }`, called once and
+before `params` (see [PERMISSIONS.md](PERMISSIONS.md#two-layers-the-person-and-the-script)). The basic set —
+operating Bots, reading the world, waiting and logging (`act.bot`, `read.world`, `wait`, `log`) — needs no
+declaration, and naming it changes nothing. No other capability exists yet: events add the first ones
+(`observe.chat`, `observe.presence`), so any other name is an inspection error naming it. A second call, a call after
+`params`, or anything but a list of distinct strings is a declaration error. The `params` request carries the list as
+`requires` (`[]` when there is no call); inspection returns it with the schema as a set, so order does not matter. A
+run started from an inspection (the run form, which carries the declaration in its guard, the parameterless menu
+start, later a trigger) stops before its first operation if its own `requires {}` differs from what that inspection
+read, so a conditional call cannot widen what was shown.
+
 **Positional arguments and menu controls follow declaration order.** After the positional values, `name=value`
 sets any declared parameter, so earlier defaults can be skipped. The example accepts `/botscript run row #miners`,
 `/botscript run row #miners "~ ~ ~" 3` or `/botscript run row #miners spacing=3`. A positional value may not follow a

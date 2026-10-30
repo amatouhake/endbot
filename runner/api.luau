@@ -26,6 +26,25 @@ param.choice = function(parameterName, choices, default)
 end
 table.freeze(param)
 local KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice"}
+-- Capabilities beyond the basic set: `requires { "observe.chat" }`, once, before params{}.
+-- The host checks the names; this only fixes the shape and the order.
+local required = nil
+function requires(names)
+    if declared then error("declare requires before params", 2) end
+    if required ~= nil then error("declare requires exactly once", 2) end
+    if type(names) ~= "table" then error("requires expects a list of capability names", 2) end
+    local list, seen = {}, {}
+    for key, name in names do
+        if type(key) ~= "number" or key % 1 ~= 0 or key < 1 or key > #names or type(name) ~= "string"
+            or #name < 1 or #name > 64 or seen[name] or #list >= 32 then
+            error("requires expects a list of capability names", 2)
+        end
+        seen[name] = true
+        table.insert(list, name)
+    end
+    if #list ~= #names then error("requires expects a list of capability names", 2) end
+    required = table.freeze(list)
+end
 
 function params(schema)
     if declared then error("declare params exactly once", 2) end
@@ -79,7 +98,7 @@ function params(schema)
         end
     end
     declared = true
-    local args = request({type = "params", schema = schema}).args
+    local args = request({type = "params", schema = schema, requires = required or {}}).args
     -- Positions arrive as {x, y, z}; vectors add and scale (`a.origin + vector.create(2, 0, 0)`).
     for _, spec in schema do
         local value = args[spec.name]

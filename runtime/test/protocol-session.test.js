@@ -89,6 +89,51 @@ for (const transport of [undefined, 'raknet']) {
   })
 }
 
+test('direct NetherNet signalling skips discovery and signals the configured port', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-transport-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  const nethernet = { networkId: 9n }
+  client.connection = { nethernet }
+  let options
+  const session = new BedrockSession(
+    { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
+    {
+      nethernetSignalling: 'direct',
+      serverHost: '127.0.0.1',
+      serverPort: 19134,
+      serverName: 'Selected BDS',
+      levelName: 'World',
+      gameVersion: '1.26.51',
+      ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
+      ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
+      protocolLoader: async () => ({ createClient: value => { options = value; return client } }),
+      discover: async () => { throw new Error('direct signalling must not discover') }
+    }
+  )
+  t.after(() => session.disconnect('test cleanup'))
+  const connecting = session.connect()
+  await turn()
+  assert.equal(options.transport, 'nethernet')
+  assert.equal(options.skipPing, true)
+  assert.equal(options.nethernet.signalling, 'lan')
+  assert.equal(typeof options.nethernet.networkId, 'bigint')
+  assert.equal(nethernet.signalHandler, undefined)
+  client.emit('connect_allowed')
+  assert.equal(typeof nethernet.signalHandler, 'function')
+  client.emit('spawn')
+  await connecting
+})
+
+test('sessions reject an unknown NetherNet signalling mode before loading protocol code', async () => {
+  const session = new BedrockSession({}, {
+    nethernetSignalling: 'services',
+    serverHost: '127.0.0.1',
+    protocolLoader: () => { throw new Error('must not load') }
+  })
+  await assert.rejects(session.connect(), /nethernetSignalling must/)
+})
+
 test('sessions reject an unknown transport before loading protocol code', async () => {
   const session = new BedrockSession({}, {
     transport: 'auto',

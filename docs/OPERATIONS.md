@@ -55,6 +55,7 @@ Ownership rules:
 [server]
 path = 'server'            # BDS directory, relative to <instance> or absolute (TOML literal string)
 transport = 'nethernet'    # the only value from 0.5.0; omitted in old configs means nethernet
+nethernet-signalling = 'direct' # direct (HTTP on server-port, default) or lan (UDP 7551 discovery)
 
 [controllers]
 gamertags = ["ExampleTag"] # Xbox GamerTags allowed to control Bots; bound to XUID on first join (§3)
@@ -164,6 +165,11 @@ on RakNet, so the opt-in RakNet of 0.2.0 to 0.4.0 is gone: `transport = "raknet"
 existing-server setup refuses a BDS set to RakNet without editing it. Generated JSON is never the place to select a
 transport.
 
+`[server].nethernet-signalling` chooses how NetherNet Bots reach BDS. `direct` (the default from 0.5.0, also when
+omitted) signals over HTTP on `server-port` (§5): it needs a valid `server-port` and no advertisement names, and start
+skips the UDP 7551 check, so several instances and a game client can share one machine. `lan` keeps the LAN discovery
+path of 0.4.0 and earlier. Neither changes anything in `server.properties`.
+
 ## 3. Controller enrollment
 
 Operators name controllers by GamerTag. GamerTags are a bootstrap identifier, never the security key.
@@ -270,7 +276,7 @@ and the local-bot token (owner-signed, audience-bound, short-lived, single-use `
 same-host impostor from turning a captured token into a real login. The full rationale lives in `docs/SECURITY.md`
 ("Runtime → BDS connection"). `endbot start` therefore needs no per-start trust state.
 
-NetherNet server selection. Bots find BDS through LAN discovery on UDP 7551, and the advertisement carries no port, so
+NetherNet server selection with `nethernet-signalling = 'lan'`. Bots find BDS through LAN discovery on UDP 7551, and the advertisement carries no port, so
 other NetherNet hosts on the machine (a Minecraft client with a world open to LAN, another BDS) answer as well. The
 runtime connects only to the host advertising this instance's `server.properties` `server-name` and world display
 name (`worlds/<level-name>/level.dat` `LevelName`, falling back to `server.properties` `level-name` before the
@@ -278,8 +284,20 @@ world exists; written into the generated runtime config on every start); otherwi
 a `lastError` naming the advertisements it saw. The advertised display name can differ from the world directory
 name, so renaming a world to match is never required. Only one program can own UDP 7551: when another one holds
 it, BDS cannot answer discovery at all, so `endbot start` checks the port before starting anything and refuses with
-that explanation. Use distinct `server-name` values (or world display names) when several Endbot instances share
+that explanation. Use the default `direct` signalling (below) when several Endbot instances, or a game client, share
 a machine.
+
+Direct NetherNet signalling (`nethernet-signalling = 'direct'`, the default from 0.5.0). BDS 1.26.60 turns RakNet
+into an error, and LAN discovery lets only one program on a machine own UDP 7551 (a running game client holds it
+too), so several Endbot instances on one machine need a NetherNet path without discovery. A client that joins by address signals over HTTP instead: it POSTs its SDP
+offer, with every ICE candidate in it, to `http://<host>:<server-port>/v1/join/<client network id>` and receives the
+SDP answer in the response (a bare number is a NetherNet error code). The Bot does the same against the configured
+loopback `server-port`, so each instance is selected by its own port: no discovery, no advertisement names, and no
+UDP 7551 check before start. Upstream `bedrock-protocol` only signals over LAN or the online services, so the runtime
+replaces the NetherNet client's signal handler (`runtime/src/direct-signalling.js`); authentication, the loopback
+restriction and the Bot token are unchanged. Validation against real BDS is recorded under
+[BOT-026](BACKLOG.md#bot-026-several-nethernet-instances-on-one-machine). Set `nethernet-signalling = 'lan'` to
+return to discovery; it then needs UDP 7551 free, as below.
 
 ## 5a. Process lifecycle
 

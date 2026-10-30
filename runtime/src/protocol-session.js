@@ -4,7 +4,8 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 
-import { botChunkRadius, LOOPBACK_HOSTS, serverTransport } from './config.js'
+import { botChunkRadius, LOOPBACK_HOSTS, nethernetSignalling, serverTransport } from './config.js'
+import { attachDirectSignalling, DIRECT_SERVER_NETWORK_ID, directSignallingBase } from './direct-signalling.js'
 import { discoverServer } from './discovery.js'
 import { InventoryObservation, INVENTORY_EVENT, sameItem } from './inventory-sync.js'
 import { dropPlan } from './inventory-drops.js'
@@ -115,6 +116,8 @@ export class BedrockSession extends EventEmitter {
       throw new Error('Endbot connects to loopback BDS servers only')
     }
     const transport = serverTransport(this.options.transport)
+    const direct = transport === 'nethernet' && nethernetSignalling(this.options.nethernetSignalling) === 'direct'
+    const directBase = direct ? directSignallingBase(this.options.serverHost, this.options.serverPort) : undefined
     this.chunkRadius = botChunkRadius(this.profile.chunkRadius ?? this.options.chunkRadius)
     const protocolModule = await (this.options.protocolLoader?.() ?? import('bedrock-protocol'))
     // Dynamic module loading cannot be aborted. Recheck ownership immediately
@@ -122,9 +125,10 @@ export class BedrockSession extends EventEmitter {
     if (this.disconnecting) throw new Error('Bedrock session connection was canceled')
     const protocol = protocolModule.default ?? protocolModule
     // With expected server identity configured, connect only to the BDS that
-    // advertises it; otherwise keep upstream first-reply discovery.
+    // advertises it; otherwise keep upstream first-reply discovery. Direct
+    // signalling already names the BDS by its port and skips discovery.
     let target
-    if (transport === 'nethernet' && this.options.serverName !== undefined && this.options.levelName !== undefined) {
+    if (transport === 'nethernet' && !direct && this.options.serverName !== undefined && this.options.levelName !== undefined) {
       target = await (this.options.discover ?? discoverServer)({
         host: this.options.serverHost,
         serverName: this.options.serverName,
@@ -151,13 +155,21 @@ export class BedrockSession extends EventEmitter {
       skinData: { SelfSignedId: this.profile.identityId },
       transport,
       ...(transport === 'nethernet'
-        ? { nethernet: target ? { signalling: 'lan', networkId: target.networkId } : { signalling: 'lan' } }
+        ? { nethernet: { signalling: 'lan', ...(direct ? { networkId: DIRECT_SERVER_NETWORK_ID } : target ? { networkId: target.networkId } : {}) } }
         : { raknetBackend: 'raknet-native', followPort: false }),
       // RakNet must dial the configured loopback port directly. Do not discover
       // another server or follow an advertised port; the locked version is explicit.
-      skipPing: transport === 'raknet' || Boolean(target),
+      skipPing: transport === 'raknet' || direct || Boolean(target),
       connectTimeout: this.options.connectTimeoutMs
     })
+    // The NetherNet client exists once upstream allows the connection, before
+    // authentication finishes and the offer is signalled.
+    if (direct) {
+      this.client.once('connect_allowed', () => attachDirectSignalling(this.client.connection.nethernet, {
+        base: directBase,
+        timeoutMs: this.options.connectTimeoutMs
+      }))
+    }
     // Upstream's initial chunk request reads this property, not an option.
     this.client.viewDistance = this.chunkRadius
     this.#wireClient()

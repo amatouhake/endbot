@@ -968,6 +968,32 @@ lists them, and spawn and `rename` reject them from every surface (commands, for
 message. Existing profiles with a reserved name are kept; `/bot list` and the menu mark them and suggest `rename`.
 Small enough to land with or right after BOT-019.
 
+## BOT-026: Several NetherNet instances on one machine
+
+Status: **Implemented (experimental) — real-BDS validation pending** (2026-10-30 JST).
+
+BDS 26.60 turns the RakNet deprecation into an error, so RakNet can no longer be the way to run several Endbot
+instances on one machine. NetherNet Bots find BDS through LAN discovery on UDP 7551, which only one program can own:
+a second BDS cannot answer discovery and `endbot start` refuses.
+
+Implemented: `[server] nethernet-signalling = 'direct'` (runtime `nethernetSignalling: "direct"`). Bots signal over
+HTTP to the configured loopback `server-port` (`POST /v1/join/<network id>` with a non-trickle SDP offer, SDP answer
+in the response) instead of discovery, as clients do when joining by address. Start skips the UDP 7551 check and
+config generation omits the advertisement names. The default stays `lan`. Unit tests cover the configuration, the
+HTTP exchange and its failures, and a full WebRTC connection to a local upstream NetherNet server through loopback
+HTTP; that stand-in is not evidence about BDS.
+
+Open validation gates, in order, on the locked Endstone/BDS pair first and on 26.60 once it is locked:
+
+- BDS answers `GET http://127.0.0.1:<server-port>/v1/join` with its status JSON, and a Bot joins with `direct`
+  (plain HTTP; no client `a=identity`). If BDS requires HTTPS or a client identity, record the exact response.
+- With `enable-lan-visibility=false`, BDS does not hold UDP 7551 and humans can still join by address.
+- Two instances with distinct `server-port` values (and their UDP port ranges) run at the same time, each with Bots
+  joined over `direct`, and a human joins each one.
+- Local-bot authentication negatives (missing, replayed, wrong-audience token) still refuse over `direct`.
+
+Do not make `direct` the default or claim 26.60 support until these pass and the lock is deliberately updated.
+
 ## Deferred priorities
 
 - Container/UI operations — crafting, villager trading, enchanting — use `item_stack_request` on current Bedrock, which

@@ -55,6 +55,12 @@ on RakNet. The runtime still accepts an explicit `"transport": "raknet"` in runt
 direct-loopback path with `raknet-native`, no LAN discovery, no ping, and no advertised-port following. It reuses the
 same local-bot authentication. The [RakNet validation record](../docs/RAKNET_VALIDATION.md) covers that older path.
 
+`endbot start` writes `"nethernetSignalling": "direct"` by default. Direct signalling skips discovery and exchanges
+the WebRTC offer and answer over HTTP on the configured loopback `serverPort` (`POST /v1/join/<network id>`), so it
+needs neither UDP 7551 nor `serverName`/`levelName`. `"lan"` (also an absent field, for older hand-written runtime
+JSON) finds BDS through LAN discovery on UDP 7551; select it with `[server] nethernet-signalling = 'lan'` in
+`endbot.toml` (docs/OPERATIONS.md §2 and §5).
+
 Private keys, tokens, and UUID artifacts use complete-before-publish creation and reject corrupt existing
 files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux
 filesystems support the same-volume hard-link publication used for initial artifacts.

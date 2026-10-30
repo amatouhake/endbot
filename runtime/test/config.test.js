@@ -53,6 +53,14 @@ test('transport defaults to NetherNet and RakNet remains an explicit loopback ch
   assert.throws(() => loadConfig(writeConfig({ transport: 'raknet', serverHost: '192.0.2.10' })), /loopback/)
 })
 
+test('NetherNet signalling defaults to LAN discovery and direct is an explicit choice', () => {
+  assert.equal(loadConfig(writeConfig({})).nethernetSignalling, 'lan')
+  assert.equal(loadConfig(writeConfig({ nethernetSignalling: 'direct' })).nethernetSignalling, 'direct')
+  for (const nethernetSignalling of ['services', '', null, 1]) {
+    assert.throws(() => loadConfig(writeConfig({ nethernetSignalling })), /nethernetSignalling must/)
+  }
+})
+
 test('chunk radius defaults small and rejects invalid requests', () => {
   assert.equal(loadConfig(writeConfig({})).chunkRadius, 5)
   for (const chunkRadius of [2, 10, 32]) {

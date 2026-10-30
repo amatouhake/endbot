@@ -151,6 +151,12 @@ def read_server_identity(server: Path) -> tuple[str, str]:
     return (server_name, advertised or level_name)
 
 
+def uses_lan_discovery(config: EndbotConfig) -> bool:
+    """Whether Bots find BDS through NetherNet LAN discovery on UDP 7551."""
+
+    return config.server.transport == "nethernet" and config.server.nethernet_signalling == "lan"
+
+
 def generate_runtime_config(
     paths: InstancePaths,
     config: EndbotConfig,
@@ -171,6 +177,8 @@ def generate_runtime_config(
         "serverPort": server_port,
         "transport": config.server.transport,
     }
+    if config.server.transport == "nethernet":
+        document["nethernetSignalling"] = config.server.nethernet_signalling
     if config.server.transport == "nethernet" and server_identity is not None:
         document["serverName"], document["levelName"] = server_identity
     target = paths.state_generated / "endbot-runtime.json"
@@ -389,7 +397,13 @@ def generate_all(config: EndbotConfig, paths: InstancePaths, server: Path) -> Ge
     """Regenerate every derived config file (section 2) and report what happened."""
 
     server_port, messages = read_server_port(server)
-    identity = read_server_identity(server)
+    # Direct NetherNet signalling dials server-port, so a default must not stand in for it.
+    if not uses_lan_discovery(config) and messages:
+        raise ConfigGenerationError(
+            "Direct NetherNet signalling requires a readable server.properties with a valid server-port: "
+            + "; ".join(messages)
+        )
+    identity = read_server_identity(server) if uses_lan_discovery(config) else None
     runtime_config = generate_runtime_config(paths, config, server_port, identity)
     ensure_endbotd_token(paths)
     # endbotd.toml first: it carries legacy entries out of the old plugin config before that is rewritten.

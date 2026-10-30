@@ -574,6 +574,10 @@ JA: dict[str, str] = {
     "No free slot for another Bot: {used} of {players} slots in use, {reserved} kept for players": (
         "Bot の空き枠がありません: 全 {players} 枠のうち {used} 使用中、{reserved} 枠はプレイヤー用です"
     ),
+    "You own {count} Bots, the most a controller may own on this server ({limit}); forget one first": (
+        "Bot を {count} 体持っています。このサーバーで操作者が持てるのは {limit} 体までです。"
+        "先に forget で 1 体を登録から外してください"
+    ),
     "created and connecting": "作成して接続中",
     "{verb} ({where})": "{verb} ({where})",
     "at the world spawn": "ワールドのスポーン地点",

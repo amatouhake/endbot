@@ -755,6 +755,24 @@ class CapacityTests(DoctorTestCase):
         self.assertEqual(self.status_of(self.doctor(), "capacity"), WARN)
         self.assertIn("must be a table", self.messages_of(self.doctor(), "capacity")[0])
 
+    def test_a_per_controller_limit_is_reported(self) -> None:
+        self.write_limits("[limits]\nmax-bots-per-controller = 2\n")
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "capacity"), PASS)
+        self.assertIn("at most 2 per controller", self.messages_of(results, "capacity")[0])
+
+    def test_a_per_controller_limit_that_is_not_an_integer_warns(self) -> None:
+        self.write_limits('[limits]\nmax-bots-per-controller = "2"\n')
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "capacity"), WARN)
+        self.assertIn("must be integers", self.messages_of(results, "capacity")[0])
+
+    def test_a_negative_per_controller_limit_warns(self) -> None:
+        self.write_limits("[limits]\nmax-bots-per-controller = -1\n")
+        results = self.doctor()
+        self.assertEqual(self.status_of(results, "capacity"), WARN)
+        self.assertIn("0 or more", self.messages_of(results, "capacity")[0])
+
 
 if __name__ == "__main__":
     unittest.main()

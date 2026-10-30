@@ -17,6 +17,7 @@ class BotCommandServiceTests(unittest.TestCase):
         self.assertEqual(BotLimits.from_config(None), BotLimits(0, 1))
         self.assertEqual(BotLimits.from_config({}), BotLimits(0, 1))
         self.assertEqual(BotLimits.from_config({"max-bots": 8, "reserved-player-slots": 2}), BotLimits(8, 2))
+        self.assertEqual(BotLimits.from_config({"max-bots-per-controller": 3}), BotLimits(0, 1, 3))
         self.assertFalse(BotLimits(0, 0).enabled)
         self.assertTrue(BotLimits(1, 0).enabled)
         for table in (
@@ -25,7 +26,11 @@ class BotCommandServiceTests(unittest.TestCase):
             {"max-bots": "8"},
             {"reserved-player-slots": -1},
             {"reserved-player-slots": "2"},
+            {"max-bots-per-controller": -1},
+            {"max-bots-per-controller": True},
+            {"max-bots-per-controller": "2"},
             {"max-bot": 1},
+            {"max-bots-per-controllr": 1},
             [],
         ):
             with self.subTest(table=table), self.assertRaises(ValueError):

@@ -304,6 +304,7 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
 
     limits = tomlkit.table()
     limits["max-bots"] = config.limits.max_bots
+    limits["max-bots-per-controller"] = config.limits.max_bots_per_controller
     limits["reserved-player-slots"] = config.limits.reserved_player_slots
     document.add("limits", limits)
 

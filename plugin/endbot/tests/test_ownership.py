@@ -105,6 +105,27 @@ class OwnershipStoreTests(unittest.TestCase):
             with self.subTest(kind=kind), self.assertRaises(ValueError):
                 store.get(kind, BOT)
 
+    def test_count_counts_entries_by_owner_key_whatever_their_visibility(self):
+        store = OwnershipStore()
+        alice, bob = f"xuid:{XUID}", f"xuid:{OTHER_XUID}"
+        second_bot = "00000000-0000-4000-8000-0000000000cc"
+        store.record("bots", BOT, principal())
+        store.record("bots", second_bot, principal())
+        store.record("bots", "00000000-0000-4000-8000-0000000000dd",
+                     principal("Bob", xuid=OTHER_XUID, player_id=OTHER_PLAYER))
+        store.record("groups", GROUP, principal())
+        store.set_visibility("bots", second_bot, "private")
+        self.assertEqual(store.count("bots", alice), 2)
+        self.assertEqual(store.count("bots", bob), 1)
+        self.assertEqual(store.count("groups", alice), 1)
+        self.assertEqual(store.count("groups", bob), 0)
+        self.assertEqual(store.count("bots", f"player:{PLAYER}"), 0)
+        self.assertEqual(store.count("bots", None), 0)
+        self.assertEqual(store.count("bots", "xuid:999"), 0)
+        for kind in ("bot", "", None):
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                store.count(kind, alice)
+
     def test_set_visibility_requires_an_entry_and_validates_the_value(self):
         store = OwnershipStore(self.path)
         with self.assertRaises(ValueError):

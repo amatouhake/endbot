@@ -59,12 +59,12 @@ class RuntimeConfigTests(ConfigGenTestCase):
     def test_limits_reach_generated_plugin_config(self):
         target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         limits = tomllib.loads(target.read_text(encoding="utf-8"))["limits"]
-        self.assertEqual(limits, {"max-bots": 0, "reserved-player-slots": 1})
+        self.assertEqual(limits, {"max-bots": 0, "max-bots-per-controller": 0, "reserved-player-slots": 1})
         with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
-            config.write("\n[limits]\nmax-bots = 6\nreserved-player-slots = 2\n")
+            config.write("\n[limits]\nmax-bots = 6\nmax-bots-per-controller = 3\nreserved-player-slots = 2\n")
         target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         limits = tomllib.loads(target.read_text(encoding="utf-8"))["limits"]
-        self.assertEqual(limits, {"max-bots": 6, "reserved-player-slots": 2})
+        self.assertEqual(limits, {"max-bots": 6, "max-bots-per-controller": 3, "reserved-player-slots": 2})
 
     def test_permissions_reach_generated_plugin_config(self):
         target, _ = generate_endbotd_config(self.server, self.paths, self.config())

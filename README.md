@@ -4,7 +4,7 @@ Endbot is a practical Fake Player foundation for the official Minecraft Bedrock 
 [Endstone](https://github.com/EndstoneMC/endstone) as the extension platform. It preserves the normal Microsoft/Xbox
 authentication path for people while adding a narrow, server-owner-controlled ES384 trust path for accountless bots.
 
-Endbot is pre-alpha. It provides persistent multi-bot profiles, real NetherNet/RakNet client sessions, lifecycle/reconnect,
+Endbot is pre-alpha. It provides persistent multi-bot profiles, real NetherNet client sessions, lifecycle/reconnect,
 server-API teleport, rename, movement/actions, hotbar selection, block interaction, and item drop behind the validated
 `/bot` authorization surface. [Shared Groups](docs/GROUPS.md) are on main for 0.4.0; immediate group inputs use one
 runtime batch. They include menus, bounded operation summaries and per-controller
@@ -36,10 +36,9 @@ through Endstone's official acquisition path.
    <bundle>` installs a new release next to the current one and `endbot update --rollback` returns to it.
 
 See [installation](docs/INSTALL.md), the [operator contract](docs/OPERATIONS.md), and [commands](docs/COMMANDS.md).
-From 0.2.0, `endbot setup --fresh --transport raknet` selects the opt-in, experimental direct-loopback RakNet transport.
-NetherNet remains the default; existing-server setup keeps its current transport unless explicitly checked against
-`--transport`. See [RakNet validation](docs/RAKNET_VALIDATION.md) for the provisional Windows evidence and outstanding gates.
-Published `v0.1.x` bundles predate this option.
+Endbot uses NetherNet only. From 0.5.0 the locked BDS is 1.26.60, which refuses players on RakNet ("NetherNet is the
+only supported transport type"), so the 0.2.0 to 0.4.0 opt-in RakNet transport is gone; an instance set to RakNet must
+switch both `server.properties` and `endbot.toml` to `nethernet` (see [operations](docs/OPERATIONS.md)).
 The sections below describe the developer and source-build workflow.
 
 ## Safety invariants
@@ -77,7 +76,7 @@ pinned official Endstone + patches/endstone series -> disposable patched checkou
 
 Endbot plugin  -> commands, human authorization, BDS observation and teleport
        | authenticated JSON request/response on loopback
-Endbot runtime -> profiles, local identity, NetherNet/RakNet sessions, reconnect and inputs
+Endbot runtime -> profiles, local identity, NetherNet sessions, reconnect and inputs
 ```
 
 The core patch is necessary because BDS rejects an accountless login inside its login-validation path before a normal

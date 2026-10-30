@@ -1,6 +1,7 @@
 # RakNet validation — 2026-10-07–08
 
-Status: **Windows human/Bot feasibility provisionally passed; CLI integration implemented as opt-in.**
+Status: **Historical (2026-10-30).** BDS 1.26.60 refuses players on RakNet, so Endbot 0.5.0 removes the opt-in
+RakNet transport this record covered for 0.2.0 to 0.4.0.
 This evaluates Endbot's existing accountless local-bot login over RakNet.
 It does not evaluate vanilla BDS with Microsoft-authenticated headless bots.
 

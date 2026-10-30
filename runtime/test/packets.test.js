@@ -41,8 +41,8 @@ test('server teleport rotation can synchronize subsequent client input', () => {
 
 const require = createRequire(import.meta.url)
 const { createDeserializer, createSerializer } = require('bedrock-protocol/src/transforms/serializer')
-const serializer = createSerializer('1.26.51')
-const deserializer = createDeserializer('1.26.51')
+const serializer = createSerializer('1.26.60')
+const deserializer = createDeserializer('1.26.60')
 
 function serializeInputFlags (state) {
   const inputData = []

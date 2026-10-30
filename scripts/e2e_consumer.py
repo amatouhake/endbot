@@ -400,7 +400,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("archive", type=Path, help="platform bundle (.zip on Windows, .tar.gz on Linux)")
     parser.add_argument("--work-dir", type=Path, help="extraction directory (default: a new temporary directory)")
     parser.add_argument("--bot", default="E2EBot")
-    parser.add_argument("--transport", choices=("nethernet", "raknet"), default="nethernet")
+    # BDS 1.26.60 refuses players on RakNet, so NetherNet is the only transport left to test.
+    parser.add_argument("--transport", choices=("nethernet",), default="nethernet")
     parser.add_argument(
         "--exercise-update",
         action="store_true",

@@ -84,27 +84,6 @@ class RuntimeConfigTests(ConfigGenTestCase):
             target = generate_runtime_config(self.paths, self.config(), server_port=19132)
             self.assertEqual(json.loads(target.read_text())["chunkRadius"], radius)
 
-    def test_raknet_generation_uses_the_selected_port_without_discovery_identity(self) -> None:
-        from unittest.mock import patch
-
-        write_endbot_toml(self.root, transport="raknet")
-        (self.server / "server.properties").write_text("transport=raknet\nserver-port=20000\n", encoding="utf-8")
-        with patch("endbot_cli.configgen.read_server_identity", side_effect=AssertionError("must not discover")):
-            generated = generate_all(self.config(), self.paths, self.server)
-        document = json.loads(generated.runtime_config.read_text())
-        self.assertEqual(document["transport"], "raknet")
-        self.assertEqual(document["serverPort"], 20000)
-        self.assertNotIn("serverName", document)
-        self.assertNotIn("levelName", document)
-
-    def test_raknet_invalid_port_cannot_silently_dial_the_default_server(self) -> None:
-        from endbot_cli.configgen import ConfigGenerationError
-
-        write_endbot_toml(self.root, transport="raknet")
-        (self.server / "server.properties").write_text("transport=raknet\nserver-port=oops\n", encoding="utf-8")
-        with self.assertRaisesRegex(ConfigGenerationError, "valid server-port"):
-            generate_all(self.config(), self.paths, self.server)
-
     def test_paths_are_absolute_and_values_come_from_the_instance(self) -> None:
         write_endbot_toml(self.root, control_port=19999)
         (self.server / "server.properties").write_text(

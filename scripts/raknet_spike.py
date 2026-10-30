@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run an opt-in live smoke on a fresh, isolated Endstone/BDS world.
 
-RakNet is the default here; ``--transport nethernet`` runs the same checks over
-NetherNet LAN discovery (the product default), which needs UDP 7551 free.
+The name is historical: BDS 1.26.60 refuses players on RakNet, so the checks run
+over NetherNet LAN discovery (the product default), which needs UDP 7551 free.
 
 Uses the active Python's exactly pinned patched Endstone and installed plugin,
 the repository runtime and endbotd, and Endstone's normal BDS acquisition.
@@ -316,7 +316,7 @@ def check_locked_endstone() -> dict:
 def exercise(
     output: Path, node: str, report: dict, *, mining=False, inventory=False, inventory_stack=False,
     item_use=False, groups=False, scripting=False, entity=False, endbotd_failures=False,
-    transport="raknet", server: Path | None = None,
+    transport="nethernet", server: Path | None = None,
 ) -> None:
     needs_scripting_fixture = scripting or endbotd_failures
     scripting_runner = None
@@ -1224,8 +1224,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--transport",
-        choices=("raknet", "nethernet"),
-        default="raknet",
+        choices=("nethernet",),
+        default="nethernet",
         help="Bot/BDS transport (nethernet needs UDP 7551 free)",
     )
     return parser

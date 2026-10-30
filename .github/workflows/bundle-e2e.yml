@@ -33,14 +33,6 @@ jobs:
             transport: nethernet
             artifact: bundle-linux
             archive: bundle/bundle/endbot-*-linux-x86_64.tar.gz
-          - os: windows-2022
-            transport: raknet
-            artifact: bundle-windows
-            archive: bundle/endbot-*-windows-x86_64.zip
-          - os: ubuntu-22.04
-            transport: raknet
-            artifact: bundle-linux
-            archive: bundle/bundle/endbot-*-linux-x86_64.tar.gz
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
     defaults:

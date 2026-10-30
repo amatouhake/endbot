@@ -35,7 +35,7 @@ class LoginHookContractTests(unittest.TestCase):
 
         source = resulting_patch_fragment(
             "src/endstone/runtime/bedrock_hooks/server_network_handler.cpp",
-            "@@ -148,10 ",
+            "@@ -149,10 ",
         )
         raw_guard = source.index("if (const auto *raw_request = request._getRawRequest()) {")
         local_verify = source.index("verifier->verify(", raw_guard)
@@ -50,7 +50,7 @@ class LoginHookContractTests(unittest.TestCase):
     def test_stock_rejection_returns_before_authentication_result_is_dereferenced(self) -> None:
         source = resulting_patch_fragment(
             "src/endstone/runtime/bedrock_hooks/server_network_handler.cpp",
-            "@@ -148,10 ",
+            "@@ -149,10 ",
         )
         stock_call = source.index(
             "auth_info = ENDSTONE_HOOK_CALL_ORIGINAL(&ServerNetworkHandler::_validateLoginPacket"

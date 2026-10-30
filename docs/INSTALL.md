@@ -8,7 +8,7 @@ patched Endstone, the Endbot plugin and CLI, a private Node.js, the prebuilt run
 Luau/json MIT texts are in `licenses/`. Scripting stays off by default; set `[scripting] enabled = true` in
 `endbot.toml` and restart to enable it without building anything (see [SCRIPTING.md](SCRIPTING.md)). No artifact ever contains the
 official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition path downloads the pinned BDS
-(`1.26.52.3`, protocol `2193`) during `endbot setup` (AGENTS.md: BDS is never bundled, vendored, or redistributed).
+(`1.26.60.6`, protocol `2225`) during `endbot setup` (AGENTS.md: BDS is never bundled, vendored, or redistributed).
 
 1. Download the platform bundle `endbot-<version>-<platform>.zip|tar.gz` (`.zip` for `windows-x86_64`, `.tar.gz` for
    `linux-x86_64`) and its `SHA256SUMS` from the release, and verify the archive:
@@ -41,12 +41,10 @@ official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition
    a server or world that violates those is
    refused with an explanation rather than silently changed.
 
-   From 0.2.0, `--fresh --transport raknet` selects the opt-in, experimental direct-loopback RakNet; omission keeps
-   NetherNet. `--existing` keeps the BDS transport and records it in `endbot.toml`; an explicit `--transport` must
-   match the BDS setting. Published `v0.1.x` bundles do not have this option. For a later transport change, stop
-   the instance, set both `[server] transport` in `endbot.toml` and `transport` in `server.properties`, then run
-   `doctor` and `start`. See [RakNet validation](RAKNET_VALIDATION.md) for the evidence boundary. A rollback to an
-   older CLI that cannot read `server.transport` refuses safely; restore a compatible NetherNet configuration first.
+   The transport is NetherNet. BDS 1.26.60 refuses players on RakNet, so from 0.5.0 Endbot no longer offers the
+   0.2.0 to 0.4.0 opt-in RakNet: `--existing` refuses a server set to `transport=raknet` without editing it, and an
+   instance that used RakNet must stop, set `transport=nethernet` in `server.properties` and `[server] transport =
+   "nethernet"` in `endbot.toml`, then run `doctor` and `start`.
 
    0.4.0 setup writes `[scripting]` and `[limits]` sections to `endbot.toml`, which 0.3.x rejects as unknown. Before
    `endbot update --rollback` to a 0.3.x version, stop the instance and remove both sections (or move them aside),
@@ -83,9 +81,9 @@ contains exactly:
 
 | File | Contents |
 | --- | --- |
-| `endstone-0.11.13+endbot.1-*-manylinux_*.whl` | Patched Endstone for Linux x86_64 (CPython 3.12), repaired to a `manylinux_*` platform tag. CI-built. Use this wheel on Linux; it does not install on Windows. |
-| `endstone-0.11.13+endbot.1-*-win_amd64.whl` | Patched Endstone for Windows x64 (CPython 3.12). CI-built by the release-candidate workflow's Windows job from the same `endstone.lock` + `patches/endstone/` inputs as the Linux wheel. Use this wheel on Windows; it does not install on Linux. |
-| `endstone_endbot-0.4.0-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.13+endbot.1`, so pip cannot substitute official unpatched `0.11.13`, and exactly the `endbot-core` wheel of the same release. |
+| `endstone-0.11.15+endbot.1-*-manylinux_*.whl` | Patched Endstone for Linux x86_64 (CPython 3.12), repaired to a `manylinux_*` platform tag. CI-built. Use this wheel on Linux; it does not install on Windows. |
+| `endstone-0.11.15+endbot.1-*-win_amd64.whl` | Patched Endstone for Windows x64 (CPython 3.12). CI-built by the release-candidate workflow's Windows job from the same `endstone.lock` + `patches/endstone/` inputs as the Linux wheel. Use this wheel on Windows; it does not install on Linux. |
+| `endstone_endbot-0.4.0-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.15+endbot.1`, so pip cannot substitute official unpatched `0.11.15`, and exactly the `endbot-core` wheel of the same release. |
 | `endbot_core-0.4.0-*.whl` | Shared, Endstone-free Endbot logic the plugin imports. Platform-independent; not on any package index. |
 | `endbot-runtime-0.4.0.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
 | `endbot-config-0.4.0.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
@@ -116,10 +114,10 @@ inside the dependency's build check rather than with an Endbot error.
    Endstone wheel carries no LLVM runtime dependency:
    ```bash
    python3 -m venv .venv && . .venv/bin/activate
-   python -m pip install ./endstone-0.11.13+endbot.1-*.whl ./endstone_endbot-0.4.0-*.whl ./endbot_core-0.4.0-*.whl
+   python -m pip install ./endstone-0.11.15+endbot.1-*.whl ./endstone_endbot-0.4.0-*.whl ./endbot_core-0.4.0-*.whl
    python -c "import importlib.metadata as m; print(m.version('endstone'))"
    ```
-   Expected: `0.11.13+endbot.1`. Never install official `endstone==0.11.13` into this environment.
+   Expected: `0.11.15+endbot.1`. Never install official `endstone==0.11.15` into this environment.
 2. Unpack the runtime bundle outside the server folder and install its pinned dependencies:
    ```bash
    mkdir -p /opt/endbot && tar -xzf endbot-runtime-0.4.0.tar.gz -C /opt/endbot
@@ -165,23 +163,23 @@ Each platform installs its own Endstone wheel from the candidate; the remaining 
 1. Install the CI-built Windows wheel from the candidate directory into a virtual environment:
    ```powershell
    py -3.12 -m venv .venv; .\.venv\Scripts\Activate.ps1
-   python -m pip install .\endstone-0.11.13+endbot.1-*-win_amd64.whl
+   python -m pip install .\endstone-0.11.15+endbot.1-*-win_amd64.whl
    python -c "import importlib.metadata as m; print(m.version('endstone'))"
    ```
-   Expected: `0.11.13+endbot.1`. Never install official `endstone==0.11.13` into this environment. The wheel
+   Expected: `0.11.15+endbot.1`. Never install official `endstone==0.11.15` into this environment. The wheel
    is produced by the release-candidate workflow's Windows job from the same `endstone.lock` +
    `patches/endstone/` inputs as the Linux wheel, then inspected for its `win_amd64` tag, locked version,
    and runtime DLL and install-tested with the plugin in a fresh venv. (Building patched Endstone from
    source remains a development-only path documented in [`WINDOWS_DEV.md`](WINDOWS_DEV.md), not the
-   install path.) Verify `0.11.13+endbot.1` before continuing.
+   install path.) Verify `0.11.15+endbot.1` before continuing.
 2. Install the candidate plugin and core wheels into the same environment (`python -m pip install
    .\endstone_endbot-0.4.0-*.whl .\endbot_core-0.4.0-*.whl`); both are platform-independent, and the plugin still
    pins the exact patched Endstone version.
 3. Unpack `endbot-runtime-0.4.0.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for
    the pinned tarball dependency URL; see [`WINDOWS_DEV.md`](WINDOWS_DEV.md)), copy the example runtime
    configuration outside the unpacked tree, and start the runtime with Node 24+.
-4. Create the server folder with `endstone -s` (official Windows BDS `1.26.52.3` build `51798905`, same protocol
-   `2193`), then apply the same `server.properties` / `endstone.toml` / plugin configuration as on Linux. Native
+4. Create the server folder with `endstone -s` (official Windows BDS `1.26.60.6` build `52886189`, same protocol
+   `2225`), then apply the same `server.properties` / `endstone.toml` / plugin configuration as on Linux. Native
    Windows hosting is live-smoked but Linux remains the CI/release-artifact baseline.
 
 ### Updating to a newer candidate

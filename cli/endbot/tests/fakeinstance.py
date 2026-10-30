@@ -51,7 +51,7 @@ level-name=world
 def build_bds_dir(
     server: Path,
     *,
-    version: str | None = "26.52",
+    version: str | None = "26.60",
     properties: str | None = SERVER_PROPERTIES,
     executable: bool = True,
     packs: bool = True,
@@ -79,7 +79,7 @@ def build_bds_dir(
     return server
 
 
-def simulate_bds_download(server: Path, version: str = "26.52") -> Path:
+def simulate_bds_download(server: Path, version: str = "26.60") -> Path:
     """What Endstone's ``_download`` leaves behind (fresh files plus version.txt).
 
     Like the real step, an existing ``server.properties`` keeps its values.

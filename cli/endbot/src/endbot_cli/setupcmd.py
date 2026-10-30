@@ -167,7 +167,7 @@ def compute_setup_plan(
     lines: list[str] = []
     selected_transport = transport or DEFAULT_TRANSPORT
     if transport is not None and transport not in TRANSPORTS:
-        failures.append(f"unsupported transport {transport!r}; choose nethernet or raknet")
+        failures.append(f"unsupported transport {transport!r}; BDS 1.26.60 accepts only nethernet")
 
     if fresh:
         server = root / "server"
@@ -211,8 +211,6 @@ def compute_setup_plan(
         else:
             try:
                 properties = parse_properties(properties_path)
-                if transport is None:
-                    selected_transport = properties.get("transport", DEFAULT_TRANSPORT).lower()
                 verify_server_properties(properties_path)
                 verify_runtime_properties(properties_path, selected_transport)
             except FileNotFoundError:

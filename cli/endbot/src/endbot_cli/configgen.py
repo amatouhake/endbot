@@ -389,11 +389,7 @@ def generate_all(config: EndbotConfig, paths: InstancePaths, server: Path) -> Ge
     """Regenerate every derived config file (section 2) and report what happened."""
 
     server_port, messages = read_server_port(server)
-    if config.server.transport == "raknet" and messages:
-        raise ConfigGenerationError(
-            "RakNet requires a readable server.properties with a valid server-port: " + "; ".join(messages)
-        )
-    identity = read_server_identity(server) if config.server.transport == "nethernet" else None
+    identity = read_server_identity(server)
     runtime_config = generate_runtime_config(paths, config, server_port, identity)
     ensure_endbotd_token(paths)
     # endbotd.toml first: it carries legacy entries out of the old plugin config before that is rewritten.

@@ -35,7 +35,7 @@ function connectedSession (directory, client) {
       localAuthAudience: 'endstone-test',
       serverHost: 'localhost',
       serverPort: 19132,
-      gameVersion: '1.26.51',
+      gameVersion: '1.26.60',
       connectTimeoutMs: 1000
     }
   )
@@ -57,7 +57,7 @@ for (const transport of [undefined, 'raknet']) {
         serverPort: 29432,
         serverName: 'Selected BDS',
         levelName: 'World',
-        gameVersion: '1.26.51',
+        gameVersion: '1.26.60',
         ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
         ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
         protocolLoader: async () => ({ createClient: value => { options = value; return client } }),
@@ -72,7 +72,7 @@ for (const transport of [undefined, 'raknet']) {
     assert.equal(options.transport, transport ?? 'nethernet')
     assert.equal(options.host, '127.0.0.1')
     assert.equal(options.port, 29432)
-    assert.equal(options.version, '1.26.51')
+    assert.equal(options.version, '1.26.60')
     assert.equal(options.offline, false)
     assert.equal(typeof options.authflow.getMinecraftBedrockToken, 'function')
     assert.equal(options.skinData.SelfSignedId, session.profile.identityId)

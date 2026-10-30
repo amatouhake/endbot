@@ -2,15 +2,15 @@
   "schema_version": 1,
   "endstone": {
     "upstream_url": "https://github.com/EndstoneMC/endstone.git",
-    "version": "0.11.13",
-    "tag": "v0.11.13",
-    "commit": "3491c609ddfde392cee2b062e3063e39aae87274",
-    "package_version": "0.11.13+endbot.1"
+    "version": "0.11.15",
+    "tag": "v0.11.15",
+    "commit": "b4aaa87d2c5305e7d340168f824ac2e2ea722e44",
+    "package_version": "0.11.15+endbot.1"
   },
   "bds": {
-    "version": "1.26.52.3",
-    "build": 51798919,
-    "protocol": 2193
+    "version": "1.26.60.6",
+    "build": 52886190,
+    "protocol": 2225
   },
-  "support_status": "validated-baseline"
+  "support_status": "candidate"
 }

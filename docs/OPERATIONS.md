@@ -1,7 +1,8 @@
 # Operator contract
 
-This describes Endbot 0.2.0. Published `v0.1.x` bundles predate the transport selection (opt-in, experimental RakNet);
-see `RAKNET_VALIDATION.md` for its validation scope. The first-release record is in `release/FINAL_CHECKLIST.md`.
+This describes the Endbot operator contract on the current main. The transport is NetherNet only (BDS 1.26.60 refuses
+players on RakNet); the 0.2.0 to 0.4.0 RakNet record is `RAKNET_VALIDATION.md`. The first-release record is in
+`release/FINAL_CHECKLIST.md`.
 
 The goal: a plain BDS operator runs Endbot as one product. Endbot internally uses Python (patched Endstone + plugin)
 and Node.js (headless Bedrock runtime), but the operator never installs Python or Node.js, never creates a venv, and
@@ -53,7 +54,7 @@ Ownership rules:
 ```toml
 [server]
 path = 'server'            # BDS directory, relative to <instance> or absolute (TOML literal string)
-transport = 'nethernet'    # nethernet or raknet; omitted in old configs means nethernet
+transport = 'nethernet'    # the only value from 0.5.0; omitted in old configs means nethernet
 
 [controllers]
 gamertags = ["ExampleTag"] # Xbox GamerTags allowed to control Bots; bound to XUID on first join (§3)
@@ -158,13 +159,10 @@ Generated on every `endbot start` (overwritten, never hand-edited):
 Identifiers are always strings. Paths are written as TOML literal strings so Windows backslashes need no escaping.
 `endbot doctor` rejects configs that violate either rule with a message naming the key.
 
-`[server].transport` selects the runtime connection path and must match `server.properties` `transport`.
-Fresh setup accepts `--transport raknet|nethernet` (default NetherNet) and writes both values. Existing-server
-setup reads and records the BDS value when the option is omitted; an explicit mismatch refuses the plan without
-editing BDS. To change an existing instance, stop it, change both transport values, then run `doctor` and `start`.
-Generated JSON is never the place to select a transport. RakNet dials the configured IPv4 `server-port` on
-loopback directly and requires a valid port; it omits advertisement-name fields and the UDP 7551 check.
-NetherNet keeps the discovery and server-selection checks below. The bundled native RakNet addon is load-tested.
+`[server].transport` must be `nethernet` and match `server.properties` `transport`. BDS 1.26.60 refuses players
+on RakNet, so the opt-in RakNet of 0.2.0 to 0.4.0 is gone: `transport = "raknet"` is a configuration error, and
+existing-server setup refuses a BDS set to RakNet without editing it. Generated JSON is never the place to select a
+transport.
 
 ## 3. Controller enrollment
 
@@ -281,8 +279,7 @@ a `lastError` naming the advertisements it saw. The advertised display name can 
 name, so renaming a world to match is never required. Only one program can own UDP 7551: when another one holds
 it, BDS cannot answer discovery at all, so `endbot start` checks the port before starting anything and refuses with
 that explanation. Use distinct `server-name` values (or world display names) when several Endbot instances share
-a machine. RakNet skips this discovery and connects only to the configured loopback address/port, with ping and
-advertised-port following disabled. Both paths use the same local-bot authentication and host-isolation boundary.
+a machine.
 
 ## 5a. Process lifecycle
 
@@ -333,7 +330,7 @@ already exists or when a supervisor is running.
 
 **Fresh BDS.** Creates `<instance>/server`, lets Endstone download the locked BDS through its normal acquisition path
 (Endbot never bundles BDS), applies the safety defaults (`online-mode=true`, `allow-cheats=false`, no experiments)
-plus the selected transport (`--transport raknet|nethernet`; omitted means NetherNet for fresh setup),
+plus `transport=nethernet`,
 creates `state/`, and writes `endbot.toml` with the given controller GamerTags. It also adds every `--controller`
 GamerTag to `<server>/allowlist.json` right after the BDS acquisition — a fresh BDS enables `allow-list=true` with an
 empty list and would otherwise reject the controllers on join. Each entry uses the format `allowlist add <name>` writes
@@ -357,8 +354,8 @@ report marks those two checks as expected-not-yet-present).
   (`--i-have-a-world-backup`), or to pass `--backup-worlds`.
 - Verify the safety invariants on the existing `server.properties` and world, plus the runtime transport
   requirement. An existing server's `server.properties` is checked, never silently flipped
-  (`online-mode=false` / `allow-cheats=true` / missing or unsupported `transport` FAIL the plan). The existing BDS
-  transport is kept by default; an explicit `--transport` must match it,
+  (`online-mode=false` / `allow-cheats=true` / missing or unsupported `transport` FAIL the plan). A BDS set to
+  `transport=raknet` FAILs the plan (BDS 1.26.60 refuses players on RakNet; set `transport=nethernet` first),
   and a world that already has creative, cheat, or experiment history FAILs the plan; Endbot does not change world
   flags. Unknown experiment keys are reported as warnings.
 - Never edit `allowlist.json`. While `allow-list=true`, the plan prints for each controller GamerTag missing from the
@@ -424,6 +421,14 @@ players (`reserved-player-slots = 1`), so a server already full of Bots refuses 
 free. See [scripting](SCRIPTING.md) to enable scripts, and [installation](INSTALL.md) before rolling back to 0.3.x
 (a fresh 0.4.0 setup writes sections that 0.3.x rejects).
 
+Updating from 0.4.0 to 0.5.0 moves the locked pair to Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` and protocol
+`2225`, which Minecraft 26.60 clients need. The new doctor reports the `bds-version` mismatch, so `endbot update`
+performs the §6 backup and preview and lets Endstone update BDS; back up `worlds/` first, because rolling back to 0.4.0
+would put an older BDS in front of a world the newer one has saved. BDS 1.26.60 refuses players on RakNet: an instance
+set up with `--transport raknet` keeps 0.4.0 current and the update reports the FAIL; stop it, set
+`transport=nethernet` in `server.properties` and `[server] transport = "nethernet"` in `endbot.toml`, then rerun
+`endbot update --force`.
+
 ## 7. Doctor
 
 `endbot doctor` reports, without changing anything:
@@ -431,7 +436,7 @@ free. See [scripting](SCRIPTING.md) to enable scripts, and [installation](INSTAL
 - `endbot.toml` parses; identifiers are strings; paths exist.
 - Safety invariants: `online-mode=true`, `allow-cheats=false`, no experiments, no Beta APIs / GameTest, world history
   flags (existing `scripts/preflight.py` checks move here); plus the runtime transport requirement
-  `transport` matching `[server].transport` (separate from safety; RakNet also requires a valid `server-port`).
+  `transport=nethernet` matching `[server].transport` (separate from safety).
 - `endstone.toml [local-bot-auth]` enabled with a readable P-384 public key matching `state/secrets/owner-private.pem`.
 - Control token present and readable. endbotd token present (`endbotd-token`); `state/generated/endbotd.toml` matches
   the ports in `endbot.toml` (`endbotd-config`); the plugin config links to endbotd's port with endbotd's token and

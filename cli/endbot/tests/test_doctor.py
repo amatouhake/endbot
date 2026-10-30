@@ -222,16 +222,12 @@ class SafetyInvariantTests(DoctorTestCase):
         self.assertEqual(self.status_of(results, "server-properties"), PASS)
         self.assertIn("transport=nethernet", self.messages_of(results, "server-properties")[0])
 
-    def test_raknet_passes_with_matching_config_but_not_with_nethernet_bds(self) -> None:
-        write_endbot_toml(self.root, transport="raknet")
+    def test_raknet_bds_fails_with_the_nethernet_remedy(self) -> None:
         path = self.root / "server/server.properties"
         path.write_text("online-mode=true\nallow-cheats=false\ntransport=raknet\nlevel-name=world\n", encoding="utf-8")
         results = self.doctor()
-        self.assertIn("transport=raknet", self.messages_of(results, "server-properties")[0])
-        self.assertEqual(next(r.status for r in results if r.name == "server-properties"), PASS)
-        path.write_text(path.read_text().replace("transport=raknet", "transport=nethernet"), encoding="utf-8")
-        results = self.doctor()
         self.assertEqual(next(r.status for r in results if r.name == "server-properties"), FAIL)
+        self.assertIn("transport must be nethernet", self.messages_of(results, "server-properties")[0])
 
     def test_numeric_gamertag_is_rejected_with_quoting_hint(self) -> None:
         write_endbot_toml(self.root, gamertags="[1234]")

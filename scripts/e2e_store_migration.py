@@ -642,7 +642,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("old_archive", type=Path, help="pre-endbotd (0.4.0) platform bundle")
     parser.add_argument("new_archive", type=Path, help="endbotd candidate platform bundle")
     parser.add_argument("--work-dir", type=Path, help="extraction directory (default: a new temporary directory)")
-    parser.add_argument("--transport", choices=("nethernet", "raknet"), default="raknet")
+    parser.add_argument("--transport", choices=("nethernet",), default="nethernet")
     parser.add_argument("--bot", default="MigrationBot")
     return parser.parse_args(argv)
 

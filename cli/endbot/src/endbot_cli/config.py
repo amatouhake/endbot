@@ -19,7 +19,8 @@ DEFAULT_CONTROL_PORT = 19142
 DEFAULT_LINK_PORT = 19143
 DEFAULT_CHUNK_RADIUS = 5
 DEFAULT_TRANSPORT = "nethernet"
-TRANSPORTS = ("nethernet", "raknet")
+# BDS 1.26.60 refuses players on RakNet ("NetherNet is the only supported transport type").
+TRANSPORTS = ("nethernet",)
 SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting", "permissions")
 LANGUAGES = ("auto", "en", "ja")
 DEFAULT_LANGUAGE = "auto"
@@ -140,8 +141,9 @@ def _load_server(path: Path, document: dict[str, Any]) -> ServerConfig:
         raise _fail(
             path,
             "server.transport",
-            f"must be one of {TRANSPORTS}, found {transport!r}",
-            'use transport = "nethernet" or "raknet" to match server.properties',
+            f"must be 'nethernet', found {transport!r}",
+            'BDS 1.26.60 accepts only NetherNet: use transport = "nethernet" here and transport=nethernet in '
+            "server.properties",
         )
     return ServerConfig(path=value, transport=transport)
 

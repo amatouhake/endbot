@@ -10,7 +10,7 @@ import test from 'node:test'
 const require = createRequire(import.meta.url)
 const protocolPath = path.join(
   path.dirname(require.resolve('minecraft-data/package.json')),
-  'minecraft-data', 'data', 'bedrock', '1.26.51', 'protocol.json'
+  'minecraft-data', 'data', 'bedrock', '1.26.60', 'protocol.json'
 )
 
 test('upstream schema already encodes the proven protocol-2193 layouts', () => {

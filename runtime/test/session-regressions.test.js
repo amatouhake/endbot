@@ -15,8 +15,8 @@ import { BedrockSession } from '../src/protocol-session.js'
 
 const require = createRequire(import.meta.url)
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const serializer = createSerializer('1.26.51')
-const deserializer = createDeserializer('1.26.51')
+const serializer = createSerializer('1.26.60')
+const deserializer = createDeserializer('1.26.60')
 const item = { network_id: 882, count: 3, metadata: 0, has_stack_id: true, stack_id: 34, block_runtime_id: 0,
   extra: { has_nbt: 0, can_place_on: [], can_destroy: [] } }
 

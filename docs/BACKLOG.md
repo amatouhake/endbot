@@ -935,8 +935,8 @@ accepts it, drop `patches/endstone/` and patched builds. Until then the patch st
 Status: **Design agreed — see [PERMISSIONS.md](PERMISSIONS.md); in progress** (2026-10-30 JST). Step plan
 agreed in [PERMISSIONS.md](PERMISSIONS.md#steps) (2026-10-29 JST). Steps 1a (capability declarations in the
 registry), 2a (`requires {}`), 2b (forms show the declaration), 3a (the controller role store), 3b (the role
-check), 3c (assigning roles with `--role`), 4a (the ownership store for Bots and Groups) and 5 (the per-controller Bot
-limit) landed 2026-10-30 JST.
+check), 3c (assigning roles with `--role`), 4a (the ownership store for Bots and Groups), 4b (ownership
+enforcement) and 5 (the per-controller Bot limit) landed 2026-10-30 JST.
 
 Agreed: roles operator, scripter and controller (no viewer, no extra per-person permissions); a run's power is the
 invoker's authority intersected with the script's `requires {}` declaration; one ownership model for Bots, Groups,

@@ -116,6 +116,63 @@ class GroupOwnershipTests(unittest.TestCase):
         self.assertIsNone(self.ownership.get("groups", identity))
 
 
+class GroupOwnershipEnforcementTests(unittest.TestCase):
+    """Per-member refusals (S11) and private Groups hidden from others (S4) (BOT-024 4b)."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.store = GroupStore(Path(temporary.name) / "groups.json")
+        self.control, self.world = GroupControl(), FakeWorld()
+        self.ownership = OwnershipStore()
+        self.service = GroupCommandService(self.control, self.world, self.store, lambda _: True,
+                                           ownership=self.ownership)
+        self.alice = Principal("player", name="Alice", xuid="2535400000000001",
+                               player_id="0000000a-0000-4000-8000-00000000000a")
+        self.bob = Principal("player", name="Bob", xuid="2535400000000002",
+                             player_id="0000000b-0000-4000-8000-00000000000b")
+        self.service.execute(["Mine", "spawn"], self.alice)
+        self.service.execute(["Common", "spawn"])
+        self.ownership.set_visibility("bots", self.control.bots["Mine"]["identityId"], "private")
+        self.service.execute_group(["create", "#crew"], self.bob)
+        for name in ("Mine", "Common"):
+            self.service.execute_group(["add", "#crew", name], self.bob)
+
+    def test_a_group_refuses_only_the_member_the_invoker_may_not_operate(self):
+        for argv in (["#crew", "move", "forward"], ["#crew", "status"]):
+            with self.subTest(argv=argv):
+                self.control.calls.clear()
+                result = self.service.execute(argv, self.bob)
+                self.assertFalse(result.accepted)
+                self.assertEqual(result.code, "unauthorized")
+                text = messages(result)
+                self.assertTrue("private to Alice" in text or "not permitted 1" in text, text)
+                # Nothing was sent for the refused member; the other one ran.
+                sent = [request["params"]["name"] for operation, params in self.control.calls
+                        if operation == "groupInputBatch" for request in params["requests"]]
+                sent += [params.get("name") for operation, params in self.control.calls if operation == "status"]
+                self.assertNotIn("Mine", sent)
+                self.assertIn("Common", sent)
+        self.assertTrue(self.service.execute(["#crew[2]", "move", "forward"], self.bob).accepted)
+
+    def test_someone_elses_private_group_does_not_exist_for_them(self):
+        self.service.execute_group(["create", "#secret"], self.alice)
+        self.ownership.set_visibility("groups", self.store.get("secret").identity, "private")
+        self.assertNotIn("#secret", messages(self.service.execute_group(["list"], self.bob)))
+        self.assertIn("#secret", messages(self.service.execute_group(["list"], self.alice)))
+        for argv in (["list", "#secret"], ["add", "#secret", "Common"], ["delete", "#secret"]):
+            with self.subTest(argv=argv):
+                self.assertIn("Group secret does not exist", messages(self.service.execute_group(argv, self.bob)))
+        self.assertIn("does not exist", messages(self.service.execute(["#secret", "status"], self.bob)))
+        self.assertEqual(self.store.get("secret").members, ())
+        # Its name is taken, but creating it does not confirm that it exists.
+        refused = messages(self.service.execute_group(["create", "#secret"], self.bob))
+        self.assertIn("Group name secret is not available", refused)
+        self.assertNotIn("already exists", refused)
+        self.assertEqual([group.name for group in self.service.visible_groups(self.bob)], ["crew"])
+        self.assertEqual(len(self.service.visible_groups(Principal("console"))), 2)
+
+
 class GroupServiceTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()

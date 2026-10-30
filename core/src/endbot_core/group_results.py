@@ -14,7 +14,7 @@ REASONS = {
     "not_found": Text("missing Bot profile"), "missing_profile": Text("missing Bot profile"),
     "identity_changed": Text("Bot identity changed"), "canceled": Text("permission revoked or plugin stopped"),
     "unavailable": Text("runtime unavailable"), "unknown": Text("acceptance unknown"),
-    "other": Text("other errors"),
+    "unauthorized": Text("not permitted"), "other": Text("other errors"),
 }
 
 

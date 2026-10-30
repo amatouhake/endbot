@@ -19,6 +19,7 @@ from endbot_core.commands import (
     CommandResult,
     _language,
     error_code,
+    parse_command,
     reply,
     strip_colors,
 )
@@ -365,13 +366,14 @@ class ScriptService:
         for target in run.parameter_targets.values():
             kind, name, identity, *members = target
             if kind == "group":
-                current = self.service._store().get(name[1:])
+                current = self.service._store(run.source).get(name[1:])
                 matches = current.identity == identity and current.members == members[0]
             else:
                 matches = any(bot["name"] == name and bot["identityId"] == identity for bot in bots)
             if not matches:
                 raise LocalizedError("Script parameter target changed; reopen the menu")
-        result = arguments(schema, values, groups=self.service.groups, bots=bots, origin=run.source.origin)
+        groups = self.service._store(run.source) if self.service.groups is not None else None
+        result = arguments(schema, values, groups=groups, bots=bots, origin=run.source.origin)
         # Pin declared groups now; later membership/name reuse cannot retarget the run.
         for name, spec in declarations(schema).items():
             if spec["type"] == "group":
@@ -384,7 +386,7 @@ class ScriptService:
     def _guard(self, run, target):
         if not isinstance(target, str) or not target.startswith("#"):
             return None
-        group, _, _ = self.service._store().select(target)
+        group, _, _ = self.service._store(run.source).select(target)
         key = group.name.casefold()
         guard = run.guards.setdefault(key, GroupGuard(group.identity, group.name, group.members))
         self.service._form_group(replace(run.source, group_guard=guard), group)
@@ -415,12 +417,14 @@ class ScriptService:
                 if not isinstance(target, str) or not SCRIPT_TARGET.fullmatch(target):
                     raise LocalizedError("Invalid script target")
                 if guard is not None:
-                    _, members, _ = self.service._store().select(target)
+                    _, members, _ = self.service._store(run.source).select(target)
                     profiles = self.service._profiles(source)
                     online = bool(members) and all(
                         profiles.get(identity, {}).get("connectionState") == "online" for _, identity in members
                     )
                 else:
+                    # A wait reads the Bot's status, so it is checked like `status` (4b).
+                    self.service.owner_check(parse_command([target, "status"]), source)
                     online = self.inputs.request("status", name=target).get("connectionState") == "online"
                 return {"ok": online}
             try:
@@ -983,7 +987,7 @@ class ScriptService:
                             log_messages=(f"Script {script.name} started: {run} by {self._who(source)}",),
                         )
                     bots = bot_profiles(self.inputs)
-                    groups = self.service.groups.groups if self.service.groups else ()
+                    groups = self.service.visible_groups(source) if self.service.groups else ()
                     # The no-target refusal must stay in this try, where its reply is delivered.
                     script_forms.parameter_choices(schema, groups, bots)
                     data = self._menu_data(

@@ -45,6 +45,20 @@ def owner_key(principal) -> str | None:
     return f"player:{player_id}"
 
 
+def owner_for_gamertag(resolver, gamertag: str) -> tuple[str, str]:
+    """Resolve ``gamertag`` to ``(owner_key, display_name)`` for the console's owner command (4c).
+
+    ``resolver`` is the adapter's lookup (an online player first, then an allowed controller); None or a
+    missing result means nobody by that name has joined and holds no controller grant.
+    """
+    resolved = resolver(gamertag) if resolver is not None else None
+    if resolved is None:
+        raise LocalizedError(
+            "{gamertag} is not a known player; they must have joined or be a controller", gamertag=gamertag
+        )
+    return resolved
+
+
 def _kind(kind: str) -> str:
     if kind not in KINDS:
         raise ValueError("Ownership kind must be bots or groups")

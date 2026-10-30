@@ -902,6 +902,98 @@ class OwnershipEnforcementTests(unittest.TestCase):
         self.assertNotIn("profiles", [operation for operation, _ in self.control.calls])
 
 
+class OwnerCommandTests(unittest.TestCase):
+    """Owners share/private their own Bot; only the console assigns owners (BOT-024 4c)."""
+
+    def setUp(self) -> None:
+        self.control = FakeControl()
+        self.world = FakeWorld()
+        self.ownership = OwnershipStore()
+        self.known = {"Carol": ("xuid:2535400000000003", "Carol")}
+        self.service = PlainCommandService(self.control, self.world, ownership=self.ownership,
+                                           resolve_owner=self.known.get)
+        self.alice = Principal("player", name="Alice", xuid="2535400000000001",
+                               player_id="0000000a-0000-4000-8000-00000000000a")
+        self.bob = Principal("player", name="Bob", xuid="2535400000000002",
+                             player_id="0000000b-0000-4000-8000-00000000000b")
+        self.service.execute(["Mine", "spawn"], self.alice)
+        self.identity = self.control.bots["Mine"]["identityId"]
+
+    def test_the_owner_shares_and_makes_private_their_own_bot(self):
+        shared = self.service.execute(["Mine", "share"], self.alice)
+        self.assertTrue(shared.accepted)
+        self.assertIn("Bot Mine is now shared", shared.message)
+        self.assertEqual(self.ownership.get("bots", self.identity).visibility, "shared")
+        private = self.service.execute(["Mine", "private"], self.alice)
+        self.assertTrue(private.accepted)
+        self.assertIn("Bot Mine is now private", private.message)
+        self.assertEqual(self.ownership.get("bots", self.identity).visibility, "private")
+
+    def test_another_player_cannot_share_or_make_private_someone_elses_bot(self):
+        for operation in ("share", "private"):
+            with self.subTest(operation=operation):
+                result = self.service.execute(["Mine", operation], self.bob)
+                self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
+                self.assertIn("Only Alice or the console can", result.message)
+        self.assertEqual(self.ownership.get("bots", self.identity).visibility, "shared")
+
+    def test_an_unowned_bot_is_refused_for_players_and_the_console(self):
+        self.service.execute(["Old", "spawn"], Principal("console"))
+        identity = self.control.bots["Old"]["identityId"]
+        for sender in (self.alice, Principal("console")):
+            for operation in ("share", "private"):
+                with self.subTest(sender=sender.kind, operation=operation):
+                    result = self.service.execute(["Old", operation], sender)
+                    self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
+                    self.assertIn(
+                        "Bot Old has no owner; the console can assign one with /bot Old owner <GamerTag>",
+                        result.message,
+                    )
+        self.assertIsNone(self.ownership.get("bots", identity))
+
+    def test_the_console_assigns_an_owner_and_keeps_the_visibility(self):
+        self.assertTrue(self.service.execute(["Mine", "private"], self.alice).accepted)
+        result = self.service.execute(["Mine", "owner", "Carol"], Principal("console"))
+        self.assertTrue(result.accepted)
+        self.assertIn("Bot Mine now belongs to Carol", result.message)
+        self.assertEqual(self.ownership.get("bots", self.identity),
+                         Ownership("xuid:2535400000000003", "Carol", "private"))
+        # The old owner no longer drives it; the new owner does.
+        self.assertEqual(self.service.execute(["Mine", "status"], self.bob).code, "unauthorized")
+        self.assertTrue(self.service.execute(["Mine", "status"], Principal(
+            "player", name="Carol", xuid="2535400000000003",
+            player_id="0000000c-0000-4000-8000-00000000000c")).accepted)
+
+    def test_the_console_assignment_keeps_the_default_for_a_bot_without_an_entry(self):
+        self.service.execute(["Old", "spawn"], Principal("console"))
+        identity = self.control.bots["Old"]["identityId"]
+        self.assertTrue(self.service.execute(["Old", "owner", "Carol"], Principal("console")).accepted)
+        self.assertEqual(self.ownership.get("bots", identity),
+                         Ownership("xuid:2535400000000003", "Carol", "shared"))
+
+    def test_a_player_cannot_reassign_owners(self):
+        result = self.service.execute(["Mine", "owner", "Carol"], self.bob)
+        self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
+        self.assertIn("Only the console can change owners", result.message)
+        self.assertEqual(self.ownership.get("bots", self.identity).owner, "xuid:2535400000000001")
+
+    def test_an_unknown_gamertag_is_an_invalid_argument(self):
+        result = self.service.execute(["Mine", "owner", "Nobody"], Principal("console"))
+        self.assertEqual((result.accepted, result.code), (False, "invalid_argument"))
+        self.assertIn("Nobody is not a known player; they must have joined or be a controller", result.message)
+        self.assertEqual(self.ownership.get("bots", self.identity).owner, "xuid:2535400000000001")
+
+    def test_a_private_bot_refuses_another_player_after_the_owner_changes_it(self):
+        self.assertTrue(self.service.execute(["Mine", "private"], self.alice).accepted)
+        refused = self.service.execute(["Mine", "status"], self.bob)
+        self.assertEqual((refused.accepted, refused.code), (False, "unauthorized"))
+        self.assertIn("Bot Mine is private to Alice", refused.message)
+        self.assertTrue(self.service.execute(["Mine", "status"], self.alice).accepted)
+        # Sharing again restores the 4b behavior for everyone.
+        self.assertTrue(self.service.execute(["Mine", "share"], self.alice).accepted)
+        self.assertTrue(self.service.execute(["Mine", "status"], self.bob).accepted)
+
+
 class SeatLimitTests(unittest.TestCase):
     """The [limits] budget: Bots must leave the reserved slots for players."""
 

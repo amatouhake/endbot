@@ -227,6 +227,17 @@ class ScriptStore:
             # Visibility is not a source change: keep the revision so open menus stay valid.
             self._save({**self._scripts, name.casefold(): replace(script, visibility=visibility)})
 
+    def set_owner(self, name, owner, owner_name, revision):
+        """Reassign a stored script's owner (the console's 4c command); visibility and history stay."""
+        with self._lock:
+            script = self.get(name)
+            if script.file:
+                raise LocalizedError("File scripts have no owner; the file is the source")
+            if script.revision != revision:
+                raise LocalizedError("Script changed; reopen the menu")
+            # Ownership is not a source change: keep the revision and the bounded history.
+            self._save({**self._scripts, script.name.casefold(): replace(script, owner=owner, owner_name=owner_name)})
+
     def rename(self, name, new_name, expected):
         """Rename keeping owner, visibility, revision and history; a case-only change is allowed."""
         script_name(new_name)

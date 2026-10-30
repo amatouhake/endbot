@@ -28,6 +28,7 @@ from endbot_core.events import Event, outcome_text, reason
 from endbot_core.group_forms import GroupGuard
 from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.operations import OPERATIONS, Operation
+from endbot_core.ownership import OwnershipRefused, owner_for_gamertag
 from endbot_core.ownership import owner_key as ownership_key
 from endbot_core.principal import Principal
 from endbot_core.script_books import pages_to_source, source_to_pages, written
@@ -98,13 +99,15 @@ class ScriptRun:
 class ScriptService:
     def __init__(
         self, config, store, service, inputs, data_folder, authorize, *, process_factory=RunnerProcess, bootstrap=None,
-        files_directory=None,
+        files_directory=None, resolve_owner=None,
     ):
         self.config, self.store, self.service, self.inputs = config, store, service, inputs
         self.executable = config.executable(data_folder)
         # The operator's `<name>.luau` files, loaded at start-up and on `reload`.
         self.files_directory = Path(data_folder) / FILES_DIRECTORY if files_directory is None else Path(files_directory)
         self.authorize, self.process_factory = authorize, process_factory
+        # The adapter's 4c GamerTag -> (owner key, display name) lookup for the console's owner command.
+        self.resolve_owner = resolve_owner
         self.bootstrap = bootstrap
         self._runs = {}
         self._inspecting = {}  # controller -> declaration checks holding a run slot
@@ -731,8 +734,9 @@ class ScriptService:
                                 lang,
                                 "Script help: list | show <name> [page] | run <name> [args...] "
                                 "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
-                                "| share|private <name> | history <name> | restore <name> <n> "
-                                "| rename <name> <new> | import <name> | export <name> [overwrite] | reload | menu",
+                                "| share|private <name> | owner <name> <GamerTag> | history <name> "
+                                "| restore <name> <n> | rename <name> <new> | import <name> | export <name> "
+                                "[overwrite] | reload | menu",
                             )
                         ),
                         reply(
@@ -872,6 +876,24 @@ class ScriptService:
                     True, (reply(tr(lang, "Script {name} copied to {copy}", name=original.name, copy=tail[1])),),
                     log_level="info",
                     log_messages=(f"Script {original.name} copied to {tail[1]} by {self._who(source)}",))
+            if operation == "owner":
+                if len(tail) != 2:
+                    raise LocalizedError("Use /botscript owner <name> <GamerTag>")
+                if source.player_id is not None:
+                    raise OwnershipRefused("Only the console can change owners")
+                script = self.store.get(tail[0])
+                if script.file:
+                    raise LocalizedError("File scripts have no owner; the file is the source")
+                if isinstance(guard, script_forms.ScriptGuard) and guard.revision != script.revision:
+                    raise LocalizedError("Script changed; reopen the menu")
+                owner, owner_name = owner_for_gamertag(self.resolve_owner, tail[1])
+                self.store.set_owner(script.name, owner, owner_name, script.revision)
+                return CommandResult(
+                    True,
+                    (reply(tr(lang, "Script {name} now belongs to {owner}", name=script.name, owner=owner_name)),),
+                    log_level="info",
+                    log_messages=(f"Script {script.name} now belongs to {owner_name} by {self._who(source)}",),
+                )
             script = self._script(tail[0], source,
                                   edit=operation in {"delete", "edit", "share", "private", "restore", "rename"})
             if isinstance(guard, script_forms.ScriptGuard) and guard.revision != script.revision:

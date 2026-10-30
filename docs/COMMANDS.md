@@ -269,6 +269,9 @@ command behavior.
 /bot <name> despawn
 /bot <name> forget
 /bot <name> rename <new-name>
+/bot <name> share
+/bot <name> private
+/bot <name> owner <GamerTag>
 ```
 
 `spawn` creates a profile if necessary and places the arriving UUID at the caller by default. From the server console,
@@ -278,6 +281,11 @@ placement. `resume` reconnects an existing profile without relocation, allowing 
 `reconnect` tears down and reconnects without changing identity or location. `despawn` is intentional offline state and
 cancels automatic reconnect. `forget` requires an offline profile and removes only Endbot registration; it does not
 purge BDS player data. A live rename preserves UUID and reconnects automatically so the login name changes.
+
+`share` and `private` switch a Bot's visibility and, like `forget` and `rename`, stay with its owner or the console
+(S12). An unowned Bot stays shared and is refused with a pointer to the console's `owner` command, so a player cannot
+claim a pre-ownership Bot by making it private. Only the console runs `owner`, which assigns the Bot to the named
+online player or controller while keeping its visibility (or the configured default for a Bot that had no entry).
 
 `help`, `list`, `menu` and `ping` are reserved Bot names (any case), because the root commands `/bot help`, `/bot list`,
 `/bot menu` and `/bot ping` take them. Creating a Bot with one of them, or renaming a Bot to one, is refused from
@@ -658,6 +666,18 @@ screen; an existing **Back to group management** button is used instead when ent
 Individual members open their normal Bot screen. Group deletion is confirmed
 and keeps the Bots. Forms echo and submit the same `/bot`
 or `/botgroup` commands and authorization checks, with UUID/membership checks to reject stale forms.
+
+Group ownership uses `/botgroup`:
+
+```text
+/botgroup share #group
+/botgroup private #group
+/botgroup owner #group <GamerTag>
+```
+
+The owner or the console may `share` a Group or make it `private`; an unowned Group stays shared and is refused with
+a pointer to `owner`. Only the console reassigns a Group's owner, and the GamerTag must be an online player or a
+controller. A private Group is left out of other players' lists and resolves as not found for them (S4).
 
 Whole-group mutating-command acknowledgements and their normal audit entries are capped at two lines: counts plus grouped
 failure categories, independent of group/failure size. They confirm acceptance, not completed world actions. Details

@@ -19,7 +19,8 @@ from endbot_core.operations import (
 
 # Sample values per field type; strings are named per field so they stay plausible.
 STRINGS = {"target": "@zombie", "type": "oak_log", "name": "Bob", "direction": "forward", "item": "torch",
-           "dimension": "nether", "facing": "Alice", "topic": "move", "face": "up", "selector": "dirt"}
+           "dimension": "nether", "facing": "Alice", "topic": "move", "face": "up", "selector": "dirt",
+           "gamertag": "Alice"}
 SAMPLES = {
     "number": (90, 12.5, -3),
     "integer": (20, 1),

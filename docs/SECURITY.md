@@ -67,8 +67,9 @@ it is visible in game), and on someone else's shared Bot `forget` and `rename` s
 checks each member before anything is sent, so only the members the invoker may not operate are refused. Someone
 else's private Group is left out of lists and menus and resolves as not found; its name stays taken, and
 creating it only says the name is not available. A script's waits on a Bot pass the same check, and a continuing
-mining job ends when its Bot becomes private to someone else. The console is never refused. An older
-Endbot ignores the file, so after a rollback private Bots and Groups are shared again.
+mining job ends when its Bot becomes private to someone else. The console is never refused. Owners may share or
+make private their own Bots and Groups; unowned items stay shared until the console assigns an owner, and only the
+console reassigns owners. An older Endbot ignores the file, so after a rollback private Bots and Groups are shared again.
 
 Controller CLI requests use one atomic file per random request ID, bound to the current supervisor session. The
 supervisor validates and removes a request from the queue before forwarding its ID to the console-only plugin handler;

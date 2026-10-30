@@ -18,6 +18,7 @@ from dataclasses import replace
 from endbot_core.command_runner import AsyncCommandRunner
 from endbot_core.commands import reply, strip_colors
 from endbot_core.control import RuntimeControlClient
+from endbot_core.enrollment import _is_xuid
 from endbot_core.events import LoggerSink
 from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, tr
@@ -146,6 +147,7 @@ class EndbotService:
             capacity=lambda bot_ids: tuple(world.capacity(sorted(bot_ids))),
             ownership=OwnershipStore(stores / OWNERSHIP_FILE, bots_default=bots_default,
                                      groups_default=groups_default),
+            resolve_owner=self._resolve_owner,
         )
         try:
             scripts = ScriptStore(stores / "scripts.json", script_config)
@@ -153,7 +155,8 @@ class EndbotService:
             self._log("error", f"Scripts unavailable: scripts.json could not be loaded ({error})")
             scripts = None
         self.scripts = ScriptService(script_config, scripts, self.commands, control, config.base,
-                                     authorize=self.authority.authorize, files_directory=config.scripts_folder)
+                                     authorize=self.authority.authorize, files_directory=config.scripts_folder,
+                                     resolve_owner=self._resolve_owner)
         if scripts is not None and script_config.enabled:
             # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
             try:
@@ -254,6 +257,22 @@ class EndbotService:
 
     def _role(self, xuid: str) -> str:
         return self.authority.role(xuid)
+
+    def _resolve_owner(self, gamertag: str) -> tuple[str, str] | None:
+        """4c: an online player's XUID by GamerTag, else an allowed controller grant or binding."""
+        matched = (gamertag or "").casefold()
+        for record in self.link.presence.online():
+            name, xuid = record.get("name") or "", record.get("xuid") or ""
+            # Local Bots and unauthenticated players have no XUID and can never own anything.
+            if _is_xuid(xuid) and name.casefold() == matched:
+                return f"xuid:{xuid}", name
+        with self.authority.lock:
+            rows = self.authority.report()
+        for row in rows:
+            if (row.get("state") == "allowed" and row.get("xuid")
+                    and row["name"].casefold() == matched):
+                return f"xuid:{row['xuid']}", row["name"]
+        return None
 
     def _presence(self, kind: str, records: list[dict]) -> None:
         if kind == "snapshot" and self._notices:

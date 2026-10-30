@@ -177,7 +177,7 @@ once, against the endbotd endpoint, not against the file request channel being r
      owner-only (S12); private Groups resolve as not found for others (S4).
    - **4c. Owner commands.** `share` / `private` for Bots and Groups and console reassignment of owners for Bots,
      Groups and scripts, with names from the [interface guide](INTERFACE_GUIDE.md). Players see the new subcommands.
-     *DeepSeek.*
+     *DeepSeek.* **Landed** (2026-10-30 JST).
 5. **Per-controller Bot limit.** After 4a, since it counts owned Bots: `[limits] max-bots-per-controller`, `0` meaning
    no limit (the default). *DeepSeek.* **Landed** (2026-10-30 JST). The trigger and watch limits, trigger
    pinning and pausing, and triggers being disabled on revoke ship with BOT-022; web sessions ending on revoke

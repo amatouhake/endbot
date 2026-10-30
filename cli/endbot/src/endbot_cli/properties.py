@@ -65,7 +65,7 @@ def verify_server_properties(path: Path) -> list[str]:
 def verify_runtime_properties(path: Path, transport: str = DEFAULT_TRANSPORT) -> list[str]:
     """Require BDS to match the operator's selected transport (separate from safety)."""
     if transport not in TRANSPORTS:
-        raise PreflightError(f"unsupported Endbot transport {transport!r}; choose nethernet or raknet")
+        raise PreflightError(f"unsupported Endbot transport {transport!r}; BDS 1.26.60 accepts only nethernet")
     properties = parse_properties(path)
     actual = properties.get("transport")
     if actual is None or actual.lower() != transport:
@@ -77,15 +77,6 @@ def verify_runtime_properties(path: Path, transport: str = DEFAULT_TRANSPORT) ->
         raise PreflightError(
             f"{detail}; set transport={transport} in {path} to match [server] transport in endbot.toml"
         )
-    if transport == "raknet" and "server-port" in properties:
-        try:
-            port = int(properties["server-port"])
-        except ValueError:
-            port = 0
-        if not 1 <= port <= 65535:
-            raise PreflightError(
-                f"server-port must be a valid UDP port (1..65535), found {properties['server-port']!r}"
-            )
     return [f"PASS transport={transport}"]
 
 

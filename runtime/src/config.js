@@ -46,14 +46,14 @@ export function loadConfig (filename) {
     // Preserve legacy configs; operator setup can explicitly select either transport.
     transport: serverTransport(value.transport),
     serverPort: value.serverPort ?? 19132,
-    gameVersion: value.gameVersion ?? '1.26.51',
+    gameVersion: value.gameVersion ?? '1.26.60',
     // Expected BDS advertisement (server.properties server-name and the world
     // display name from level.dat LevelName, falling back to level-name);
     // when both are set the runtime connects only to that server.
     serverName: value.serverName,
     levelName: value.levelName,
     discoveryTimeoutMs: value.discoveryTimeoutMs ?? 8_000,
-    protocol: value.protocol ?? 2193,
+    protocol: value.protocol ?? 2225,
     connectTimeoutMs: value.connectTimeoutMs ?? 15_000,
     chunkRadius: botChunkRadius(value.chunkRadius),
     localAuthIssuer: value.localAuthIssuer ?? 'endbot://local-bot',

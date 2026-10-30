@@ -10,9 +10,8 @@ It exists so that WSL-hosted behavior (which needs `hostAddressLoopback` network
 loopback-only native topology. It is not a release or packaging path, it does not change the pinned Endstone/BDS pair,
 and every safety invariant in the README applies unchanged: `online-mode=true`, `allow-cheats=false`, no experiments,
 Beta APIs, GameTest, or required packs, the normal Microsoft/Xbox path for people, and local bot auth disabled unless
-the operator enables it with the runtime-generated owner public key. The runtime transport must match BDS:
-`nethernet` by default, or explicit `raknet` (separate from safety; `scripts/preflight.py` does not check it).
-The [RakNet validation record](RAKNET_VALIDATION.md) describes the current Windows evidence and remaining gates.
+the operator enables it with the runtime-generated owner public key. The transport is `nethernet`: BDS 1.26.60 refuses players on RakNet, so the earlier RakNet path and its
+[validation record](RAKNET_VALIDATION.md) are history (`scripts/preflight.py` does not check the transport).
 
 Native Windows hosting of the runtime and server was designed for but was not part of the recorded M2 validation; see
 [`COMPATIBILITY.md`](COMPATIBILITY.md).
@@ -20,10 +19,9 @@ Native Windows hosting of the runtime and server was designed for but was not pa
 Current status after PR #4: native Windows hosting has additionally been live-smoked successfully (patched Endstone
 `0.11.11+endbot.2`, official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Alice local Bot alongside a
 normal Microsoft/Xbox human client). Linux nevertheless remains the CI/release-artifact baseline, and the PR #4 smoke
-added no new Xbox-achievement observation for `+endbot.2`. The current package is `0.11.13+endbot.1` on upstream
-`v0.11.13` with BDS `1.26.52.3` (Windows build `51798905`); its Windows compatibility gate, including an observed Xbox
-achievement unlock, is recorded in [`COMPATIBILITY.md`](COMPATIBILITY.md). RakNet evidence is in
-[`RAKNET_VALIDATION.md`](RAKNET_VALIDATION.md).
+added no new Xbox-achievement observation for `+endbot.2`. The current candidate is `0.11.15+endbot.1` on upstream
+`v0.11.15` with BDS `1.26.60.6` (Windows build `52886189`); its compatibility state is recorded in
+[`COMPATIBILITY.md`](COMPATIBILITY.md).
 
 ## Prerequisites
 
@@ -75,10 +73,8 @@ npm test --prefix runtime
 `--allow-remote=root` is an npm 12 policy opt-in, not a Windows requirement: npm 12 refuses tarball URL dependencies
 by default, and `root` permits only the URLs already written in `runtime/package.json` (the pinned
 `prismarine-xbox-services` source tarball, which is not on the npm registry). Pass the flag on the npm 12 command line
-only; no tracked `.npmrc` change is needed. NetherNet uses pure JavaScript (`werift`). RakNet requires a working
-`raknet-native` addon; an available prebuild can load even if npm blocks its install script. Verify with
-`node -e "require('raknet-native')"` from `runtime/` before selecting RakNet. Bundle assembly checks the addon
-both before and after dependency pruning.
+only; no tracked `.npmrc` change is needed. NetherNet uses pure JavaScript (`werift`). Bundle assembly still checks that the `raknet-native` addon
+`bedrock-protocol` loads for its ping fallback, both before and after dependency pruning.
 
 ## Prepare and build patched Endstone
 
@@ -87,7 +83,7 @@ python scripts\prepare_endstone.py
 ```
 
 This creates `build\endstone-patched` exactly as on Linux (bare cache under `.cache\`, `git am` of the patch series,
-local tag `v0.11.13+endbot.1`). The script refuses to overwrite an existing output directory; to start over, run
+local tag `v0.11.15+endbot.1`). The script refuses to overwrite an existing output directory; to start over, run
 `Remove-Item -Recurse -Force build\endstone-patched` first (the tree also accumulates a project-local Conan cache
 under its ignored `.conan2\` entries, which `git -C build\endstone-patched clean -fdX` resets on its own). Then,
 from a Visual Studio x64 developer prompt with `.venv` active:
@@ -165,8 +161,8 @@ command yourself from an elevated prompt, otherwise the client will not see the 
 
 Stop the server after the first start, then configure:
 
-1. `server.properties`: keep `online-mode=true` and `allow-cheats=false`, and select the runtime's transport:
-   `transport=nethernet` by default, or `transport=raknet` together with `"transport": "raknet"` in runtime JSON.
+1. `server.properties`: keep `online-mode=true` and `allow-cheats=false`, and set `transport=nethernet`
+   (BDS 1.26.60 refuses players on RakNet).
    With the operator CLI, select `[server] transport` in `endbot.toml` instead of editing generated JSON.
    Do not enable experiments or packs. Check safety
    with `python scripts\preflight.py C:\endbot-local\server\server.properties --acknowledge-world-state-unverified`

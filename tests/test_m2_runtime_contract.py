@@ -31,9 +31,9 @@ class M2RuntimeContractTests(unittest.TestCase):
         packages = lock["packages"]
 
         # Exact upstream releases: no fork, no install-time schema rewrite.
-        self.assertEqual(package["dependencies"]["bedrock-protocol"], "3.60.1")
-        self.assertEqual(packages["node_modules/bedrock-protocol"]["version"], "3.60.1")
-        self.assertEqual(packages["node_modules/minecraft-data"]["version"], "3.117.0")
+        self.assertEqual(package["dependencies"]["bedrock-protocol"], "3.61.0")
+        self.assertEqual(packages["node_modules/bedrock-protocol"]["version"], "3.61.0")
+        self.assertEqual(packages["node_modules/minecraft-data"]["version"], "3.119.0")
         self.assertNotIn("postinstall", package["scripts"])
         self.assertFalse((ROOT / "runtime/scripts/prepare-minecraft-data.js").exists())
         self.assertEqual(lock["packages"][""]["dependencies"], package["dependencies"])

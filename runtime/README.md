@@ -28,7 +28,7 @@ node runtime/src/cli.js --config endbot-runtime.json
 ```
 
 The exact upstream `bedrock-protocol` release is pinned in `package-lock.json`. Its `minecraft-data` dependency already
-ships the Bedrock 1.26.51/protocol-2193 schema with the proven wire layouts (BDS 1.26.52 uses the same protocol 2193), so no schema preparation step runs at
+ships the Bedrock 1.26.60/protocol-2225 schema, so no schema preparation step runs at
 install. Configuration paths are resolved relative to the configuration file. Keep the generated control token, owner
 private key, and profile directory outside source control. The owner public key is the only key
 configured in patched Endstone.
@@ -50,12 +50,10 @@ replacement delay and is shorter than the plugin's 10-second response deadline. 
 `docs/SECURITY.md` for why the loopback path plus the Bot token properties carry that trust. A `serverIdentityPinPath`
 left in an older configuration is ignored, and an old `bds-nethernet.pin` file can be deleted.
 
-The default transport is NetherNet. An explicit `"transport": "raknet"` in runtime JSON enables the optional
+The transport is NetherNet; `endbot setup/start` never generate anything else, because BDS 1.26.60 refuses players
+on RakNet. The runtime still accepts an explicit `"transport": "raknet"` in runtime JSON for the older pair: the
 direct-loopback path with `raknet-native`, no LAN discovery, no ping, and no advertised-port following. It reuses the
-same local-bot authentication and requires a BDS configured with `transport=raknet`. Current `endbot setup/start/doctor`
-carry the `[server] transport` selection through both configs and reject mismatches; choose `setup --fresh --transport raknet`
-instead of editing generated JSON. The isolated [RakNet feasibility runner](../docs/RAKNET_VALIDATION.md) reproduces
-the experiment and negative auth gates independently of the operator lifecycle.
+same local-bot authentication. The [RakNet validation record](../docs/RAKNET_VALIDATION.md) covers that older path.
 
 Private keys, tokens, and UUID artifacts use complete-before-publish creation and reject corrupt existing
 files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux

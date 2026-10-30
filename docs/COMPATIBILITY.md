@@ -1,10 +1,27 @@
 # Compatibility and releases
 
-## Current baseline
+## Current candidate (0.5.0)
 
-The only pinned baseline is Endstone `v0.11.13` at
-`3491c609ddfde392cee2b062e3063e39aae87274`, with BDS `1.26.52.3` (Linux build `51798919`, Windows build `51798905`)
-and protocol `2193`. `endstone.lock` is the machine-readable authority and records the Linux build.
+`endstone.lock` now pins Endstone `v0.11.15` at `b4aaa87d2c5305e7d340168f824ac2e2ea722e44`, with BDS `1.26.60.6`
+(Linux build `52886190`, Windows build `52886189`) and protocol `2225`, with `support_status: "candidate"`. It is not a
+supported pair until the compatibility gate below passes and the lock is set back to `validated-baseline`.
+
+- Minecraft 26.60 clients use protocol `2225` and cannot join the `1.26.52` pair, which is why 0.5.0 moves.
+- BDS 1.26.60 refuses players on RakNet ("NetherNet is the only supported transport type", checked on the Linux build
+  2026-10-30), so Endbot drops its opt-in RakNet transport.
+- The Endbot patch series needed only a three-way context rebase (`runtime/CMakeLists.txt`,
+  `server_network_handler.cpp`, `tests/CMakeLists.txt`).
+- The runtime moves to `bedrock-protocol` 3.61.0 and `minecraft-data` 3.119.0, which ship the 1.26.60 / protocol-2225
+  schema; the runtime unit suite passes against it.
+- Upstream 0.11.15 binds event cancellation per event class; the plugin uses none of that API.
+
+Gate still open: a CI cold build of both wheels and bundles, the consumer E2E on both platforms, a live smoke on Windows
+(join, movement, mining, inventory, scripts), a 26.60 human client alongside a Bot, and an achievement observation.
+
+## Previous baseline (0.2.1 to 0.4.0)
+
+Endstone `v0.11.13` at `3491c609ddfde392cee2b062e3063e39aae87274`, with BDS `1.26.52.3` (Linux build `51798919`,
+Windows build `51798905`) and protocol `2193`.
 
 Upstream `v0.11.13` adds BDS `1.26.52` support with the same protocol `2193`, so the runtime schema is unchanged. The
 Endbot patch series needed only a context rebase (the new upstream `stun-servers` default line beside

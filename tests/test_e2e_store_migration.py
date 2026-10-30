@@ -145,11 +145,11 @@ class ArgumentParsingTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.module = _load_module()
 
-    def test_defaults_are_raknet_and_a_named_bot(self) -> None:
+    def test_defaults_are_nethernet_and_a_named_bot(self) -> None:
         args = self.module.parse_args(["old.zip", "new.tar.gz"])
         self.assertEqual(args.old_archive, Path("old.zip"))
         self.assertEqual(args.new_archive, Path("new.tar.gz"))
-        self.assertEqual(args.transport, "raknet")
+        self.assertEqual(args.transport, "nethernet")
         self.assertEqual(args.bot, "MigrationBot")
         self.assertIsNone(args.work_dir)
 

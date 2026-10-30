@@ -9,8 +9,8 @@ import { createStackRequest, stackAction, stackSlot } from '../src/stack-request
 
 const require = createRequire(import.meta.url)
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const serializer = createSerializer('1.26.51') // locked BDS 1.26.52.3, protocol 2193
-const deserializer = createDeserializer('1.26.51')
+const serializer = createSerializer('1.26.60') // locked BDS 1.26.52.3, protocol 2193
+const deserializer = createDeserializer('1.26.60')
 function roundTrip (name, params) {
   const bytes = serializer.createPacketBuffer({ name, params })
   const decoded = deserializer.parsePacketBuffer(bytes).data.params

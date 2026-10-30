@@ -111,9 +111,11 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.runtime.control_port, DEFAULT_CONTROL_PORT)
 
     def test_transport_is_explicit_and_validated(self) -> None:
-        for transport in ('"raknet"', '"nethernet"'):
-            self.write(f"[server]\npath='server'\ntransport={transport}\n[controllers]\ngamertags=[]\n")
-            self.assertEqual(load_config(self.path).server.transport, transport.strip('"'))
+        self.write("[server]\npath='server'\ntransport=\"nethernet\"\n[controllers]\ngamertags=[]\n")
+        self.assertEqual(load_config(self.path).server.transport, "nethernet")
+        self.write("[server]\npath='server'\ntransport=\"raknet\"\n[controllers]\ngamertags=[]\n")
+        with self.assertRaisesRegex(ConfigError, "accepts only NetherNet"):
+            load_config(self.path)
         for transport in ('"auto"', '"RakNet"', '""', "1", "true", "[]"):
             with self.subTest(transport=transport):
                 self.write(f"[server]\npath='server'\ntransport={transport}\n[controllers]\ngamertags=[]\n")

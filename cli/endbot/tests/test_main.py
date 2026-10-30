@@ -74,9 +74,9 @@ class MainTests(unittest.TestCase):
     def test_setup_transport_option_reaches_the_dry_run_plan(self) -> None:
         empty = self.root / "empty"
         empty.mkdir()
-        code, out, err = self.run_main(["--instance", str(empty), "setup", "--fresh", "--transport", "raknet"])
+        code, out, err = self.run_main(["--instance", str(empty), "setup", "--fresh", "--transport", "nethernet"])
         self.assertEqual(code, 0, err)
-        self.assertIn("transport=raknet", out)
+        self.assertIn("transport=nethernet", out)
         self.assertFalse((empty / "endbot.toml").exists())
 
     def test_update_requires_exactly_one_of_archive_or_rollback(self) -> None:

@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "amatouhake and Endbot contributors" }]
-dependencies = ["endstone==0.11.13+endbot.1", "endbot-core==0.4.0"]
+dependencies = ["endstone==0.11.15+endbot.1", "endbot-core==0.4.0"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "License :: OSI Approved :: Apache Software License",

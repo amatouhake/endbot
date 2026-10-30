@@ -10,8 +10,8 @@ import { createDropTransaction, EMPTY_ITEM } from '../src/packets.js'
 
 const require = createRequire(import.meta.url)
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const serializer = createSerializer('1.26.51')
-const deserializer = createDeserializer('1.26.51')
+const serializer = createSerializer('1.26.60')
+const deserializer = createDeserializer('1.26.60')
 const palette = new Map([['minecraft:stone', 1], ['minecraft:shield', 2]])
 const encoded = { name: 'minecraft:stone', count: 5, metadata: 2, blockRuntimeId: 1,
   nbt: { type: 'compound', value: { custom: { type: 'long', value: '9223372036854775807' },

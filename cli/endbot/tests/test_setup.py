@@ -83,7 +83,7 @@ class PlanTests(SetupTestCase):
 
     def test_existing_plan_versions(self) -> None:
         cases = {
-            "26.52": ("no BDS change", BDS_NONE),
+            "26.60": ("no BDS change", BDS_NONE),
             "26.50": ("update BDS", BDS_UPDATE),
             "1.21.51": ("update BDS", BDS_UPDATE),
         }
@@ -97,7 +97,7 @@ class PlanTests(SetupTestCase):
                 self.assertEqual(plan_bds(server, self.lock).action, action)
 
     def test_existing_plan_equal_version_mentions_the_match(self) -> None:
-        server = build_bds_dir(self.root / "server", version="26.52")
+        server = build_bds_dir(self.root / "server", version="26.60")
         _code, out, _err = self.run_setup(**self.existing_args(server))
         self.assertIn("matching locked", out)
 
@@ -269,16 +269,16 @@ class ApplyTests(SetupTestCase):
         self.assertIn("refusing to apply", err)
         self.assertFalse(self.paths.endbot_toml.exists())
 
-    def test_existing_preserves_raknet_and_records_it_in_operator_config(self) -> None:
+    def test_existing_raknet_server_is_refused_without_editing(self) -> None:
         server = build_bds_dir(
             self.root / "server",
             properties="online-mode=true\nallow-cheats=false\ntransport=raknet\nlevel-name=world\n",
         )
         original = (server / "server.properties").read_bytes()
-        code, out, err = self.run_setup(**self.existing_args(server, apply=True))
-        self.assertEqual(code, 0, err)
-        self.assertIn("transport=raknet", out)
-        self.assertIn('transport = "raknet"', self.paths.endbot_toml.read_text())
+        code, out, _err = self.run_setup(**self.existing_args(server, apply=True))
+        self.assertEqual(code, 1)
+        self.assertIn("transport must be nethernet", out)
+        self.assertFalse(self.paths.endbot_toml.exists())
         self.assertEqual((server / "server.properties").read_bytes(), original)
 
     def test_existing_transport_mismatch_refuses_without_editing(self) -> None:
@@ -286,23 +286,12 @@ class ApplyTests(SetupTestCase):
         before = (server / "server.properties").read_bytes()
         code, out, _err = self.run_setup(**self.existing_args(server, apply=True, transport="raknet"))
         self.assertEqual(code, 1)
-        self.assertIn("transport must be raknet", out)
+        self.assertIn("accepts only nethernet", out)
         self.assertFalse(self.paths.endbot_toml.exists())
         self.assertEqual((server / "server.properties").read_bytes(), before)
 
-    def test_fresh_raknet_setup_sets_both_configs_and_keeps_safety(self) -> None:
-        acquire = RecordingAcquire()
-        code, out, err = self.run_setup(fresh=True, existing=None, transport="raknet", apply=True, acquire_bds=acquire)
-        self.assertEqual(code, 0, err)
-        properties = parse_properties(self.root / "server/server.properties")
-        self.assertEqual(properties["transport"], "raknet")
-        self.assertEqual(properties["online-mode"], "true")
-        self.assertEqual(properties["allow-cheats"], "false")
-        self.assertIn('transport = "raknet"', self.paths.endbot_toml.read_text())
-        self.assertIn("PASS server-properties", out)
-
     def test_apply_existing_equal_version_skips_bds_and_backs_up(self) -> None:
-        server = build_bds_dir(self.root / "elsewhere", version="26.52", worlds=True)
+        server = build_bds_dir(self.root / "elsewhere", version="26.60", worlds=True)
         (server / "allowlist.json").write_text("[]\n", encoding="utf-8")
         (server / "plugins" / "endbot").mkdir(parents=True)
         (server / "plugins" / "endbot" / "groups.json").write_text("{}\n", encoding="utf-8")
@@ -335,7 +324,7 @@ class ApplyTests(SetupTestCase):
         code, _out, err = self.run_setup(**self.existing_args(server, apply=True, acquire_bds=acquire))
         self.assertEqual(code, 0, err)
         self.assertEqual(acquire.calls, [server])
-        self.assertEqual((server / "version.txt").read_text(encoding="utf-8"), "26.52")
+        self.assertEqual((server / "version.txt").read_text(encoding="utf-8"), "26.60")
 
     def test_apply_fails_when_the_acquisition_step_fails(self) -> None:
         from endbot_cli.bds import BdsError
@@ -481,7 +470,7 @@ class BdsPlanTests(SetupTestCase):
         self.assertIn("no server executable found", plan.lines[0])
 
     def test_equal_version_with_missing_executable_downloads(self) -> None:
-        server = build_bds_dir(self.root / "server", version="26.52", executable=False)
+        server = build_bds_dir(self.root / "server", version="26.60", executable=False)
         plan = plan_bds(server, self.lock)
         self.assertEqual(plan.action, BDS_DOWNLOAD)
         self.assertIn("executable is missing", plan.lines[0])

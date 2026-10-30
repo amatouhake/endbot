@@ -132,10 +132,8 @@ the configured `server-name` and world display name (`level.dat` `LevelName`, fa
 the world exists); it does not fall back to the first host that answers, so another local
 program is not sent Bot login tokens merely by answering discovery first.
 
-With RakNet selected, the runtime skips LAN discovery and ping, refuses advertised-port following, and connects
-directly to the configured loopback port. CLI config generation takes that port from BDS `server.properties` and
-refuses an invalid value rather than silently dialing a default server. Doctor requires the configured transport
-to match BDS. The token validation and Microsoft/Xbox path are the same for both transports.
+The transport is NetherNet only: BDS 1.26.60 refuses players on RakNet, so the CLI rejects `transport = "raknet"`.
+Doctor requires `transport=nethernet` in BDS.
 
 Trust in that connection rests on the loopback path and on the local-bot token instead. A same-host process that
 impersonates BDS could observe a Bot's inputs and feed it a fake world. It cannot turn a captured token into a login on

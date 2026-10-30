@@ -4,11 +4,9 @@
 (docs/OPERATIONS.md). `setup`, `update`,
 `doctor`, `start`, `stop`, `console`, and `controllers add|remove|list|reset` are implemented.
 
-From 0.2.0, `setup --fresh --transport raknet|nethernet` selects the transport (fresh default NetherNet; RakNet is experimental).
-Existing-BDS setup keeps its transport unless an explicit selection disagrees, in which case it refuses without
-editing BDS. `[server] transport` in `endbot.toml` drives generated runtime config and must match BDS;
-legacy configs without that key keep NetherNet. RakNet does not need UDP 7551 or NetherNet advertisement names.
-Published `v0.1.x` bundles predate this option; see `docs/RAKNET_VALIDATION.md` for provisional validation.
+The only transport is NetherNet: BDS 1.26.60 refuses players on RakNet, so from 0.5.0 `[server] transport` and
+`setup --transport` accept only `nethernet`. Existing-BDS setup refuses a server set to RakNet without editing it;
+`[server] transport = "raknet"` in `endbot.toml` is a configuration error naming the switch to make.
 
 ## Usage
 

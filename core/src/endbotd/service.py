@@ -315,10 +315,14 @@ class EndbotService:
         if to == "console":
             lines = [strip_colors(line) for line in lines]
         try:
-            self.link.deliver(to, lines, view, timeout=DELIVERY_SECONDS)
+            delivered = self.link.deliver(to, lines, view, timeout=DELIVERY_SECONDS)
         except LinkError as error:
             if error.code != "unavailable":
                 self._log("warning", f"Delivery to the plugin failed: {error}")
+            return
+        if not delivered:
+            dropped = "a form and " if view is not None else ""
+            self._log("warning", f"Delivery to player {to} dropped {dropped}{len(lines)} line(s): player offline")
 
     def _send_permissions(self, permissions: list[tuple[str, bool]]) -> None:
         def send(player_id: str, allowed: bool) -> None:

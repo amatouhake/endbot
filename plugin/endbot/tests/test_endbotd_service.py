@@ -8,7 +8,7 @@ import time
 import unittest
 from pathlib import Path
 
-from endbot_core.forms import ActionScreen, Button, Run
+from endbot_core.forms import ActionScreen, BotListView, Button, Run
 from endbot_core.group_forms import GroupGuard, GroupView
 from endbot_core.principal import Principal
 from endbot_core.script_forms import ScriptGuard
@@ -152,6 +152,12 @@ class EndbotServiceTests(ServiceHarness):
         with self.assertLogs("endbotd", level="INFO") as captured:
             self.submit(link, Principal("console"), "bot", "Steve", "destroy", "stop")
             self.assertTrue(wait_for(lambda: any("destroy stopped" in line for line in captured.output)))
+
+    def test_a_delivery_to_an_offline_player_is_logged(self):
+        self.link()
+        self.service.deliver_now(ALICE, ["hello"], encode_view(BotListView(())))
+        self.assertIn(("warning", f"Delivery to player {ALICE} dropped a form and 1 line(s): player offline"),
+                      self.logs)
 
     def test_a_malformed_form_guard_is_refused(self):
         link = self.link()

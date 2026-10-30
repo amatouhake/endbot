@@ -163,12 +163,17 @@ class AsyncCommandRunner:
             # Permission may have changed while the worker queried the runtime.
             view = result.view if result.view is not None else menu_view(
                 result, source, scripting=self._scripts is not None and self._scripts.config.enabled)
-            if (
-                view is not None
-                and self._show_view is not None
-                and sender is not None
-                and (self._authorize is None or self._authorize(source))
-            ):
+            if view is None or self._show_view is None:
+                return
+            if sender is None:
+                dropped = "sender unresolved"
+            elif self._authorize is not None and not self._authorize(source):
+                dropped = "not authorized at delivery"
+            else:
                 self._show_view(sender, view)
+                return
+            if self._log_sink is not None:
+                self._log_sink.write(
+                    "warning", f"A {type(view).__name__} form for player {source.player_id} was dropped: {dropped}")
 
         self._bridge.post(deliver)

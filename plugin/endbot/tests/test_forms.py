@@ -396,13 +396,14 @@ class ScheduledCallbacks:
 
 
 class DispatchViewTests(unittest.TestCase):
-    def run_view(self, allowed):
+    def run_view(self, allowed, resolved=True):
         scheduled = ScheduledCallbacks()
         bridge = ServerThreadBridge(scheduled.schedule)
         self.addCleanup(bridge.close)
         view = forms.BotListView(())
-        shown, checks = [], iter(allowed)
+        shown, checks, self.logged = [], iter(allowed), []
         player = types.SimpleNamespace(unique_id="11111111-2222-4333-8444-555555555555", location=object())
+        sink = types.SimpleNamespace(write=lambda level, line: self.logged.append((level, line)))
 
         class Service:
             def execute(self, arguments, source):
@@ -411,12 +412,13 @@ class DispatchViewTests(unittest.TestCase):
         runner = AsyncCommandRunner(
             Service(),
             bridge,
-            lambda source: player,
+            lambda source: player if resolved else None,
             authorize=lambda source: next(checks),
+            log_sink=sink,
             show_view=lambda target, value: shown.append((target, value)),
         )
         self.addCleanup(runner.close)
-        runner.submit(["menu"], player)
+        runner.submit(["menu"], Principal("player", player_id=player.unique_id))
         scheduled.run_next()  # worker authorization
         scheduled.run_next()  # delivery
         return shown, player, view
@@ -424,10 +426,19 @@ class DispatchViewTests(unittest.TestCase):
     def test_view_is_shown_on_the_server_thread_after_authorization(self):
         shown, player, view = self.run_view([True, True])
         self.assertEqual(shown, [(player, view)])
+        self.assertEqual(self.logged, [])
 
     def test_view_is_dropped_when_permission_is_revoked_before_delivery(self):
-        shown, _, _ = self.run_view([True, False])
+        shown, player, _ = self.run_view([True, False])
         self.assertEqual(shown, [])
+        dropped = f"A BotListView form for player {player.unique_id} was dropped: not authorized at delivery"
+        self.assertEqual(self.logged, [("warning", dropped)])
+
+    def test_view_is_dropped_and_logged_when_the_sender_is_unresolved(self):
+        shown, player, _ = self.run_view([True], resolved=False)
+        self.assertEqual(shown, [])
+        dropped = f"A BotListView form for player {player.unique_id} was dropped: sender unresolved"
+        self.assertEqual(self.logged, [("warning", dropped)])
 
 
 class FakeFormModule:

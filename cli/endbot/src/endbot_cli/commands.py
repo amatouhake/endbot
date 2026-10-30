@@ -15,17 +15,19 @@ live supervisor exists and clean up stale PID files.
 
 from __future__ import annotations
 
+import os
 import signal
 import sys
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from functools import partial
 
 from endbot_cli.config import ConfigError, load_config
-from endbot_cli.configgen import ConfigGenerationError, generate_all, uses_lan_discovery
+from endbot_cli.configgen import ConfigGenerationError, generate_all, read_server_port, uses_lan_discovery
 from endbot_cli.controllers import ControllersError, load_controllers, remove_binding, save_controllers
 from endbot_cli.doctor import FAIL, DoctorContext, check_local_bot_auth, run_doctor
 from endbot_cli.instance import InstancePaths
-from endbot_cli.netcheck import lan_discovery_port_problem
+from endbot_cli.netcheck import lan_discovery_port_problem, wait_for_server_port
 from endbot_cli.processes import ToolchainError, process_alive, resolve_toolchain
 from endbot_cli.runstate import (
     RUNNING,
@@ -77,6 +79,7 @@ def run_start(
     endbotd_command: Sequence[str] | None = None,
     installed_endstone_version: Callable[[], str | None] | None = None,
     lan_port_check: Callable[[], str | None] | None = None,
+    server_port_check: Callable[[int], str | None] | None = None,
     ready_timeout: float = 30.0,
     stop_timeout: float = 60.0,
     runtime_stop_timeout: float = 15.0,
@@ -138,6 +141,13 @@ def run_start(
     problem = lan_port_check() if uses_lan_discovery(config) and lan_port_check is not None else None
     if problem is not None:
         return _fail(f"FAIL start: {problem}")
+    # Fake children bring no BDS; Windows binds through TIME-WAIT.
+    if server_port_check is None and server_command is None and os.name != "nt":
+        server_port_check = partial(wait_for_server_port, notify=_print)
+    if server_port_check is not None:
+        problem = server_port_check(read_server_port(server)[0])
+        if problem is not None:
+            return _fail(f"FAIL start: {problem}")
 
     try:
         toolchain = resolve_toolchain(paths, environ)

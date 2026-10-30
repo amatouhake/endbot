@@ -295,7 +295,11 @@ SDP answer in the response (a bare number is a NetherNet error code). The Bot do
 loopback `server-port`, so each instance is selected by its own port: no discovery, no advertisement names, and no
 UDP 7551 check before start. Upstream `bedrock-protocol` only signals over LAN or the online services, so the runtime
 replaces the NetherNet client's signal handler (`runtime/src/direct-signalling.js`); authentication, the loopback
-restriction and the Bot token are unchanged. Validation against real BDS is recorded under
+restriction and the Bot token are unchanged. BDS answers that request with `Connection: close` and closes first, so
+every join by address (a Bot's or a person's) leaves `server-port` in TCP TIME-WAIT for up to 60 s. On Linux the
+patched BDS cannot listen on the port again until then, so `endbot start` waits for it ("waiting for TCP <port> ...")
+before starting anything, and refuses after 75 s when another program really holds the port. Windows binds through
+TIME-WAIT and skips the wait. Validation against real BDS is recorded under
 [BOT-026](BACKLOG.md#bot-026-several-nethernet-instances-on-one-machine). Set `nethernet-signalling = 'lan'` to
 return to discovery; it then needs UDP 7551 free, as below.
 

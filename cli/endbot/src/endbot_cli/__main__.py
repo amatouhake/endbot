@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--transport",
         choices=TRANSPORTS,
         default=None,
-        help="Bot/BDS transport (fresh default: nethernet; existing: keep its current transport)",
+        help="Bot/BDS transport (nethernet only; BDS 1.26.60 refuses players on RakNet)",
     )
     setup.add_argument(
         "--backup-worlds", action="store_true", help="copy worlds/ into the setup backup (--existing only)"

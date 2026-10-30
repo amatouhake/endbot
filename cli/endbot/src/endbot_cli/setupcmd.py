@@ -335,6 +335,7 @@ def write_endbot_toml(paths: InstancePaths, plan: SetupPlan) -> Path:
     document.add("runtime", runtime)
     limits = tomlkit.table()
     limits["max-bots"] = tomlkit.item(0).comment("Bots online or connecting; 0 = no separate Bot cap")
+    limits["max-bots-per-controller"] = tomlkit.item(0).comment("Bots one controller may own; 0 = no cap")
     limits["reserved-player-slots"] = tomlkit.item(1).comment("server slots kept free for human players")
     document.add("limits", limits)
     ui = tomlkit.table()

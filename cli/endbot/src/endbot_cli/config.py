@@ -64,6 +64,7 @@ class EndbotdConfig:
 class LimitsConfig:
     max_bots: int = 0
     reserved_player_slots: int = 1
+    max_bots_per_controller: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,17 +231,26 @@ def _load_limits(path: Path, document: dict[str, Any]) -> LimitsConfig:
     table = document.get("limits", {})
     if not isinstance(table, dict):
         raise _fail(path, "limits", "must be a table", "write it as a [limits] section")
-    _reject_unknown_keys(path, table, "limits", ("max-bots", "reserved-player-slots"))
+    _reject_unknown_keys(path, table, "limits", ("max-bots", "reserved-player-slots", "max-bots-per-controller"))
     max_bots = table.get("max-bots", 0)
     reserved = table.get("reserved-player-slots", 1)
-    for key, value in (("max-bots", max_bots), ("reserved-player-slots", reserved)):
+    per_controller = table.get("max-bots-per-controller", 0)
+    for key, value in (
+        ("max-bots", max_bots),
+        ("reserved-player-slots", reserved),
+        ("max-bots-per-controller", per_controller),
+    ):
         if type(value) is not int:
             raise _fail(path, f"limits.{key}", "must be an integer", "use 0 or a positive integer")
     if max_bots < 0:
         raise _fail(path, "limits.max-bots", "must be 0 or a positive integer", "use 0 for no separate Bot cap")
     if reserved < 0:
         raise _fail(path, "limits.reserved-player-slots", "must be 0 or more", "use 0 to disable the reserve")
-    return LimitsConfig(max_bots=max_bots, reserved_player_slots=reserved)
+    if per_controller < 0:
+        raise _fail(path, "limits.max-bots-per-controller", "must be 0 or a positive integer",
+                    "use 0 for no per-controller Bot limit")
+    return LimitsConfig(max_bots=max_bots, reserved_player_slots=reserved,
+                        max_bots_per_controller=per_controller)
 
 
 def _load_endbotd(path: Path, document: dict[str, Any], runtime: RuntimeConfig) -> EndbotdConfig:

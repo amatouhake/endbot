@@ -13,12 +13,18 @@ from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.limits import BotLimits
 from endbot_core.link import error_from_wire
 from endbot_core.operations import ALIASES, OPERATIONS, RESERVED_BOT_NAMES, Operation
-from endbot_core.ownership import OwnershipStore
+from endbot_core.ownership import OwnershipStore, owner_key
 from endbot_core.principal import as_job
 
 
 class CommandSyntaxError(LocalizedError):
     pass
+
+
+class ControllerLimitReached(LocalizedError):
+    """A per-controller Bot limit is reached: a conflict, not an authorization failure."""
+
+    code = "conflict"
 
 
 # Outcome codes, coarse by what the user should do next; refined only when a
@@ -1121,6 +1127,26 @@ class BotCommandService:
                 reserved=limits.reserved_player_slots,
             )
 
+    def check_controller_limit(self, sender) -> None:
+        """Refuse a new Bot when its owner already owns the per-controller limit.
+
+        Only new profiles are checked; reconnecting an existing Bot is never
+        limited. Unowned Bots and the console never count.
+        """
+        limit, ownership = self.limits.max_bots_per_controller, self.ownership
+        if limit <= 0 or ownership is None:
+            return
+        owner = owner_key(sender)
+        if owner is None:
+            return
+        count = ownership.count("bots", owner)
+        if count >= limit:
+            raise ControllerLimitReached(
+                "You own {count} Bots, the most a controller may own on this server ({limit}); forget one first",
+                count=count,
+                limit=limit,
+            )
+
     def poll_mining(self, authorize) -> list:
         """Renew/retarget loops; return job Events for their principals.
 
@@ -1427,6 +1453,7 @@ class BotCommandService:
                     raise
             if existing is None:
                 _assert_not_reserved(command.name)  # Existing profiles keep their name.
+                self.check_controller_limit(sender)
             # An already active Bot keeps its seat; only a new session is budgeted.
             if existing is None or existing.get("connectionState") not in ACTIVE_BOT_STATES:
                 self.check_seat(command.name)

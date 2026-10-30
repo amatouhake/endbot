@@ -133,6 +133,10 @@ class OwnershipStore:
     def get(self, kind: str, identity: str) -> Ownership | None:
         return self._entries[_kind(kind)].get(_identity(identity))
 
+    def count(self, kind: str, owner: str | None) -> int:
+        """How many entries of ``kind`` this owner key owns; the console (None) owns none."""
+        return sum(1 for entry in self._entries[_kind(kind)].values() if entry.owner == owner)
+
     def record(self, kind: str, identity: str, principal) -> None:
         """Record ``principal`` as the owner unless it is the console or an entry already exists."""
         kind = _kind(kind)

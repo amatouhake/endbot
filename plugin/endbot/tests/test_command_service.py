@@ -928,6 +928,85 @@ class SeatLimitTests(unittest.TestCase):
         self.assertIn("spawn", [call[0] for call in control.calls])
 
 
+class PerControllerLimitTests(unittest.TestCase):
+    """`max-bots-per-controller` counts a controller's owned Bots for a new spawn (BOT-024 5)."""
+
+    def setUp(self) -> None:
+        self.control = FakeControl()
+        self.world = FakeWorld()
+        self.ownership = OwnershipStore()
+        self.service = PlainCommandService(
+            self.control, self.world, limits=BotLimits(max_bots_per_controller=2), ownership=self.ownership,
+        )
+
+    @staticmethod
+    def player(name="Alice", xuid="2535400000000001", player_id="0000000a-0000-4000-8000-00000000000b"):
+        return Principal("player", name=name, xuid=xuid, player_id=player_id)
+
+    def spawn(self, names, sender):
+        return [self.service.execute([name, "spawn"], sender) for name in names]
+
+    def test_the_third_new_bot_is_a_conflict_and_is_not_created(self):
+        alice = self.player()
+        for result in self.spawn(("Alpha", "Beta"), alice):
+            self.assertTrue(result.accepted)
+        calls = len(self.control.calls)
+        refused = self.service.execute(["Gamma", "spawn"], alice)
+        self.assertFalse(refused.accepted)
+        self.assertEqual(refused.code, "conflict")
+        self.assertIn(
+            "You own 2 Bots, the most a controller may own on this server (2); forget one first",
+            refused.message,
+        )
+        self.assertNotIn("Gamma", self.control.bots)
+        # Only the existing-profile probe ran; the runtime was never asked to create it.
+        self.assertEqual(len(self.control.calls), calls + 1)
+
+    def test_another_player_has_their_own_count(self):
+        alice, bob = self.player(), self.player("Bob", xuid="2535400000000002",
+                                                player_id="0000000c-0000-4000-8000-00000000000d")
+        self.spawn(("Alpha", "Beta"), alice)
+        self.assertTrue(self.service.execute(["Gamma", "spawn"], bob).accepted)
+        self.assertIn("Gamma", self.control.bots)
+
+    def test_the_console_is_never_limited(self):
+        self.spawn(("Alpha", "Beta"), self.player())
+        for name in ("ConsoleOne", "ConsoleTwo", "ConsoleThree"):
+            self.assertTrue(self.service.execute([name, "spawn"], Principal("console")).accepted)
+
+    def test_spawning_an_existing_profile_is_never_limited(self):
+        alice = self.player()
+        self.spawn(("Alpha", "Beta"), alice)
+        again = self.service.execute(["Alpha", "spawn"], alice)
+        self.assertTrue(again.accepted)
+        self.assertIn("already connecting", again.message)
+
+    def test_forget_frees_a_place(self):
+        alice = self.player()
+        self.spawn(("Alpha", "Beta"), alice)
+        self.assertFalse(self.service.execute(["Gamma", "spawn"], alice).accepted)
+        self.service.execute(["Alpha", "forget"], alice)
+        self.assertTrue(self.service.execute(["Gamma", "spawn"], alice).accepted)
+
+    def test_zero_means_no_limit(self):
+        self.service = PlainCommandService(
+            self.control, self.world, limits=BotLimits(max_bots_per_controller=0), ownership=self.ownership,
+        )
+        for result in self.spawn(("Alpha", "Beta", "Gamma"), self.player()):
+            self.assertTrue(result.accepted)
+
+    def test_a_run_counts_the_bots_its_invoker_owns(self):
+        alice = self.player()
+        self.service.execute(["Alpha", "spawn"], alice)
+        run = Principal("run", name="Alice", xuid="2535400000000001",
+                        player_id="0000000a-0000-4000-8000-00000000000b", run_id="run-1")
+        self.assertTrue(self.service.execute(["Beta", "spawn"], run).accepted)
+        # The run-created Bot is owned by the invoker, so both see the same count.
+        for sender in (alice, run):
+            refused = self.service.execute(["Gamma", "spawn"], sender)
+            self.assertEqual((refused.accepted, refused.code), (False, "conflict"))
+
+
 class ResolverWorld:
     """Raycast stand-in for the per-item resolver tests."""
 

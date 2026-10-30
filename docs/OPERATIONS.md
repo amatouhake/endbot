@@ -69,6 +69,7 @@ link-port = 19143          # loopback port where endbotd accepts the plugin link
 
 [limits]
 max-bots = 0               # Bots online or connecting; 0 = no separate Bot cap, N = cap
+max-bots-per-controller = 0  # Bots one controller may own; 0 = no per-controller cap, N = cap
 reserved-player-slots = 1  # server slots kept free for human players
 
 [ui]
@@ -101,11 +102,13 @@ the following step.
 
 `[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
 (default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value
-caps online-or-connecting Bots. `spawn`, `resume` and `reconnect` are refused — per member for a Group or script — when
-the Bot would take a reserved slot or exceed `max-bots`. Existing Bots are never despawned by the limit;
-`max-bots = 0` with `reserved-player-slots = 0` restores no limit. `endbot doctor` prints the resulting budget and
-warns when it cannot apply. Managed instances write this section into the plugin config on start; manual plugin
-installs edit the same keys there.
+caps online-or-connecting Bots. `max-bots-per-controller = 0` adds no per-controller cap; a positive value refuses a
+new `spawn` by a controller who already owns that many Bots, while reconnecting an existing Bot is never limited and
+the console is never limited. The count comes from `state/ownership.json`, so `forget` frees a place. `spawn`, `resume`
+and `reconnect` are refused — per member for a Group or script — when the Bot would take a reserved slot or exceed
+`max-bots`. Existing Bots are never despawned by the limit; `max-bots = 0` with `reserved-player-slots = 0` restores
+no slot limit. `endbot doctor` prints the resulting budget and warns when it cannot apply. Managed instances write
+this section into the plugin config on start; manual plugin installs edit the same keys there.
 
 `[ui].language` sets the language of player-facing replies, help and forms. `auto` (the default, also when omitted)
 gives Japanese clients Japanese and every other client English; `en` or `ja` fixes one language for everyone. Command

@@ -203,12 +203,24 @@ def check_capacity(server: Path, properties: dict[str, str] | None) -> CheckResu
         return CheckResult(WARN, name, "[limits] must be a table; Bot capacity is unchecked")
     max_bots = limits.get("max-bots", 0)
     reserved = limits.get("reserved-player-slots", 1)
-    if any(isinstance(value, bool) or not isinstance(value, int) for value in (max_bots, reserved)):
-        return CheckResult(WARN, name, "[limits] values must be integers (max-bots, reserved-player-slots)")
-    if max_bots < 0 or reserved < 0:
-        return CheckResult(WARN, name, "[limits] values must be 0 or more (max-bots, reserved-player-slots)")
+    per_controller = limits.get("max-bots-per-controller", 0)
+    if any(
+        isinstance(value, bool) or not isinstance(value, int)
+        for value in (max_bots, reserved, per_controller)
+    ):
+        return CheckResult(
+            WARN,
+            name,
+            "[limits] values must be integers (max-bots, reserved-player-slots, max-bots-per-controller)",
+        )
+    if max_bots < 0 or reserved < 0 or per_controller < 0:
+        return CheckResult(
+            WARN,
+            name,
+            "[limits] values must be 0 or more (max-bots, reserved-player-slots, max-bots-per-controller)",
+        )
     config_path = server / "plugins" / "endbot" / "config.toml"
-    if max_bots == 0 and reserved == 0:
+    if max_bots == 0 and reserved == 0 and per_controller == 0:
         return CheckResult(
             WARN,
             name,
@@ -228,6 +240,8 @@ def check_capacity(server: Path, properties: dict[str, str] | None) -> CheckResu
             f"max-bots={max_bots} cannot apply: {max_players} slots minus {reserved} reserved = {room}",
         )
     budget = f"at most {max_bots} Bots" if max_bots > 0 else f"Bots up to {room}"
+    if per_controller > 0:
+        budget += f", at most {per_controller} per controller"
     return CheckResult(PASS, name, f"{max_players} slots, {reserved} reserved for players, {budget}")
 
 

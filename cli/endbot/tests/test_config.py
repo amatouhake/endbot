@@ -55,17 +55,21 @@ class ConfigTests(unittest.TestCase):
         base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
         self.write(base)
         limits = load_config(self.path).limits
-        self.assertEqual((limits.max_bots, limits.reserved_player_slots), (0, 1))
-        self.write(base + "[limits]\nmax-bots=8\nreserved-player-slots=2\n")
+        self.assertEqual((limits.max_bots, limits.reserved_player_slots, limits.max_bots_per_controller), (0, 1, 0))
+        self.write(base + "[limits]\nmax-bots=8\nreserved-player-slots=2\nmax-bots-per-controller=3\n")
         limits = load_config(self.path).limits
-        self.assertEqual((limits.max_bots, limits.reserved_player_slots), (8, 2))
+        self.assertEqual((limits.max_bots, limits.reserved_player_slots, limits.max_bots_per_controller), (8, 2, 3))
         for setting, key in (
             ('max-bots="8"', "limits.max-bots"),
             ("max-bots=-1", "limits.max-bots"),
             ("max-bots=-2", "limits.max-bots"),
             ("reserved-player-slots=-1", "limits.reserved-player-slots"),
             ("reserved-player-slots=true", "limits.reserved-player-slots"),
+            ('max-bots-per-controller="3"', "limits.max-bots-per-controller"),
+            ("max-bots-per-controller=-1", "limits.max-bots-per-controller"),
+            ("max-bots-per-controller=true", "limits.max-bots-per-controller"),
             ("max-bot=8", "limits.max-bot"),
+            ("max-bots-per-controllr=2", "limits.max-bots-per-controllr"),
         ):
             with self.subTest(setting=setting):
                 self.write(base + f"[limits]\n{setting}\n")

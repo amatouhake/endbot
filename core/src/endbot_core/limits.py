@@ -16,11 +16,13 @@ class BotLimits:
     ``max_bots`` 0 means "no separate Bot cap" (server capacity still applies);
     a positive value caps online/connecting Bots. ``reserved_player_slots``
     keeps that many slots free for players. Both 0 restores the previous
-    behavior of no limit at all.
+    behavior of no limit at all. ``max_bots_per_controller`` 0 means "no
+    per-controller cap"; a positive value limits the Bots one controller owns.
     """
 
     max_bots: int = 0
     reserved_player_slots: int = 1
+    max_bots_per_controller: int = 0
 
     @classmethod
     def from_config(cls, table: object) -> BotLimits:
@@ -28,7 +30,7 @@ class BotLimits:
             return cls()
         if not isinstance(table, dict):
             raise ValueError("[limits] must be a table")  # noqa: TRY004 - configuration validation API
-        unknown = set(table) - {"max-bots", "reserved-player-slots"}
+        unknown = set(table) - {"max-bots", "reserved-player-slots", "max-bots-per-controller"}
         if unknown:
             raise ValueError(f"unknown [limits] key: {min(unknown)}")
 
@@ -40,11 +42,14 @@ class BotLimits:
 
         max_bots = whole("max-bots", 0)
         reserved = whole("reserved-player-slots", 1)
+        per_controller = whole("max-bots-per-controller", 0)
         if max_bots < 0:
             raise ValueError("[limits] max-bots must be 0 or a positive integer")
         if reserved < 0:
             raise ValueError("[limits] reserved-player-slots must be 0 or more")
-        return cls(max_bots, reserved)
+        if per_controller < 0:
+            raise ValueError("[limits] max-bots-per-controller must be 0 or a positive integer")
+        return cls(max_bots, reserved, per_controller)
 
     @property
     def enabled(self) -> bool:

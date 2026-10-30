@@ -120,18 +120,30 @@ class EndbotServiceTests(ServiceHarness):
         self.join(link, FakePlayer(ALICE, "Alice", xuid=OWNER))
         self.console(link, "add", "Alice")
         sender = {"kind": "player", "playerId": ALICE}
-        # A grant with no recorded role is a scripter (the migration rule).
-        self.assertEqual(self.service.link._sender(sender).role, "scripter")
-        self.assertTrue(self.service.link._sender(sender).can_author)
+        # A new grant without --role is a controller (least privilege).
+        self.assertEqual(self.service.link._sender(sender).role, "controller")
+        self.assertFalse(self.service.link._sender(sender).can_author)
         # S5: the role is read for each command, with no restart or grant revision change.
-        self.service.authority.roles.set(OWNER, "controller")
+        self.service.authority.roles.set(OWNER, "scripter")
         principal = self.service.link._sender(sender)
-        self.assertEqual((principal.role, principal.can_author), ("controller", False))
+        self.assertEqual((principal.role, principal.can_author), ("scripter", True))
         self.assertEqual(principal.grant_revision, 0)
         self.assertEqual(self.service.link._sender({"kind": "console"}).role, None)
-        self.assertEqual(principal_from_wire(principal_to_wire(principal)).role, "controller")
+        self.assertEqual(principal_from_wire(principal_to_wire(principal)).role, "scripter")
         with self.assertRaises(ValueError):
             Principal("player", player_id=ALICE, role="operator")
+
+    def test_the_cli_path_passes_a_role_and_refuses_an_invalid_one(self):
+        result = self.service._cli_controllers({"operation": "add", "target": "Pending Tag", "role": "scripter"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.service.authority.roles.pending_role("Pending Tag"), "scripter")
+        self.assertEqual(result["entries"][0]["role"], "scripter")
+        with self.assertRaises(ValueError):
+            self.service._cli_controllers({"operation": "add", "target": "Other", "role": "admin"})
+        self.assertIsNone(self.service.authority.roles.pending_role("Other"))
+        with self.assertRaises(ValueError):
+            self.service._cli_controllers({"operation": "remove", "target": "Pending Tag", "role": "scripter"})
+        self.assertEqual(self.service.authority.roles.pending_role("Pending Tag"), "scripter")
 
     def test_controller_management_is_refused_to_players_even_over_the_link(self):
         link = self.link()

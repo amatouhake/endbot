@@ -181,9 +181,14 @@ While `endbot start` is running, use another terminal:
 
 ```text
 endbot controllers add "Player With Spaces"
+endbot controllers add "Player With Spaces" --role scripter
 endbot controllers remove "Player With Spaces"
 endbot controllers list
 ```
+
+`--role scripter` or `--role controller` sets the grant's role. A new grant without the option is a **controller**, and
+an existing grant keeps its role unless the option is given. The console command takes the same option, for example
+`botcontrollers add "Player With Spaces" --role controller`.
 
 The CLI connects to endbotd's loopback endpoint (the `[endbotd] link-port`, authenticated with
 `state/secrets/endbotd.token`), runs the change in endbotd as the server console and prints the result in that terminal.

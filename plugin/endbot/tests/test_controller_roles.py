@@ -6,7 +6,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from endbot_core.controller_roles import DEFAULT_ROLE, ControllerRoles, load_controller_roles
+from endbot_core.controller_roles import (
+    DEFAULT_ROLE,
+    ControllerRoles,
+    load_controller_roles,
+    load_pending_controller_roles,
+)
 
 XUID = "2535400000000001"
 OTHER_XUID = "2535400000000002"
@@ -34,6 +39,80 @@ class ControllerRolesTests(unittest.TestCase):
         self.assertEqual(roles.role(XUID), DEFAULT_ROLE)
         self.assertEqual(roles.entries(), {})
         self.assertFalse(self.path.exists())
+
+    def test_pending_role_is_casefolded_and_forgotten_by_name(self):
+        roles = ControllerRoles(self.path)
+        self.assertIsNone(roles.pending_role("Some Tag"))
+        roles.set_pending("Some Tag", "controller")
+        roles.set_pending("Other Tag", "scripter")
+        self.assertEqual(roles.pending_role("SOME TAG"), "controller")
+        self.assertEqual(roles.pending_entries(), {"some tag": "controller", "other tag": "scripter"})
+        self.assertEqual(roles.entries(), {})
+        roles.forget_pending(["sOmE tAg", "missing"])
+        self.assertIsNone(roles.pending_role("Some Tag"))
+        self.assertEqual(roles.pending_role("Other Tag"), "scripter")
+
+    def test_pending_roles_round_trip_and_an_empty_map_is_omitted(self):
+        roles = ControllerRoles(self.path)
+        roles.set(XUID, "scripter")
+        roles.set_pending("Some Tag", "controller")
+        document = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            document,
+            {"version": 1, "roles": {XUID: "scripter"}, "pending": {"some tag": "controller"}},
+        )
+        reloaded = ControllerRoles(self.path)
+        self.assertEqual(reloaded.entries(), {XUID: "scripter"})
+        self.assertEqual(reloaded.pending_entries(), {"some tag": "controller"})
+        self.assertEqual(load_pending_controller_roles(self.path), {"some tag": "controller"})
+        self.assertEqual(load_controller_roles(self.path), {XUID: "scripter"})
+        reloaded.forget_pending(["Some Tag"])
+        self.assertEqual(
+            json.loads(self.path.read_text(encoding="utf-8")), {"version": 1, "roles": {XUID: "scripter"}}
+        )
+        # An explicit empty object reads fine and is still omitted by the next save.
+        self.path.write_text(json.dumps({"version": 1, "roles": {}, "pending": {}}), encoding="utf-8")
+        self.assertEqual(ControllerRoles(self.path).pending_entries(), {})
+        fresh = ControllerRoles(self.path)
+        fresh.set(OTHER_XUID, "controller")
+        self.assertEqual(
+            json.loads(self.path.read_text(encoding="utf-8")),
+            {"version": 1, "roles": {OTHER_XUID: "controller"}},
+        )
+
+    def test_set_pending_validates_gamertag_and_role(self):
+        roles = ControllerRoles()
+        roles.set_pending("Some Tag", "controller")
+        for gamertag in ("", "x" * 257, "Bad\nName", "\x00", 1, None):
+            with self.assertRaises(ValueError):
+                roles.set_pending(gamertag, "scripter")
+        for role in ("owner", "Controller", "", 1, None):
+            with self.assertRaises(ValueError):
+                roles.set_pending("Other Tag", role)
+        self.assertEqual(roles.pending_entries(), {"some tag": "controller"})
+
+    def test_invalid_pending_entries_are_refused(self):
+        self.path.parent.mkdir(parents=True)
+        documents = (
+            json.dumps({"version": 1, "roles": {}, "pending": []}),
+            json.dumps({"version": 1, "roles": {}, "pending": None}),
+            json.dumps({"version": 1, "roles": {}, "pending": "Tag"}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"": "scripter"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"x" * 257: "scripter"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"Bad\nName": "scripter"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"\u0000": "scripter"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"Tag": "owner"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"Tag": "Controller"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"Tag": 1}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"Tag": None}}),
+        )
+        for document in documents:
+            with self.subTest(document=document):
+                self.path.write_text(document, encoding="utf-8")
+                with self.assertRaises((ValueError, TypeError)):
+                    load_controller_roles(self.path)
+                with self.assertRaises((ValueError, TypeError)):
+                    load_pending_controller_roles(self.path)
 
     def test_set_persists_a_minimal_versioned_document_across_restart(self):
         roles = ControllerRoles(self.path)

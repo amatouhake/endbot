@@ -80,6 +80,11 @@ class ClientTests(unittest.TestCase):
         for target in ("Player\nstop", "  ", "", None, "x" * 257):
             with self.assertRaises(EndbotdError):
                 self.request(free_port(), "add", target)
+        for role in ("admin", "", 1):
+            with self.assertRaises(EndbotdError):
+                self.request(free_port(), "add", "Player", role=role)
+        with self.assertRaises(EndbotdError):
+            self.request(free_port(), "remove", "Player", role="scripter")
 
     def test_result_and_token_go_over_one_request(self) -> None:
         def answer(sock, request):
@@ -92,6 +97,18 @@ class ClientTests(unittest.TestCase):
         result = self.request(endpoint.port, "add", "Player With Spaces")
         self.assertEqual(result["messages"], ["done"])
         self.assertEqual((endpoint.hello["body"]["client"], endpoint.hello["body"]["token"]), ("cli", TOKEN))
+
+    def test_role_is_carried_in_the_request_body(self) -> None:
+        def answer(sock, request):
+            self.assertEqual(
+                request["body"], {"operation": "add", "target": "Player With Spaces", "role": "controller"}
+            )
+            reply = {"id": request["id"], "ok": True, "result": {"ok": True, "messages": ["done"], "entries": []}}
+            sock.sendall(json.dumps(reply).encode() + b"\n")
+
+        endpoint = FakeEndpoint(answer)
+        self.addCleanup(endpoint.close)
+        self.request(endpoint.port, "add", "Player With Spaces", role="controller")
 
     def test_lost_connection_after_a_mutation_is_result_unknown(self) -> None:
         for operation, target, code in (("remove", "Player", "unknown"), ("list", None, "unavailable")):

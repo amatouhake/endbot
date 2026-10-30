@@ -545,6 +545,19 @@ class EffectiveControllersTests(DoctorTestCase):
         path.write_text(json.dumps({"version": 1, "roles": {"2535400000000001": "controller"}}))
         self.assertEqual(self.status_of(self.doctor(), "controller-roles"), PASS)
         self.assertIn("records 1 role", self.messages_of(self.doctor(), "controller-roles")[0])
+        path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "roles": {"2535400000000001": "controller"},
+                    "pending": {"Some Tag": "scripter"},
+                }
+            )
+        )
+        self.assertEqual(self.status_of(self.doctor(), "controller-roles"), PASS)
+        self.assertIn("1 pending", self.messages_of(self.doctor(), "controller-roles")[0])
+        path.write_text(json.dumps({"version": 1, "roles": {}, "pending": {"Some Tag": "controller"}}))
+        self.assertEqual(self.status_of(self.doctor(), "controller-roles"), PASS)
         corrupt = (
             "{invalid",
             "[]",
@@ -553,6 +566,14 @@ class EffectiveControllersTests(DoctorTestCase):
             json.dumps({"version": 1, "roles": {}, "extra": True}),
             json.dumps({"version": 1, "roles": {"not-an-xuid": "scripter"}}),
             json.dumps({"version": 1, "roles": {"2535400000000001": "owner"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": []}),
+            json.dumps({"version": 1, "roles": {}, "pending": None}),
+            json.dumps({"version": 1, "roles": {}, "pending": "Some Tag"}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"": "scripter"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"x" * 257: "scripter"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"Bad\nName": "scripter"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"Some Tag": "owner"}}),
+            json.dumps({"version": 1, "roles": {}, "pending": {"Some Tag": 1}}),
         )
         for document in corrupt:
             with self.subTest(document=document):

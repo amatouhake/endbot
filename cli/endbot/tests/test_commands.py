@@ -342,7 +342,18 @@ class ControllersLiveTests(CommandTestCase):
         self.assertEqual(code, 0, stderr)
         self.assertIn("Player: allowed", stdout)
         self.assertNotIn("queued", stdout)
-        request.assert_called_once_with(self.run_dir, self.paths.endbotd_token, ANY, "add", "Player")
+        request.assert_called_once_with(self.run_dir, self.paths.endbotd_token, ANY, "add", "Player", role=None)
+        with patch(
+            "endbot_cli.endbotd_client.controllers_request",
+            return_value={"ok": True, "messages": ["Player: allowed - runtime grant"]},
+        ) as request:
+            code, _stdout, stderr = self.run_captured(
+                run_controllers_live, self.paths, "add", "Player", "controller"
+            )
+        self.assertEqual(code, 0, stderr)
+        request.assert_called_once_with(
+            self.run_dir, self.paths.endbotd_token, ANY, "add", "Player", role="controller"
+        )
         with patch(
             "endbot_cli.endbotd_client.controllers_request",
             return_value={"ok": False, "messages": ["Unknown offline controller"]},

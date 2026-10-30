@@ -202,6 +202,11 @@ JA: dict[str, str] = {
     "Older result": "一つ前の結果",
     "Remove member...": "メンバーを外す...",
     "acceptance unknown": "受付不明",
+    "not permitted": "許可されていない操作",
+    "Group name {name} is not available": "グループ名 {name} は使えません",
+    "Bot {name} is private to {owner}": "Bot {name} は {owner} の private Bot です",
+    "Only {owner} or the console can {operation} Bot {name}":
+        "Bot {name} を {operation} できるのは {owner} とコンソールだけです",
     "accepted": "受付",
     "not run": "未実行",
     "missing": "プロファイルなし",
@@ -672,6 +677,7 @@ JA: dict[str, str] = {
     "destroy continuous is waiting: no block it can break within 5 blocks":
         "destroy continuous は待機中です: 5ブロック以内に壊せるブロックがありません",
     "control permission revoked": "操作権限が取り消されました",
+    "the Bot became private": "Bot が private になりました",
     "Bot was renamed or removed": "Bot の名前が変わったか、削除されました",
     # Dispatch and plugin.
     "Bot control permission was revoked; command canceled": "Bot の操作権限が取り消されたため、コマンドを中止しました",

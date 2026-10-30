@@ -165,6 +165,7 @@ class ScriptMenuViewTests(unittest.TestCase):
     def test_parameters_keep_group_members_and_origin(self):
         group = Group("group-id", "miners", ("bot-uuid",))
         self.host.service.groups = SimpleNamespace(groups=(group,))
+        self.host.service.visible_groups = lambda source: (group,)
         schema = [{"name": "group", "type": "group"},
                   {"name": "origin", "type": "pos", "default": "~ ~ ~"}]
         origin = {"x": 1, "y": 64, "z": 2}

@@ -172,7 +172,9 @@ once, against the endbotd endpoint, not against the file request channel being r
      **Landed** (2026-10-30 JST). Bots and Groups created from the console stay unowned.
    - **4b. Enforcement in target resolution**, per member for Groups, so a command, form, script or web call on
      someone else's private Bot fails the same way (S4). Players see refusals only after someone makes an
-     item private. *Claude.*
+     item private. *Claude.* **Landed** (2026-10-30 JST). One check before the runtime for every
+     named Bot (Group members before the batch is sent); `forget` and `rename` on someone else's shared Bot are
+     owner-only (S12); private Groups resolve as not found for others (S4).
    - **4c. Owner commands.** `share` / `private` for Bots and Groups and console reassignment of owners for Bots,
      Groups and scripts, with names from the [interface guide](INTERFACE_GUIDE.md). Players see the new subcommands.
      *DeepSeek.*

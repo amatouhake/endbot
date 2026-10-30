@@ -13,7 +13,7 @@ from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.limits import BotLimits
 from endbot_core.link import error_from_wire
 from endbot_core.operations import ALIASES, OPERATIONS, RESERVED_BOT_NAMES, Operation
-from endbot_core.ownership import OwnershipStore, owner_key
+from endbot_core.ownership import OwnershipRefused, OwnershipStore, owner_key
 from endbot_core.principal import as_job
 
 
@@ -33,6 +33,10 @@ OUTCOME_CODES = frozenset({"ok", "unauthorized", "not_found", "invalid_argument"
                            "timeout"})
 # Input channels whose continuing work is a job a script can wait for (BOT-016).
 INPUT_JOBS = ("move", "jump", "attack", "use", "interact")
+# Operations that name no Bot to act on, so ownership never refuses them (BOT-024 4b).
+UNOWNED_OPERATIONS = frozenset({"ping", "help", "list"})
+# On someone else's shared Bot these stay with its owner and the console (S12); share/private arrive in 4c.
+OWNER_OPERATIONS = frozenset({"forget", "rename"})
 # Runtime and member error codes by outcome. The runtime's own "unauthorized"
 # is a rejected plugin token, an installation problem rather than the user's.
 ERROR_CODES = {
@@ -47,6 +51,9 @@ ERROR_CODES = {
 
 def error_code(error: BaseException) -> str:
     """The outcome code for an error that ended an operation."""
+    if isinstance(error, OwnershipRefused):
+        # Not the runtime's own "unauthorized" (a rejected token), which ERROR_CODES maps to unavailable.
+        return "unauthorized"
     code = getattr(error, "code", None)
     if isinstance(error, RuntimeControlError) or code in ERROR_CODES:
         return ERROR_CODES.get(code, "unavailable")
@@ -1169,6 +1176,12 @@ class BotCommandService:
                     if self._end_mining_loop(key, entry):
                         notices.append(self._mining_notice(entry, "warning", "control permission revoked"))
                     continue
+                if (self.ownership is not None and owner_key(source) is not None
+                        and not self.ownership.visible_to("bots", identity, source)):
+                    # The owner made the Bot private while this loop ran: it is no longer this player's to drive.
+                    if self._end_mining_loop(key, entry):
+                        notices.append(self._mining_notice(entry, "warning", "the Bot became private"))
+                    continue
                 status = self.control.request("status", name=name)
                 self._mining_unreachable.pop(key, None)  # reached the runtime again
                 mining = status.get("mining") or {}
@@ -1373,8 +1386,38 @@ class BotCommandService:
                     name = tokens[0]
             return CommandResult(True, (reply(detail, name, ERROR),), accepted=False, code=error_code(error))
 
-    def _execute(self, command: BotCommand, sender, lang: str = "en", *, control=None) -> CommandResult:
+    def owner_check(self, command: BotCommand, sender, identity: str | None = None) -> None:
+        """Refuse someone else's private Bot, or an owner-only action on someone else's Bot (4b, S4, S12).
+
+        Every surface reaches a named Bot through here (typed, forms, scripts, Group members), so they all fail
+        the same way. ``identity`` is the Bot's profile UUID when the caller has pinned it; otherwise the name is
+        looked up. Nothing is refused while nobody owns a Bot, and the console is never refused.
+        """
+        store = self.ownership
+        if (store is None or command.name is None or command.operation in UNOWNED_OPERATIONS
+                or owner_key(sender) is None or not store.has_entries("bots")):
+            return
+        if identity is None:
+            identity = next((str(bot["identityId"]) for bot in bot_profiles(self.control)
+                             if bot.get("identityId") and bot["name"].casefold() == command.name.casefold()), None)
+            if identity is None:
+                return  # No such Bot yet (a new spawn) or the runtime answers not found itself.
+        entry = store.get("bots", identity)
+        if entry is None:
+            return
+        owner = entry.owner_name or "?"
+        if not store.visible_to("bots", identity, sender):
+            raise OwnershipRefused("Bot {name} is private to {owner}", name=command.name, owner=owner)
+        if command.operation in OWNER_OPERATIONS and not store.is_owner("bots", identity, sender):
+            raise OwnershipRefused("Only {owner} or the console can {operation} Bot {name}", owner=owner,
+                                   operation=command.operation, name=command.name)
+
+    def _execute(self, command: BotCommand, sender, lang: str = "en", *, control=None,
+                 owner_checked: bool = False) -> CommandResult:
         control = self.control if control is None else control
+        if not owner_checked:
+            self.owner_check(command, sender, getattr(control, "identity", None)
+                             or command.parameters.get("identityId"))
 
         started = {}  # The job a continuing operation left running, for its result's data.
 

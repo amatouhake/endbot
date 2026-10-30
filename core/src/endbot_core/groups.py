@@ -26,6 +26,7 @@ from endbot_core.control import RuntimeControlError, bot_profiles
 from endbot_core.group_forms import GroupListView, GroupView, ResultView
 from endbot_core.group_results import PAGE_SIZE, MemberResult, ResultStore
 from endbot_core.i18n import LocalizedError, localize_error, tr
+from endbot_core.ownership import owner_key
 
 GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}\Z")
 # Indexes stay under 10 digits: a larger number is never a member and must not reach int().
@@ -181,6 +182,44 @@ class GroupStore:
         return group, members, indexed
 
 
+class _VisibleGroups:
+    """A GroupStore as one principal sees it: another person's private Group resolves as not found (S4)."""
+
+    def __init__(self, store: GroupStore, visible):
+        self._store, self._visible = store, visible
+
+    @property
+    def groups(self) -> tuple[Group, ...]:
+        return tuple(group for group in self._store.groups if self._visible(group))
+
+    def get(self, name: str) -> Group:
+        group = self._store.get(name)
+        if not self._visible(group):
+            raise LocalizedError("Group {name} does not exist", name=name)
+        return group
+
+    def select(self, target: str):
+        group, members, indexed = self._store.select(target)
+        if not self._visible(group):
+            raise LocalizedError("Group {name} does not exist", name=GROUP_TARGET.fullmatch(target)[1])
+        return group, members, indexed
+
+    def create(self, name: str) -> Group:
+        # Names are server-wide; a hidden Group holding this one is not confirmed to exist (S4).
+        if any(group.name.casefold() == name.casefold() and not self._visible(group) for group in self._store.groups):
+            raise LocalizedError("Group name {name} is not available", name=name)
+        return self._store.create(name)
+
+    def delete(self, name: str) -> None:
+        self._store.delete(self.get(name).name)
+
+    def add(self, name: str, identity: str) -> None:
+        self._store.add(self.get(name).name, identity)
+
+    def remove(self, name: str, identity: str) -> None:
+        self._store.remove(self.get(name).name, identity)
+
+
 class _MemberControl:
     """Pin name-based IPC to a UUID and recheck controller authority before every request."""
 
@@ -224,12 +263,19 @@ class GroupCommandService(BotCommandService):
     def cancel_groups(self):
         self._groups_open = False
 
-    def _store(self) -> GroupStore:
+    def _store(self, sender=None) -> GroupStore:
+        """The Groups ``sender`` may see: someone else's private Group is not there (S4)."""
         if self.groups is None:
             raise LocalizedError(
                 "Groups are unavailable because the groups file could not be loaded; see the server log"
             )
-        return self.groups
+        if self.ownership is None or not self.ownership.has_entries("groups") or owner_key(sender) is None:
+            return self.groups
+        return _VisibleGroups(self.groups, lambda group: self.ownership.visible_to("groups", group.identity, sender))
+
+    def visible_groups(self, sender) -> tuple[Group, ...]:
+        """The Groups a menu or script parameter offers ``sender``; empty when the store did not load."""
+        return self._store(sender).groups if self.groups is not None else ()
 
     def _check(self, sender):
         if not self._groups_open or not self.authorize(sender):
@@ -260,7 +306,7 @@ class GroupCommandService(BotCommandService):
             detail = tr(_language(sender), "menu is available only to players; use /bot help")
             return CommandResult(True, (reply(detail),))
         if group is None:
-            return CommandResult(True, view=GroupListView(self._store().groups))
+            return CommandResult(True, view=GroupListView(self._store(sender).groups))
         self._form_group(sender, group)
         if page > max(1, (len(group.members) + PAGE_SIZE - 1) // PAGE_SIZE):
             raise LocalizedError("Group member page is out of range")
@@ -342,7 +388,7 @@ class GroupCommandService(BotCommandService):
             if operation == "menu" and not tail:
                 return self._menu(sender)
             if operation in {"result", "menu"} and tail:
-                group = self._store().get(group_reference(tail[0]))
+                group = self._store(sender).get(group_reference(tail[0]))
                 if operation == "result" and len(tail) in {1, 2}:
                     return self._result(sender, group, self._positive(tail, 1, HISTORY_ERROR))
                 if operation == "menu":
@@ -351,23 +397,23 @@ class GroupCommandService(BotCommandService):
                     if len(tail) in {1, 2}:
                         return self._menu(sender, group, self._positive(tail, 1, PAGE_ERROR))
             if operation == "list" and not tail:
-                names = ", ".join(f"#{group.name} ({len(group.members)})" for group in self._store().groups)
+                names = ", ".join(f"#{group.name} ({len(group.members)})" for group in self._store(sender).groups)
                 return CommandResult(True, (reply(names or tr(lang, "no groups")),))
             if operation in {"create", "delete", "list"} and len(tail) == 1:
                 name = group_reference(tail[0])
                 if operation == "create":
-                    group = self._store().create(name)
+                    group = self._store(sender).create(name)
                     if self.ownership is not None:
                         self.ownership.record("groups", group.identity, sender)
                     return CommandResult(True, (reply(tr(lang, "group created"), f"#{group.name}"),))
                 if operation == "delete":
-                    group = self._store().get(name)
+                    group = self._store(sender).get(name)
                     self._form_group(sender, group)
-                    self._store().delete(name)
+                    self._store(sender).delete(name)
                     if self.ownership is not None:
                         self.ownership.forget("groups", group.identity)
                     return CommandResult(True, (reply(tr(lang, "group deleted; Bots retained"), f"#{name}"),))
-                group = self._store().get(name)
+                group = self._store(sender).get(name)
                 self._form_group(sender, group)
                 profiles = self._profiles(sender)
                 rows = []
@@ -379,10 +425,10 @@ class GroupCommandService(BotCommandService):
                 return CommandResult(True, tuple(rows) or (reply(tr(lang, "no members"), f"#{group.name}"),))
             if operation in {"add", "remove"} and len(tail) == 2:
                 name, target = group_reference(tail[0]), tail[1]
-                group = self._store().get(name)
+                group = self._store(sender).get(name)
                 self._form_group(sender, group)
                 if operation == "remove" and target.startswith("#"):
-                    selected_group, selected, indexed = self._store().select(target)
+                    selected_group, selected, indexed = self._store(sender).select(target)
                     if not indexed or selected_group.identity != group.identity:
                         raise ValueError("Remove requires a Bot name or one indexed member of this group")
                     identity = selected[0][1]
@@ -398,7 +444,7 @@ class GroupCommandService(BotCommandService):
                         if candidates.get(target.casefold()) != identity:
                             raise LocalizedError("Bot changed while the menu was open; reopen the menu")
                 self._check(sender)
-                getattr(self._store(), operation)(name, identity)
+                getattr(self._store(sender), operation)(name, identity)
                 template = "add: {target}" if operation == "add" else "remove: {target}"
                 return CommandResult(True, (reply(tr(lang, template, target=target), f"#{group.name}"),))
             raise ValueError("Invalid group command; use /botgroup help")
@@ -440,6 +486,8 @@ class GroupCommandService(BotCommandService):
                     continue
                 member = replace(command, name=bot["name"])
                 try:
+                    # Before the batch is sent: another person's private member is refused alone (S11).
+                    self.owner_check(member, sender, identity)
                     if command.operation == "look" and "targetCoordinates" in command.parameters:
                         yaw, pitch = self.world.look_at(identity, command.parameters["targetCoordinates"])
                         member = replace(member, parameters={"yaw": yaw, "pitch": pitch})
@@ -468,7 +516,7 @@ class GroupCommandService(BotCommandService):
                 continue
             index, identity, member = entry
             try:
-                result = self._execute(member, sender, lang,
+                result = self._execute(member, sender, lang, owner_checked=True,
                                        control=_BatchReplyControl(member.operation, next(responses)))
                 rows.append(self._row(index, identity, member.name, result=result))
             except (RuntimeError, ValueError) as error:
@@ -523,7 +571,7 @@ class GroupCommandService(BotCommandService):
                 command = parse_command(arguments)
                 if guard is not None and command.name:
                     self._check(sender)
-                    self._form_group(sender, self._store().get(guard.name))
+                    self._form_group(sender, self._store(sender).get(guard.name))
                     if guard.bot_identity is not None:
                         if command.name.casefold() != guard.bot_name.casefold():
                             raise ValueError("Menu Bot changed; reopen the menu")
@@ -532,20 +580,20 @@ class GroupCommandService(BotCommandService):
                         result = self._execute(command, sender, _language(sender), control=_MemberControl(
                             self.control, guard.bot_identity, lambda: self._check(sender)))
                         if isinstance(result.data, dict) and result.data.get("menu") == "bot":
-                            group = self._group_data(self._store().get(guard.name))
+                            group = self._group_data(self._store(sender).get(guard.name))
                             result = replace(result, data={**result.data, "group": group})
                         return result
                 result = super().execute(arguments, sender)
                 if isinstance(result.data, dict) and result.data.get("menu") == "bots":
                     self._check(sender)
                     # A store that failed to load disables groups, never the Bot list.
-                    groups = self.groups.groups if self.groups is not None else ()
+                    groups = self.visible_groups(sender)
                     targets = [{"identity": group.identity, "name": group.name, "count": len(group.members)}
                                for group in groups]
                     result = replace(result, data={**result.data, "groups": targets})
                 return result
             command = parse_command(arguments)
-            group, members, indexed = self._store().select(tokens[0])
+            group, members, indexed = self._store(sender).select(tokens[0])
             self._check(sender)
             self._form_group(sender, group)
             if not indexed and command.operation == "menu":

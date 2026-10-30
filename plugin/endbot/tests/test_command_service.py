@@ -5,6 +5,7 @@ from endbot_core.control import RuntimeControlError
 from endbot_core.i18n import LocalizedError
 from endbot_core.limits import BotLimits
 from endbot_core.link import LinkError, error_from_wire, error_to_wire, resolve_mining_batch
+from endbot_core.operations import Operation
 from endbot_core.ownership import Ownership, OwnershipStore
 from endbot_core.principal import Principal
 from plain_service import PlainCommandService
@@ -834,6 +835,73 @@ class OwnershipRecordingTests(unittest.TestCase):
         self.assertIsNone(self.ownership.get("bots", identity))
 
 
+class OwnershipEnforcementTests(unittest.TestCase):
+    """Someone else's private Bot is refused alike from every entry; S12 owner-only actions (BOT-024 4b)."""
+
+    def setUp(self) -> None:
+        self.control = FakeControl()
+        self.world = FakeWorld()
+        self.ownership = OwnershipStore()
+        self.service = PlainCommandService(self.control, self.world, ownership=self.ownership)
+        self.alice = Principal("player", name="Alice", xuid="2535400000000001",
+                               player_id="0000000a-0000-4000-8000-00000000000a")
+        self.bob = Principal("player", name="Bob", xuid="2535400000000002",
+                             player_id="0000000b-0000-4000-8000-00000000000b")
+        self.service.execute(["Mine", "spawn"], self.alice)
+        self.identity = self.control.bots["Mine"]["identityId"]
+
+    def test_someone_elses_private_bot_is_listed_but_refused(self):
+        self.ownership.set_visibility("bots", self.identity, "private")
+        for argv in (["Mine", "status"], ["Mine", "move", "forward"], ["Mine", "spawn"], ["Mine", "menu"],
+                     ["Mine", "forget"]):
+            with self.subTest(argv=argv):
+                result = self.service.execute(argv, self.bob)
+                self.assertFalse(result.accepted)
+                self.assertEqual(result.code, "unauthorized")
+                self.assertIn("Bot Mine is private to Alice", result.message)
+        # The typed operation entry (forms, scripts and the web) fails the same way.
+        typed = self.service.execute_operation(Operation("status", "Mine", {}), self.bob)
+        self.assertEqual((typed.accepted, typed.code), (False, "unauthorized"))
+        self.assertIn("Mine", self.service.execute(["list"], self.bob).message)
+        self.assertTrue(self.service.execute(["Mine", "status"], self.alice).accepted)
+        self.assertTrue(self.service.execute(["Mine", "status"], Principal("console")).accepted)
+
+    def test_someone_elses_shared_bot_is_operated_but_forget_and_rename_stay_with_the_owner(self):
+        self.assertTrue(self.service.execute(["Mine", "move", "forward"], self.bob).accepted)
+        for argv in (["Mine", "forget"], ["Mine", "rename", "Theirs"]):
+            with self.subTest(argv=argv):
+                result = self.service.execute(argv, self.bob)
+                self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
+                self.assertIn("Only Alice or the console can", result.message)
+        self.assertIn("Mine", self.control.bots)
+        self.assertTrue(self.service.execute(["Mine", "rename", "Ours"], self.alice).accepted)
+        self.assertTrue(self.service.execute(["Ours", "forget"], Principal("console")).accepted)
+
+    def test_a_loop_on_a_bot_that_becomes_private_ends(self):
+        reply = self.service.execute(["Mine", "destroy", "continuous"], self.bob)
+        self.assertIn("destroy continuous started", reply.message)
+        self.ownership.set_visibility("bots", self.identity, "private")
+        self.control.calls.clear()
+        notices = self.service.poll_mining(lambda _: True)
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(notices[0][2], "Endbot: Mine: destroy continuous stopped: the Bot became private")
+        self.assertEqual(self.service._mining_loops, {})
+        self.assertNotIn(("mine", {"name": "Mine", "mode": "continue"}),
+                         [(operation, {k: v for k, v in params.items() if k in {"name", "mode"}})
+                          for operation, params in self.control.calls])
+
+    def test_unowned_bots_stay_fully_shared(self):
+        self.service.execute(["Old", "spawn"], Principal("console"))
+        self.assertTrue(self.service.execute(["Old", "rename", "Older"], self.bob).accepted)
+        self.assertTrue(self.service.execute(["Older", "forget"], self.bob).accepted)
+
+    def test_without_owners_no_profile_lookup_is_added(self):
+        service = PlainCommandService(self.control, self.world, ownership=OwnershipStore())
+        self.control.calls.clear()
+        service.execute(["Mine", "status"], self.bob)
+        self.assertNotIn("profiles", [operation for operation, _ in self.control.calls])
+
+
 class SeatLimitTests(unittest.TestCase):
     """The [limits] budget: Bots must leave the reserved slots for players."""
 
@@ -959,8 +1027,8 @@ class PerControllerLimitTests(unittest.TestCase):
             refused.message,
         )
         self.assertNotIn("Gamma", self.control.bots)
-        # Only the existing-profile probe ran; the runtime was never asked to create it.
-        self.assertEqual(len(self.control.calls), calls + 1)
+        # Only lookups ran (the existing-profile probe, the ownership check's profile list); nothing was created.
+        self.assertNotIn("spawn", [operation for operation, _ in self.control.calls[calls:]])
 
     def test_another_player_has_their_own_count(self):
         alice, bob = self.player(), self.player("Bob", xuid="2535400000000002",

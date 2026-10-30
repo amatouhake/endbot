@@ -19,6 +19,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import UUID
 
+from endbot_core.i18n import LocalizedError
+
 FILE_NAME = "ownership.json"
 VISIBILITIES = ("shared", "private")
 KINDS = ("bots", "groups")
@@ -64,6 +66,12 @@ def _is_owner(owner) -> bool:
 
 def _is_owner_name(owner_name) -> bool:
     return owner_name is None or (isinstance(owner_name, str) and len(owner_name) <= MAX_OWNER_NAME_LENGTH)
+
+
+class OwnershipRefused(LocalizedError):
+    """Someone else's private Bot, or an owner-only action on someone else's Bot (4b): the authorization outcome."""
+
+    code = "unauthorized"
 
 
 @dataclass(frozen=True)
@@ -132,6 +140,10 @@ class OwnershipStore:
 
     def get(self, kind: str, identity: str) -> Ownership | None:
         return self._entries[_kind(kind)].get(_identity(identity))
+
+    def has_entries(self, kind: str) -> bool:
+        """Whether any item of ``kind`` has an owner; without one nothing can be refused."""
+        return bool(self._entries[_kind(kind)])
 
     def count(self, kind: str, owner: str | None) -> int:
         """How many entries of ``kind`` this owner key owns; the console (None) owns none."""

@@ -58,6 +58,18 @@ others can use. The console is never refused, and the check fails closed for any
 or the console. An older Endbot ignores the file, so after a rollback every controller
 can author again.
 
+Bots and Groups have owners ([PERMISSIONS.md](PERMISSIONS.md#ownership)), kept by endbotd in `state/ownership.json`:
+a player's new Bot or Group (or one a script run creates, for the run's invoker) is owned by that player with the
+`[permissions]` default visibility; console creations and everything created before ownership are unowned and shared.
+Every command that names a Bot — typed, from a form, from a script or, later, the web — passes one check before it
+reaches the runtime: someone else's **private** Bot is refused with the authorization outcome (it stays listed, since
+it is visible in game), and on someone else's shared Bot `forget` and `rename` stay with its owner. A Group operation
+checks each member before anything is sent, so only the members the invoker may not operate are refused. Someone
+else's private Group is left out of lists and menus and resolves as not found; its name stays taken, and
+creating it only says the name is not available. A script's waits on a Bot pass the same check, and a continuing
+mining job ends when its Bot becomes private to someone else. The console is never refused. An older
+Endbot ignores the file, so after a rollback private Bots and Groups are shared again.
+
 Controller CLI requests use one atomic file per random request ID, bound to the current supervisor session. The
 supervisor validates and removes a request from the queue before forwarding its ID to the console-only plugin handler;
 only that handler executes the operation and writes the correlated result atomically. Old-session requests are rejected,

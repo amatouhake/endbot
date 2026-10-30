@@ -188,16 +188,17 @@ class Authority:
                 messages.append("none; the server console remains authorized")
             return {"ok": True, "messages": messages, "entries": rows}, []
         operation = args[0].lower()
-        if operation == "add" and len(args) >= 3 and args[-2] == "--role":
-            # Console text: the option follows the GamerTag.
-            if role is None:
-                role = args[-1]
-            args = args[:-2]
+        if target is None and len(args) >= 2:
+            # Console text, which BDS may pass as one argument: quoted names may contain spaces, and the role
+            # option follows the GamerTag.
+            words = shlex.split(" ".join(args[1:]))
+            if operation == "add" and len(words) >= 3 and words[-2] == "--role":
+                if role is None:
+                    role = words[-1]
+                words = words[:-2]
+            target = " ".join(words)
         if operation == "add" and role is not None and role not in ROLES:
             raise ValueError("role must be scripter or controller")
-        if target is None and len(args) >= 2:
-            # Console text: quoted names may contain spaces.
-            target = " ".join(shlex.split(" ".join(args[1:])))
         if operation not in {"add", "remove"} or not target:
             raise ValueError(
                 "Use botcontrollers list|add <GamerTag> [--role scripter|controller]|remove "

@@ -264,6 +264,19 @@ class AuthorityTests(unittest.TestCase):
         self.assertIn("Some Name: pending - awaiting first Xbox-authenticated join (role scripter)", lines)
         self.assertEqual(authority.roles.pending_role("Some Name"), "scripter")
 
+    def test_console_text_in_one_argument_reads_a_quoted_name_and_the_role_option(self):
+        # The BDS console hands botcontrollers its whole text as one argument (found by the live smoke).
+        authority = self.authority()
+        lines, _ = authority.manage(["add", '"Pending Controller" --role scripter'])
+        self.assertEqual(lines[0], "Endbot: controller Pending Controller updated")
+        self.assertEqual(authority.roles.pending_role("Pending Controller"), "scripter")
+        lines, _ = authority.manage(["add", "Plain --role controller"])
+        self.assertEqual(lines[0], "Endbot: controller Plain updated")
+        self.assertEqual(authority.roles.pending_role("Plain"), "controller")
+        lines, _ = authority.manage(["add", "Other --role admin"])
+        self.assertIn("role must be scripter or controller", lines[0])
+        self.assertIsNone(authority.roles.pending_role("Other"))
+
     def test_an_invalid_role_changes_nothing(self):
         authority, owner = self.authority(), player()
         self.join(authority, owner)

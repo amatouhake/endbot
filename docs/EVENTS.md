@@ -310,7 +310,7 @@ No release is cut from main until BOT-020, BOT-024, BOT-021 and BOT-022 are all 
    - **7b. Trigger list and editor UI** from the registry, with the declaration shown before enabling. *DeepSeek.*
 8. **Validation**, inside the combined release pass (below). Recorded in a docs PR.
 
-### Validation in the single final pass
+### Validation in the release pass
 
 Live RakNet smoke on the locked pair (`scripts/raknet_spike.py` gains an `--events` case set):
 

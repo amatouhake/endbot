@@ -155,8 +155,7 @@ retain the pinned BDS baseline's completion limitations.
 /botscript stop <run-id|name|all>
 /botscript delete <name>
 /botscript copy <name> <new-name>
-/botscript share <name>
-/botscript private <name>
+/botscript visibility <name> shared|private
 /botscript owner <name> <GamerTag>
 /botscript history <name>
 /botscript restore <name> <n>
@@ -179,7 +178,8 @@ Each script records its creator as owner (by XUID, else player UUID). Only the o
 delete, restore or change its visibility; everyone else gets "only the owner may change" and is pointed to
 **Copy and edit**. A script is `private` (only the owner sees and runs it; to others it does not exist) or
 `shared` (every controller may list, show, run and copy it). New scripts and copies start `private`;
-`share`/`private` switch it. `copy <name> <new-name>` makes a private copy owned by the copier, and the owner's
+`visibility <name> shared|private` switches it (0.4.0's `share <name>` and `private <name>` still work in 0.5.0 and are
+removed in the next release). `copy <name> <new-name>` makes a private copy owned by the copier, and the owner's
 `rename <name> <new-name>` keeps the owner, visibility and history (running copies keep the old name). Every save keeps
 the previous source in a history of the last 10 revisions; `history` lists them (newest first, with time and
 line count) and `restore <name> <n>` makes revision `n` current as a new save, keeping the replaced source in the
@@ -484,8 +484,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:reconnect()` | none | none |
 | `:despawn()` | none | none |
 | `:forget()` | none | none |
-| `:share()` | none | none |
-| `:private()` | none | none |
+| `:visibility()` | visibility: shared / private | none |
 | `:stop()` | none | none |
 | `:dismount()` | none | none |
 | `:menu()` | none | none |

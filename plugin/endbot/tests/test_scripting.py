@@ -216,6 +216,7 @@ class OperationParityTests(unittest.TestCase):
             ],
             "rename": [({"name": "Other"}, ["rename", "Other"])],
             "owner": [({"gamertag": "Bob"}, ["owner", "Bob"])],
+            "visibility": [({"visibility": "private"}, ["visibility", "private"])],
             "tp": [
                 ({"target": "Player"}, ["tp", "Player"]),
                 (
@@ -1099,16 +1100,25 @@ class OwnershipTests(unittest.TestCase):
         guard = script_forms.ScriptGuard(revision, None if revision is None else name, edit=True)
         return self.host.execute(["save", name, text], replace(source, group_guard=guard))
 
+    def test_the_0_4_0_share_and_private_spellings_still_change_visibility(self):
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n").accepted)
+        self.assertTrue(self.host.execute(["share", "mine"], self.alice).accepted)
+        self.assertEqual(self.store.get("mine").visibility, "shared")
+        self.assertTrue(self.host.execute(["private", "mine"], self.alice).accepted)
+        self.assertEqual(self.store.get("mine").visibility, "private")
+        self.assertFalse(self.host.execute(["visibility", "mine", "public"], self.alice).accepted)
+        self.assertEqual(self.store.get("mine").visibility, "private")
+
     def test_a_controller_runs_and_narrows_but_never_authors(self):
         self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v1").accepted)
-        self.assertTrue(self.host.execute(["share", "mine"], self.alice).accepted)
+        self.assertTrue(self.host.execute(["visibility", "mine", "shared"], self.alice).accepted)
         self.assertTrue(self.save(self.alice, "theirs", "params {}\n").accepted)
         self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v2", self.store.get("mine").revision).accepted)
         # Alice becomes a controller: S6 lists what authoring is.
         controller = replace(self.alice, role="controller")
         before = self.store.get("mine")
         for argv in (["copy", "mine", "x"], ["rename", "mine", "other"], ["restore", "mine", "1"],
-                     ["share", "mine"], ["edit", "mine"], ["import", "fresh"]):
+                     ["visibility", "mine", "shared"], ["share", "mine"], ["edit", "mine"], ["import", "fresh"]):
             with self.subTest(argv=argv):
                 result = self.host.execute(argv, controller)
                 self.assertFalse(result.accepted)
@@ -1125,7 +1135,7 @@ class OwnershipTests(unittest.TestCase):
         self.assertIn("scripter ロール", self.text(japanese))
         # Running, private and deleting their own scripts only narrow what others can use.
         self.assertTrue(self.host.execute(["show", "mine"], controller).accepted)
-        self.assertTrue(self.host.execute(["private", "mine"], controller).accepted)
+        self.assertTrue(self.host.execute(["visibility", "mine", "private"], controller).accepted)
         self.assertTrue(self.host.execute(["delete", "theirs"], controller).accepted)
         # The console and scripters (and grants with no role recorded) still author.
         self.assertTrue(self.host.execute(["copy", "mine", "x"], replace(self.alice, role="scripter")).accepted)
@@ -1137,7 +1147,7 @@ class OwnershipTests(unittest.TestCase):
 
     def test_a_controllers_menus_leave_out_authoring(self):
         self.assertTrue(self.save(self.alice, "mine", "params {}\n").accepted)
-        self.assertTrue(self.host.execute(["share", "mine"], self.alice).accepted)
+        self.assertTrue(self.host.execute(["visibility", "mine", "shared"], self.alice).accepted)
         controller = replace(self.alice, role="controller")
 
         def labels(screen):
@@ -1162,7 +1172,7 @@ class OwnershipTests(unittest.TestCase):
         bob = replace(self.bob, role="controller")
         other = script_view(self.host.execute(["menu", "mine"], bob).data)
         self.assertTrue(other.content.startswith("Shared by Alice. Run it.\n"))
-        self.assertTrue(self.host.execute(["private", "mine"], self.alice).accepted)
+        self.assertTrue(self.host.execute(["visibility", "mine", "private"], self.alice).accepted)
         shown = labels(script_view(self.host.execute(["menu", "mine"], controller).data))
         self.assertNotIn("Share with controllers", shown)
         self.assertIn("Share with controllers", labels(script_view(self.host.execute(["menu", "mine"],
@@ -1184,11 +1194,11 @@ class OwnershipTests(unittest.TestCase):
         for argv in (["show", "mine"], ["run", "mine"], ["delete", "mine"], ["copy", "mine", "x"]):
             self.assertIn("does not exist", self.text(self.host.execute(argv, self.bob)), argv)
         self.assertIn("mine (yours, private)", self.text(self.host.execute(["list"], self.alice)))
-        self.assertTrue(self.host.execute(["share", "mine"], self.alice).accepted)
+        self.assertTrue(self.host.execute(["visibility", "mine", "shared"], self.alice).accepted)
         # Shared: Bob may run, show and copy, never change.
         self.assertIn("mine (Alice, shared)", self.text(self.host.execute(["list"], self.bob)))
         self.assertTrue(self.host.execute(["show", "mine"], self.bob).accepted)
-        for argv in (["delete", "mine"], ["private", "mine"], ["restore", "mine", "1"]):
+        for argv in (["delete", "mine"], ["visibility", "mine", "private"], ["restore", "mine", "1"]):
             self.assertIn("Only the owner Alice", self.text(self.host.execute(argv, self.bob)), argv)
         stale = self.store.get("mine").revision
         self.assertIn("Only the owner", self.text(self.save(self.bob, "mine", "params {}\n-- bob", stale)))
@@ -1206,7 +1216,7 @@ class OwnershipTests(unittest.TestCase):
         self.assertEqual([r.source for r in restored.history], ["params {}\n-- v2", "params {}\n-- v1"])
         self.assertIn("out of range", self.text(self.host.execute(["restore", "mine", "9"], self.alice)))
         # The console is the operator: it sees and changes every script.
-        self.assertTrue(self.host.execute(["private", "bobs"], self.console).accepted)
+        self.assertTrue(self.host.execute(["visibility", "bobs", "private"], self.console).accepted)
         self.assertIn("bobs (Bob, private)", self.text(self.host.execute(["list"], self.console)))
         reloaded = ScriptStore(self.path, self.config).get("mine")
         self.assertEqual(reloaded, restored)
@@ -1281,7 +1291,7 @@ class OwnershipTests(unittest.TestCase):
                     if button.text == "Copy and edit...").action.screen
         self.assertEqual(copy.controls[-1].default_value, "mine_copy")
         self.assertIsNone(copy.guard.revision)
-        self.host.execute(["share", "mine"], self.alice)
+        self.host.execute(["visibility", "mine", "shared"], self.alice)
         self.assertIn("Only the owner", self.text(self.host.execute(["edit", "mine"], self.bob)))
 
     def test_line_editor_offers_the_whole_script_field_from_config(self):
@@ -1356,7 +1366,8 @@ class FileScriptTests(unittest.TestCase):
         self.assertEqual((script.source, script.visibility, script.file), ("params {}\nlog('a')\n", "shared", True))
         self.assertIn("patrol (file, shared)", self.text(self.host.execute(["list"], self.alice)))
         self.assertTrue(self.host.execute(["show", "patrol"], self.alice).accepted)
-        for argv in (["delete", "patrol"], ["rename", "patrol", "other"], ["share", "patrol"], ["edit", "patrol"]):
+        for argv in (["delete", "patrol"], ["rename", "patrol", "other"], ["visibility", "patrol", "shared"],
+                     ["edit", "patrol"]):
             with self.subTest(argv=argv):
                 self.assertIn("comes from a file", self.text(self.host.execute(argv, self.alice)))
         guard = script_forms.ScriptGuard(script.revision, "patrol", edit=True)
@@ -1683,7 +1694,7 @@ class BookTests(unittest.TestCase):
         script = self.store.get("frombook")
         self.assertEqual((script.name, script.source), ("fromBook", "params {}\n-- v2\n"))
         self.assertEqual(len(script.history), 1)
-        self.host.execute(["share", "fromBook"], self.alice)
+        self.host.execute(["visibility", "fromBook", "shared"], self.alice)
         self.assertIn("Only the owner Alice", self.text(self.host.execute(["import", "fromBook"], self.bob)))
         self.world.item = FakeItem("minecraft:stick")
         self.assertIn("Hold a book", self.text(self.host.execute(["import", "other"], self.alice)))

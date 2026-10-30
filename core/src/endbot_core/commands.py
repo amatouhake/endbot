@@ -13,7 +13,7 @@ from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.limits import BotLimits
 from endbot_core.link import error_from_wire
 from endbot_core.operations import ALIASES, OPERATIONS, RESERVED_BOT_NAMES, Operation
-from endbot_core.ownership import OwnershipRefused, OwnershipStore, owner_for_gamertag, owner_key
+from endbot_core.ownership import VISIBILITIES, OwnershipRefused, OwnershipStore, owner_for_gamertag, owner_key
 from endbot_core.principal import as_job
 
 
@@ -35,8 +35,8 @@ OUTCOME_CODES = frozenset({"ok", "unauthorized", "not_found", "invalid_argument"
 INPUT_JOBS = ("move", "jump", "attack", "use", "interact")
 # Operations that name no Bot to act on, so ownership never refuses them (BOT-024 4b).
 UNOWNED_OPERATIONS = frozenset({"ping", "help", "list"})
-# On someone else's shared Bot these stay with its owner and the console (S12); share/private arrived in 4c.
-OWNER_OPERATIONS = frozenset({"forget", "rename", "share", "private"})
+# On someone else's shared Bot these stay with its owner and the console (S12); visibility arrived in 4c.
+OWNER_OPERATIONS = frozenset({"forget", "rename", "visibility"})
 # Runtime and member error codes by outcome. The runtime's own "unauthorized"
 # is a rejected plugin token, an installation problem rather than the user's.
 ERROR_CODES = {
@@ -216,22 +216,13 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ("rename <new-name>",),
         ("Reconnects automatically so the login name changes.",),
     ),
-    "share": HelpTopic(
-        "share",
-        "share a Bot with every controller",
-        ("share",),
+    "visibility": HelpTopic(
+        "visibility",
+        "make a Bot shared with every controller or private to its owner",
+        ("visibility shared", "visibility private"),
         (
-            "Only the owner or the console can share a Bot.",
+            "Only the owner or the console can change a Bot's visibility.",
             "An unowned Bot stays shared; the console assigns its owner first.",
-        ),
-    ),
-    "private": HelpTopic(
-        "private",
-        "make a Bot private to its owner",
-        ("private",),
-        (
-            "Only the owner or the console can make a Bot private.",
-            "An unowned Bot has no owner yet; the console must assign one first.",
         ),
     ),
     "owner": HelpTopic(
@@ -481,8 +472,8 @@ BLOCKS_CLAUSES = {"radius": (1, 16), "limit": (1, 64)}
 HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
     ("move", "look", "jump", "attack", "use", "sprint", "sneak", "stop"),
-    ("inventory", "hotbar", "swap", "hold", "interact", "destroy", "drop", "radius", "rename", "forget", "share",
-     "private", "owner"),
+    ("inventory", "hotbar", "swap", "hold", "interact", "destroy", "drop", "radius", "rename", "forget",
+     "visibility", "owner"),
     ("entities", "entity", "target", "block", "blocks", "dismount"),
 )
 
@@ -874,7 +865,7 @@ def parse_command(arguments: list[str]) -> BotCommand:
         raise CommandSyntaxError("Unknown or invalid Bot action: {operation}", operation=operation)
     if operation in {
         "status", "inventory", "entities", "entity", "target", "resume", "reconnect", "despawn", "forget", "stop",
-        "menu", "dismount", "share", "private",
+        "menu", "dismount",
     } and not remaining:
         return BotCommand(operation, name)
     if operation == "spawn":
@@ -887,6 +878,10 @@ def parse_command(arguments: list[str]) -> BotCommand:
         return BotCommand(operation, name, {"newName": remaining[0]})
     if operation == "owner" and len(remaining) == 1:
         return BotCommand(operation, name, {"gamertag": remaining[0]})
+    if operation == "visibility":
+        if len(remaining) != 1 or remaining[0].lower() not in VISIBILITIES:
+            raise CommandSyntaxError("Use visibility shared or visibility private")
+        return BotCommand(operation, name, {"visibility": remaining[0].lower()})
     if operation == "tp":
         return _teleport(name, remaining)
     if operation == "move" and remaining and remaining[0].lower() in {"forward", "backward", "left", "right", "stop"}:
@@ -1443,6 +1438,9 @@ class BotCommandService:
         if not store.visible_to("bots", identity, sender):
             raise OwnershipRefused("Bot {name} is private to {owner}", name=command.name, owner=owner)
         if command.operation in OWNER_OPERATIONS and not store.is_owner("bots", identity, sender):
+            if command.operation == "visibility":
+                raise OwnershipRefused("Only {owner} or the console can change the visibility of Bot {name}",
+                                       owner=owner, name=command.name)
             raise OwnershipRefused("Only {owner} or the console can {operation} Bot {name}", owner=owner,
                                    operation=command.operation, name=command.name)
 
@@ -1494,7 +1492,7 @@ class BotCommandService:
             return CommandResult(True, (reply(text, snapshot["name"]),), data=data)
         if self.control is None:
             raise RuntimeError("runtime control is not configured")
-        if command.operation in {"share", "private"}:
+        if command.operation == "visibility":
             status = control.request("status", name=command.name)
             identity, name = status["identityId"], status["name"]
             entry = self.ownership.get("bots", identity) if self.ownership is not None else None
@@ -1506,12 +1504,11 @@ class BotCommandService:
                 )
             if not self.ownership.is_owner("bots", identity, sender):
                 raise OwnershipRefused(
-                    "Only {owner} or the console can {operation} Bot {name}",
+                    "Only {owner} or the console can change the visibility of Bot {name}",
                     owner=entry.owner_name or "?",
-                    operation=command.operation,
                     name=name,
                 )
-            visibility = "shared" if command.operation == "share" else "private"
+            visibility = command.parameters["visibility"]
             self.ownership.set_visibility("bots", identity, visibility)
             return say("Bot {name} is now {visibility}", name, name=name, visibility=Text(visibility))
         if command.operation == "owner":

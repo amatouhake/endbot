@@ -174,7 +174,7 @@ class GroupOwnershipEnforcementTests(unittest.TestCase):
 
 
 class GroupOwnerCommandTests(unittest.TestCase):
-    """Group owners share/private their own Group; only the console assigns owners (BOT-024 4c)."""
+    """Group owners change their own Group's visibility; only the console assigns owners (BOT-024 4c)."""
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -195,30 +195,37 @@ class GroupOwnerCommandTests(unittest.TestCase):
         self.identity = self.store.get("crew").identity
 
     def test_the_owner_shares_and_makes_private_their_own_group(self):
-        shared = self.service.execute_group(["share", "#crew"], self.alice)
+        shared = self.service.execute_group(["visibility", "#crew", "shared"], self.alice)
         self.assertTrue(shared.accepted)
         self.assertIn("Group crew is now shared", messages(shared))
         self.assertEqual(self.ownership.get("groups", self.identity).visibility, "shared")
-        private = self.service.execute_group(["private", "#crew"], self.alice)
+        private = self.service.execute_group(["visibility", "#crew", "private"], self.alice)
         self.assertTrue(private.accepted)
         self.assertIn("Group crew is now private", messages(private))
         self.assertEqual(self.ownership.get("groups", self.identity).visibility, "private")
 
+    def test_visibility_needs_shared_or_private(self):
+        for argv in (["visibility", "#crew"], ["visibility", "#crew", "public"], ["share", "#crew"]):
+            with self.subTest(argv=argv):
+                result = self.service.execute_group(argv, self.alice)
+                self.assertEqual((result.accepted, result.code), (False, "invalid_argument"))
+        self.assertEqual(self.ownership.get("groups", self.identity).visibility, "shared")
+
     def test_another_player_cannot_change_someone_elses_group(self):
-        for operation in ("share", "private"):
-            with self.subTest(operation=operation):
-                result = self.service.execute_group([operation, "#crew"], self.bob)
+        for visibility in ("shared", "private"):
+            with self.subTest(visibility=visibility):
+                result = self.service.execute_group(["visibility", "#crew", visibility], self.bob)
                 self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
-                self.assertIn("Only Alice or the console can", messages(result))
+                self.assertIn("Only Alice or the console can change the visibility of Group crew", messages(result))
         self.assertEqual(self.ownership.get("groups", self.identity).visibility, "shared")
 
     def test_an_unowned_group_is_refused_for_players_and_the_console(self):
         self.service.execute_group(["create", "#open"])
         identity = self.store.get("open").identity
         for sender in (self.alice, None):
-            for operation in ("share", "private"):
-                with self.subTest(console=sender is None, operation=operation):
-                    result = self.service.execute_group([operation, "#open"], sender)
+            for visibility in ("shared", "private"):
+                with self.subTest(console=sender is None, visibility=visibility):
+                    result = self.service.execute_group(["visibility", "#open", visibility], sender)
                     self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
                     self.assertIn(
                         "Group open has no owner; the console can assign one with "
@@ -228,7 +235,7 @@ class GroupOwnerCommandTests(unittest.TestCase):
         self.assertIsNone(self.ownership.get("groups", identity))
 
     def test_the_console_assigns_a_group_owner_and_keeps_the_visibility(self):
-        self.assertTrue(self.service.execute_group(["private", "#crew"], self.alice).accepted)
+        self.assertTrue(self.service.execute_group(["visibility", "#crew", "private"], self.alice).accepted)
         result = self.service.execute_group(["owner", "#crew", "Carol"])
         self.assertTrue(result.accepted)
         self.assertIn("Group crew now belongs to Carol", messages(result))
@@ -258,7 +265,7 @@ class GroupOwnerCommandTests(unittest.TestCase):
         self.assertEqual(self.ownership.get("groups", self.identity).owner, "xuid:2535400000000001")
 
     def test_a_private_group_disappears_from_another_players_list(self):
-        self.assertTrue(self.service.execute_group(["private", "#crew"], self.alice).accepted)
+        self.assertTrue(self.service.execute_group(["visibility", "#crew", "private"], self.alice).accepted)
         self.assertNotIn("#crew", messages(self.service.execute_group(["list"], self.bob)))
         self.assertIn("#crew", messages(self.service.execute_group(["list"], self.alice)))
         self.assertIn("Group crew does not exist", messages(self.service.execute(["#crew", "status"], self.bob)))

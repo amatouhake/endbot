@@ -883,7 +883,7 @@ loop ends only itself. Remeasured the same way (2026-10-29 JST, `--mode batch`, 
 whatever its size: with a 50 ms tick 1, 4, 8 and 32 loops take 49 ms p95 (at most 51 ms) and no poll overruns
 200 ms; with tasks run at once a 32-loop poll takes 0.71 ms p95. `--mode per-loop` keeps the old measurement. Live
 BDS numbers are part of step 6.
-Ships in the single BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery).
+Ships in 0.5.0, see [delivery](DIRECTION.md#delivery).
 
 Grow the supervisor into a long-running endbotd that owns authorization and controller policy, the script store,
 Luau runner orchestration and the operation log. The plugin becomes a world adapter: it renders in-game UI, forwards
@@ -893,8 +893,8 @@ cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
-Status: **Design agreed in [WEB.md](WEB.md), not implemented; after BOT-020 and BOT-024, in the single
-BOT-020/024/021/022 release, see [delivery](DIRECTION.md#delivery)** (2026-10-29 JST).
+Status: **Design agreed in [WEB.md](WEB.md), not implemented; after BOT-020 and BOT-024, in the release after
+0.5.0 together with BOT-022, see [delivery](DIRECTION.md#delivery)** (2026-10-30 JST).
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
 [web technology](DIRECTION.md#web-technology)); endbotd connects outbound over WebSocket. Accounts are created only from
@@ -933,7 +933,7 @@ accepts it, drop `patches/endstone/` and patched builds. Until then the patch st
 ## BOT-024: Permission model
 
 Status: **Steps 1a to 5 are done; the autonomous live smoke passed and the human checks are listed in
-[PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md)** (2026-10-30 JST); they run in the single final pass. Step plan
+[PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md)** (2026-10-30 JST); they run in the 0.5.0 validation pass. Step plan
 agreed in [PERMISSIONS.md](PERMISSIONS.md#steps) (2026-10-29 JST). Steps 1a (capability declarations in the
 registry), 2a (`requires {}`), 2b (forms show the declaration), 3a (the controller role store), 3b (the role
 check), 3c (assigning roles with `--role`), 4a (the ownership store for Bots and Groups), 4b (ownership

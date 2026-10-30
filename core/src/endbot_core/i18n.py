@@ -204,9 +204,11 @@ JA: dict[str, str] = {
     "acceptance unknown": "受付不明",
     "not permitted": "許可されていない操作",
     "Group name {name} is not available": "グループ名 {name} は使えません",
-    "Bot {name} is private to {owner}": "Bot {name} は {owner} の private Bot です",
+    "Bot {name} is private to {owner}": "Bot {name} は {owner} の非公開 Bot です",
     "Only {owner} or the console can {operation} Bot {name}":
         "Bot {name} を {operation} できるのは {owner} とコンソールだけです",
+    "Only {owner} or the console can change the visibility of Bot {name}":
+        "Bot {name} の公開範囲を変えられるのは {owner} とコンソールだけです",
     "Bot {name} has no owner; the console can assign one with /bot {name} owner <GamerTag>":
         "Bot {name} には持ち主がいません。コンソールから /bot {name} owner <GamerTag> で持ち主を割り当ててください",
     "Bot {name} is now {visibility}": "Bot {name} を{visibility}にしました",
@@ -219,8 +221,8 @@ JA: dict[str, str] = {
     "Group {name} has no owner; the console can assign one with /botgroup owner #{name} <GamerTag>":
         "グループ {name} には持ち主がいません。"
         "コンソールから /botgroup owner #{name} <GamerTag> で持ち主を割り当ててください",
-    "Only {owner} or the console can {operation} Group {name}":
-        "グループ {name} を {operation} できるのは {owner} とコンソールだけです",
+    "Only {owner} or the console can change the visibility of Group {name}":
+        "グループ {name} の公開範囲を変えられるのは {owner} とコンソールだけです",
     "Group {name} is now {visibility}": "グループ {name} を{visibility}にしました",
     "Group {name} now belongs to {owner}": "グループ {name} の持ち主は {owner} になりました",
     "accepted": "受付",
@@ -333,15 +335,13 @@ JA: dict[str, str] = {
     ),
     "rename a Bot, keeping its identity": "ID はそのままで Bot の名前を変える",
     "Reconnects automatically so the login name changes.": "ログイン名を変えるため自動で再接続します。",
-    "share a Bot with every controller": "Bot をすべてのコントローラーに共有する",
-    "Only the owner or the console can share a Bot.": "Bot を共有できるのは持ち主とコンソールだけです",
+    "make a Bot shared with every controller or private to its owner":
+        "Bot をすべてのコントローラーに共有するか、持ち主だけの非公開にする",
+    "Only the owner or the console can change a Bot's visibility.":
+        "Bot の公開範囲を変えられるのは持ち主とコンソールだけです",
     "An unowned Bot stays shared; the console assigns its owner first.":
         "持ち主のいない Bot は共有のままです。先にコンソールが持ち主を割り当てます",
-    "make a Bot private to its owner": "Bot を持ち主だけの非公開にする",
-    "Only the owner or the console can make a Bot private.":
-        "Bot を非公開にできるのは持ち主とコンソールだけです",
-    "An unowned Bot has no owner yet; the console must assign one first.":
-        "持ち主のいない Bot にはまだ持ち主がありません。先にコンソールが割り当ててください",
+    "Use visibility shared or visibility private": "visibility shared か visibility private を指定してください",
     "reassign a Bot's owner (console only)": "Bot の持ち主を変更する (コンソールのみ)",
     "The GamerTag must be an online player or a controller.":
         "GamerTag はオンラインのプレイヤーかコントローラーである必要があります",
@@ -707,7 +707,7 @@ JA: dict[str, str] = {
     "destroy continuous is waiting: no block it can break within 5 blocks":
         "destroy continuous は待機中です: 5ブロック以内に壊せるブロックがありません",
     "control permission revoked": "操作権限が取り消されました",
-    "the Bot became private": "Bot が private になりました",
+    "the Bot became private": "Bot が非公開になりました",
     "Bot was renamed or removed": "Bot の名前が変わったか、削除されました",
     # Dispatch and plugin.
     "Bot control permission was revoked; command canceled": "Bot の操作権限が取り消されたため、コマンドを中止しました",
@@ -974,10 +974,11 @@ JA.update({
     "Script input cleanup failed; use /bot stop": "スクリプトの入力停止に失敗しました。/bot stop を使ってください",
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "
-    "| copy <name> <new> | share|private <name> | owner <name> <GamerTag> | history <name> "
+    "| copy <name> <new> | visibility <name> shared|private | owner <name> <GamerTag> | history <name> "
     "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | reload | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
-        "| delete <name> | copy <name> <new> | share|private <name> | owner <name> <GamerTag> | history <name> "
+        "| delete <name> | copy <name> <new> | visibility <name> shared|private | owner <name> <GamerTag> "
+        "| history <name> "
         "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | reload | menu",
     "Loaded {count} script files from {folder}": "{folder} からスクリプトファイルを {count} 件読み込みました",
     "Script {name} comes from a file; edit the file, then /botscript reload":

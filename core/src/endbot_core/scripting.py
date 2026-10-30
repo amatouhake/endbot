@@ -34,7 +34,7 @@ from endbot_core.principal import Principal
 from endbot_core.script_books import pages_to_source, source_to_pages, written
 from endbot_core.script_params import arguments, declarations, required
 from endbot_core.script_process import RunnerProcess
-from endbot_core.script_store import FILE_SUFFIX, Script, load_files
+from endbot_core.script_store import FILE_SUFFIX, VISIBILITIES, Script, load_files
 
 # The operator's script folder in the plugin data folder.
 FILES_DIRECTORY = "scripts"
@@ -51,7 +51,7 @@ UNCHECKED = frozenset({
 # fill the server log at the IPC rate for hours.
 # The authoring operations (PERMISSIONS.md S6): a controller is refused them; `edit` only opens the editor whose
 # save is refused anyway. Running, `private` and deleting their own scripts stay open to controllers.
-AUTHORING = frozenset({"save", "import", "copy", "rename", "restore", "share", "edit"})
+AUTHORING = frozenset({"save", "import", "copy", "rename", "restore", "edit"})
 LOG_LINES = 2000
 LOG_BYTES = 512 * 1024
 # The starter's chat shows at most this many log lines per window per run (events.CHAT_LOG_CHARS cuts each).
@@ -720,7 +720,12 @@ class ScriptService:
             if not isinstance(guard, script_forms.ScriptGuard) or (not guard.edit and guard.values is None):
                 tokens = shlex.split(" ".join(argv))
                 operation, tail = (tokens[0].lower(), tokens[1:]) if tokens else ("menu", [])
-            if operation in AUTHORING and not self._author(source):
+            if operation in {"share", "private"} and len(tail) == 1:
+                # The 0.4.0 spelling, kept for one release beside `visibility <name> shared|private`.
+                operation, tail = "visibility", [tail[0], "shared" if operation == "share" else "private"]
+            # Sharing widens who can use a script, so it is authoring; making one private only narrows it.
+            sharing = operation == "visibility" and len(tail) == 2 and tail[1].lower() == "shared"
+            if (operation in AUTHORING or sharing) and not self._author(source):
                 # S6: the same refusal from a typed command, a form and every later surface.
                 return CommandResult(True, (reply(tr(lang, "Your role can run scripts but not create or change "
                                                            "them; ask the operator for the scripter role"),
@@ -734,7 +739,7 @@ class ScriptService:
                                 lang,
                                 "Script help: list | show <name> [page] | run <name> [args...] "
                                 "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
-                                "| share|private <name> | owner <name> <GamerTag> | history <name> "
+                                "| visibility <name> shared|private | owner <name> <GamerTag> | history <name> "
                                 "| restore <name> <n> | rename <name> <new> | import <name> | export <name> "
                                 "[overwrite] | reload | menu",
                             )
@@ -895,7 +900,7 @@ class ScriptService:
                     log_messages=(f"Script {script.name} now belongs to {owner_name} by {self._who(source)}",),
                 )
             script = self._script(tail[0], source,
-                                  edit=operation in {"delete", "edit", "share", "private", "restore", "rename"})
+                                  edit=operation in {"delete", "edit", "visibility", "restore", "rename"})
             if isinstance(guard, script_forms.ScriptGuard) and guard.revision != script.revision:
                 raise LocalizedError("Script changed; reopen the menu")
             if operation in {"show", "edit"} and len(tail) <= 2:
@@ -936,8 +941,8 @@ class ScriptService:
                                     pages=len(pages))),),
                     log_level="info",
                     log_messages=(f"Script {script.name} exported to a book by {self._who(source)}",))
-            if operation in {"share", "private"} and len(tail) == 1:
-                visibility = "shared" if operation == "share" else "private"
+            if operation == "visibility" and len(tail) == 2 and tail[1].lower() in VISIBILITIES:
+                visibility = tail[1].lower()
                 self.store.set_visibility(script.name, visibility, script.revision)
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} is now {visibility}", name=script.name,

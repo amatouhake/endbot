@@ -755,7 +755,7 @@ def exercise(
             if identity in owned.get("bots", {}):
                 raise ConsumerError(f"a console-spawned Bot was given an owner: {owned}")
             for command, expected in (
-                (f"bot {BOT} private", f"Bot {BOT} has no owner"),
+                (f"bot {BOT} visibility private", f"Bot {BOT} has no owner"),
                 (f"bot {BOT} owner {BOT}", f"{BOT} is not a known player"),
                 (f"bot {BOT} owner NobodyHere", "NobodyHere is not a known player"),
             ):

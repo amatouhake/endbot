@@ -131,6 +131,28 @@ test('direct NetherNet signalling skips discovery and signals the configured por
   await connecting
 })
 
+test('a login that never reaches spawn fails the attempt instead of waiting forever', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-spawn-timeout-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const client = fakeLiveClient()
+  let closes = 0
+  client.close = () => { closes += 1; queueMicrotask(() => client.emit('close')) }
+  const session = new BedrockSession(
+    { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
+    {
+      protocolLoader: async () => ({ createClient: () => client }),
+      ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
+      ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
+      serverHost: '127.0.0.1',
+      serverPort: 19132,
+      gameVersion: '1.26.60',
+      spawnTimeoutMs: 20
+    }
+  )
+  await assert.rejects(session.connect(), /did not finish the login within 20 ms/)
+  assert.equal(closes, 1)
+})
+
 test('sessions reject an unknown NetherNet signalling mode before loading protocol code', async () => {
   const session = new BedrockSession({}, {
     nethernetSignalling: 'services',

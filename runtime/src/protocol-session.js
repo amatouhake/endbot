@@ -179,8 +179,17 @@ export class BedrockSession extends EventEmitter {
     this.#wireClient()
     return await new Promise((resolve, reject) => {
       let settled = false
+      // Upstream's connect timeout covers only the transport handshake. Once it
+      // is up, a BDS that never finishes the login (for example one still
+      // starting when direct signalling reached it) would leave this attempt
+      // waiting forever and the Bot stuck in reconnecting.
+      const spawnTimeoutMs = this.options.spawnTimeoutMs ?? 60_000
+      const spawnTimer = setTimeout(() => {
+        this.#fail(new Error(`BDS did not finish the login within ${spawnTimeoutMs} ms`))
+      }, spawnTimeoutMs)
       const closed = reason => fail(this.terminalError ?? new Error(`Connection closed: ${reason || 'unknown reason'}`))
       const fail = error => {
+        clearTimeout(spawnTimer)
         if (!settled) {
           settled = true
           reject(error)
@@ -188,6 +197,7 @@ export class BedrockSession extends EventEmitter {
       }
       this.client.once('close', closed)
       this.client.once('spawn', () => {
+        clearTimeout(spawnTimer)
         if (settled) return
         settled = true
         this.client.off('close', closed)

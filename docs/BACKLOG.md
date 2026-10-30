@@ -932,7 +932,8 @@ accepts it, drop `patches/endstone/` and patched builds. Until then the patch st
 
 ## BOT-024: Permission model
 
-Status: **Design agreed — see [PERMISSIONS.md](PERMISSIONS.md); in progress** (2026-10-30 JST). Step plan
+Status: **Steps 1a to 5 are done; the autonomous live smoke passed and the human checks are listed in
+[PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md)** (2026-10-30 JST); they run in the single final pass. Step plan
 agreed in [PERMISSIONS.md](PERMISSIONS.md#steps) (2026-10-29 JST). Steps 1a (capability declarations in the
 registry), 2a (`requires {}`), 2b (forms show the declaration), 3a (the controller role store), 3b (the role
 check), 3c (assigning roles with `--role`), 4a (the ownership store for Bots and Groups), 4b (ownership

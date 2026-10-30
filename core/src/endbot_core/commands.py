@@ -13,6 +13,7 @@ from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.limits import BotLimits
 from endbot_core.link import error_from_wire
 from endbot_core.operations import ALIASES, OPERATIONS, RESERVED_BOT_NAMES, Operation
+from endbot_core.ownership import OwnershipStore
 from endbot_core.principal import as_job
 
 
@@ -1051,9 +1052,11 @@ def parse_command(arguments: list[str]) -> BotCommand:
 class BotCommandService:
     """Execute parsed commands against transport and world adapters."""
 
-    def __init__(self, control=None, world=None, limits=None, capacity=None) -> None:
+    def __init__(self, control=None, world=None, limits=None, capacity=None, ownership=None) -> None:
         self.control = control
         self.world = world
+        # Bot and Group owners (BOT-024 4a); None disables recording.
+        self.ownership: OwnershipStore | None = ownership
         # Slot budget: `capacity(bot_ids)` returns (max_players, humans_online).
         # Without it (tests, unusual embeddings) no seat check is applied.
         self.limits = limits if limits is not None else BotLimits()
@@ -1432,6 +1435,8 @@ class BotCommandService:
                 placement = self.world.resolve_spawn_placement(placement, sender)
             self.world.assert_name_available(command.name, existing.get("identityId") if existing else None)
             result = control.request("spawn", name=command.name)
+            if result.get("created") and self.ownership is not None:
+                self.ownership.record("bots", result["identityId"], sender)
             if result.get("alreadyOnline"):
                 state = result.get("connectionState")
                 if state == "connecting":
@@ -1719,6 +1724,8 @@ class BotCommandService:
             ):
                 self.check_seat(command.name)
             result = control.request(command.operation, name=command.name, **command.parameters)
+            if command.operation == "forget" and self.ownership is not None:
+                self.ownership.forget("bots", status["identityId"])
         else:
             result = control.request(command.operation, name=command.name, **command.parameters)
         name = result.get("name", command.name)

@@ -5,7 +5,7 @@ atomically on every ``endbot start``:
 
 - ``state/generated/endbot-runtime.json`` — the runtime config;
 - ``state/generated/endbotd.toml`` — endbotd's config (docs/ENDBOTD.md P7):
-  authorization, limits, UI, scripting, the runtime it drives and the link;
+  authorization, limits, permissions, UI, scripting, the runtime it drives and the link;
 - ``<server>/plugins/endbot/config.toml`` — the plugin config, which now holds
   only the endbotd link settings (the runtime token no longer reaches BDS);
 - the ``[local-bot-auth]`` table in ``<server>/endstone.toml`` — everything
@@ -306,6 +306,11 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
     limits["max-bots"] = config.limits.max_bots
     limits["reserved-player-slots"] = config.limits.reserved_player_slots
     document.add("limits", limits)
+
+    permissions = tomlkit.table()
+    permissions["bots-default"] = config.permissions.bots_default
+    permissions["groups-default"] = config.permissions.groups_default
+    document.add("permissions", permissions)
 
     ui = tomlkit.table()
     ui["language"] = config.ui.language

@@ -19,9 +19,9 @@ layout is. :func:`migrate` (update, setup and the first ``endbot start``) and :f
 
 The source stays authoritative until step 4, so an interrupted carry is finished by running it
 again, and running it once more after that changes nothing. The data files of the source are
-left in place. State-only files (``grant-revisions.json``, ``controller-roles.json``) are never
-carried between layouts, because no plugin version reads them and an older version ignores them
-(after a rollback everyone acts as a scripter, S1).
+left in place. State-only files (``grant-revisions.json``, ``controller-roles.json``, ``ownership.json``)
+are never carried between layouts, because no plugin version reads them and an older version ignores them
+(after a rollback everyone acts as a scripter, S1, and private Bots and Groups are shared again, S2).
 """
 
 from __future__ import annotations

@@ -66,6 +66,16 @@ class RuntimeConfigTests(ConfigGenTestCase):
         limits = tomllib.loads(target.read_text(encoding="utf-8"))["limits"]
         self.assertEqual(limits, {"max-bots": 6, "reserved-player-slots": 2})
 
+    def test_permissions_reach_generated_plugin_config(self):
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
+        permissions = tomllib.loads(target.read_text(encoding="utf-8"))["permissions"]
+        self.assertEqual(permissions, {"bots-default": "shared", "groups-default": "shared"})
+        with self.paths.endbot_toml.open("a", encoding="utf-8") as config:
+            config.write('\n[permissions]\nbots-default = "private"\ngroups-default = "private"\n')
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
+        permissions = tomllib.loads(target.read_text(encoding="utf-8"))["permissions"]
+        self.assertEqual(permissions, {"bots-default": "private", "groups-default": "private"})
+
     def test_chunk_radius_reaches_generated_runtime_config(self) -> None:
         for radius in (2, 6):
             write_endbot_toml(self.root)

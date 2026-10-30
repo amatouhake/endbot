@@ -23,6 +23,8 @@ from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, tr
 from endbot_core.limits import BotLimits
 from endbot_core.link import LinkError, LinkServer, Submission, load_token
+from endbot_core.ownership import FILE_NAME as OWNERSHIP_FILE
+from endbot_core.ownership import VISIBILITIES, OwnershipStore
 from endbot_core.principal import Principal
 from endbot_core.script_config import ScriptConfig
 from endbot_core.script_inputs import OwnedInputs
@@ -101,6 +103,12 @@ class EndbotService:
             # A scripting typo must not take /bot down with it; scripts stay off.
             script_config = ScriptConfig()
             self._log("warning", f"Invalid [scripting] config: {error}; scripting is disabled")
+        try:
+            bots_default, groups_default = self._ownership_defaults(config.permissions)
+        except ValueError as error:
+            # A permissions typo must not take /bot down with it; new items stay shared.
+            self._log("warning", f"Invalid [permissions] config: {error}; using shared")
+            bots_default = groups_default = "shared"
         self.link = LinkServer(
             config.link_host, config.link_port, load_token(config.link_token_file), version=__version__,
             config={"language": self._language_setting, "hotbar": dict(config.hotbar)},
@@ -136,6 +144,8 @@ class EndbotService:
         self.commands = GroupCommandService(
             control, world, groups, authorize=self.authority.authorize, limits=limits,
             capacity=lambda bot_ids: tuple(world.capacity(sorted(bot_ids))),
+            ownership=OwnershipStore(stores / OWNERSHIP_FILE, bots_default=bots_default,
+                                     groups_default=groups_default),
         )
         try:
             scripts = ScriptStore(stores / "scripts.json", script_config)
@@ -161,6 +171,16 @@ class EndbotService:
         )
 
     # -- lifecycle -----------------------------------------------------------
+
+    def _ownership_defaults(self, section: dict) -> tuple[str, str]:
+        """The ``[permissions]`` defaults; an invalid value raises ``ValueError`` for the caller to report."""
+        values = []
+        for kind in ("bots", "groups"):
+            value = section.get(f"{kind}-default", "shared")
+            if value not in VISIBILITIES:
+                raise ValueError(f"{kind}-default must be shared or private, found {value!r}")
+            values.append(value)
+        return values[0], values[1]
 
     def start(self) -> EndbotService:
         self._recover()

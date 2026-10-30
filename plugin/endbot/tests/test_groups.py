@@ -8,6 +8,8 @@ from unittest.mock import patch
 from endbot_core.commands import strip_colors
 from endbot_core.control import RuntimeControlError
 from endbot_core.groups import GroupCommandService, GroupStore
+from endbot_core.ownership import Ownership, OwnershipStore
+from endbot_core.principal import Principal
 from test_command_service import FakeControl, FakeWorld
 
 
@@ -80,6 +82,38 @@ class GroupStoreTests(unittest.TestCase):
             self.path.write_text(json.dumps({"version": 1, "groups": [entry]}), encoding="utf-8")
             with self.subTest(entry=entry), self.assertRaises(ValueError):
                 GroupStore(self.path)
+
+
+class GroupOwnershipTests(unittest.TestCase):
+    """Group creation and deletion record and forget the creator (BOT-024 4a)."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.store = GroupStore(Path(temporary.name) / "groups.json")
+        self.ownership = OwnershipStore(groups_default="private")
+        self.service = GroupCommandService(
+            FakeControl(), FakeWorld(), self.store, lambda _: True, ownership=self.ownership,
+        )
+
+    @staticmethod
+    def player(name="Alice", xuid="2535400000000001"):
+        return Principal("player", name=name, xuid=xuid, player_id="0000000a-0000-4000-8000-00000000000b")
+
+    def test_create_records_the_creator_and_delete_forgets_the_group(self):
+        result = self.service.execute_group(["create", "#miners"], self.player())
+        self.assertIn("group created", messages(result))
+        identity = self.store.get("miners").identity
+        self.assertEqual(self.ownership.get("groups", identity),
+                         Ownership("xuid:2535400000000001", "Alice", "private"))
+        deleted = self.service.execute_group(["delete", "#miners"], self.player())
+        self.assertIn("group deleted; Bots retained", messages(deleted))
+        self.assertIsNone(self.ownership.get("groups", identity))
+
+    def test_console_create_records_nothing(self):
+        self.service.execute_group(["create", "#miners"])
+        identity = self.store.get("miners").identity
+        self.assertIsNone(self.ownership.get("groups", identity))
 
 
 class GroupServiceTests(unittest.TestCase):

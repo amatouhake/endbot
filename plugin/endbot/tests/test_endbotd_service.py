@@ -48,12 +48,13 @@ class ServiceHarness(unittest.TestCase):
         self.views = []
         self.configs = []
 
-    def start_service(self):
+    def start_service(self, permissions=None):
         config = EndbotdConfig(
             base=self.root, link_port=0, link_token_file=self.root / "endbotd.token", stores_directory=self.root,
             scripts_folder=self.root / "scripts",
             authorization={"controller-policy-file": "controller-policy.json"},
             ui={"language": "en"}, hotbar={"hotbar-sync-interval-ticks": 2},
+            permissions=permissions if permissions is not None else {},
         )
         self.service = EndbotService(config, control=self.control,
                                      log=lambda level, message: self.logs.append((level, message))).start()
@@ -189,6 +190,29 @@ class EndbotServiceTests(ServiceHarness):
         self.service.deliver_now(ALICE, ["hello"], encode_view(BotListView(())))
         self.assertIn(("warning", f"Delivery to player {ALICE} dropped a form and 1 line(s): player offline"),
                       self.logs)
+
+    def test_permissions_defaults_configure_the_ownership_store(self):
+        self.service.close()
+        self.start_service(permissions={"bots-default": "private", "groups-default": "shared"})
+        store = self.service.commands.ownership
+        alice = Principal("player", name="Alice", xuid=OWNER, player_id=ALICE)
+        store.record("bots", "0000000a-0000-4000-8000-00000000000b", alice)
+        store.record("groups", "0000000a-0000-4000-8000-00000000000c", alice)
+        self.assertEqual(store.get("bots", "0000000a-0000-4000-8000-00000000000b").visibility, "private")
+        self.assertEqual(store.get("groups", "0000000a-0000-4000-8000-00000000000c").visibility, "shared")
+        self.assertEqual(store.path, self.root / "ownership.json")
+
+    def test_invalid_permissions_warn_and_use_shared(self):
+        self.service.close()
+        self.start_service(permissions={"bots-default": "private", "groups-default": "public"})
+        self.assertIn(("warning", ("Invalid [permissions] config: groups-default must be shared or private, "
+                                   "found 'public'; using shared")), self.logs)
+        store = self.service.commands.ownership
+        alice = Principal("player", name="Alice", xuid=OWNER, player_id=ALICE)
+        store.record("bots", "0000000a-0000-4000-8000-00000000000d", alice)
+        store.record("groups", "0000000a-0000-4000-8000-00000000000e", alice)
+        self.assertEqual(store.get("bots", "0000000a-0000-4000-8000-00000000000d").visibility, "shared")
+        self.assertEqual(store.get("groups", "0000000a-0000-4000-8000-00000000000e").visibility, "shared")
 
     def test_a_malformed_form_guard_is_refused(self):
         link = self.link()

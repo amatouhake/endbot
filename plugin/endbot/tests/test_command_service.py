@@ -903,7 +903,7 @@ class OwnershipEnforcementTests(unittest.TestCase):
 
 
 class OwnerCommandTests(unittest.TestCase):
-    """Owners share/private their own Bot; only the console assigns owners (BOT-024 4c)."""
+    """Owners change their own Bot's visibility; only the console assigns owners (BOT-024 4c)."""
 
     def setUp(self) -> None:
         self.control = FakeControl()
@@ -919,31 +919,38 @@ class OwnerCommandTests(unittest.TestCase):
         self.service.execute(["Mine", "spawn"], self.alice)
         self.identity = self.control.bots["Mine"]["identityId"]
 
+    def test_visibility_needs_shared_or_private(self):
+        for argv in (["Mine", "visibility"], ["Mine", "visibility", "public"], ["Mine", "share"]):
+            with self.subTest(argv=argv):
+                result = self.service.execute(argv, self.alice)
+                self.assertEqual((result.accepted, result.code), (False, "invalid_argument"))
+        self.assertEqual(self.ownership.get("bots", self.identity).visibility, "shared")
+
     def test_the_owner_shares_and_makes_private_their_own_bot(self):
-        shared = self.service.execute(["Mine", "share"], self.alice)
+        shared = self.service.execute(["Mine", "visibility", "shared"], self.alice)
         self.assertTrue(shared.accepted)
         self.assertIn("Bot Mine is now shared", shared.message)
         self.assertEqual(self.ownership.get("bots", self.identity).visibility, "shared")
-        private = self.service.execute(["Mine", "private"], self.alice)
+        private = self.service.execute(["Mine", "visibility", "private"], self.alice)
         self.assertTrue(private.accepted)
         self.assertIn("Bot Mine is now private", private.message)
         self.assertEqual(self.ownership.get("bots", self.identity).visibility, "private")
 
-    def test_another_player_cannot_share_or_make_private_someone_elses_bot(self):
-        for operation in ("share", "private"):
-            with self.subTest(operation=operation):
-                result = self.service.execute(["Mine", operation], self.bob)
+    def test_another_player_cannot_change_the_visibility_of_someone_elses_bot(self):
+        for visibility in ("shared", "private"):
+            with self.subTest(visibility=visibility):
+                result = self.service.execute(["Mine", "visibility", visibility], self.bob)
                 self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
-                self.assertIn("Only Alice or the console can", result.message)
+                self.assertIn("Only Alice or the console can change the visibility of Bot Mine", result.message)
         self.assertEqual(self.ownership.get("bots", self.identity).visibility, "shared")
 
     def test_an_unowned_bot_is_refused_for_players_and_the_console(self):
         self.service.execute(["Old", "spawn"], Principal("console"))
         identity = self.control.bots["Old"]["identityId"]
         for sender in (self.alice, Principal("console")):
-            for operation in ("share", "private"):
-                with self.subTest(sender=sender.kind, operation=operation):
-                    result = self.service.execute(["Old", operation], sender)
+            for visibility in ("shared", "private"):
+                with self.subTest(sender=sender.kind, visibility=visibility):
+                    result = self.service.execute(["Old", "visibility", visibility], sender)
                     self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
                     self.assertIn(
                         "Bot Old has no owner; the console can assign one with /bot Old owner <GamerTag>",
@@ -952,7 +959,7 @@ class OwnerCommandTests(unittest.TestCase):
         self.assertIsNone(self.ownership.get("bots", identity))
 
     def test_the_console_assigns_an_owner_and_keeps_the_visibility(self):
-        self.assertTrue(self.service.execute(["Mine", "private"], self.alice).accepted)
+        self.assertTrue(self.service.execute(["Mine", "visibility", "private"], self.alice).accepted)
         result = self.service.execute(["Mine", "owner", "Carol"], Principal("console"))
         self.assertTrue(result.accepted)
         self.assertIn("Bot Mine now belongs to Carol", result.message)
@@ -984,13 +991,13 @@ class OwnerCommandTests(unittest.TestCase):
         self.assertEqual(self.ownership.get("bots", self.identity).owner, "xuid:2535400000000001")
 
     def test_a_private_bot_refuses_another_player_after_the_owner_changes_it(self):
-        self.assertTrue(self.service.execute(["Mine", "private"], self.alice).accepted)
+        self.assertTrue(self.service.execute(["Mine", "visibility", "private"], self.alice).accepted)
         refused = self.service.execute(["Mine", "status"], self.bob)
         self.assertEqual((refused.accepted, refused.code), (False, "unauthorized"))
         self.assertIn("Bot Mine is private to Alice", refused.message)
         self.assertTrue(self.service.execute(["Mine", "status"], self.alice).accepted)
         # Sharing again restores the 4b behavior for everyone.
-        self.assertTrue(self.service.execute(["Mine", "share"], self.alice).accepted)
+        self.assertTrue(self.service.execute(["Mine", "visibility", "shared"], self.alice).accepted)
         self.assertTrue(self.service.execute(["Mine", "status"], self.bob).accepted)
 
 

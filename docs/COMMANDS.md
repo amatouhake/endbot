@@ -269,8 +269,7 @@ command behavior.
 /bot <name> despawn
 /bot <name> forget
 /bot <name> rename <new-name>
-/bot <name> share
-/bot <name> private
+/bot <name> visibility shared|private
 /bot <name> owner <GamerTag>
 ```
 
@@ -282,8 +281,8 @@ placement. `resume` reconnects an existing profile without relocation, allowing 
 cancels automatic reconnect. `forget` requires an offline profile and removes only Endbot registration; it does not
 purge BDS player data. A live rename preserves UUID and reconnects automatically so the login name changes.
 
-`share` and `private` switch a Bot's visibility and, like `forget` and `rename`, stay with its owner or the console
-(S12). An unowned Bot stays shared and is refused with a pointer to the console's `owner` command, so a player cannot
+`visibility shared` and `visibility private` switch a Bot's visibility and, like `forget` and `rename`, stay with its
+owner or the console (S12). An unowned Bot stays shared and is refused with a pointer to the console's `owner` command, so a player cannot
 claim a pre-ownership Bot by making it private. Only the console runs `owner`, which assigns the Bot to the named
 online player or controller while keeping its visibility (or the configured default for a Bot that had no entry).
 
@@ -670,12 +669,11 @@ or `/botgroup` commands and authorization checks, with UUID/membership checks to
 Group ownership uses `/botgroup`:
 
 ```text
-/botgroup share #group
-/botgroup private #group
+/botgroup visibility #group shared|private
 /botgroup owner #group <GamerTag>
 ```
 
-The owner or the console may `share` a Group or make it `private`; an unowned Group stays shared and is refused with
+The owner or the console may set a Group's visibility to `shared` or `private`; an unowned Group stays shared and is refused with
 a pointer to `owner`. Only the console reassigns a Group's owner, and the GamerTag must be an online player or a
 controller. A private Group is left out of other players' lists and resolves as not found for them (S4).
 

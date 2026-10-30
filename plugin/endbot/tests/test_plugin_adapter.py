@@ -135,6 +135,7 @@ class PluginAdapterTests(unittest.TestCase):
                 "despawn",
                 "forget",
                 "rename",
+                "visibility",
                 "tp",
                 "move",
                 "look",

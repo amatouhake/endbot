@@ -114,13 +114,16 @@ one-time code), `/botweb status` and `/botweb unlink`; see
 
 ### D4. Owner commands
 
-Players share and make private their own items; only the console assigns owners. The names follow the scripts'
-`share` / `private` (S9), and D3 puts Bot actions under `/bot` and noun management under `/bot<noun>`:
+Players set the visibility of their own items; only the console assigns owners. One `visibility shared|private` verb
+spells the same values as the `bots-default` / `groups-default` settings, rather than pairing the verb `share` with
+the adjective `private` (S9, revised 2026-10-30), and D3 puts Bot actions under `/bot` and noun management under
+`/bot<noun>`:
 
 | What | Command |
 | --- | --- |
-| Share / make private a Bot | `/bot <Bot> share`, `/bot <Bot> private` |
-| Share / make private a Group | `/botgroup share #group`, `/botgroup private #group` |
+| Set a Bot's visibility | `/bot <Bot> visibility shared\|private` |
+| Set a Group's visibility | `/botgroup visibility #group shared\|private` |
+| Set a script's visibility | `/botscript visibility <name> shared\|private` |
 | Reassign a Bot's owner (console only) | `/bot <Bot> owner <GamerTag>` |
 | Reassign a Group's owner (console only) | `/botgroup owner #group <GamerTag>` |
 | Reassign a script's owner (console only) | `/botscript owner <name> <GamerTag>` |

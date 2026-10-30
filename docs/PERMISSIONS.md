@@ -77,7 +77,7 @@ Bots, Groups, scripts and triggers share one model: the creator is the owner, an
 
 - Defaults keep today's behavior: Bots and Groups are shared; scripts are private. A server setting (for example
   `[permissions] bots-default = private`) changes the default.
-- Owners switch visibility per item, as `share` and `private` do for scripts today.
+- Owners switch visibility per item with `visibility shared|private`.
 - The console can operate everything and reassign owners.
 - Migration: existing Bots and Groups have no owner and stay shared, like scripts saved before ownership; the console
   can assign owners. A Bot created by a run or trigger is owned by the run's invoker or the trigger's owner.
@@ -176,7 +176,8 @@ once, against the endbotd endpoint, not against the file request channel being r
      item private. *Claude.* **Landed** (2026-10-30 JST). One check before the runtime for every
      named Bot (Group members before the batch is sent); `forget` and `rename` on someone else's shared Bot are
      owner-only (S12); private Groups resolve as not found for others (S4).
-   - **4c. Owner commands.** `share` / `private` for Bots and Groups and console reassignment of owners for Bots,
+   - **4c. Owner commands.** `visibility shared|private` for Bots, Groups and scripts (first landed as `share` /
+     `private`, renamed under S9 before release) and console reassignment of owners for Bots,
      Groups and scripts, with names from the [interface guide](INTERFACE_GUIDE.md). Players see the new subcommands.
      *DeepSeek.* **Landed** (2026-10-30 JST).
 5. **Per-controller Bot limit.** After 4a, since it counts owned Bots: `[limits] max-bots-per-controller`, `0` meaning
@@ -187,7 +188,7 @@ once, against the endbotd endpoint, not against the file request channel being r
 SECURITY.md is updated in the PR that changes what is enforced, not in a separate PR. Running scripts and jobs already
 end on revoke (the grant revision); no PR is needed for that row.
 
-**Validation in the single final pass** (not per PR; the autonomous part and the human checklist are in
+**Validation in the 0.5.0 pass** (not per PR; the autonomous part and the human checklist are in
 [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md)): update a server with existing grants, Groups and scripts, and
 check every controller is a scripter and everything is shared as before; then roll back and check the old version
 starts and behaves as today. Live RakNet smoke on the locked pair: a controller-role account refused authoring from
@@ -215,8 +216,9 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
   and resolve as not found.
 - **S5. Role changes during a run.** The role is read at each authoring action; a role change does not bump
   the grant revision, so runs and jobs continue (running is the same for both roles).
-- **S6. Authoring** is create, save, paste or book import, copy, rename, restore and `share`.
-  A controller may still run, `private` and delete their own scripts, which only narrows what others can use.
+- **S6. Authoring** is create, save, paste or book import, copy, rename, restore and `visibility shared`.
+  A controller may still run, make private (`visibility private`) and delete their own scripts, which only narrows
+  what others can use.
 - **S7. Setting names** are `[permissions] bots-default` and `groups-default`, each `shared` (default) or
   `private`.
 
@@ -224,14 +226,16 @@ Decided 2026-10-30 JST, before the steps were implemented.
 
 - **S8. `requires {}` before events exist.** Until BOT-022 adds `observe.*`, the basic names (`act.bot`,
   `read.world`, `wait`, `log`) are accepted and ignored, and every other name is an unknown-capability error.
-- **S9. Owner command names for Bots and Groups** follow the scripts' `share` / `private`; the interface guide
-  records them in 4c.
+- **S9. Owner command names for Bots and Groups** first followed the scripts' `share` / `private`. Revised
+  2026-10-30 JST before release: the verb `share` and the adjective `private` do not pair, and the settings already
+  say `shared`, so Bots, Groups and scripts all use `visibility shared|private`. The scripts' 0.4.0 `share <name>` /
+  `private <name>` stay as aliases for one release. The interface guide records the names in D4.
 - **S10. Authoring in menus.** A controller's menus leave out authoring buttons; a typed authoring command is
   refused with the authorization code and a reason, as from every other surface.
 - **S11. Groups with someone else's private Bot** run per member: the members the invoker may operate run, the
   others are refused in the result; the Group as a whole is not refused.
 - **S12. Someone else's shared Bot.** Anyone may operate it as today (move, mine, despawn and so on); `forget`,
-  `rename` and `share` / `private` stay with its owner and the console. Unowned Bots stay fully shared.
+  `rename` and `visibility` stay with its owner and the console. Unowned Bots stay fully shared.
 
 ## Not decided here
 

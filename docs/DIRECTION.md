@@ -312,5 +312,16 @@ checkpoint; whether a checkpoint ships on its own or together with later ones is
 Decided 2026-10-29 JST: these four steps (BOT-020, BOT-024, BOT-021, BOT-022) ship together as one release once all
 of them are done, with one validation pass; no checkpoint in between is released on its own.
 
+Revised 2026-10-30 JST: the release is split. Minecraft 26.60 (protocol 2225) makes RakNet an error and auto-updated
+store clients cannot join the 1.26.52 pair, so waiting for the web would keep players out for its whole length. And
+the one server known to run Endbot hosts three BDS instances and the game client on one PC, where NetherNet LAN
+discovery (UDP 7551, one owner per machine) leaves Bots unable to reach every server but one.
+
+- **0.5.0**: BOT-020 and BOT-024 (both done), the `visibility shared|private` owner command (PERMISSIONS S9), the
+  Endstone/BDS update for 26.60 once it passes compatibility validation, and direct NetherNet signalling over
+  `server-port` (BOT-026) as the default, validated with several BDS instances and a running client on one PC. Each
+  of these is required; 0.5.0 waits for all of them, with one validation pass on the new pair.
+- **Next release**: BOT-021 (web) and BOT-022 (events, watches and triggers), then localhost mode.
+
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

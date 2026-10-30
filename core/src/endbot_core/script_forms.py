@@ -201,11 +201,12 @@ def script_screen(script, lang="en", editable=True, book_export=False, author=Tr
             tr(lang, "Cancel"),
             run("delete", script.name, guard=guard),
         )
-        visibility = "private" if script.visibility == "shared" else "share"
+        visibility = "private" if script.visibility == "shared" else "shared"
         more = (
             *([f.Button(tr(lang, "Rename..."), f.Show(rename_screen(script, guard, lang)))] if author else []),
             *([f.Button(tr(lang, "Make private") if visibility == "private" else tr(lang, "Share with controllers"),
-                        run(visibility, script.name, guard=guard))] if author or visibility == "private" else []),
+                        run("visibility", script.name, visibility, guard=guard))]
+              if author or visibility == "private" else []),
             f.Button(tr(lang, "Earlier revisions..."), run("history", script.name, guard=guard)),
             *copy,
             *export,

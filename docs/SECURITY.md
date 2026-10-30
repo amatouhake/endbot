@@ -51,7 +51,7 @@ Each controller grant has a role ([PERMISSIONS.md](PERMISSIONS.md#roles)), kept 
 without `--role` is a controller, and an existing grant keeps its role unless `--role` is given. endbotd
 reads the role for every command it receives, so a role change applies to the next command without a restart or a
 grant revision change. A **controller** is refused script authoring (create, save, book import, copy, rename, restore,
-`share`, and opening the editor) with the authorization outcome, whether the request is typed, sent by a form or comes
+making a script shared, and opening the editor) with the authorization outcome, whether the request is typed, sent by a form or comes
 from any later surface; its menus leave those actions out. Running scripts, and making private and deleting the
 scripts it may change (its own, and unowned scripts saved before ownership existed), stay open; both only narrow what
 others can use. The console is never refused, and the check fails closed for any caller that is not a known player

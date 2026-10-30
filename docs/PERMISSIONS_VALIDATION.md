@@ -3,9 +3,9 @@
 This record covers the validation of [PERMISSIONS.md](PERMISSIONS.md) after steps 1a to 5 landed (#154–#164). It
 separates the autonomous live smoke, which local Bots can drive on their own, from the checks that need people: a
 local Bot has no XUID, so it can never hold a controller grant, own a Bot or be refused as someone else. Those checks
-belong to the single final validation pass of the BOT-020/024/021/022 release ([delivery](DIRECTION.md#delivery)) and
-are listed below so that pass can run them as written. Runs use the locked pair: official BDS `1.26.52.3` and patched
-Endstone `0.11.13+endbot.1`. No server, world, identity, key, token or machine-local path is kept in the repository.
+belong to the 0.5.0 validation pass ([delivery](DIRECTION.md#delivery)) and are listed below so that pass can run
+them as written. Runs so far use the locked pair: official BDS `1.26.52.3` and patched Endstone `0.11.13+endbot.1`;
+the 0.5.0 pass runs on the pair it ships. No server, world, identity, key, token or machine-local path is kept in the repository.
 
 Status: **autonomous smoke recorded; an early one-account human check passed; the final human checks are open.** The
 release containing BOT-024 is not validated until every item in the last section is recorded as passed on the final
@@ -85,7 +85,7 @@ Update and rollback (S1, S2):
 Roles (3b, 3c, S6, S10):
 
 - [ ] `endbot controllers add <A>` (no `--role`) makes A a controller; `list` shows `(role controller)`.
-- [ ] As A: `/botscript` save from the editor, `copy`, `rename`, `restore`, `share`, `edit` and book import are each
+- [ ] As A: `/botscript` save from the editor, `copy`, `rename`, `restore`, `visibility <name> shared`, `edit` and book import are each
       refused with the "ask the operator for the scripter role" reason, in English and in Japanese.
 - [ ] As A: the script menus leave out *New script*, *Copy and edit*, *Edit lines*, *Rename* and *Share*, and keep
       *Run*, *Stop runs*, *Make private*, *Delete* and a read-only *Earlier revisions*.
@@ -98,19 +98,19 @@ Ownership (4a–4c, S4, S11, S12):
 
 - [ ] A spawns a new Bot: it belongs to A (`ownership.json` names A's XUID). With `[permissions] bots-default =
       "private"` a new Bot is private from the start.
-- [ ] A runs `/bot <Bot> private`. B still sees it in `/bot list` and the Bot menu, but `/bot <Bot> status`, a move
+- [ ] A runs `/bot <Bot> visibility private`. B still sees it in `/bot list` and the Bot menu, but `/bot <Bot> status`, a move
       from a form and a shared script targeting it are all refused with the same authorization reason.
 - [ ] A Group of B's holding A's private Bot and an unowned Bot: `/bot #group move forward` runs the unowned member
       and refuses only A's Bot; the summary counts it as "not permitted".
-- [ ] On A's shared Bot, B can move and mine it but `forget`, `rename`, `share` and `private` are refused, and A can
-      do all four.
+- [ ] On A's shared Bot, B can move and mine it but `forget`, `rename` and `visibility shared|private` are refused, and
+      A can do all three.
 - [ ] A makes a Group private: it disappears from B's `/botgroup list`, Group menu and script parameter dropdown,
       and `/bot #group status` tells B it does not exist.
 - [ ] B starts `destroy continuous` on A's shared Bot; A makes it private; B's job ends with "the Bot became
       private".
 - [ ] A Bot an A-run script spawns belongs to A.
 - [ ] The console reassigns a Bot, a Group and a script with `owner <GamerTag>`; a player's `owner` is refused.
-- [ ] Unowned Bots (made before the update or by the console) refuse `share` / `private` from everyone with the
+- [ ] Unowned Bots (made before the update or by the console) refuse `visibility shared|private` from everyone with the
       pointer to the console's `owner`.
 
 Limits (5):

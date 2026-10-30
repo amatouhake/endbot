@@ -89,6 +89,7 @@ COMMAND_USAGES = [
         "(overworld|nether|end)<dimension: EndbotSpawnDimensionName>"
     ),
     "/bot <name: string> (rename)<operation: EndbotRename> <new_name: string>",
+    "/bot <name: string> (visibility)<operation: EndbotVisibility> (shared|private)<visibility: EndbotVisibilityValue>",
     "/bot <name: string> (tp)<operation: EndbotTeleport> <destination: message>",
     (
         "/bot <name: string> (tp)<operation: EndbotTeleportDimension> "
@@ -157,7 +158,10 @@ SCRIPT_USAGES = [
     "/botscript (stop)<action: EndbotScriptStop> <run: string>",
     "/botscript (delete)<action: EndbotScriptDelete> <name: string>",
     "/botscript (copy)<action: EndbotScriptCopy> <name: string> <copy: string>",
-    "/botscript (share|private)<action: EndbotScriptVisibility> <name: string>",
+    (
+        "/botscript (visibility)<action: EndbotScriptVisibility> <name: string> "
+        "(shared|private)<visibility: EndbotScriptVisibilityValue>"
+    ),
     "/botscript (history)<action: EndbotScriptHistory> <name: string>",
     "/botscript (restore)<action: EndbotScriptRestore> <name: string> <revision: int>",
     "/botscript (rename)<action: EndbotScriptRename> <name: string> <new: string>",
@@ -210,6 +214,10 @@ class EndbotPlugin(Plugin):
                 "/botgroup (delete)<action: EndbotGroupDelete> <group: message>",
                 "/botgroup (add)<action: EndbotGroupAdd> <group: string> <bot: string>",
                 "/botgroup (remove)<action: EndbotGroupRemove> <group: string> <member: message>",
+                (
+                    "/botgroup (visibility)<action: EndbotGroupVisibility> <group: string> "
+                    "(shared|private)<visibility: EndbotGroupVisibilityValue>"
+                ),
             ],
             "permissions": ["endbot.command.control"],
         },

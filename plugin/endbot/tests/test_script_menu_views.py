@@ -134,13 +134,33 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.assertEqual(decode_view(encode_view(form.guard)), form.guard)
         started = []
         self.host.start = lambda script, values, source, targets, requires=None: started.append(requires) or "r"
-        (argv,) = forms.modal_commands(form, json.dumps(["hello"]))
+        (argv,) = forms.modal_commands(form, json.dumps([None, "hello"]))
         self.assertEqual(argv[:2], ("run", "mine"))
+        # A client that leaves labels out of its response submits the same command.
+        self.assertEqual(forms.modal_commands(form, json.dumps(["hello"])), (argv,))
         self.host.execute(list(argv), replace(self.alice, group_guard=form.guard))
         self.assertEqual(started, [("observe.chat",)])
         # A typed run has no inspection to match.
         self.host.execute(["run", "mine", "text=hello"], self.alice)
         self.assertEqual(started[-1], None)
+
+    def test_a_declaration_is_the_first_line_of_the_run_form(self):
+        schema = [{"name": "text", "type": "string", "default": "x"}]
+        self.host.inspect = lambda script, source: Declaration(schema, ("observe.chat",))
+        form = self.screen(self.host.execute(["parameters", "mine"], self.alice))
+        self.assertIsInstance(form.controls[0], forms.Label)
+        self.assertIn("observe.chat", form.controls[0].text)
+        # A script with no declaration keeps the form exactly as today: no label.
+        self.host.inspect = lambda script, source: Declaration(schema, ())
+        form = self.screen(self.host.execute(["parameters", "mine"], self.alice))
+        self.assertFalse(any(isinstance(control, forms.Label) for control in form.controls))
+
+    def test_a_declaration_label_is_japanese(self):
+        schema = [{"name": "text", "type": "string", "default": "x"}]
+        self.host.inspect = lambda script, source: Declaration(schema, ("observe.chat",))
+        source = replace(self.alice, language="ja")
+        form = self.screen(self.host.execute(["parameters", "mine"], source), source)
+        self.assertEqual(form.controls[0], forms.Label("このスクリプトは次の機能も使います: observe.chat"))
 
     def test_parameters_keep_group_members_and_origin(self):
         group = Group("group-id", "miners", ("bot-uuid",))

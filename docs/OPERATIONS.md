@@ -27,6 +27,7 @@ directory may live inside it (fresh setup) or anywhere else (existing server).
 │  ├─ controllers.json       controller enrollment state (generated, see §3)
 │  ├─ controller-policy.json console-managed grants/revocations (generated, see §3)
 │  ├─ grant-revisions.json   grant revision per revoked controller identity (generated, see §3)
+│  ├─ controller-roles.json  controller role per XUID (generated, see §3)
 │  ├─ groups.json            Groups (written by endbotd)
 │  ├─ scripts.json           stored scripts (written by endbotd)
 │  ├─ migrations.json        store layout marker ({"stores": 2}, see §6a)

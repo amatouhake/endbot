@@ -186,6 +186,17 @@ class AuthorityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             load()
 
+    def test_revoke_forgets_the_controller_role(self):
+        authority, owner = self.authority(), player()
+        self.join(authority, owner)
+        authority.operation(["add", owner["name"]])
+        authority.roles.set(owner["xuid"], "controller")
+        self.assertEqual(authority.role(owner["xuid"]), "controller")
+        authority.operation(["remove", f"xuid:{owner['xuid']}"])
+        self.assertEqual(authority.roles.entries(), {})
+        self.assertEqual(authority.role(owner["xuid"]), "scripter")
+        self.assertEqual(self.authority().role(owner["xuid"]), "scripter")
+
     def test_local_bot_cannot_be_granted_control(self):
         authority, bot = self.authority(), player(xuid="")
         self.join(authority, bot)

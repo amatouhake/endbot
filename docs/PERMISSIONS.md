@@ -155,7 +155,7 @@ once, against the endbotd endpoint, not against the file request channel being r
 3. **Roles.** After BOT-020 3c and 4; 3c after BOT-020 5.
    - **3a. Role store.** `state/controller-roles.json`, keyed by XUID, read by endbotd; a grant with no entry is
      **scripter** (the migration rule), revoked grants keep no role (S1). Registered with the BOT-020 4
-     migration and doctor `stores` check. Nothing players see. *Claude.*
+     migration and doctor `stores` check. Nothing players see. *Claude.* **Landed** (2026-10-30 JST).
    - **3b. Role in the principal and the check.** `Principal` carries the role, read at each action (S5);
      the authoring operations (S6) refuse a controller with the authorization code, from every surface.
      Nobody is a controller yet, so nothing players see. *Claude.*

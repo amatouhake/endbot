@@ -539,6 +539,26 @@ class EffectiveControllersTests(DoctorTestCase):
                 path.write_text(document)
                 self.assertEqual(self.status_of(self.doctor(), "grant-revisions"), FAIL)
 
+    def test_controller_roles_file_is_validated(self):
+        path = self.paths.state_controllers.parent / "controller-roles.json"
+        self.assertEqual(self.status_of(self.doctor(), "controller-roles"), PASS)
+        path.write_text(json.dumps({"version": 1, "roles": {"2535400000000001": "controller"}}))
+        self.assertEqual(self.status_of(self.doctor(), "controller-roles"), PASS)
+        self.assertIn("records 1 role", self.messages_of(self.doctor(), "controller-roles")[0])
+        corrupt = (
+            "{invalid",
+            "[]",
+            json.dumps({"version": 2}),
+            json.dumps({"version": 1, "roles": []}),
+            json.dumps({"version": 1, "roles": {}, "extra": True}),
+            json.dumps({"version": 1, "roles": {"not-an-xuid": "scripter"}}),
+            json.dumps({"version": 1, "roles": {"2535400000000001": "owner"}}),
+        )
+        for document in corrupt:
+            with self.subTest(document=document):
+                path.write_text(document)
+                self.assertEqual(self.status_of(self.doctor(), "controller-roles"), FAIL)
+
     def test_corrupt_policy_is_reported_as_failure(self):
         (self.paths.state_controllers.parent / "controller-policy.json").write_text("{invalid")
         self.assertEqual(self.status_of(self.doctor(), "controllers-effective"), FAIL)

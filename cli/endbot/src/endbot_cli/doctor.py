@@ -418,6 +418,38 @@ def check_grant_revisions(paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"{path} records {count}")
 
 
+def _is_xuid_key(value: object) -> bool:
+    """Mirror ``endbot_core.enrollment._is_xuid`` so the CLI stays independent of the core package."""
+
+    return isinstance(value, str) and value.isascii() and value.isdecimal() and value != "0"
+
+
+def check_controller_roles(paths: InstancePaths) -> CheckResult:
+    """``state/controller-roles.json`` (BOT-024 3a); endbotd refuses to start when it is corrupt."""
+
+    name = "controller-roles"
+    path = paths.state_controllers.parent / "controller-roles.json"
+    remedy = "endbotd will not start; stop Endbot and delete it, which makes every controller a scripter again"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return CheckResult(PASS, name, "no roles recorded; every controller is a scripter")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return CheckResult(FAIL, name, f"{path} cannot be read ({error}); {remedy}")
+    entries = document.get("roles", {}) if isinstance(document, dict) else None
+    valid = (
+        isinstance(document, dict)
+        and document.get("version") == 1
+        and not set(document) - {"version", "roles"}
+        and isinstance(entries, dict)
+        and all(_is_xuid_key(key) and role in ("scripter", "controller") for key, role in entries.items())
+    )
+    if not valid:
+        return CheckResult(FAIL, name, f"{path} is not a version 1 controller roles file; {remedy}")
+    count = f"{len(entries)} role{'s' if len(entries) != 1 else ''}"
+    return CheckResult(PASS, name, f"{path} records {count}")
+
+
 def check_stores(paths: InstancePaths, server: Path | None) -> CheckResult:
     """Which store layout is authoritative (docs/ENDBOTD.md P7): the marker and both layouts."""
 
@@ -841,6 +873,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
             results.extend(check_controllers(config, state))
             results.extend(check_effective_controllers(context, config, state, server))
     results.append(check_grant_revisions(paths))
+    results.append(check_controller_roles(paths))
     results.append(check_stores(paths, server))
 
     if server is None:

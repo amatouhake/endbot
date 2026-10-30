@@ -57,6 +57,12 @@ carry the `[server] transport` selection through both configs and reject mismatc
 instead of editing generated JSON. The isolated [RakNet feasibility runner](../docs/RAKNET_VALIDATION.md) reproduces
 the experiment and negative auth gates independently of the operator lifecycle.
 
+NetherNet finds BDS through LAN discovery on UDP 7551 unless `"nethernetSignalling": "direct"` is set. Direct
+signalling skips discovery and exchanges the WebRTC offer and answer over HTTP on the configured loopback
+`serverPort` (`POST /v1/join/<network id>`), so it needs neither UDP 7551 nor `serverName`/`levelName`. It is
+experimental and not yet validated against a real BDS; select it with `[server] nethernet-signalling = 'direct'` in
+`endbot.toml` (docs/OPERATIONS.md §2 and §5).
+
 Private keys, tokens, and UUID artifacts use complete-before-publish creation and reject corrupt existing
 files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux
 filesystems support the same-volume hard-link publication used for initial artifacts.

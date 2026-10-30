@@ -21,7 +21,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from endbot_cli.config import ConfigError, load_config
-from endbot_cli.configgen import ConfigGenerationError, generate_all
+from endbot_cli.configgen import ConfigGenerationError, generate_all, uses_lan_discovery
 from endbot_cli.controllers import ControllersError, load_controllers, remove_binding, save_controllers
 from endbot_cli.doctor import FAIL, DoctorContext, check_local_bot_auth, run_doctor
 from endbot_cli.instance import InstancePaths
@@ -132,10 +132,10 @@ def run_start(
     if fatal:
         return _fail("FAIL start: refusing to start (fix the FAIL lines above)")
 
-    # Fake children bring no BDS; production NetherNet checks its LAN port.
-    if config.server.transport == "nethernet" and lan_port_check is None and server_command is None:
+    # Fake children bring no BDS; production LAN discovery checks its port.
+    if uses_lan_discovery(config) and lan_port_check is None and server_command is None:
         lan_port_check = lan_discovery_port_problem
-    problem = lan_port_check() if config.server.transport == "nethernet" and lan_port_check is not None else None
+    problem = lan_port_check() if uses_lan_discovery(config) and lan_port_check is not None else None
     if problem is not None:
         return _fail(f"FAIL start: {problem}")
 

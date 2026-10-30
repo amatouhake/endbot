@@ -87,6 +87,30 @@ class RuntimeConfigTests(ConfigGenTestCase):
         self.assertNotIn("serverName", document)
         self.assertNotIn("levelName", document)
 
+    def test_direct_nethernet_generation_dials_server_port_without_discovery_identity(self) -> None:
+        from unittest.mock import patch
+
+        write_endbot_toml(self.root)
+        with self.paths.endbot_toml.open("r+", encoding="utf-8") as config:
+            text = config.read().replace("[server]\n", "[server]\nnethernet-signalling = 'direct'\n", 1)
+            config.seek(0)
+            config.write(text)
+        (self.server / "server.properties").write_text("transport=nethernet\nserver-port=19134\n", encoding="utf-8")
+        with patch("endbot_cli.configgen.read_server_identity", side_effect=AssertionError("must not discover")):
+            generated = generate_all(self.config(), self.paths, self.server)
+        document = json.loads(generated.runtime_config.read_text())
+        self.assertEqual(document["transport"], "nethernet")
+        self.assertEqual(document["nethernetSignalling"], "direct")
+        self.assertEqual(document["serverPort"], 19134)
+        self.assertNotIn("serverName", document)
+        self.assertNotIn("levelName", document)
+
+        from endbot_cli.configgen import ConfigGenerationError
+
+        (self.server / "server.properties").write_text("transport=nethernet\nserver-port=oops\n", encoding="utf-8")
+        with self.assertRaisesRegex(ConfigGenerationError, "valid server-port"):
+            generate_all(self.config(), self.paths, self.server)
+
     def test_raknet_invalid_port_cannot_silently_dial_the_default_server(self) -> None:
         from endbot_cli.configgen import ConfigGenerationError
 

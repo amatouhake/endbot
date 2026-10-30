@@ -20,6 +20,8 @@ DEFAULT_LINK_PORT = 19143
 DEFAULT_CHUNK_RADIUS = 5
 DEFAULT_TRANSPORT = "nethernet"
 TRANSPORTS = ("nethernet", "raknet")
+DEFAULT_NETHERNET_SIGNALLING = "lan"
+NETHERNET_SIGNALLINGS = ("lan", "direct")
 SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting")
 LANGUAGES = ("auto", "en", "ja")
 DEFAULT_LANGUAGE = "auto"
@@ -33,6 +35,7 @@ class ConfigError(ValueError):
 class ServerConfig:
     path: str
     transport: str = DEFAULT_TRANSPORT
+    nethernet_signalling: str = DEFAULT_NETHERNET_SIGNALLING
 
     def resolve(self, instance_root: Path) -> Path:
         """Return the BDS directory; relative paths resolve against the instance."""
@@ -120,7 +123,7 @@ def _reject_unknown_keys(path: Path, table: dict[str, Any], section: str, known:
 
 def _load_server(path: Path, document: dict[str, Any]) -> ServerConfig:
     table = _require_table(path, document, "server")
-    _reject_unknown_keys(path, table, "server", ("path", "transport"))
+    _reject_unknown_keys(path, table, "server", ("path", "transport", "nethernet-signalling"))
     if "path" not in table:
         raise _fail(path, "server.path", "is missing", "add [server] path = 'server' (the BDS directory)")
     value = table["path"]
@@ -134,7 +137,22 @@ def _load_server(path: Path, document: dict[str, Any]) -> ServerConfig:
             f"must be one of {TRANSPORTS}, found {transport!r}",
             'use transport = "nethernet" or "raknet" to match server.properties',
         )
-    return ServerConfig(path=value, transport=transport)
+    signalling = table.get("nethernet-signalling", DEFAULT_NETHERNET_SIGNALLING)
+    if not isinstance(signalling, str) or signalling not in NETHERNET_SIGNALLINGS:
+        raise _fail(
+            path,
+            "server.nethernet-signalling",
+            f"must be one of {NETHERNET_SIGNALLINGS}, found {signalling!r}",
+            'use nethernet-signalling = "lan" (UDP 7551 discovery) or "direct" (HTTP on server-port)',
+        )
+    if signalling != DEFAULT_NETHERNET_SIGNALLING and transport != "nethernet":
+        raise _fail(
+            path,
+            "server.nethernet-signalling",
+            f"applies only to transport = 'nethernet', found transport = {transport!r}",
+            "remove nethernet-signalling or set transport = 'nethernet'",
+        )
+    return ServerConfig(path=value, transport=transport, nethernet_signalling=signalling)
 
 
 def _load_controllers(path: Path, document: dict[str, Any]) -> ControllersConfig:

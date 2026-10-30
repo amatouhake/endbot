@@ -53,6 +53,7 @@ Ownership rules:
 [server]
 path = 'server'            # BDS directory, relative to <instance> or absolute (TOML literal string)
 transport = 'nethernet'    # nethernet or raknet; omitted in old configs means nethernet
+nethernet-signalling = 'lan' # NetherNet only: lan (UDP 7551 discovery, default) or direct (HTTP on server-port)
 
 [controllers]
 gamertags = ["ExampleTag"] # Xbox GamerTags allowed to control Bots; bound to XUID on first join (§3)
@@ -150,6 +151,11 @@ editing BDS. To change an existing instance, stop it, change both transport valu
 Generated JSON is never the place to select a transport. RakNet dials the configured IPv4 `server-port` on
 loopback directly and requires a valid port; it omits advertisement-name fields and the UDP 7551 check.
 NetherNet keeps the discovery and server-selection checks below. The bundled native RakNet addon is load-tested.
+
+`[server].nethernet-signalling` chooses how NetherNet Bots reach BDS and is valid only with `transport = 'nethernet'`.
+`lan` (the default, also when omitted) is the discovery path in §5. `direct` is the experimental, not yet
+BDS-validated path in §5: like RakNet it needs a valid `server-port` and omits the advertisement names and the
+UDP 7551 check. It changes nothing in `server.properties`.
 
 ## 3. Controller enrollment
 
@@ -268,6 +274,19 @@ it, BDS cannot answer discovery at all, so `endbot start` checks the port before
 that explanation. Use distinct `server-name` values (or world display names) when several Endbot instances share
 a machine. RakNet skips this discovery and connects only to the configured loopback address/port, with ping and
 advertised-port following disabled. Both paths use the same local-bot authentication and host-isolation boundary.
+
+Direct NetherNet signalling (`nethernet-signalling = 'direct'`, experimental). BDS 26.60 turns RakNet into an
+error, and LAN discovery lets only one program on a machine own UDP 7551, so several Endbot instances on one machine
+need a NetherNet path without discovery. A client that joins by address signals over HTTP instead: it POSTs its SDP
+offer, with every ICE candidate in it, to `http://<host>:<server-port>/v1/join/<client network id>` and receives the
+SDP answer in the response (a bare number is a NetherNet error code). The Bot does the same against the configured
+loopback `server-port`, so each instance is selected by its own port: no discovery, no advertisement names, and no
+UDP 7551 check before start. Upstream `bedrock-protocol` only signals over LAN or the online services, so the runtime
+replaces the NetherNet client's signal handler (`runtime/src/direct-signalling.js`); authentication, the loopback
+restriction and the Bot token are unchanged. The client side is tested against a local upstream NetherNet server
+over loopback HTTP. **It has not been validated against a real BDS**: whether BDS serves this endpoint on
+`server-port` (plain HTTP, no client identity), and whether `enable-lan-visibility=false` keeps UDP 7551 free so
+several instances can start, remain open gates (see [BOT-026](BACKLOG.md#bot-026-several-nethernet-instances-on-one-machine)).
 
 ## 5a. Process lifecycle
 

@@ -1,10 +1,10 @@
 # Compatibility and releases
 
-## Current candidate (0.5.0)
+## Current baseline (0.5.0)
 
-`endstone.lock` now pins Endstone `v0.11.15` at `b4aaa87d2c5305e7d340168f824ac2e2ea722e44`, with BDS `1.26.60.6`
-(Linux build `52886190`, Windows build `52886189`) and protocol `2225`, with `support_status: "candidate"`. It is not a
-supported pair until the compatibility gate below passes and the lock is set back to `validated-baseline`.
+`endstone.lock` pins Endstone `v0.11.15` at `b4aaa87d2c5305e7d340168f824ac2e2ea722e44`, with BDS `1.26.60.6`
+(Linux build `52886190`, Windows build `52886189`) and protocol `2225`, `support_status: "validated-baseline"` since the
+gate below passed on 2026-10-30.
 
 - Minecraft 26.60 clients use protocol `2225` and cannot join the `1.26.52` pair, which is why 0.5.0 moves.
 - BDS 1.26.60 refuses players on RakNet ("NetherNet is the only supported transport type", checked on the Linux build
@@ -28,8 +28,14 @@ supported pair until the compatibility gate below passes and the lock is set bac
   wrong-issuer, wrong-audience and auth-disabled refusals. Three fixture fixes came out of it (a wider scripting
   platform, a retry while a fed cow wanders off the crosshair, waiting for the plugin to relink after a restart); one
   run also failed once on a pickup/drop check that passed on the other runs.
-- Still open, for people: a 26.60 client joining alongside a Bot on the same PC, and an achievement observation.
-  The lock stays `candidate` until they pass.
+- The `0.5.0-rc.1` candidate (run 41044019145, with #173: a login that never reaches spawn now fails the attempt;
+  found when Bots stayed in `reconnecting` after a restart) passed its CI cold build, both consumer E2E jobs and
+  assembly.
+- People, on Windows with Minecraft 26.60: one client joined three instances on the same PC by address while their
+  Bots were online, two of them at once, with UDP 7551 held by one BDS; `/bot list` and `/bot <Bot> tp me` worked on
+  each. On an instance updated from 0.4.0 the player unlocked the Xbox achievement **Body Guard** with no
+  achievements-disabled notice, and `level.dat` stayed clean (see
+  [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md#050-human-pass-with-one-account--2026-10-30-jst)).
 
 ## Previous baseline (0.2.1 to 0.4.0)
 

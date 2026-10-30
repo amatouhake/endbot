@@ -996,8 +996,10 @@ Validated on Endstone `0.11.15+endbot.1` / BDS `1.26.60.6` (release-candidate ru
   `endbot start` now waits for the port off Windows; three stop/start cycles in a row in WSL each waited and
   spawned the Bot.
 
-Still a human check in the 0.5.0 pass: a 26.60 client on the same PC joins each of the instances by address while
-Bots are online.
+Human check (2026-10-30 JST, `0.5.0-rc.1`): a 26.60 client on the same PC joined each of three instances by address
+while their Bots were online, two at once, with UDP 7551 held by one BDS. The same check found #173: after a restart
+the runtime, which starts before BDS, could reach BDS mid-start and wait forever for a login; such an attempt now
+fails after 60 s and the next one is scheduled.
 
 ## Deferred priorities
 

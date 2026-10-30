@@ -7,9 +7,10 @@ belong to the 0.5.0 validation pass ([delivery](DIRECTION.md#delivery)) and are 
 them as written. Runs so far use the locked pair: official BDS `1.26.52.3` and patched Endstone `0.11.13+endbot.1`;
 the 0.5.0 pass runs on the pair it ships. No server, world, identity, key, token or machine-local path is kept in the repository.
 
-Status: **autonomous smoke recorded; an early one-account human check passed; the final human checks are open.** The
-release containing BOT-024 is not validated until every item in the last section is recorded as passed on the final
-main.
+Status: **autonomous smoke recorded; the 0.5.0 human pass ran with one account and passed; the checks that need a
+real second person were not run.** Decided 2026-10-30 JST: 0.5.0 ships without them. Their logic is covered by unit
+tests, the early check below simulated the second person, and with the default `shared` nothing changes for players
+until someone makes an item private.
 
 ## Autonomous live smoke on the locked pair — 2026-10-30 JST
 
@@ -68,6 +69,40 @@ unowned, and endbotd was started again. This check does not replace the final pa
 
 Not covered by this check: a real second person (their own `private`, and `owner` to their XUID), update and rollback,
 `bots-default = "private"`, a Bot created by a player's script run, and achievement history.
+
+## 0.5.0 human pass with one account — 2026-10-30 JST
+
+Run by the operator with one unmodified Windows client (Minecraft 26.60, Xbox-authenticated, Japanese) against the
+Windows bundle of release-candidate run 41044019145 (`0.5.0-rc.1`: Endstone `0.11.15+endbot.1`, BDS `1.26.60.6`,
+direct signalling). The instance started on the published 0.4.0 bundle: fresh setup, scripting on, one pending
+controller, a Bot, a Group, a file script and a stored script, all made at the console because a 26.60 client cannot
+join 0.4.0.
+
+- [x] Update: `endbot update` backed up the server, let Endstone move BDS to `1.26.60.6` and moved the stores into
+      `state/`. The pending controller listed as `(role scripter)`, every Bot and Group was shared with no owner
+      recorded, and `doctor` passed `controller-roles`, `ownership`, `stores` and `bds-version`. The existing Bot
+      reconnected by itself once BDS was up.
+- [x] A role given while pending (`--role controller`) applied on the first join.
+- [x] As a controller: `/botscript copy` was refused with the scripter-role reason; the script menus had no *New
+      script* or *Copy and edit*; running the file script worked and its run form showed no `requires` line.
+- [x] `--role scripter` from the CLI applied without a rejoin: `copy` and `visibility <name> shared` worked.
+- [x] A Bot the player spawned was recorded with the player's XUID; `visibility private` on it worked; on the unowned
+      Bot it was refused with the pointer to the console's `owner`.
+- [x] The console's `owner` reassigned a Bot, a Group and a script to the player, who could then make the Bot and the
+      Group private and saw the script as theirs; the player's own `owner` was refused (console only).
+- [x] `[limits] max-bots-per-controller = 1` with two owned Bots: a new spawn was refused; `reconnect` of an own Bot
+      worked. (An instance set up by 0.4.0 has no such key; it was added by hand.)
+- [x] Achievements: no achievements-disabled notice on joining, and the player unlocked the Xbox achievement
+      **Body Guard** (an iron golem built from blocks the console gave with `/give`). `level.dat` stayed free of
+      creative, cheat and experiment history before and after.
+- [x] Rollback: `endbot update --rollback` wrote Groups and scripts back to the plugin folder and switched to 0.4.0.
+      0.4.0 then refused to start, first on the 0.5.0 key `limits.max-bots-per-controller` and, once that was
+      removed, on `bds-version` (BDS `26.60` against its lock `1.26.52.3`). Going back after an update therefore means
+      restoring BDS and the world from backups, as OPERATIONS states.
+
+Not run (need a second person): someone else's private Bot or Group refused for B, B's moves and mining on A's shared
+Bot, B's `destroy continuous` ending when A makes the Bot private, and the Group-of-B mixed refusal. Also not run:
+`bots-default = "private"` and a Bot spawned by a player's script run.
 
 ## Human checks for the final validation pass
 

@@ -173,6 +173,98 @@ class GroupOwnershipEnforcementTests(unittest.TestCase):
         self.assertEqual(len(self.service.visible_groups(Principal("console"))), 2)
 
 
+class GroupOwnerCommandTests(unittest.TestCase):
+    """Group owners share/private their own Group; only the console assigns owners (BOT-024 4c)."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.store = GroupStore(Path(temporary.name) / "groups.json")
+        self.control, self.world = GroupControl(), FakeWorld()
+        self.ownership = OwnershipStore()
+        self.known = {"Carol": ("xuid:2535400000000003", "Carol")}
+        self.service = GroupCommandService(self.control, self.world, self.store, lambda _: True,
+                                           ownership=self.ownership, resolve_owner=self.known.get)
+        self.alice = Principal("player", name="Alice", xuid="2535400000000001",
+                               player_id="0000000a-0000-4000-8000-00000000000a")
+        self.bob = Principal("player", name="Bob", xuid="2535400000000002",
+                             player_id="0000000b-0000-4000-8000-00000000000b")
+        self.service.execute(["Mine", "spawn"], self.alice)
+        self.service.execute_group(["create", "#crew"], self.alice)
+        self.service.execute_group(["add", "#crew", "Mine"], self.alice)
+        self.identity = self.store.get("crew").identity
+
+    def test_the_owner_shares_and_makes_private_their_own_group(self):
+        shared = self.service.execute_group(["share", "#crew"], self.alice)
+        self.assertTrue(shared.accepted)
+        self.assertIn("Group crew is now shared", messages(shared))
+        self.assertEqual(self.ownership.get("groups", self.identity).visibility, "shared")
+        private = self.service.execute_group(["private", "#crew"], self.alice)
+        self.assertTrue(private.accepted)
+        self.assertIn("Group crew is now private", messages(private))
+        self.assertEqual(self.ownership.get("groups", self.identity).visibility, "private")
+
+    def test_another_player_cannot_change_someone_elses_group(self):
+        for operation in ("share", "private"):
+            with self.subTest(operation=operation):
+                result = self.service.execute_group([operation, "#crew"], self.bob)
+                self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
+                self.assertIn("Only Alice or the console can", messages(result))
+        self.assertEqual(self.ownership.get("groups", self.identity).visibility, "shared")
+
+    def test_an_unowned_group_is_refused_for_players_and_the_console(self):
+        self.service.execute_group(["create", "#open"])
+        identity = self.store.get("open").identity
+        for sender in (self.alice, None):
+            for operation in ("share", "private"):
+                with self.subTest(console=sender is None, operation=operation):
+                    result = self.service.execute_group([operation, "#open"], sender)
+                    self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
+                    self.assertIn(
+                        "Group open has no owner; the console can assign one with "
+                        "/botgroup owner #open <GamerTag>",
+                        messages(result),
+                    )
+        self.assertIsNone(self.ownership.get("groups", identity))
+
+    def test_the_console_assigns_a_group_owner_and_keeps_the_visibility(self):
+        self.assertTrue(self.service.execute_group(["private", "#crew"], self.alice).accepted)
+        result = self.service.execute_group(["owner", "#crew", "Carol"])
+        self.assertTrue(result.accepted)
+        self.assertIn("Group crew now belongs to Carol", messages(result))
+        self.assertEqual(self.ownership.get("groups", self.identity),
+                         Ownership("xuid:2535400000000003", "Carol", "private"))
+        self.assertEqual(self.service.execute_group(["list"], self.alice).code, "ok")
+        self.assertNotIn("#crew", messages(self.service.execute_group(["list"], self.alice)))
+
+    def test_the_console_assignment_keeps_the_default_for_a_group_without_an_entry(self):
+        self.service.execute_group(["create", "#open"])
+        identity = self.store.get("open").identity
+        self.assertTrue(self.service.execute_group(["owner", "#open", "Carol"]).accepted)
+        self.assertEqual(self.ownership.get("groups", identity),
+                         Ownership("xuid:2535400000000003", "Carol", "shared"))
+
+    def test_a_player_cannot_reassign_a_group_owner(self):
+        result = self.service.execute_group(["owner", "#crew", "Carol"], self.bob)
+        self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
+        self.assertIn("Only the console can change owners", messages(result))
+        self.assertEqual(self.ownership.get("groups", self.identity).owner, "xuid:2535400000000001")
+
+    def test_an_unknown_gamertag_is_an_invalid_argument(self):
+        result = self.service.execute_group(["owner", "#crew", "Nobody"])
+        self.assertEqual((result.accepted, result.code), (False, "invalid_argument"))
+        self.assertIn("Nobody is not a known player; they must have joined or be a controller",
+                      messages(result))
+        self.assertEqual(self.ownership.get("groups", self.identity).owner, "xuid:2535400000000001")
+
+    def test_a_private_group_disappears_from_another_players_list(self):
+        self.assertTrue(self.service.execute_group(["private", "#crew"], self.alice).accepted)
+        self.assertNotIn("#crew", messages(self.service.execute_group(["list"], self.bob)))
+        self.assertIn("#crew", messages(self.service.execute_group(["list"], self.alice)))
+        self.assertIn("Group crew does not exist", messages(self.service.execute(["#crew", "status"], self.bob)))
+        self.assertTrue(self.service.execute(["#crew", "status"], self.alice).accepted)
+
+
 class GroupServiceTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()

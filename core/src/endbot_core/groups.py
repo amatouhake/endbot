@@ -25,8 +25,8 @@ from endbot_core.commands import (
 from endbot_core.control import RuntimeControlError, bot_profiles
 from endbot_core.group_forms import GroupListView, GroupView, ResultView
 from endbot_core.group_results import PAGE_SIZE, MemberResult, ResultStore
-from endbot_core.i18n import LocalizedError, localize_error, tr
-from endbot_core.ownership import owner_key
+from endbot_core.i18n import LocalizedError, Text, localize_error, tr
+from endbot_core.ownership import OwnershipRefused, owner_for_gamertag, owner_key
 
 GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}\Z")
 # Indexes stay under 10 digits: a larger number is never a member and must not reach int().
@@ -250,8 +250,9 @@ class GroupCommandService(BotCommandService):
     """Shared groups reuse existing Bot actions for each operation."""
 
     def __init__(self, control, world, groups: GroupStore | None, authorize, limits=None, capacity=None,
-                 ownership=None):
-        super().__init__(control, world, limits=limits, capacity=capacity, ownership=ownership)
+                 ownership=None, resolve_owner=None):
+        super().__init__(control, world, limits=limits, capacity=capacity, ownership=ownership,
+                         resolve_owner=resolve_owner)
         self.groups, self.authorize = groups, authorize
         self._groups_open = True
         self.results = ResultStore()
@@ -370,6 +371,43 @@ class GroupCommandService(BotCommandService):
         return CommandResult(True, (reply(localize_error(error, lang), target, ERROR),), accepted=False,
                              code=error_code(error))
 
+    def _group_visibility(self, sender, reference, operation, lang):
+        """`share #group` / `private #group`: the owner or the console; an unowned Group is refused (4c)."""
+        group = self._store(sender).get(group_reference(reference))
+        self._check(sender)
+        self._form_group(sender, group)
+        entry = self.ownership.get("groups", group.identity) if self.ownership is not None else None
+        if entry is None:
+            raise OwnershipRefused(
+                "Group {name} has no owner; the console can assign one with /botgroup owner #{name} <GamerTag>",
+                name=group.name,
+            )
+        if not self.ownership.is_owner("groups", group.identity, sender):
+            raise OwnershipRefused(
+                "Only {owner} or the console can {operation} Group {name}",
+                owner=entry.owner_name or "?",
+                operation=operation,
+                name=group.name,
+            )
+        visibility = "shared" if operation == "share" else "private"
+        self.ownership.set_visibility("groups", group.identity, visibility)
+        return CommandResult(True, (reply(tr(lang, "Group {name} is now {visibility}", name=group.name,
+                                              visibility=Text(visibility)), f"#{group.name}"),))
+
+    def _group_owner(self, sender, reference, gamertag, lang):
+        """`owner #group <GamerTag>`: the console reassigns a Group's owner (4c)."""
+        if getattr(sender, "player_id", None) is not None:
+            raise OwnershipRefused("Only the console can change owners")
+        if self.ownership is None:
+            raise LocalizedError("Ownership is unavailable; see the server log")
+        group = self._store(sender).get(group_reference(reference))
+        self._check(sender)
+        self._form_group(sender, group)
+        owner, owner_name = owner_for_gamertag(self.resolve_owner, gamertag)
+        self.ownership.set_owner("groups", group.identity, owner, owner_name)
+        return CommandResult(True, (reply(tr(lang, "Group {name} now belongs to {owner}", name=group.name,
+                                              owner=owner_name), f"#{group.name}"),))
+
     def execute_group(self, arguments, sender=None):
         """Arguments following /botgroup. Runs on the same authorized, ordered worker as /bot."""
         lang = _language(sender)
@@ -382,6 +420,7 @@ class GroupCommandService(BotCommandService):
                 return CommandResult(True, tuple(reply(line) for line in (
                     "/botgroup list [#group] | create #group | delete #group",
                     "/botgroup add #group <bot> | remove #group <bot-or-#group[index]>",
+                    "/botgroup share #group | private #group | owner #group <GamerTag> (console)",
                     "/botgroup result #group [history] | menu [#group [page|result [history]]]",
                     "/bot #group <operation> | /bot #group[1] <operation> (one-based)",
                 )))
@@ -447,6 +486,10 @@ class GroupCommandService(BotCommandService):
                 getattr(self._store(sender), operation)(name, identity)
                 template = "add: {target}" if operation == "add" else "remove: {target}"
                 return CommandResult(True, (reply(tr(lang, template, target=target), f"#{group.name}"),))
+            if operation in {"share", "private"} and len(tail) == 1:
+                return self._group_visibility(sender, tail[0], operation, lang)
+            if operation == "owner" and len(tail) == 2:
+                return self._group_owner(sender, tail[0], tail[1], lang)
             raise ValueError("Invalid group command; use /botgroup help")
         except OSError as error:
             # The full error names an absolute server path; players get a fixed message.

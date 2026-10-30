@@ -164,6 +164,20 @@
         "prefix": []
       }
     ],
+    "share": [
+      {
+        "positional": [],
+        "options": {},
+        "prefix": []
+      }
+    ],
+    "private": [
+      {
+        "positional": [],
+        "options": {},
+        "prefix": []
+      }
+    ],
     "stop": [
       {
         "positional": [],
@@ -235,6 +249,20 @@
         "positional": [
           [
             "name",
+            {
+              "type": "string"
+            }
+          ]
+        ],
+        "options": {},
+        "prefix": []
+      }
+    ],
+    "owner": [
+      {
+        "positional": [
+          [
+            "gamertag",
             {
               "type": "string"
             }
@@ -846,11 +874,14 @@
     "reconnect": "act.bot",
     "despawn": "act.bot",
     "forget": "act.bot",
+    "share": "act.bot",
+    "private": "act.bot",
     "stop": "act.bot",
     "dismount": "act.bot",
     "menu": "act.bot",
     "spawn": "act.bot",
     "rename": "act.bot",
+    "owner": "act.bot",
     "tp": "act.bot",
     "move": "act.bot",
     "look": "act.bot",

@@ -215,6 +215,7 @@ class OperationParityTests(unittest.TestCase):
                 ),
             ],
             "rename": [({"name": "Other"}, ["rename", "Other"])],
+            "owner": [({"gamertag": "Bob"}, ["owner", "Bob"])],
             "tp": [
                 ({"target": "Player"}, ["tp", "Player"]),
                 (
@@ -1087,7 +1088,9 @@ class OwnershipTests(unittest.TestCase):
         self.config = ScriptConfig(enabled=True)
         self.store = ScriptStore(self.path, self.config)
         self.host = ScriptService(self.config, self.store, None, None, Path(directory.name), lambda source: True,
-                                  process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
+                                  process_factory=lambda *args: FakeRunner([]), bootstrap="trusted",
+                                  resolve_owner=lambda gamertag: (
+                                      ("xuid:999", "Carol") if gamertag == "Carol" else None))
         self.alice = Principal("player", player_id="a-uuid", xuid="111", name="Alice", grant_revision=0)
         self.bob = Principal("player", player_id="b-uuid", xuid="222", name="Bob", grant_revision=0)
         self.console = Principal()
@@ -1207,6 +1210,44 @@ class OwnershipTests(unittest.TestCase):
         self.assertIn("bobs (Bob, private)", self.text(self.host.execute(["list"], self.console)))
         reloaded = ScriptStore(self.path, self.config).get("mine")
         self.assertEqual(reloaded, restored)
+
+    def test_the_console_reassigns_a_scripts_owner_keeping_revision_and_history(self):
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v1").accepted)
+        first = self.store.get("mine")
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v2", first.revision).accepted)
+        before = self.store.get("mine")
+        result = self.host.execute(["owner", "mine", "Carol"], self.console)
+        self.assertTrue(result.accepted)
+        self.assertIn("Script mine now belongs to Carol", self.text(result))
+        after = self.store.get("mine")
+        self.assertEqual((after.owner, after.owner_name), ("xuid:999", "Carol"))
+        self.assertEqual((after.revision, after.history), (before.revision, before.history))
+        self.assertEqual(ScriptStore(self.path, self.config).get("mine").owner, "xuid:999")
+        # Ownership is not a source edit: only the owner entries changed.
+        self.assertEqual((after.source, after.visibility, after.saved_at),
+                         (before.source, before.visibility, before.saved_at))
+
+    def test_a_player_cannot_reassign_a_scripts_owner(self):
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n").accepted)
+        result = self.host.execute(["owner", "mine", "Carol"], self.alice)
+        self.assertEqual((result.accepted, result.code), (False, "unauthorized"))
+        self.assertIn("Only the console can change owners", self.text(result))
+        self.assertEqual(self.store.get("mine").owner, "xuid:111")
+
+    def test_a_file_script_has_no_owner_to_reassign(self):
+        self.host.files_directory.mkdir(exist_ok=True)
+        (self.host.files_directory / "op.luau").write_text("params {}\n", encoding="utf-8")
+        self.host.reload_files()
+        self.assertTrue(self.store.get("op").file)
+        result = self.host.execute(["owner", "op", "Carol"], self.console)
+        self.assertEqual((result.accepted, result.code), (False, "invalid_argument"))
+        self.assertIn("File scripts have no owner; the file is the source", self.text(result))
+
+    def test_an_unknown_gamertag_is_refused(self):
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n").accepted)
+        result = self.host.execute(["owner", "mine", "Nobody"], self.console)
+        self.assertEqual((result.accepted, result.code), (False, "invalid_argument"))
+        self.assertIn("Nobody is not a known player; they must have joined or be a controller", self.text(result))
 
     def test_history_is_bounded_and_legacy_scripts_are_claimed_by_their_next_editor(self):
         self.path.write_text(json.dumps({"version": 1, "scripts": [

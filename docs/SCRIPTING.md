@@ -157,6 +157,7 @@ retain the pinned BDS baseline's completion limitations.
 /botscript copy <name> <new-name>
 /botscript share <name>
 /botscript private <name>
+/botscript owner <name> <GamerTag>
 /botscript history <name>
 /botscript restore <name> <n>
 /botscript rename <name> <new-name>
@@ -184,7 +185,9 @@ the previous source in a history of the last 10 revisions; `history` lists them 
 line count) and `restore <name> <n>` makes revision `n` current as a new save, keeping the replaced source in the
 history. Runs still use the invoker's authority, whoever owns the script. Scripts saved before ownership (file
 version 1) have no owner and stay shared; the first controller to edit one becomes its owner. Lists show
-`name (owner, visibility)` with `yours` for your own. Not implemented: separate run/author permissions
+`name (owner, visibility)` with `yours` for your own. The console can reassign a stored script's owner with
+`owner <name> <GamerTag>`: the owner key and name change, while the visibility, revision and history stay. A file
+script has no owner to reassign; the file is the source. Not implemented: separate run/author permissions
 (`endbot.script.run`/`endbot.script.author`); every controller may still author.
 
 When enabled, `/bot menu` lists **Scripts...** after **+ New Bot here** (next to **Manage groups...**);
@@ -481,12 +484,15 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:reconnect()` | none | none |
 | `:despawn()` | none | none |
 | `:forget()` | none | none |
+| `:share()` | none | none |
+| `:private()` | none | none |
 | `:stop()` | none | none |
 | `:dismount()` | none | none |
 | `:menu()` | none | none |
 | `:spawn()` | none | none |
 | `:spawn()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string |
 | `:rename()` | name: string | none |
+| `:owner()` | gamertag: string | none |
 | `:tp()` | target: string | none |
 | `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: string, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
 | `:move()` | direction: forward / backward / left / right / stop | ticks: integer |

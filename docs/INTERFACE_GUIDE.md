@@ -111,3 +111,20 @@ Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/b
 `link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link` (issues the
 one-time code), `/botweb status` and `/botweb unlink`; see
 [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game).
+
+### D4. Owner commands
+
+Players share and make private their own items; only the console assigns owners. The names follow the scripts'
+`share` / `private` (S9), and D3 puts Bot actions under `/bot` and noun management under `/bot<noun>`:
+
+| What | Command |
+| --- | --- |
+| Share / make private a Bot | `/bot <Bot> share`, `/bot <Bot> private` |
+| Share / make private a Group | `/botgroup share #group`, `/botgroup private #group` |
+| Reassign a Bot's owner (console only) | `/bot <Bot> owner <GamerTag>` |
+| Reassign a Group's owner (console only) | `/botgroup owner #group <GamerTag>` |
+| Reassign a script's owner (console only) | `/botscript owner <name> <GamerTag>` |
+
+An unowned Bot or Group stays shared and cannot be made private until the console assigns an owner, so a player
+cannot claim a pre-ownership item by making it private. The owner may switch visibility; only the console reassigns
+owners, and the GamerTag must be an online player or a recorded controller grant.

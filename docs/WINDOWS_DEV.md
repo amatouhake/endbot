@@ -19,7 +19,7 @@ Native Windows hosting of the runtime and server was designed for but was not pa
 Current status after PR #4: native Windows hosting has additionally been live-smoked successfully (patched Endstone
 `0.11.11+endbot.2`, official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Alice local Bot alongside a
 normal Microsoft/Xbox human client). Linux nevertheless remains the CI/release-artifact baseline, and the PR #4 smoke
-added no new Xbox-achievement observation for `+endbot.2`. The current candidate is `0.11.15+endbot.1` on upstream
+added no new Xbox-achievement observation for `+endbot.2`. The current package is `0.11.15+endbot.1` on upstream
 `v0.11.15` with BDS `1.26.60.6` (Windows build `52886189`); its compatibility state is recorded in
 [`COMPATIBILITY.md`](COMPATIBILITY.md).
 

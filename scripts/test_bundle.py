@@ -205,7 +205,8 @@ def check_runner(bundle_root: Path, version: str, allow_missing: bool = False) -
         events = [json.loads(line) for line in completed.stdout.splitlines()]
     except ValueError as error:
         raise BundleTestError(f"runner output is not NDJSON: {completed.stdout[:500]!r}") from error
-    if events != [{"type": "params", "id": 1, "schema": []}, {"type": "done"}]:
+    # The params request carries the script's requires {} list (BOT-024 2a), empty without a call.
+    if events != [{"type": "params", "id": 1, "schema": [], "requires": []}, {"type": "done"}]:
         raise BundleTestError(f"runner params smoke failed: {completed.stdout[:1000]!r}")
     print("bundle-test: bundled runner declares params and exits cleanly without BDS")
 

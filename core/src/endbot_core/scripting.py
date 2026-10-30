@@ -27,6 +27,7 @@ from endbot_core.events import Event, outcome_text, reason
 from endbot_core.group_forms import GroupGuard
 from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.operations import OPERATIONS, Operation
+from endbot_core.ownership import owner_key as ownership_key
 from endbot_core.principal import Principal
 from endbot_core.script_books import pages_to_source, source_to_pages, written
 from endbot_core.script_params import arguments, declarations, required
@@ -228,9 +229,9 @@ class ScriptService:
     @staticmethod
     def owner_key(source):
         """The stable owner identity of a controller: XUID when known, else the player UUID."""
-        if source.player_id is None:
+        if source is None or source.player_id is None:
             return "console"
-        return f"xuid:{source.xuid}" if source.xuid else f"player:{source.player_id}"
+        return ownership_key(source)
 
     def can_edit(self, script, source):
         """The owner or the console; an unowned (pre-ownership) script is claimed by its next editor.

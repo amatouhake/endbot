@@ -210,8 +210,9 @@ class _BatchReplyControl:
 class GroupCommandService(BotCommandService):
     """Shared groups reuse existing Bot actions for each operation."""
 
-    def __init__(self, control, world, groups: GroupStore | None, authorize, limits=None, capacity=None):
-        super().__init__(control, world, limits=limits, capacity=capacity)
+    def __init__(self, control, world, groups: GroupStore | None, authorize, limits=None, capacity=None,
+                 ownership=None):
+        super().__init__(control, world, limits=limits, capacity=capacity, ownership=ownership)
         self.groups, self.authorize = groups, authorize
         self._groups_open = True
         self.results = ResultStore()
@@ -356,10 +357,15 @@ class GroupCommandService(BotCommandService):
                 name = group_reference(tail[0])
                 if operation == "create":
                     group = self._store().create(name)
+                    if self.ownership is not None:
+                        self.ownership.record("groups", group.identity, sender)
                     return CommandResult(True, (reply(tr(lang, "group created"), f"#{group.name}"),))
                 if operation == "delete":
-                    self._form_group(sender, self._store().get(name))
+                    group = self._store().get(name)
+                    self._form_group(sender, group)
                     self._store().delete(name)
+                    if self.ownership is not None:
+                        self.ownership.forget("groups", group.identity)
                     return CommandResult(True, (reply(tr(lang, "group deleted; Bots retained"), f"#{name}"),))
                 group = self._store().get(name)
                 self._form_group(sender, group)

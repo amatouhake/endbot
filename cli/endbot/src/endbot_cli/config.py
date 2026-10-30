@@ -20,9 +20,10 @@ DEFAULT_LINK_PORT = 19143
 DEFAULT_CHUNK_RADIUS = 5
 DEFAULT_TRANSPORT = "nethernet"
 TRANSPORTS = ("nethernet", "raknet")
-SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting")
+SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting", "permissions")
 LANGUAGES = ("auto", "en", "ja")
 DEFAULT_LANGUAGE = "auto"
+VISIBILITIES = ("shared", "private")
 
 
 class ConfigError(ValueError):
@@ -84,6 +85,12 @@ class ScriptingConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class PermissionsConfig:
+    bots_default: str = "shared"
+    groups_default: str = "shared"
+
+
+@dataclass(frozen=True, slots=True)
 class EndbotConfig:
     server: ServerConfig
     controllers: ControllersConfig
@@ -92,6 +99,7 @@ class EndbotConfig:
     limits: LimitsConfig = LimitsConfig()
     ui: UiConfig = UiConfig()
     scripting: ScriptingConfig = ScriptingConfig()
+    permissions: PermissionsConfig = PermissionsConfig()
 
 
 def _fail(path: Path, key: str, problem: str, fix: str) -> ConfigError:
@@ -311,6 +319,25 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     )
 
 
+def _load_permissions(path: Path, document: dict[str, Any]) -> PermissionsConfig:
+    table = document.get("permissions", {})
+    if not isinstance(table, dict):
+        raise _fail(path, "permissions", "must be a table", "write it as a [permissions] section")
+    _reject_unknown_keys(path, table, "permissions", ("bots-default", "groups-default"))
+    values = {}
+    for key in ("bots-default", "groups-default"):
+        value = table.get(key, "shared")
+        if not isinstance(value, str) or value not in VISIBILITIES:
+            raise _fail(
+                path,
+                f"permissions.{key}",
+                f"must be one of {VISIBILITIES}, found {value!r}",
+                f'use {key} = "shared" (the default) or "private"',
+            )
+        values[key] = value
+    return PermissionsConfig(bots_default=values["bots-default"], groups_default=values["groups-default"])
+
+
 def load_config(path: Path) -> EndbotConfig:
     """Load and validate ``endbot.toml``; raise :class:`ConfigError` on any violation."""
 
@@ -342,4 +369,5 @@ def load_config(path: Path) -> EndbotConfig:
         limits=_load_limits(path, document),
         ui=_load_ui(path, document),
         scripting=_load_scripting(path, document),
+        permissions=_load_permissions(path, document),
     )

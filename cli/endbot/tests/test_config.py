@@ -33,6 +33,24 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "scripting"):
             load_config(self.path)
 
+    def test_permissions_defaults_and_visibility_values(self):
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base)
+        permissions = load_config(self.path).permissions
+        self.assertEqual((permissions.bots_default, permissions.groups_default), ("shared", "shared"))
+        self.write(base + '[permissions]\nbots-default="private"\ngroups-default="shared"\n')
+        permissions = load_config(self.path).permissions
+        self.assertEqual((permissions.bots_default, permissions.groups_default), ("private", "shared"))
+        for key, value in (("bots-default", '"public"'), ("groups-default", '"Shared"'),
+                           ("groups-default", "true"), ("bots-default", "1"), ("bots-default", "''")):
+            with self.subTest(key=key, value=value):
+                self.write(base + f"[permissions]\n{key}={value}\n")
+                with self.assertRaisesRegex(ConfigError, f"permissions.{key}"):
+                    load_config(self.path)
+        self.write(base + '[permissions]\nbots-default="shared"\nvisibility="private"\n')
+        with self.assertRaisesRegex(ConfigError, "permissions.visibility"):
+            load_config(self.path)
+
     def test_bot_limits_defaults_and_bounds(self):
         base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
         self.write(base)

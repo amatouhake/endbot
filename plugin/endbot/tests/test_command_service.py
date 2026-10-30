@@ -5,6 +5,8 @@ from endbot_core.control import RuntimeControlError
 from endbot_core.i18n import LocalizedError
 from endbot_core.limits import BotLimits
 from endbot_core.link import LinkError, error_from_wire, error_to_wire, resolve_mining_batch
+from endbot_core.ownership import Ownership, OwnershipStore
+from endbot_core.principal import Principal
 from plain_service import PlainCommandService
 
 
@@ -780,6 +782,56 @@ class CommandServiceTests(unittest.TestCase):
         renamed = self.service.execute(["Alice", "rename", "Bob"], object()).message
         self.assertTrue(renamed.startswith("Endbot: Alice: "))
         self.assertEqual(self.service.execute(["help", "nope"]).message.split(":")[0], "Endbot")
+
+
+class OwnershipRecordingTests(unittest.TestCase):
+    """A player's new Bot is owned by the invoker; the console records nothing (BOT-024 4a)."""
+
+    def setUp(self) -> None:
+        self.control = FakeControl()
+        self.world = FakeWorld()
+        self.ownership = OwnershipStore()
+        self.service = PlainCommandService(self.control, self.world, ownership=self.ownership)
+
+    @staticmethod
+    def player(name="Alice", xuid="2535400000000001", player_id="0000000a-0000-4000-8000-00000000000b"):
+        return Principal("player", name=name, xuid=xuid, player_id=player_id)
+
+    def test_player_spawn_records_the_owner_with_the_kind_default(self):
+        result = self.service.execute(["Alice", "spawn"], self.player())
+        self.assertIn("created and connecting", result.message)
+        identity = self.control.bots["Alice"]["identityId"]
+        self.assertEqual(self.ownership.get("bots", identity),
+                         Ownership("xuid:2535400000000001", "Alice", "shared"))
+
+    def test_spawn_uses_a_private_default_and_records_a_uuid_only_invoker(self):
+        self.ownership = OwnershipStore(bots_default="private")
+        self.service = PlainCommandService(self.control, self.world, ownership=self.ownership)
+        self.service.execute(["Alice", "spawn"], self.player(xuid=None))
+        identity = self.control.bots["Alice"]["identityId"]
+        self.assertEqual(self.ownership.get("bots", identity),
+                         Ownership("player:0000000a-0000-4000-8000-00000000000b", "Alice", "private"))
+
+    def test_existing_profile_spawn_records_nothing_new(self):
+        identity = "00000000-0000-4000-8000-000000000099"
+        self.control.bots["Alice"] = {
+            "identityId": identity, "name": "Alice", "desiredState": "online", "connectionState": "online",
+        }
+        result = self.service.execute(["Alice", "spawn"], self.player("Bob", xuid="2535400000000002"))
+        self.assertIn("already online", result.message)
+        self.assertIsNone(self.ownership.get("bots", identity))
+
+    def test_console_spawn_records_nothing(self):
+        self.service.execute(["Alice", "spawn"], Principal("console"))
+        identity = self.control.bots["Alice"]["identityId"]
+        self.assertIsNone(self.ownership.get("bots", identity))
+
+    def test_forget_removes_the_recorded_entry(self):
+        self.service.execute(["Alice", "spawn"], self.player())
+        identity = self.control.bots["Alice"]["identityId"]
+        self.assertIsNotNone(self.ownership.get("bots", identity))
+        self.service.execute(["Alice", "forget"], self.player())
+        self.assertIsNone(self.ownership.get("bots", identity))
 
 
 class SeatLimitTests(unittest.TestCase):

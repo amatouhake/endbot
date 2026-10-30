@@ -169,6 +169,7 @@ once, against the endbotd endpoint, not against the file request channel being r
    - **4a. Ownership store** for Bots and Groups: owner and visibility by identity id, absent means unowned and shared
      (S2); a Bot spawned by a run or trigger is owned by its invoker or the trigger's owner; `[permissions]
      bots-default` and `groups-default` (S7). Nothing players see while the defaults are `shared`. *Claude.*
+     **Landed** (2026-10-30 JST). Bots and Groups created from the console stay unowned.
    - **4b. Enforcement in target resolution**, per member for Groups, so a command, form, script or web call on
      someone else's private Bot fails the same way (S4). Players see refusals only after someone makes an
      item private. *Claude.*

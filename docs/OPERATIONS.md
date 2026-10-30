@@ -28,6 +28,7 @@ directory may live inside it (fresh setup) or anywhere else (existing server).
 │  ├─ controller-policy.json console-managed grants/revocations (generated, see §3)
 │  ├─ grant-revisions.json   grant revision per revoked controller identity (generated, see §3)
 │  ├─ controller-roles.json  controller role per XUID (generated, see §3)
+│  ├─ ownership.json         owner and visibility per Bot and Group (written by endbotd, see §3)
 │  ├─ groups.json            Groups (written by endbotd)
 │  ├─ scripts.json           stored scripts (written by endbotd)
 │  ├─ migrations.json        store layout marker ({"stores": 2}, see §6a)
@@ -75,6 +76,10 @@ language = "auto"          # auto (each player's game language), en, or ja
 
 [scripting]
 enabled = false            # opt in to controller Luau scripts; restart to apply
+
+[permissions]
+bots-default = "shared"    # shared or private: visibility of a Bot someone creates
+groups-default = "shared"  # shared or private: visibility of a Group someone creates
 ```
 
 `[scripting].enabled` is a boolean and defaults to false, including when the section is absent.
@@ -86,6 +91,13 @@ Manual plugin installations set `[scripting]` directly in their plugin config. S
 (`/botscript export`) to edit it there. No item is created; a book that already has writing is replaced only with
 `export <name> overwrite`, which the menu confirms first. Set it to false if the plugin must never change a held
 item. Importing from a book is always available while scripting is enabled.
+
+`[permissions]` sets the initial visibility of Bots and Groups that controllers create: `shared` (the default,
+also when the section or a key is absent) keeps today's behavior, and `private` keeps a new item visible and
+usable only by its owner. The owner is recorded in `state/ownership.json`; an item with no entry there is
+unowned and shared, and Bots and Groups created from the console stay unowned. The setting applies to new
+items only and takes effect on the next start. Nothing is refused by this setting until enforcement lands in
+the following step.
 
 `[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
 (default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value
@@ -130,9 +142,9 @@ Generated on every `endbot start` (overwritten, never hand-edited):
 - `state/generated/endbot-runtime.json` — runtime config pointing at `state/secrets`, `state/profiles`, and the BDS
   port read from `server.properties`.
 - `state/generated/endbotd.toml` — endbotd's config ([ENDBOTD.md](ENDBOTD.md)): authorization (pointing at
-  `state/controllers.json` and the policy files), limits, UI language, scripting, the runtime it drives
-  (`state/secrets/control.token`), its plugin link and `[stores]`: Groups and stored scripts in `state/`, script
-  files in `<instance>/scripts/`.
+  `state/controllers.json` and the policy files), limits, permissions defaults, UI language, scripting, the
+  runtime it drives (`state/secrets/control.token`), its plugin link and `[stores]`: Groups and stored scripts
+  in `state/`, script files in `<instance>/scripts/`.
 - `<server>/plugins/endbot/config.toml` — plugin config with only the `[endbotd]` link settings (loopback host,
   `link-port`, `state/secrets/endbotd.token`). The plugin no longer receives the runtime token.
 - `state/secrets/endbotd.token` — created once, like the runtime's control token; never printed or logged.

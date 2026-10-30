@@ -580,6 +580,44 @@ class EffectiveControllersTests(DoctorTestCase):
                 path.write_text(document)
                 self.assertEqual(self.status_of(self.doctor(), "controller-roles"), FAIL)
 
+    def test_ownership_file_is_validated(self):
+        path = self.paths.state_controllers.parent / "ownership.json"
+        self.assertEqual(self.status_of(self.doctor(), "ownership"), PASS)
+        self.assertIn("no owners recorded; every Bot and Group is shared",
+                      self.messages_of(self.doctor(), "ownership")[0])
+        identity = "0000000a-0000-4000-8000-00000000000b"
+        path.write_text(json.dumps({
+            "version": 1,
+            "bots": {identity: {"owner": "xuid:2535400000000001", "ownerName": "Alice", "visibility": "shared"}},
+            "groups": {},
+        }))
+        self.assertEqual(self.status_of(self.doctor(), "ownership"), PASS)
+        self.assertIn("records 1 Bot and 0 Groups", self.messages_of(self.doctor(), "ownership")[0])
+        corrupt = (
+            "{invalid",
+            "",
+            "[]",
+            json.dumps({"version": 2, "bots": {}, "groups": {}}),
+            json.dumps({"bots": {}, "groups": {}}),
+            json.dumps({"version": 1, "bots": {}, "groups": {}, "extra": True}),
+            json.dumps({"version": 1, "bots": [], "groups": {}}),
+            json.dumps({"version": 1, "bots": {identity: []}, "groups": {}}),
+            json.dumps({"version": 1, "bots": {identity: {"owner": "nobody", "visibility": "shared"}}}),
+            json.dumps({"version": 1, "bots": {identity: {"owner": "xuid:1", "visibility": "public"}}}),
+            json.dumps({"version": 1, "bots": {identity: {"owner": "xuid:1", "visibility": "shared",
+                                                         "ownerName": "x" * 65}}}),
+            json.dumps({"version": 1, "bots": {"not-a-uuid": {"owner": "xuid:1", "visibility": "shared"}}}),
+            json.dumps({"version": 1, "bots": {
+                identity: {"owner": "xuid:1", "visibility": "shared"},
+                identity.upper(): {"owner": "xuid:2", "visibility": "private"},
+            }}),
+        )
+        for document in corrupt:
+            with self.subTest(document=document[:80]):
+                path.write_text(document)
+                self.assertEqual(self.status_of(self.doctor(), "ownership"), FAIL)
+                self.assertIn("endbotd will not start", self.messages_of(self.doctor(), "ownership")[0])
+
     def test_corrupt_policy_is_reported_as_failure(self):
         (self.paths.state_controllers.parent / "controller-policy.json").write_text("{invalid")
         self.assertEqual(self.status_of(self.doctor(), "controllers-effective"), FAIL)

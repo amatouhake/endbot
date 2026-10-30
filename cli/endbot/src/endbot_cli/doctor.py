@@ -459,6 +459,79 @@ def check_controller_roles(paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"{path} records {count}")
 
 
+def check_ownership(paths: InstancePaths) -> CheckResult:
+    """``state/ownership.json`` (BOT-024 4a); endbotd refuses to start when it is corrupt."""
+
+    from uuid import UUID
+
+    name = "ownership"
+    path = paths.state_controllers.parent / "ownership.json"
+    remedy = "endbotd will not start; stop Endbot and delete it, which makes every Bot and Group unowned and shared"
+
+    def valid_identity(key) -> bool:
+        if not isinstance(key, str):
+            return False
+        try:
+            UUID(key)
+        except ValueError:
+            return False
+        return True
+
+    def valid_owner(value) -> bool:
+        return (
+            isinstance(value, str)
+            and 0 < len(value) <= 128
+            and value.startswith(("xuid:", "player:"))
+            and value not in ("xuid:", "player:")
+        )
+
+    def valid_entry(value) -> bool:
+        return (
+            isinstance(value, dict)
+            and not set(value) - {"owner", "ownerName", "visibility"}
+            and valid_owner(value.get("owner"))
+            and (
+                value.get("ownerName") is None
+                or (isinstance(value.get("ownerName"), str) and len(value["ownerName"]) <= 64)
+            )
+            and value.get("visibility") in ("shared", "private")
+        )
+
+    def valid_entries(table) -> bool:
+        if not isinstance(table, dict):
+            return False
+        identities = []
+        for key, value in table.items():
+            if not valid_identity(key) or not valid_entry(value):
+                return False
+            identities.append(str(UUID(key)))
+        return len(set(identities)) == len(identities)
+
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return CheckResult(PASS, name, "no owners recorded; every Bot and Group is shared")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return CheckResult(FAIL, name, f"{path} cannot be read ({error}); {remedy}")
+    try:
+        valid = (
+            isinstance(document, dict)
+            and document.get("version") == 1
+            and not set(document) - {"version", "bots", "groups"}
+            and valid_entries(document.get("bots", {}))
+            and valid_entries(document.get("groups", {}))
+        )
+        bots, groups = document.get("bots", {}), document.get("groups", {})
+    except (AttributeError, TypeError, ValueError):
+        valid = False
+        bots, groups = {}, {}
+    if not valid:
+        return CheckResult(FAIL, name, f"{path} is not a version 1 ownership file; {remedy}")
+    count = (f"{len(bots)} Bot{'s' if len(bots) != 1 else ''} and "
+             f"{len(groups)} Group{'s' if len(groups) != 1 else ''}")
+    return CheckResult(PASS, name, f"{path} records {count}")
+
+
 def check_stores(paths: InstancePaths, server: Path | None) -> CheckResult:
     """Which store layout is authoritative (docs/ENDBOTD.md P7): the marker and both layouts."""
 
@@ -883,6 +956,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
             results.extend(check_effective_controllers(context, config, state, server))
     results.append(check_grant_revisions(paths))
     results.append(check_controller_roles(paths))
+    results.append(check_ownership(paths))
     results.append(check_stores(paths, server))
 
     if server is None:

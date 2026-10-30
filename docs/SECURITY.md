@@ -71,6 +71,17 @@ mining job ends when its Bot becomes private to someone else. The console is nev
 make private their own Bots and Groups; unowned items stay shared until the console assigns an owner, and only the
 console reassigns owners. An older Endbot ignores the file, so after a rollback private Bots and Groups are shared again.
 
+A script states the capabilities it uses beyond the basic set (operating Bots, reading the world, waiting, logging) in
+`requires {}`, once and before `params {}` ([PERMISSIONS.md](PERMISSIONS.md#two-layers-the-person-and-the-script)). An
+unknown name is an inspection error, so such a script is never saved, loaded or run; no capability beyond the basic set
+exists until events add one. A run started from an inspection (the run form, the parameterless menu start, later a
+trigger) carries the declaration that inspection read and stops before its first operation if its own declaration
+differs, so a conditional `requires {}` cannot widen what was shown.
+
+`[limits] max-bots-per-controller` (0, the default, means no limit) caps how many Bots one player owns: a player's new
+Bot beyond it is refused with the conflict outcome before the runtime creates a profile, a Bot a script run creates
+counts for the run's invoker, reconnecting an existing Bot is never limited, and the console is never limited.
+
 Controller CLI requests use one atomic file per random request ID, bound to the current supervisor session. The
 supervisor validates and removes a request from the queue before forwarding its ID to the console-only plugin handler;
 only that handler executes the operation and writes the correlated result atomically. Old-session requests are rejected,

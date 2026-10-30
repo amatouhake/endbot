@@ -834,7 +834,7 @@ class RunnerBundleTests(unittest.TestCase):
             bundle = root / "bundle"
             app = bundle / "app" / "test"
             builder.copy_runner(stage, app, bundle, platform)
-            output = json.dumps({"type": "params", "id": 1, "schema": []}) + '\n{"type":"done"}\n'
+            output = json.dumps({"type": "params", "id": 1, "schema": [], "requires": []}) + '\n{"type":"done"}\n'
             with mock.patch.object(tester.subprocess, "run") as run:
                 run.return_value.stdout = output
                 tester.check_runner(bundle, "test")

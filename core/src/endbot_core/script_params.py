@@ -7,6 +7,28 @@ from endbot_core.i18n import LocalizedError
 
 KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice"}
 NAMED = re.compile(r"([A-Za-z_][A-Za-z0-9_]{0,31})=(.*)", re.DOTALL)
+# Every script may operate Bots, read the world, wait and log (S8); naming these in requires {} changes nothing.
+# Fixed here, not derived from the registry, so a new capability never becomes basic by being used there.
+BASIC_CAPABILITIES = frozenset({"act.bot", "read.world", "wait", "log"})
+# Capabilities a script must declare (PERMISSIONS.md); none exist until events add observe.* (BOT-022).
+DECLARED_CAPABILITIES = frozenset()
+
+
+def required(names):
+    """The capabilities beyond the basic set that a ``requires {}`` list declares, sorted.
+
+    ``None`` (a params event without the field) declares nothing, like ``requires {}``.
+    """
+    if names is None:
+        return ()
+    if (not isinstance(names, list) or len(names) > 32 or any(not isinstance(name, str) for name in names)
+            or len(set(names)) != len(names)):
+        raise LocalizedError("requires expects a list of capability names")
+    for name in names:
+        if name not in BASIC_CAPABILITIES | DECLARED_CAPABILITIES:
+            raise LocalizedError("Unknown capability in requires: {name}", name=name[:64])
+    # Sorted, so declaring the same set in another order is the same declaration.
+    return tuple(sorted(set(names) - BASIC_CAPABILITIES))
 
 
 def declarations(schema):

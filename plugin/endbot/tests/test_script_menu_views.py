@@ -16,7 +16,7 @@ from endbot_core.principal import Principal
 from endbot_core.script_books import pages_to_source
 from endbot_core.script_config import ScriptConfig
 from endbot_core.script_store import FILE_OWNER, Script, ScriptStore
-from endbot_core.scripting import ScriptService
+from endbot_core.scripting import Declaration, ScriptService
 from endbot_core.wire_views import decode_view, encode_view
 
 
@@ -97,7 +97,7 @@ class ScriptMenuViewTests(unittest.TestCase):
             self.screen(result),
             script_forms.lines_screen(self.script(), 1, "en", self.config.ui_pack_editor))
 
-        self.host.inspect = lambda script, source: []
+        self.host.inspect = lambda script, source: Declaration([], ())
         result = self.host.execute(["save", "new", "params {}\n"],
                                    replace(self.alice, group_guard=script_forms.ScriptGuard(edit=True)))
         self.assertEqual(result.data["menu"], "script")
@@ -114,7 +114,7 @@ class ScriptMenuViewTests(unittest.TestCase):
 
     def test_parameters_outcome_builds_the_old_run_form(self):
         schema = [{"name": "bot", "type": "bot"}, {"name": "text", "type": "string", "default": "x"}]
-        self.host.inspect = lambda script, source: schema
+        self.host.inspect = lambda script, source: Declaration(schema, ())
         result = self.host.execute(["parameters", "mine"], self.alice)
         self.assertEqual(result.data["menu"], "scriptParameters")
         expected = script_forms.run_screen(self.script(), schema, (), self.inputs.bots, None, "en")
@@ -123,6 +123,24 @@ class ScriptMenuViewTests(unittest.TestCase):
         response = json.dumps([0, "hello world"])
         self.assertEqual(forms.modal_commands(actual, response), forms.modal_commands(expected, response))
         self.assertEqual(actual.guard.targets, {"bot": ("bot", "Botty", "bot-id")})
+        self.assertEqual(actual.guard.requires, ())
+
+    def test_a_run_from_the_parameter_form_is_held_to_the_declaration_the_form_read(self):
+        schema = [{"name": "text", "type": "string", "default": "x"}]
+        self.host.inspect = lambda script, source: Declaration(schema, ("observe.chat",))
+        form = self.screen(self.host.execute(["parameters", "mine"], self.alice))
+        self.assertEqual(form.guard.requires, ("observe.chat",))
+        # The guard crosses the endbotd link with the declaration intact.
+        self.assertEqual(decode_view(encode_view(form.guard)), form.guard)
+        started = []
+        self.host.start = lambda script, values, source, targets, requires=None: started.append(requires) or "r"
+        (argv,) = forms.modal_commands(form, json.dumps(["hello"]))
+        self.assertEqual(argv[:2], ("run", "mine"))
+        self.host.execute(list(argv), replace(self.alice, group_guard=form.guard))
+        self.assertEqual(started, [("observe.chat",)])
+        # A typed run has no inspection to match.
+        self.host.execute(["run", "mine", "text=hello"], self.alice)
+        self.assertEqual(started[-1], None)
 
     def test_parameters_keep_group_members_and_origin(self):
         group = Group("group-id", "miners", ("bot-uuid",))
@@ -131,7 +149,7 @@ class ScriptMenuViewTests(unittest.TestCase):
                   {"name": "origin", "type": "pos", "default": "~ ~ ~"}]
         origin = {"x": 1, "y": 64, "z": 2}
         source = replace(self.alice, origin=origin)
-        self.host.inspect = lambda script, source: schema
+        self.host.inspect = lambda script, source: Declaration(schema, ())
         result = self.host.execute(["parameters", "mine"], source)
         expected = script_forms.run_screen(self.script(), schema, (group,), self.inputs.bots, origin, "en")
         actual = self.screen(result, source)
@@ -176,7 +194,7 @@ class ScriptMenuViewTests(unittest.TestCase):
             with self.subTest(schema=schema):
                 with self.assertRaises(forms.FormResponseError) as raised:
                     script_forms.run_screen(self.script(), schema, (), [], None, "en")
-                self.host.inspect = lambda script, source, schema=schema: schema
+                self.host.inspect = lambda script, source, schema=schema: Declaration(schema, ())
                 result = self.host.execute(["parameters", "mine"], self.alice)
                 self.assertFalse(result.accepted)
                 self.assertEqual(result.code, error_code(raised.exception))
@@ -213,7 +231,7 @@ class ScriptMenuViewTests(unittest.TestCase):
         # link (encode_view refuses it). The outcome crosses as data and the plugin builds the
         # screen; this test is the guard for the whole set, not one menu.
         schema = [{"name": "bot", "type": "bot"}, {"name": "text", "type": "string", "default": "x"}]
-        self.host.inspect = lambda script, source: schema
+        self.host.inspect = lambda script, source: Declaration(schema, ())
         outcomes = {
             "scripts": self.host.execute(["menu"], self.alice),
             "script": self.host.execute(["menu", "mine"], self.alice),

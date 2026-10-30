@@ -19,6 +19,8 @@ class ScriptGuard:
     book: str | tuple[str, ...] | None = None
     values: dict | None = None
     targets: dict | None = None
+    # Set on run forms: the requires {} declaration the form's inspection read, which the run must match.
+    requires: tuple[str, ...] | None = None
 
 
 TEMPLATES = {
@@ -417,7 +419,7 @@ def parameter_choices(schema, groups, bots):
     return schema, choices
 
 
-def run_screen(script, schema, groups, bots, origin, lang="en"):
+def run_screen(script, schema, groups, bots, origin, lang="en", requires=()):
     schema, choices = parameter_choices(schema, groups, bots)
     controls = []
     for name, spec in schema.items():
@@ -433,7 +435,7 @@ def run_screen(script, schema, groups, bots, origin, lang="en"):
                 default = " ".join(str(origin[axis]) for axis in ("x", "y", "z"))
             controls.append(f.TextInput(label, default_value=str(default)))
     values, targets = {}, {}
-    guard = ScriptGuard(script.revision, script.name, values=values, targets=targets)
+    guard = ScriptGuard(script.revision, script.name, values=values, targets=targets, requires=tuple(requires))
 
     def build(response):
         values.clear()

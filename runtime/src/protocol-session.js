@@ -163,12 +163,16 @@ export class BedrockSession extends EventEmitter {
       connectTimeout: this.options.connectTimeoutMs
     })
     // The NetherNet client exists once upstream allows the connection, before
-    // authentication finishes and the offer is signalled.
+    // authentication finishes and the offer is signalled. Without a ping,
+    // upstream createClient emits connect_allowed before it returns, so the
+    // connection is usually there already.
     if (direct) {
-      this.client.once('connect_allowed', () => attachDirectSignalling(this.client.connection.nethernet, {
+      const attach = () => attachDirectSignalling(this.client.connection.nethernet, {
         base: directBase,
         timeoutMs: this.options.connectTimeoutMs
-      }))
+      })
+      if (this.client.connection?.nethernet) attach()
+      else this.client.once('connect_allowed', attach)
     }
     // Upstream's initial chunk request reads this property, not an option.
     this.client.viewDistance = this.chunkRadius

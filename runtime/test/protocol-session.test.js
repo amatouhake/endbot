@@ -94,7 +94,6 @@ test('direct NetherNet signalling skips discovery and signals the configured por
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const client = fakeLiveClient()
   const nethernet = { networkId: 9n }
-  client.connection = { nethernet }
   let options
   const session = new BedrockSession(
     { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
@@ -104,10 +103,19 @@ test('direct NetherNet signalling skips discovery and signals the configured por
       serverPort: 19134,
       serverName: 'Selected BDS',
       levelName: 'World',
-      gameVersion: '1.26.51',
+      gameVersion: '1.26.60',
       ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
       ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
-      protocolLoader: async () => ({ createClient: value => { options = value; return client } }),
+      // Like upstream with skipPing: the connection exists and connect_allowed
+      // has already fired by the time createClient returns.
+      protocolLoader: async () => ({
+        createClient: value => {
+          options = value
+          client.connection = { nethernet }
+          client.emit('connect_allowed')
+          return client
+        }
+      }),
       discover: async () => { throw new Error('direct signalling must not discover') }
     }
   )
@@ -118,8 +126,6 @@ test('direct NetherNet signalling skips discovery and signals the configured por
   assert.equal(options.skipPing, true)
   assert.equal(options.nethernet.signalling, 'lan')
   assert.equal(typeof options.nethernet.networkId, 'bigint')
-  assert.equal(nethernet.signalHandler, undefined)
-  client.emit('connect_allowed')
   assert.equal(typeof nethernet.signalHandler, 'function')
   client.emit('spawn')
   await connecting

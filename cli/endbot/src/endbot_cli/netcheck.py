@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import socket
+import time
 from collections.abc import Callable
 
 NETHERNET_DISCOVERY_PORT = 7551
@@ -104,4 +105,61 @@ def lan_discovery_port_problem(
         return _problem(port, f"errno {error.errno}")
     finally:
         probe.close()
+    return None
+
+
+# Linux keeps a closed TCP connection in TIME-WAIT for 60 s.
+SERVER_PORT_WAIT_SECONDS = 75.0
+
+
+def tcp_port_bindable(port: int) -> bool:
+    """Whether a wildcard TCP listener could bind ``port`` without ``SO_REUSEADDR``, as BDS does."""
+
+    for family, address in ((socket.AF_INET6, "::"), (socket.AF_INET, "0.0.0.0")):
+        try:
+            probe = socket.socket(family, socket.SOCK_STREAM)
+        except OSError:
+            continue
+        try:
+            if family == socket.AF_INET6:
+                probe.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            probe.bind((address, port))
+        except OSError:
+            return False
+        finally:
+            probe.close()
+        return True
+    return True
+
+
+def wait_for_server_port(
+    port: int,
+    *,
+    timeout: float = SERVER_PORT_WAIT_SECONDS,
+    bindable: Callable[[int], bool] = tcp_port_bindable,
+    notify: Callable[[str], None] = print,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> str | None:
+    """Wait until BDS can listen on TCP ``port``; return a problem description if it never can.
+
+    BDS answers NetherNet HTTP signalling (``/v1/join``) with ``Connection: close`` and closes first, so every
+    join by address, a Bot's direct signalling included, leaves a TIME-WAIT entry on ``server-port``. On Linux
+    the patched BDS then cannot bind the port again until it expires, and a restart right after a stop failed
+    with "Port [...] may be in use". Windows binds through TIME-WAIT, so callers skip this there.
+    """
+
+    deadline = clock() + timeout
+    waited = False
+    while not bindable(port):
+        if clock() >= deadline:
+            return (
+                f"TCP {port} (server-port) stayed in use for {int(timeout)} s; another program is listening on it. "
+                "Stop that program or give this instance another server-port, then run `endbot start` again"
+            )
+        if not waited:
+            notify(f"start: waiting for TCP {port} (server-port) to be released by the previous BDS (TIME-WAIT, "
+                   "up to 60 s on Linux)")
+            waited = True
+        sleep(1.0)
     return None

@@ -18,6 +18,15 @@ export function serverTransport (value = 'nethernet') {
   return value
 }
 
+// NetherNet signalling: `lan` finds BDS through UDP 7551 discovery, `direct`
+// signals over HTTP on the configured server port (src/direct-signalling.js).
+// `endbot start` always writes the field (direct by default); an absent field
+// keeps the older hand-written runtime JSON on LAN discovery.
+export function nethernetSignalling (value = 'lan') {
+  if (!['lan', 'direct'].includes(value)) throw new Error('Endbot nethernetSignalling must be lan or direct')
+  return value
+}
+
 export function loadConfig (filename) {
   const root = path.dirname(path.resolve(filename))
   const value = JSON.parse(fs.readFileSync(filename, 'utf8'))
@@ -45,6 +54,7 @@ export function loadConfig (filename) {
     serverHost,
     // Preserve legacy configs; operator setup can explicitly select either transport.
     transport: serverTransport(value.transport),
+    nethernetSignalling: nethernetSignalling(value.nethernetSignalling),
     serverPort: value.serverPort ?? 19132,
     gameVersion: value.gameVersion ?? '1.26.60',
     // Expected BDS advertisement (server.properties server-name and the world

@@ -8,6 +8,7 @@ import path from 'node:path'
 import protocol from 'bedrock-protocol'
 
 import { loadConfig } from '../src/config.js'
+import { attachDirectSignalling, DIRECT_SERVER_NETWORK_ID, directSignallingBase } from '../src/direct-signalling.js'
 import { discoverServer } from '../src/discovery.js'
 import { createLocalBotAuth } from '../src/local-identity.js'
 
@@ -16,11 +17,12 @@ if (!filename || !['wrong-key', 'wrong-issuer', 'wrong-audience', 'auth-disabled
   throw new Error('Usage: raknet-auth-probe.js <runtime-config> <wrong-key|wrong-issuer|wrong-audience|auth-disabled>')
 }
 const config = loadConfig(filename)
-if (config.transport === 'nethernet' && config.serverName === undefined) {
-  throw new Error('The NetherNet probe requires serverName and levelName')
+const direct = config.transport === 'nethernet' && config.nethernetSignalling === 'direct'
+if (config.transport === 'nethernet' && !direct && config.serverName === undefined) {
+  throw new Error('The NetherNet LAN probe requires serverName and levelName')
 }
 // NetherNet dials only the expected BDS, as the runtime does (src/protocol-session.js).
-const target = config.transport === 'nethernet'
+const target = config.transport === 'nethernet' && !direct
   ? await discoverServer({
     host: config.serverHost,
     serverName: config.serverName,
@@ -45,7 +47,7 @@ const client = protocol.createClient({
   version: config.gameVersion,
   transport: config.transport,
   ...(config.transport === 'nethernet'
-    ? { nethernet: { signalling: 'lan', networkId: target.networkId } }
+    ? { nethernet: { signalling: 'lan', networkId: direct ? DIRECT_SERVER_NETWORK_ID : target.networkId } }
     : { raknetBackend: 'raknet-native', followPort: false }),
   skipPing: true,
   offline: false,
@@ -54,6 +56,13 @@ const client = protocol.createClient({
   skinData: { SelfSignedId: identityId },
   connectTimeout: 10000
 })
+if (direct) {
+  // createClient has already allowed the connection; signal over HTTP before the offer.
+  attachDirectSignalling(client.connection.nethernet, {
+    base: directSignallingBase(config.serverHost, config.serverPort),
+    timeoutMs: 10000
+  })
+}
 let settled = false
 let finish
 const closed = new Promise(resolve => { finish = resolve })

@@ -110,6 +110,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.controllers.gamertags, ("ExampleTag",))
         self.assertEqual(config.runtime.control_port, DEFAULT_CONTROL_PORT)
 
+    def test_nethernet_signalling_defaults_to_direct_and_lan_is_a_choice(self) -> None:
+        self.write("[server]\npath='server'\n[controllers]\ngamertags=[]\n")
+        self.assertEqual(load_config(self.path).server.nethernet_signalling, "direct")
+        self.write("[server]\npath='server'\nnethernet-signalling='lan'\n[controllers]\ngamertags=[]\n")
+        self.assertEqual(load_config(self.path).server.nethernet_signalling, "lan")
+        for value in ('"services"', '"Direct"', '""', "1", "true"):
+            with self.subTest(value=value):
+                self.write(f"[server]\npath='server'\nnethernet-signalling={value}\n[controllers]\ngamertags=[]\n")
+                with self.assertRaisesRegex(ConfigError, "server.nethernet-signalling"):
+                    load_config(self.path)
+
     def test_transport_is_explicit_and_validated(self) -> None:
         self.write("[server]\npath='server'\ntransport=\"nethernet\"\n[controllers]\ngamertags=[]\n")
         self.assertEqual(load_config(self.path).server.transport, "nethernet")

@@ -96,3 +96,47 @@ def free_udp_port() -> int:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ServerPortWaitTests(unittest.TestCase):
+    def run_wait(self, free_after: int | None, timeout: float = 75.0):
+        calls, notes, now = [], [], [0.0]
+
+        def bindable(port: int) -> bool:
+            calls.append(port)
+            return free_after is not None and len(calls) > free_after
+
+        def sleep(seconds: float) -> None:
+            now[0] += seconds
+
+        problem = netcheck.wait_for_server_port(
+            19132, timeout=timeout, bindable=bindable, notify=notes.append, sleep=sleep, clock=lambda: now[0]
+        )
+        return problem, calls, notes
+
+    def test_a_free_port_starts_at_once_without_a_notice(self) -> None:
+        problem, calls, notes = self.run_wait(free_after=0)
+        self.assertIsNone(problem)
+        self.assertEqual((calls, notes), ([19132], []))
+
+    def test_time_wait_is_waited_out_with_one_notice(self) -> None:
+        problem, calls, notes = self.run_wait(free_after=5)
+        self.assertIsNone(problem)
+        self.assertEqual(len(calls), 6)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("TIME-WAIT", notes[0])
+
+    def test_a_listener_that_never_leaves_is_a_problem(self) -> None:
+        problem, _calls, _notes = self.run_wait(free_after=None, timeout=3.0)
+        self.assertIn("TCP 19132 (server-port) stayed in use", problem)
+
+    @unittest.skipIf(os.name == "nt", "start runs the trial bind only off Windows, which binds alongside listeners")
+    def test_trial_bind_sees_a_real_listener(self) -> None:
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.bind(("0.0.0.0", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        try:
+            self.assertFalse(netcheck.tcp_port_bindable(port))
+        finally:
+            listener.close()

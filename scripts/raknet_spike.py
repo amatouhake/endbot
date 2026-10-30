@@ -2,7 +2,7 @@
 """Run an opt-in live smoke on a fresh, isolated Endstone/BDS world.
 
 The name is historical: BDS 1.26.60 refuses players on RakNet, so the checks run
-over NetherNet LAN discovery (the product default), which needs UDP 7551 free.
+over NetherNet with direct signalling on server-port (the product default).
 
 Uses the active Python's exactly pinned patched Endstone and installed plugin,
 the repository runtime and endbotd, and Endstone's normal BDS acquisition.
@@ -57,7 +57,6 @@ from endbot_cli.configgen import (
 )
 from endbot_cli.instance import InstancePaths
 from endbot_cli.leveldat import parse_level_dat
-from endbot_cli.netcheck import lan_discovery_port_problem
 from endbot_cli.properties import (
     edit_properties,
     verify_server_properties,
@@ -353,7 +352,7 @@ def exercise(
         bedrock_protocol=protocol,
         locked_bds=lock["bds"],
         transport=transport,
-        backend="raknet-native" if transport == "raknet" else "nethernet-lan",
+        backend="nethernet-direct",
         node=node_version,
         python=platform.python_version(),
     )
@@ -401,11 +400,6 @@ def exercise(
         for source in sources:
             relative = source.relative_to(ROOT).as_posix()
             report["source_sha256"][relative] = hashlib.sha256(source.read_bytes()).hexdigest()
-    if transport == "nethernet":
-        # BDS cannot answer discovery while another program owns the port.
-        problem = lan_discovery_port_problem()
-        if problem:
-            raise ConsumerError(problem)
     # Fresh output only: do not copy or mutate an operator's world or credentials.
     output.mkdir(parents=True, exist_ok=False)
     if os.name != "nt":
@@ -469,15 +463,9 @@ def exercise(
                 "serverHost": "127.0.0.1",
                 "serverPort": server_port,
                 "transport": transport,
-                # Select this BDS among every NetherNet host on the machine;
-                # a fresh world advertises its level-name as display name.
-                **(
-                    {"serverName": SERVER_NAME, "levelName": LEVEL_NAME}
-                    if transport == "nethernet"
-                    else {}
-                ),
-                # BDS 1.26.52 still uses protocol 2193 and the pinned 1.26.51
-                # wire schema; the protocol library has no 1.26.52 schema key.
+                # The product default: signal over HTTP on server-port, so a
+                # client or another BDS holding UDP 7551 does not matter.
+                "nethernetSignalling": "direct",
                 "gameVersion": json.loads(
                     (ROOT / "runtime/endbot-runtime.example.json").read_text()
                 )["gameVersion"],
@@ -1135,6 +1123,13 @@ def exercise(
                 180,
                 bds,
             )
+            # Console commands answer "Endbot service is restarting" until the plugin links to endbotd again.
+            wait_for(
+                "plugin linked to endbotd after the restart",
+                lambda: logtext().count("Endbot linked to endbotd") > prior_starts,
+                30,
+                bds,
+            )
             management("list", "RestartController: pending")
             management("list", "pending controller: revoked")
             if policy_file.read_bytes() != prior_policy:
@@ -1226,7 +1221,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--transport",
         choices=("nethernet",),
         default="nethernet",
-        help="Bot/BDS transport (nethernet needs UDP 7551 free)",
+        help="Bot/BDS transport (NetherNet with direct signalling on server-port)",
     )
     return parser
 

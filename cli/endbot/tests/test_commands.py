@@ -176,6 +176,10 @@ class StartRefusalTests(CommandTestCase):
         self.assertFalse(marker.exists())
 
     def test_start_refuses_when_the_lan_discovery_port_is_taken(self) -> None:
+        text = self.paths.endbot_toml.read_text(encoding="utf-8")
+        self.paths.endbot_toml.write_text(
+            text.replace("[server]\n", "[server]\nnethernet-signalling = 'lan'\n", 1), encoding="utf-8"
+        )
         command, marker = self.marker_command()
         code, _stdout, stderr = self.run_captured(
             run_start,
@@ -209,6 +213,22 @@ class StartRefusalTests(CommandTestCase):
 
 
 class StartHappyPathTests(CommandTestCase):
+    def test_direct_nethernet_start_ignores_the_lan_discovery_port(self) -> None:
+        write_endbot_toml(self.root, control_port=self.port)
+        text = self.paths.endbot_toml.read_text(encoding="utf-8")
+        self.paths.endbot_toml.write_text(
+            text.replace("[server]\n", "[server]\nnethernet-signalling = 'direct'\n", 1), encoding="utf-8"
+        )
+        checked = []
+        self.start_in_thread(lan_port_check=lambda: checked.append(True) or "UDP 7551 busy")
+        self.wait_for_echo("fake BDS ready")
+        request_stop(self.run_dir)
+        self.assertEqual(self.join(), 0)
+        self.assertEqual(checked, [])
+        generated = json.loads(self.runtime_config.read_text())
+        self.assertEqual(generated["nethernetSignalling"], "direct")
+        self.assertNotIn("serverName", generated)
+
     def test_first_start_creates_secrets_and_stops_via_stop_request(self) -> None:
         # The runtime creates the token and owner keys on the very first start,
         # after config generation: preflight tolerates their absence and the

@@ -118,7 +118,8 @@ def install_probe(plugin_class):
                     location = players[0].location
                     dimension = location.dimension
                     x, z = math.floor(location.x), math.floor(location.z)
-                    for dx in range(-8, 25):
+                    # Console `move right` (-X at yaw 0) runs twice after the patrol stops; keep room for it.
+                    for dx in range(-24, 25):
                         for dz in range(-8, 41):
                             dimension.get_block_at(x + dx, 199, z + dz).set_type("minecraft:stone")
                             for y in range(200, 204):

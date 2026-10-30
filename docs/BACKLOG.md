@@ -968,6 +968,37 @@ lists them, and spawn and `rename` reject them from every surface (commands, for
 message. Existing profiles with a reserved name are kept; `/bot list` and the menu mark them and suggest `rename`.
 Small enough to land with or right after BOT-019.
 
+## BOT-026: Several NetherNet instances on one machine
+
+Status: **Done; direct signalling is the default from 0.5.0** (2026-10-30 JST). The one server known to run Endbot
+hosts three BDS instances and the game client on one PC.
+
+BDS 1.26.60 turns the RakNet deprecation into an error, so RakNet can no longer be the way to run several Endbot
+instances on one machine. NetherNet Bots found BDS through LAN discovery on UDP 7551, which only one program can own
+(a running game client holds it too): a second BDS cannot answer discovery and `endbot start` refused.
+
+`[server] nethernet-signalling` is `direct` by default (runtime `nethernetSignalling: "direct"`; `lan` keeps
+discovery). Bots signal over HTTP to the configured loopback `server-port` (`POST /v1/join/<network id>` with a
+non-trickle SDP offer, SDP answer in the response), as clients do when joining by address. Start skips the UDP 7551
+check and config generation omits the advertisement names.
+
+Validated on Endstone `0.11.15+endbot.1` / BDS `1.26.60.6` (release-candidate run 41024591616):
+
+- The live run found that upstream `createClient` fires `connect_allowed` before returning when ping is skipped, so
+  the direct handler was never attached and the Bot waited on discovery; fixed and covered by the session test.
+- Windows bundle: three instances (`server-port` 19401 to 19403, own control and link ports, LAN visibility left on)
+  started while another process held UDP 7551, as the game client does; a Bot spawned on each instance through the
+  console and moved on command, and `doctor --live` passed.
+- Bundle consumer E2E with `direct` on Windows (CI) and Linux (CI and WSL): setup, Bot join through local-bot trust,
+  update and rollback.
+- Linux: BDS answers `/v1/join` with `Connection: close` and closes first, so `server-port` stays in TCP TIME-WAIT
+  for up to 60 s and the patched BDS cannot listen on it again ("Port [19132] may be in use" on the rollback start).
+  `endbot start` now waits for the port off Windows; three stop/start cycles in a row in WSL each waited and
+  spawned the Bot.
+
+Still a human check in the 0.5.0 pass: a 26.60 client on the same PC joins each of the instances by address while
+Bots are online.
+
 ## Deferred priorities
 
 - Container/UI operations — crafting, villager trading, enchanting — use `item_stack_request` on current Bedrock, which

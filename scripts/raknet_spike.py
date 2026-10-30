@@ -1123,6 +1123,13 @@ def exercise(
                 180,
                 bds,
             )
+            # Console commands answer "Endbot service is restarting" until the plugin links to endbotd again.
+            wait_for(
+                "plugin linked to endbotd after the restart",
+                lambda: logtext().count("Endbot linked to endbotd") > prior_starts,
+                30,
+                bds,
+            )
             management("list", "RestartController: pending")
             management("list", "pending controller: revoked")
             if policy_file.read_bytes() != prior_policy:

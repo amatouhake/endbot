@@ -218,8 +218,16 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     listing = command("entities", "nearby: cow @")
     command("interact @cow count 3", "interact @cow continuous started up to 3 times")
     wait("BDS fed three different cows (three wheat)", lambda: (state()["hotbar"][0] or {}).get("count") == 2, 10)
-    command("interact @cow", "interaction with cow @")  # one-shot: turns to a cow (fed cows wander)
-    command("target", "looking at cow @")
+    # One-shot: turns to a cow. Fed cows wander and can leave the crosshair before `target` reads it, so retry.
+    for attempt in range(3):
+        command("interact @cow", "interaction with cow @")
+        offset = len(log())
+        console("bot RakNetSpike target")
+        wait("reply to target", lambda offset=offset: "RakNetSpike: looking at" in log()[offset:], 10)
+        if "looking at cow @" in log()[offset:]:
+            break
+    else:
+        raise RuntimeError("target never reported the cow the Bot turned to")
     command("interact", "interaction with cow @")  # the crosshair target
     cow_health = next(actor["health"] for actor in state()["actors"] if actor["type"] == "minecraft:cow")
     command("attack @cow", "attack on cow @")

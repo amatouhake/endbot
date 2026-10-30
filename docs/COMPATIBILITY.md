@@ -15,8 +15,21 @@ supported pair until the compatibility gate below passes and the lock is set bac
   schema; the runtime unit suite passes against it.
 - Upstream 0.11.15 binds event cancellation per event class; the plugin uses none of that API.
 
-Gate still open: a CI cold build of both wheels and bundles, the consumer E2E on both platforms, a live smoke on Windows
-(join, movement, mining, inventory, scripts), a 26.60 human client alongside a Bot, and an achievement observation.
+### 0.11.15 / 1.26.60.6 compatibility gate — 2026-10-30
+
+- Release-candidate runs 41023533108 and 41024591616 cold-built and upstream-tested the patched Endstone on Linux and
+  Windows. The bundle consumer E2E (fresh setup acquiring BDS `1.26.60.6` through Endstone, a Bot joining through
+  local-bot trust, console, `doctor --live`, update and rollback) passed on both platforms, with LAN discovery and
+  with direct signalling; the Linux rollback start then exposed the server-port TIME-WAIT wait now in `endbot start`
+  (BOT-026).
+- Windows live smoke (`scripts/raknet_spike.py --mining --inventory --item-use --entity --groups --scripting`, direct
+  signalling, BDS build `52886189`) passed: movement, jump, chunk radius, reconnect, mining, pickups and drops, timed
+  item use, feeding and riding, Groups, Luau scripts, controller management across a BDS restart, and the wrong-key,
+  wrong-issuer, wrong-audience and auth-disabled refusals. Three fixture fixes came out of it (a wider scripting
+  platform, a retry while a fed cow wanders off the crosshair, waiting for the plugin to relink after a restart); one
+  run also failed once on a pickup/drop check that passed on the other runs.
+- Still open, for people: a 26.60 client joining alongside a Bot on the same PC, and an achievement observation.
+  The lock stays `candidate` until they pass.
 
 ## Previous baseline (0.2.1 to 0.4.0)
 

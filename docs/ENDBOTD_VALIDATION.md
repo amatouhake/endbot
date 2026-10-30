@@ -98,9 +98,12 @@ achievements on, `[scripting] enabled = true`, `max-players = 3`; `endbot doctor
       authentication, 13 s until `Alice joined the game`) was followed by four `/bot` attempts (09:51:59–09:52:09) that
       opened no menu. `endbotd.log` records no warning for that window — no `cannot cross`, no delivery failure — and
       the same sequence after a warm spawn (a new Bot, `MenuTest`, 2 s until it joined) opened the menu immediately.
-      Repeating the cold-looking case with an existing Bot afterwards did not reproduce it either. What the chat
-      showed during those four attempts was not captured, so this is recorded as unexplained rather than attributed
-      to endbotd.
+      Repeating the cold-looking case with an existing Bot afterwards did not reproduce it either. The operator saw no
+      chat line of any kind during those four attempts, which is what a silently dropped form looks like: `/bot` and
+      `/bot menu` with no argument produce a form and no text, and `command_runner._deliver` drops a view without a
+      message when the sender cannot be resolved or authorization fails. Recorded as unexplained, not attributed to
+      endbotd. The view gate was instrumented on the test instance during this check, so a recurrence there names the
+      step; the same one-line log in the product is worth adding.
 - [x] A command issued while endbotd restarts is refused with a reason, and works again afterwards. endbotd was killed
       three times (09:53:59, 09:54:03 and 09:54:08 JST); the plugin logged
       `Endbot cannot link to endbotd (unavailable: endbotd unavailable: ConnectionRefusedError)` at 09:54:11 and

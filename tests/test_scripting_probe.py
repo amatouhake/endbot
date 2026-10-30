@@ -222,9 +222,10 @@ class ScriptingProbeTests(unittest.TestCase):
         for phase in ("row", "stop_patrol", "overlap_cleanup", "mine", "waits", "runaway"):
             self.assertEqual(result[phase]["outcome"], "passed")
         self.assertIn("botscript stop patrol", driver.commands)
-        self.assertIn("botscript stop 0003", driver.commands)
+        # The declares run (BOT-024) takes id 0001, so the second patrol is 0004.
+        self.assertIn("botscript stop 0004", driver.commands)
         self.assertIn('botscript run line #script_probe "0.5 200 0.5" 3', driver.commands)
-        self.assertEqual(set(driver.saved), {"line", "patrol", "mine", "waits", "runaway"})
+        self.assertEqual(set(driver.saved), {"line", "patrol", "mine", "waits", "runaway", "declares"})
         self.assertIn(":job:wait{timeout = 200}", driver.saved["waits"].replace(").job", ":job"))
         self.assertTrue(all(block["type"] == "minecraft:air" for block in result["mine"]["after"]))
         self.assertIn("spot 2: block count reached", result["mine"]["output"])
@@ -282,7 +283,10 @@ class FakeBds:
         if label.startswith("scripting fixture"):
             data = json.loads((self.output / "scripting-request.json").read_text(encoding="utf-8"))
             self.fixture_id = data["id"]
-            if data["action"] == "save":
+            if data["action"] == "save" and "observe.chat" in data["source"]:
+                # BOT-024 2a: a capability that does not exist yet is refused at the save's inspection.
+                self.emit("Script parameter declaration: Unknown capability in requires: observe.chat")
+            elif data["action"] == "save":
                 self.saved[data["name"]] = data["source"]
                 self.emit(f"Script {data['name']} saved")
             elif data["action"] == "mining":
@@ -333,6 +337,9 @@ class FakeBds:
                     reason = "timeout" if self.failure == "mining_reason" else "block count reached"
                     self.emit(f"Endbot script {self.run_id}: spot {spot}: {reason}")
                 self.finish("mine", self.run_id, "failed" if self.failure == "mining_end" else "completed")
+            elif self.active == "declares":
+                self.emit(f"Endbot script {self.run_id}: declared")
+                self.finish("declares", self.run_id, "completed")
             elif self.active == "waits":
                 for reported in WAITS_EXPECTED[:-1] if self.failure == "waits" else WAITS_EXPECTED:
                     self.emit(f"Endbot script {self.run_id}: {reported}")

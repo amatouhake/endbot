@@ -156,7 +156,7 @@ class FrameReader:
 _PRINCIPAL_WIRE = {
     "kind": "kind", "name": "name", "xuid": "xuid", "grant_revision": "grantRevision", "language": "language",
     "origin": "origin", "player_id": "playerId", "authorization_revision": "authorizationRevision",
-    "run_id": "runId",
+    "run_id": "runId", "role": "role",
 }
 
 
@@ -627,6 +627,7 @@ class LinkServer:
         on_submit: Callable[[Submission], object],
         on_presence: Callable[[str, list[dict]], None] | None = None,
         grant_revision: Callable[[str], int] | None = None,
+        role: Callable[[str], str] | None = None,
         log: Callable[[str, str], None] | None = None,
         expected_registry: str | None = None,
         handshake_timeout: float = HANDSHAKE_SECONDS,
@@ -643,6 +644,8 @@ class LinkServer:
         self._on_submit = on_submit
         self._on_presence = on_presence
         self._grant_revision = grant_revision or (lambda player_id: 0)
+        # A player's role by XUID, read for each command (S5); without one every player is a scripter.
+        self._role = role or (lambda xuid: None)
         self._log = log or (lambda level, message: None)
         self._registry = expected_registry or registry_hash()
         self._handshake_timeout = handshake_timeout
@@ -824,10 +827,12 @@ class LinkServer:
         if not isinstance(player_id, str) or not player_id:
             raise LinkError("invalid", "a player sender needs playerId")
         record = self.presence.player(player_id) or {}
+        xuid = record.get("xuid")
         return Principal(
-            "player", name=record.get("name"), xuid=record.get("xuid"),
+            "player", name=record.get("name"), xuid=xuid,
             grant_revision=self._grant_revision(player_id), language=language, origin=origin,
             player_id=player_id, authorization_revision=record.get("revision"),
+            role=self._role(xuid) if xuid else None,
         )
 
     def request(self, kind: str, body: dict, timeout: float):

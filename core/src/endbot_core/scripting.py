@@ -27,6 +27,7 @@ from endbot_core.events import Event, outcome_text, reason
 from endbot_core.group_forms import GroupGuard
 from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.operations import OPERATIONS, Operation
+from endbot_core.principal import Principal
 from endbot_core.script_books import pages_to_source, source_to_pages, written
 from endbot_core.script_params import arguments, declarations, required
 from endbot_core.script_process import RunnerProcess
@@ -45,6 +46,9 @@ UNCHECKED = frozenset({
 })
 # Per-run log budget: logs past it are dropped (one notice), so a script cannot
 # fill the server log at the IPC rate for hours.
+# The authoring operations (PERMISSIONS.md S6): a controller is refused them; `edit` only opens the editor whose
+# save is refused anyway. Running, `private` and deleting their own scripts stay open to controllers.
+AUTHORING = frozenset({"save", "import", "copy", "rename", "restore", "share", "edit"})
 LOG_LINES = 2000
 LOG_BYTES = 512 * 1024
 # The starter's chat shows at most this many log lines per window per run (events.CHAT_LOG_CHARS cuts each).
@@ -236,6 +240,13 @@ class ScriptService:
         if script.file:
             return False
         return source.player_id is None or script.owner is None or script.owner == self.owner_key(source)
+
+    @staticmethod
+    def _author(source):
+        """Whether ``source`` may author scripts (S6). Fails closed: anything but a Principal must be the console."""
+        if isinstance(source, Principal):
+            return source.can_author
+        return getattr(source, "player_id", None) is None and getattr(source, "xuid", None) is None
 
     def can_run(self, script, source):
         return script.visibility == "shared" or self.can_edit(script, source)
@@ -701,6 +712,11 @@ class ScriptService:
             if not isinstance(guard, script_forms.ScriptGuard) or (not guard.edit and guard.values is None):
                 tokens = shlex.split(" ".join(argv))
                 operation, tail = (tokens[0].lower(), tokens[1:]) if tokens else ("menu", [])
+            if operation in AUTHORING and not self._author(source):
+                # S6: the same refusal from a typed command, a form and every later surface.
+                return CommandResult(True, (reply(tr(lang, "Your role can run scripts but not create or change "
+                                                           "them; ask the operator for the scripter role"),
+                                                  color=ERROR),), accepted=False, code="unauthorized")
             if operation == "help" and not tail:
                 return CommandResult(
                     True,
@@ -780,7 +796,7 @@ class ScriptService:
                                             whole_editor=self.config.ui_pack_editor)
                             if guard.page is not None
                             else self._menu_data("script", lang, script=self._script_data(saved), editable=True,
-                                                 book_export=self.config.book_export))
+                                                 book_export=self.config.book_export, author=self._author(source)))
                 return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
                                      log_messages=(f"Script {tail[0]} saved by {self._who(source)}",), data=data)
             if operation == "menu" and not tail:
@@ -791,7 +807,8 @@ class ScriptService:
                      "own": script.owner == self.owner_key(source)}
                     for script in self._visible(source)
                 ]
-                return CommandResult(True, data=self._menu_data("scripts", lang, scripts=scripts))
+                return CommandResult(True, data=self._menu_data("scripts", lang, scripts=scripts,
+                                                                author=self._author(source)))
             if not tail:
                 raise LocalizedError("Use /botscript help")
             if operation == "import" and len(tail) == 1:
@@ -832,7 +849,8 @@ class ScriptService:
                 self.store.save(name, text, revision, self.owner_key(source), self._who(source))
                 lines = len(text.splitlines())
                 data = (self._menu_data("script", lang, script=self._script_data(self.store.get(name)),
-                                        editable=True, book_export=self.config.book_export)
+                                        editable=True, book_export=self.config.book_export,
+                                        author=self._author(source))
                         if isinstance(guard, script_forms.ScriptGuard) else None)
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} imported from the book ({lines} lines)", name=name,
@@ -903,7 +921,7 @@ class ScriptService:
                 if source.player_id is not None and isinstance(guard, script_forms.ScriptGuard):
                     return CommandResult(True, data=self._menu_data(
                         "scriptHistory", lang, script=self._script_data(script, history=True),
-                        editable=self.can_edit(script, source)))
+                        editable=self.can_edit(script, source) and self._author(source)))
                 lines = [script_forms.revision_line(i, r, lang) for i, r in enumerate(script.history, start=1)]
                 return CommandResult(True, (reply(f"{script.name}: " + ("; ".join(lines) or tr(
                     lang, "no earlier revisions"))),))
@@ -975,7 +993,8 @@ class ScriptService:
                 else:
                     data = self._menu_data(
                         "script", lang, script=self._script_data(script),
-                        editable=self.can_edit(script, source), book_export=self.config.book_export)
+                        editable=self.can_edit(script, source), book_export=self.config.book_export,
+                        author=self._author(source))
                 return CommandResult(True, data=data)
             raise LocalizedError("Use /botscript help")
         except (ValueError, RuntimeError, OSError) as error:

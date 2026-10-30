@@ -903,6 +903,9 @@ JA.update({
     "Your script ({visibility}).": "自分のスクリプトです (公開範囲: {visibility})。",
     "Shared by {owner}. Run it, or copy it to edit your own.":
         "{owner} が共有しています。実行するか、コピーして自分用に編集できます。",
+    "Shared by {owner}. Run it.": "{owner} が共有しています。実行できます。",
+    "From {file}. Run it; the operator edits the file.":
+        "{file} から読み込んだスクリプトです。実行できます。ファイルはオペレーターが編集します。",
     "{index}: {saved}, {lines} lines": "{index}: {saved}、{lines} 行",
     "Restore revision": "版を戻す",
     "Restore {name} to revision {line}? The current source stays in the history.":
@@ -921,6 +924,9 @@ JA.update({
         "interact @<entity> [continuous|interval <ticks>] [for <ticks>] [count <n>] のどれかを使ってください",
     "Invalid script wait": "スクリプトの待機時間が正しくありません",
     "Invalid script target": "スクリプトの対象が正しくありません",
+    "Your role can run scripts but not create or change them; ask the operator for the scripter role":
+        "あなたのロールではスクリプトの実行はできますが、作成や変更はできません。"
+        "オペレーターに scripter ロールを依頼してください",
     "Script input cleanup failed; use /bot stop": "スクリプトの入力停止に失敗しました。/bot stop を使ってください",
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "

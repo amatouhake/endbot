@@ -105,7 +105,8 @@ class EndbotService:
             config.link_host, config.link_port, load_token(config.link_token_file), version=__version__,
             config={"language": self._language_setting, "hotbar": dict(config.hotbar)},
             on_submit=self._submit, on_presence=self._presence, grant_revision=self._grant_revision,
-            log=self._log, world_timeout=world_timeout, cli_handlers={"controllers": self._cli_controllers},
+            role=self._role, log=self._log, world_timeout=world_timeout,
+            cli_handlers={"controllers": self._cli_controllers},
         )
         self.authority = Authority.from_config(self.link.presence, config.authorization, config.base, log=self._log)
         for gamertag in self.authority.controllers.pending():
@@ -230,6 +231,9 @@ class EndbotService:
 
     def _grant_revision(self, player_id: str) -> int:
         return self.authority.grant_revisions.get(player_id)
+
+    def _role(self, xuid: str) -> str:
+        return self.authority.role(xuid)
 
     def _presence(self, kind: str, records: list[dict]) -> None:
         if kind == "snapshot" and self._notices:

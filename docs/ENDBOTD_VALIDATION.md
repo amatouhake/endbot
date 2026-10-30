@@ -5,9 +5,9 @@ client check. Runs use the locked pair: official BDS `1.26.52.3` (Windows build 
 Endstone `0.11.13+endbot.1`. No server, world, identity, key, token, diagnostic capture or machine-local path is kept in
 the repository.
 
-Status: **in progress**. The release containing BOT-020 is not validated until every item below is recorded as passed
-on the final main. The first human Windows client pass (2026-10-30) failed on the script menus; the fix is in #150 and
-needs a rebuilt candidate and a second pass.
+Status: **human-checked**. The first human Windows client pass (2026-10-30) failed on the script menus and #150 fixed
+it; the second pass, on the rebuilt candidate, recorded all three items as passed with one unexplained menu delay noted
+below. The release containing BOT-020 has not been cut yet.
 
 ## Early check on the 3c main — 2026-10-29 JST
 
@@ -82,3 +82,28 @@ run ended `mine_at_spot ended: completed` with no `cannot cross` warnings. That 
 bundle files, not on the rebuilt candidate.
 
 Next: after #150 merges, rebuild the candidate and repeat all three items on the new bytes.
+
+## Human Windows client check, second pass — 2026-10-30 JST
+
+Run on the candidate rebuilt after #150: run 40971703283 (`fb20e8b`), `endbot-0.4.0-windows-x86_64.zip`,
+sha256 `4a15d2d1…43beed`, `gh attestation verify` exit 0. Fresh setup (`--fresh --transport raknet`), Survival with
+achievements on, `[scripting] enabled = true`, `max-players = 3`; `endbot doctor --live` clean except the expected
+`controllers: pending` before the first join.
+
+- [x] Commands, forms, script menus and messages look and behave as before endbotd. `/botscript` and `/bot menu` →
+      *Scripts...* open, which is what failed in the first pass; the operator ran `hop` from the menu
+      (`Script hop started …` / `hop ended: completed`), used `/bot`, `/botgroup`, the forms, `destroy for 90`
+      (`stopped: duration elapsed`) and the Japanese replies, and found nothing else.
+      One observation, cause not established: at the first join, the first spawn (`/bot Alice spawn`, cold
+      authentication, 13 s until `Alice joined the game`) was followed by four `/bot` attempts (09:51:59–09:52:09) that
+      opened no menu. `endbotd.log` records no warning for that window — no `cannot cross`, no delivery failure — and
+      the same sequence after a warm spawn (a new Bot, `MenuTest`, 2 s until it joined) opened the menu immediately.
+      Repeating the cold-looking case with an existing Bot afterwards did not reproduce it either. What the chat
+      showed during those four attempts was not captured, so this is recorded as unexplained rather than attributed
+      to endbotd.
+- [x] A command issued while endbotd restarts is refused with a reason, and works again afterwards. endbotd was killed
+      three times (09:53:59, 09:54:03 and 09:54:08 JST); the plugin logged
+      `Endbot cannot link to endbotd (unavailable: endbotd unavailable: ConnectionRefusedError)` at 09:54:11 and
+      relinked at 09:54:13. The `/bot` typed inside that gap was refused with `Endbot service is restarting`, and the
+      same command ran normally after the relink.
+- [x] Achievement history is unaffected. Unchanged before and after the session.

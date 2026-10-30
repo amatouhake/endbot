@@ -838,6 +838,7 @@ JA.update({
     "Previous page": "前のページ",
     "Next page": "次のページ",
     "No targets available for script parameters": "スクリプトの引数に選べる対象がありません",
+    "This script also uses: {names}": "このスクリプトは次の機能も使います: {names}",
     "Script {name} does not exist": "スクリプト {name} は存在しません",
     "Script source is empty or too large": "ソースが空か、サイズの上限を超えています",
     "Script changed; reopen the menu": "スクリプトが変更されました。メニューを開き直してください",

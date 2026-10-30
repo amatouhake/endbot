@@ -302,7 +302,8 @@ declaration, and naming it changes nothing. No other capability exists yet: even
 `requires` (`[]` when there is no call); inspection returns it with the schema as a set, so order does not matter. A
 run started from an inspection (the run form, which carries the declaration in its guard, the parameterless menu
 start, later a trigger) stops before its first operation if its own `requires {}` differs from what that inspection
-read, so a conditional call cannot widen what was shown.
+read, so a conditional call cannot widen what was shown. The run form shows the declaration on its first line, and a
+run submitted from that form is held to it.
 
 **Positional arguments and menu controls follow declaration order.** After the positional values, `name=value`
 sets any declared parameter, so earlier defaults can be skipped. The example accepts `/botscript run row #miners`,

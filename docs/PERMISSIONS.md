@@ -151,7 +151,7 @@ once, against the endbotd endpoint, not against the file request channel being r
      and triggers will; a typed `/botscript run` is held to its own declaration, which it cannot widen beyond its
      invoker either.
    - **2b. Forms show the declaration** before a shared script runs, from the inspection result. Players see one
-     line on the run form when a script declares anything. *DeepSeek.*
+     line on the run form when a script declares anything. *DeepSeek.* **Landed** (2026-10-30 JST).
 3. **Roles.** After BOT-020 3c and 4; 3c after BOT-020 5.
    - **3a. Role store.** `state/controller-roles.json`, keyed by XUID, read by endbotd; a grant with no entry is
      **scripter** (the migration rule), revoked grants keep no role (S1). Registered with the BOT-020 4

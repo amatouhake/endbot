@@ -422,6 +422,9 @@ def parameter_choices(schema, groups, bots):
 def run_screen(script, schema, groups, bots, origin, lang="en", requires=()):
     schema, choices = parameter_choices(schema, groups, bots)
     controls = []
+    if requires:
+        # The declaration belongs on the form other controllers read before running a shared script.
+        controls.append(f.Label(tr(lang, "This script also uses: {names}", names=", ".join(requires))))
     for name, spec in schema.items():
         kind, default = spec["type"], spec.get("default", "")
         label = tr(lang, "{name} ({kind})", name=name, kind=kind)
@@ -440,7 +443,8 @@ def run_screen(script, schema, groups, bots, origin, lang="en", requires=()):
     def build(response):
         values.clear()
         targets.clear()
-        for (name, spec), value in zip(schema.items(), response):
+        # modal_commands keeps one value per control, so the leading label has an entry to skip.
+        for (name, spec), value in zip(schema.items(), response[1:] if requires else response):
             if name in choices:
                 value = f._option(choices[name], value)
                 if spec["type"] == "group":

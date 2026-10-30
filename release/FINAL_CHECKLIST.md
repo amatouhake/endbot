@@ -325,6 +325,32 @@ compatibility gate is required. Defaults: `[scripting] enabled = false`, `book-e
   `v0.4.0` = `72f1c0d`, published 13:01 UTC; every re-downloaded asset matches `SHA256SUMS`, which is identical to
   the candidate's, and all 10 attestations verified)
 
+### 0.5.0 release — Minecraft 26.60, several servers on one PC, permissions (decided 2026-10-30)
+
+Scope: everything merged since `v0.4.0` — endbotd outside BDS (BOT-020), the Operation API and principals (BOT-019),
+the permission model with roles, ownership and `visibility shared|private` (BOT-024), job waits (BOT-016), reserved Bot
+names (BOT-025), direct NetherNet signalling as the default (BOT-026), and the move to Endstone `0.11.15+endbot.1` /
+BDS `1.26.60.6` / protocol `2225` with RakNet removed. The web (BOT-021) and triggers (BOT-022) moved to the next
+release ([delivery](../docs/DIRECTION.md#delivery)).
+
+- [x] Compatibility gate for the new pair, recorded in `docs/COMPATIBILITY.md`: CI cold builds and consumer E2E,
+  Windows live smoke, three instances on one PC, a 26.60 human client and an Xbox achievement (Body Guard).
+- [x] Human Windows-client pass on `0.5.0-rc.1` (run 41044019145, same code as the release apart from the version and
+  records), recorded in `docs/PERMISSIONS_VALIDATION.md`. Not run: the checks that need a real second person.
+- [x] Build `release-candidate.yml` for `0.5.0` from the release-prepared `main` commit. (run 41063813075 from
+  `8e81923`: `linux`, `windows`, both clean-consumer E2E legs and `assemble` passed)
+- [x] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.5.0`; verify checksums, attestations and the
+  source commit in the manifest. (2026-10-30: all 11 listed checksums and all 12 build-provenance attestations
+  verified; the manifest records `8e81923`)
+- [x] Fresh setup from the draft's Windows bundle: BDS 1.26.60.6 acquired, plugin `v0.5.0`, a Bot joined, `doctor
+  --live` passed.
+- [x] A published-0.4.0 instance updated to the draft's files: BDS moved to 1.26.60.6 after a server backup,
+  `endbot.toml` byte-identical, the Bot rejoined with the same identity, the Group was kept, `doctor --live` passed.
+- [x] Release notes list the remaining manual gates as known limitations.
+- [x] Publish the tested draft unchanged, then verify published asset checksums and provenance. (2026-10-30: tag
+  `v0.5.0` = `8e81923`, published 14:36 UTC as the latest release; every re-downloaded asset matches
+  `SHA256SUMS`, which is identical to the candidate's, and the bundle and `SHA256SUMS` attestations verified)
+
 ### After 0.1.0 (direction)
 
 - 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).

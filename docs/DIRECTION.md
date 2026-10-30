@@ -1,6 +1,6 @@
 # Product direction: from one plugin to a small distribution
 
-Status: **Accepted direction, not implemented** (2026-10-28 JST). This records decisions and their reasons; the work
+Status: **Accepted direction; BOT-019, BOT-020 and BOT-024 released in 0.5.0** (2026-10-30 JST; accepted 2026-10-28). This records decisions and their reasons; the work
 items are BOT-019 to BOT-024 in the [backlog](BACKLOG.md). [Architecture](ARCHITECTURE.md) describes what exists today.
 
 ## Goals
@@ -322,6 +322,9 @@ discovery (UDP 7551, one owner per machine) leaves Bots unable to reach every se
   `server-port` (BOT-026) as the default, validated with several BDS instances and a running client on one PC. Each
   of these is required; 0.5.0 waits for all of them, with one validation pass on the new pair.
 - **Next release**: BOT-021 (web) and BOT-022 (events, watches and triggers), then localhost mode.
+
+0.5.0 was published on 2026-10-30 (tag `v0.5.0` = `8e81923`, release-candidate run 41063813075). The checks that need
+a real second person were not run; see [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md).
 
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

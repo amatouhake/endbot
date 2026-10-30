@@ -749,7 +749,7 @@ able to join. Also confirm a large Group spawn reports refusals per member inste
 
 ## BOT-016: Completion waits beyond mining
 
-Status: **Done** (2026-10-29 JST): move, jump, attack, use, interact, destroy and a teleport's arrival are jobs.
+Status: **Released in 0.5.0** (2026-10-30 JST; done 2026-10-29): move, jump, attack, use, interact, destroy and a teleport's arrival are jobs.
 The runtime keeps a job id per input channel and the last end of each with its reason, and counts acknowledged
 server teleports; continuing operations return their job and `job:wait{timeout=}` waits for it (see
 [SCRIPTING.md](SCRIPTING.md#jobs-and-waits)). Bot-side live check (2026-10-29 JST, Windows RakNet, locked Endstone
@@ -801,7 +801,7 @@ the pack active. Do not enable `ui-pack-editor` by default or ship the pack in r
 
 ## BOT-019: One Operation API and principals
 
-Status: **Done** (2026-10-29 JST); design agreed 2026-10-28. Steps 1–7 landed: `Principal` and one authorization
+Status: **Released in 0.5.0** (2026-10-30 JST; done 2026-10-29); design agreed 2026-10-28. Steps 1–7 landed: `Principal` and one authorization
 check, `execute(Operation, Principal)`, the formatter and round-trip test, outcome `code` and query `data`, menu outcomes
 as data (`menu_views`), Events with chat and log sinks, and `operations.schema.json` checked against Python and Luau.
 Human Windows Client check (2026-10-29 JST, RakNet, locked pair, local build of main `fcc330e` applied with
@@ -858,8 +858,8 @@ Steps, each about one PR, none meant to change what players see:
 
 Status: **Design agreed in [ENDBOTD.md](ENDBOTD.md); steps 1 to 6 are done** (2026-10-30 JST): the autonomous live
 smoke passed, the first human Windows client pass failed on the script menus, #150 fixed it, and the second pass on the
-rebuilt candidate (run 40971703283) recorded all three items as passed. The release containing BOT-020 has not been cut
-yet — see [ENDBOTD_VALIDATION.md](ENDBOTD_VALIDATION.md).
+rebuilt candidate (run 40971703283) recorded all three items as passed. **Released in 0.5.0** (2026-10-30 JST) — see
+[ENDBOTD_VALIDATION.md](ENDBOTD_VALIDATION.md).
 
 Step 4 (store migration, P7 with its 2026-10-29 amendment): Groups and stored scripts move to `state/`, script files
 to `<instance>/scripts/`. **The release notes of the first endbotd release must state the rollback behaviour**:
@@ -932,8 +932,9 @@ accepts it, drop `patches/endstone/` and patched builds. Until then the patch st
 
 ## BOT-024: Permission model
 
-Status: **Steps 1a to 5 are done; the autonomous live smoke passed and the human checks are listed in
-[PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md)** (2026-10-30 JST); they run in the 0.5.0 validation pass. Step plan
+Status: **Released in 0.5.0** (2026-10-30 JST): steps 1a to 5 are done, the autonomous live smoke and the
+one-account human pass are recorded in [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md); the checks that need a
+real second person were not run. Step plan
 agreed in [PERMISSIONS.md](PERMISSIONS.md#steps) (2026-10-29 JST). Steps 1a (capability declarations in the
 registry), 2a (`requires {}`), 2b (forms show the declaration), 3a (the controller role store), 3b (the role
 check), 3c (assigning roles with `--role`), 4a (the ownership store for Bots and Groups), 4b (ownership
@@ -957,7 +958,7 @@ how (console only, or a delegated admin); how revocation propagates to runs, tri
 
 ## BOT-025: Reserved Bot names
 
-Status: **Done** (2026-10-29 JST); decided in [interface guide D3](INTERFACE_GUIDE.md#d3-command-roots).
+Status: **Released in 0.5.0** (2026-10-30 JST; done 2026-10-29); decided in [interface guide D3](INTERFACE_GUIDE.md#d3-command-roots).
 Human Windows Client check (2026-10-29 JST, RakNet, locked pair, local build of main `fcc330e` applied with
 `endbot update`): `/bot list spawn`, a rename to `menu` and a form spawn named `ping` were each refused with
 the reserved-name message.
@@ -970,7 +971,7 @@ Small enough to land with or right after BOT-019.
 
 ## BOT-026: Several NetherNet instances on one machine
 
-Status: **Done; direct signalling is the default from 0.5.0** (2026-10-30 JST). The one server known to run Endbot
+Status: **Released in 0.5.0; direct signalling is the default** (2026-10-30 JST). The one server known to run Endbot
 hosts three BDS instances and the game client on one PC.
 
 BDS 1.26.60 turns the RakNet deprecation into an error, so RakNet can no longer be the way to run several Endbot

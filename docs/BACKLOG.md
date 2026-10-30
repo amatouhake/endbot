@@ -970,29 +970,34 @@ Small enough to land with or right after BOT-019.
 
 ## BOT-026: Several NetherNet instances on one machine
 
-Status: **Implemented (experimental) — real-BDS validation pending** (2026-10-30 JST).
+Status: **Done; direct signalling is the default from 0.5.0** (2026-10-30 JST). The one server known to run Endbot
+hosts three BDS instances and the game client on one PC.
 
-BDS 26.60 turns the RakNet deprecation into an error, so RakNet can no longer be the way to run several Endbot
-instances on one machine. NetherNet Bots find BDS through LAN discovery on UDP 7551, which only one program can own:
-a second BDS cannot answer discovery and `endbot start` refuses.
+BDS 1.26.60 turns the RakNet deprecation into an error, so RakNet can no longer be the way to run several Endbot
+instances on one machine. NetherNet Bots found BDS through LAN discovery on UDP 7551, which only one program can own
+(a running game client holds it too): a second BDS cannot answer discovery and `endbot start` refused.
 
-Implemented: `[server] nethernet-signalling = 'direct'` (runtime `nethernetSignalling: "direct"`). Bots signal over
-HTTP to the configured loopback `server-port` (`POST /v1/join/<network id>` with a non-trickle SDP offer, SDP answer
-in the response) instead of discovery, as clients do when joining by address. Start skips the UDP 7551 check and
-config generation omits the advertisement names. The default stays `lan`. Unit tests cover the configuration, the
-HTTP exchange and its failures, and a full WebRTC connection to a local upstream NetherNet server through loopback
-HTTP; that stand-in is not evidence about BDS.
+`[server] nethernet-signalling` is `direct` by default (runtime `nethernetSignalling: "direct"`; `lan` keeps
+discovery). Bots signal over HTTP to the configured loopback `server-port` (`POST /v1/join/<network id>` with a
+non-trickle SDP offer, SDP answer in the response), as clients do when joining by address. Start skips the UDP 7551
+check and config generation omits the advertisement names.
 
-Open validation gates, in order, on the locked Endstone/BDS pair first and on 26.60 once it is locked:
+Validated on Endstone `0.11.15+endbot.1` / BDS `1.26.60.6` (release-candidate run 41024591616):
 
-- BDS answers `GET http://127.0.0.1:<server-port>/v1/join` with its status JSON, and a Bot joins with `direct`
-  (plain HTTP; no client `a=identity`). If BDS requires HTTPS or a client identity, record the exact response.
-- With `enable-lan-visibility=false`, BDS does not hold UDP 7551 and humans can still join by address.
-- Two instances with distinct `server-port` values (and their UDP port ranges) run at the same time, each with Bots
-  joined over `direct`, and a human joins each one.
-- Local-bot authentication negatives (missing, replayed, wrong-audience token) still refuse over `direct`.
+- The live run found that upstream `createClient` fires `connect_allowed` before returning when ping is skipped, so
+  the direct handler was never attached and the Bot waited on discovery; fixed and covered by the session test.
+- Windows bundle: three instances (`server-port` 19401 to 19403, own control and link ports, LAN visibility left on)
+  started while another process held UDP 7551, as the game client does; a Bot spawned on each instance through the
+  console and moved on command, and `doctor --live` passed.
+- Bundle consumer E2E with `direct` on Windows (CI) and Linux (CI and WSL): setup, Bot join through local-bot trust,
+  update and rollback.
+- Linux: BDS answers `/v1/join` with `Connection: close` and closes first, so `server-port` stays in TCP TIME-WAIT
+  for up to 60 s and the patched BDS cannot listen on it again ("Port [19132] may be in use" on the rollback start).
+  `endbot start` now waits for the port off Windows; three stop/start cycles in a row in WSL each waited and
+  spawned the Bot.
 
-Do not make `direct` the default or claim 26.60 support until these pass and the lock is deliberately updated.
+Still a human check in the 0.5.0 pass: a 26.60 client on the same PC joins each of the instances by address while
+Bots are online.
 
 ## Deferred priorities
 

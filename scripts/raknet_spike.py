@@ -670,9 +670,14 @@ def exercise(
                         "controller CLI reported submission instead of execution"
                     )
 
-            cli_command(["controllers", "add", "CLI Pending"], "CLI Pending: pending")
+            # BOT-024 3c: a new grant without --role is a controller; --role changes it.
+            cli_command(["controllers", "add", "CLI Pending"], "CLI Pending: pending - awaiting first "
+                        "Xbox-authenticated join (role controller)")
+            cli_command(["controllers", "add", "CLI Pending", "--role", "scripter"], "(role scripter)")
             cli_command(["controllers", "list"], "CLI Pending: pending")
+            cli_command(["controllers", "add", "CLI Pending", "--role", "admin"], "invalid choice", code=2)
             cli_command(["doctor", "--live"], "CLI Pending: pending", code=0)
+            cli_command(["doctor"], "controller-roles", code=0)
             cli_command(
                 ["controllers", "remove", "MissingController"],
                 "Unknown offline controller",
@@ -684,17 +689,23 @@ def exercise(
             )
             report["controller_cli_correlated_results"] = True
             report["controller_doctor_live"] = True
+            report["controller_cli_roles"] = True
 
             management(
-                'add "Pending Controller"', "controller Pending Controller updated"
+                'add "Pending Controller" --role scripter', "controller Pending Controller updated"
             )
-            management("list", "Pending Controller: pending")
+            management("list", "Pending Controller: pending - awaiting first Xbox-authenticated join (role scripter)")
             management(
                 'remove "Pending Controller"', "controller Pending Controller revoked"
             )
             policy = json.loads(policy_file.read_text(encoding="utf-8"))
             if policy["pending"] or "pending controller" not in policy["deniedNames"]:
                 raise ConsumerError("controller removal was not persisted")
+            roles_file = paths.state_controllers.parent / "controller-roles.json"
+            roles = json.loads(roles_file.read_text(encoding="utf-8")) if roles_file.exists() else {}
+            if roles.get("pending"):
+                raise ConsumerError(f"revoked grants kept a pending role: {roles}")
+            report["controller_console_roles"] = True
             management("add RestartController", "controller RestartController updated")
             report["controller_console_pending_add_remove"] = True
             report["stage"] = "local-bot login / spawn"
@@ -737,6 +748,21 @@ def exercise(
             if policy_file.read_bytes() != prior_policy:
                 raise ConsumerError("local Bot enrollment changed controller policy")
             report["controller_local_bot_rejected"] = True
+            # BOT-024 4a/4c: the console's Bot is unowned, stays shared, and cannot be claimed or given to a Bot.
+            ownership_file = paths.state_controllers.parent / "ownership.json"
+            identity = control_request(control_port, token, "status", name=BOT)["identityId"]
+            owned = json.loads(ownership_file.read_text(encoding="utf-8")) if ownership_file.exists() else {}
+            if identity in owned.get("bots", {}):
+                raise ConsumerError(f"a console-spawned Bot was given an owner: {owned}")
+            for command, expected in (
+                (f"bot {BOT} private", f"Bot {BOT} has no owner"),
+                (f"bot {BOT} owner {BOT}", f"{BOT} is not a known player"),
+                (f"bot {BOT} owner NobodyHere", "NobodyHere is not a known player"),
+            ):
+                offset = len(logtext())
+                console(bds, command)
+                wait_for(command, lambda expected=expected, offset=offset: expected in logtext()[offset:], 10, bds)
+            report["ownership_console_unowned"] = True
             for command, expected in (
                 (f"bot {BOT} move forward", "movement set to forward"),
                 (f"bot {BOT} stop", "movement and actions stopped"),

@@ -95,7 +95,14 @@ def _valid_result(result: object) -> dict:
 
 
 def controllers_request(
-    run_dir: Path, token_file: Path, port: int, operation: str, target: str | None = None, *, timeout: float = 15.0
+    run_dir: Path,
+    token_file: Path,
+    port: int,
+    operation: str,
+    target: str | None = None,
+    role: str | None = None,
+    *,
+    timeout: float = 15.0,
 ) -> dict:
     """Run one controllers operation in endbotd and return its result ``{ok, messages, entries}``."""
     if operation not in {"add", "remove", "list"}:
@@ -104,6 +111,11 @@ def controllers_request(
         target = None
     elif not isinstance(target, str) or not target.strip() or not target.isprintable() or len(target) > 256:
         raise EndbotdError("invalid", "a non-empty printable target of at most 256 characters is required")
+    if role is not None:
+        if role not in {"scripter", "controller"}:
+            raise EndbotdError("invalid", "role must be scripter or controller")
+        if operation != "add":
+            raise EndbotdError("invalid", "role is only accepted for add")
     if inspect_supervisor(run_dir).status != RUNNING:
         raise EndbotdError("unavailable", "the instance is not running; start it with `endbot start`")
     token = _token(token_file)
@@ -131,7 +143,10 @@ def controllers_request(
                 raise _error(reply)
             if not isinstance(reply.get("result"), dict) or reply["result"].get("protocol") != PROTOCOL:
                 raise EndbotdError("protocol_mismatch", "endbotd speaks another protocol; run `endbot update`")
-            request = {"id": REQUEST_ID, "type": "controllers", "body": {"operation": operation, "target": target}}
+            body = {"operation": operation, "target": target}
+            if role is not None:
+                body["role"] = role
+            request = {"id": REQUEST_ID, "type": "controllers", "body": body}
             sock.sendall(json.dumps(request).encode("utf-8") + b"\n")
             sent = True
             reply = _read_frame(sock, buffer, deadline)

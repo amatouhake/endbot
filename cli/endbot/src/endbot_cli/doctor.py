@@ -437,16 +437,25 @@ def check_controller_roles(paths: InstancePaths) -> CheckResult:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         return CheckResult(FAIL, name, f"{path} cannot be read ({error}); {remedy}")
     entries = document.get("roles", {}) if isinstance(document, dict) else None
+    pending = document.get("pending", {}) if isinstance(document, dict) else None
     valid = (
         isinstance(document, dict)
         and document.get("version") == 1
-        and not set(document) - {"version", "roles"}
+        and not set(document) - {"version", "roles", "pending"}
         and isinstance(entries, dict)
         and all(_is_xuid_key(key) and role in ("scripter", "controller") for key, role in entries.items())
+        and isinstance(pending, dict)
+        and all(
+            isinstance(key, str) and 0 < len(key) <= 256 and key.isprintable()
+            and role in ("scripter", "controller")
+            for key, role in pending.items()
+        )
     )
     if not valid:
         return CheckResult(FAIL, name, f"{path} is not a version 1 controller roles file; {remedy}")
     count = f"{len(entries)} role{'s' if len(entries) != 1 else ''}"
+    if pending:
+        count += f" and {len(pending)} pending"
     return CheckResult(PASS, name, f"{path} records {count}")
 
 

@@ -107,14 +107,27 @@ class MainTests(unittest.TestCase):
     def test_controller_management_subcommands_reach_live_console_handler(self):
         from unittest.mock import patch
 
-        for operation, target in (("add", "Player With Spaces"), ("remove", "Player"), ("list", None)):
+        cases = (
+            ("add", "Player With Spaces", None),
+            ("add", "Player With Spaces", "controller"),
+            ("remove", "Player", None),
+            ("list", None, None),
+        )
+        for operation, target, role in cases:
             arguments = ["--instance", str(self.root), "controllers", operation]
             if target is not None:
                 arguments.append(target)
+            if role is not None:
+                arguments.extend(["--role", role])
             with patch("endbot_cli.__main__.run_controllers_live", return_value=0) as handler:
                 code, _, _ = self.run_main(arguments)
             self.assertEqual(code, 0)
-            handler.assert_called_once_with(self.paths, operation, target)
+            handler.assert_called_once_with(self.paths, operation, target, role)
+
+    def test_controller_role_rejects_an_unknown_value(self):
+        with self.assertRaises(SystemExit) as raised:
+            self.run_main(["--instance", str(self.root), "controllers", "add", "Player", "--role", "admin"])
+        self.assertEqual(raised.exception.code, 2)
 
 
 if __name__ == "__main__":

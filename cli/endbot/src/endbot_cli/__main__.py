@@ -53,6 +53,13 @@ def build_parser() -> argparse.ArgumentParser:
     for operation in ("add", "remove"):
         action = controllers_subcommands.add_parser(operation, help=f"{operation} a controller while BDS runs")
         action.add_argument("target", help="GamerTag (remove also accepts xuid:<id> or uuid:<id>)")
+        if operation == "add":
+            action.add_argument(
+                "--role",
+                choices=("scripter", "controller"),
+                default=None,
+                help="role for the grant (default for a new grant: controller)",
+            )
     controllers_subcommands.add_parser("list", help="list effective controller configuration on the BDS console")
     reset = controllers_subcommands.add_parser("reset", help="return one controller binding to pending (section 3)")
     reset.add_argument("gamertag", help="the GamerTag whose binding should be removed")
@@ -145,7 +152,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "controllers" and args.controllers_command == "reset":
         return run_controllers_reset(paths, args.gamertag)
     if args.command == "controllers":
-        return run_controllers_live(paths, args.controllers_command, getattr(args, "target", None))
+        return run_controllers_live(
+            paths, args.controllers_command, getattr(args, "target", None), getattr(args, "role", None)
+        )
     if args.command == "setup":
         return run_setup(
             paths,

@@ -20,7 +20,7 @@ from pathlib import Path
 from endbot_core.authorization import AllowedPlayers
 from endbot_core.controller_policy import ControllerPolicy
 from endbot_core.controller_roles import FILE_NAME as ROLES_FILE
-from endbot_core.controller_roles import ControllerRoles
+from endbot_core.controller_roles import ROLES, ControllerRoles
 from endbot_core.enrollment import ControllerEnrollment, _is_xuid
 from endbot_core.grant_revisions import FILE_NAME as GRANT_REVISIONS_FILE
 from endbot_core.grant_revisions import GrantRevisions
@@ -28,6 +28,13 @@ from endbot_core.link import Presence
 from endbot_core.principal import Principal
 
 Permissions = list[tuple[str, bool]]
+
+
+def _describe(row: dict) -> str:
+    line = f"{row['name']}: {row['state']} - {row['reason']}"
+    if row.get("role"):
+        line += f" (role {row['role']})"
+    return line
 
 
 class Authority:
@@ -131,6 +138,12 @@ class Authority:
                     _, binding = self.controllers.authorize(name, xuid, player_id)
                     if binding is not None:
                         self._log("info", f"Bound controller {binding.gamertag} through Xbox authentication.")
+                if _is_xuid(xuid):
+                    # A role granted before this GamerTag joined travels to its XUID now.
+                    pending = self.roles.pending_role(name)
+                    if pending is not None and self.allows(record):
+                        self.roles.set(xuid, pending)
+                        self.roles.forget_pending([name])
                 permissions.append(self._apply(player_id))
             return permissions
 
@@ -157,36 +170,62 @@ class Authority:
         result, permissions = self.operation(args)
         return list(result["messages"]), permissions
 
-    def operation(self, args: list[str], target: str | None = None) -> tuple[dict, Permissions]:
+    def operation(self, args: list[str], target: str | None = None,
+                  role: str | None = None) -> tuple[dict, Permissions]:
         """Run a console operation; ``target`` is an already-validated whole name."""
         with self.lock:
             try:
-                return self._operation(args, target)
+                return self._operation(args, target, role)
             except (OSError, ValueError, TypeError) as error:
                 return {"ok": False, "messages": [f"Endbot: controller change failed: {error}"]}, []
 
-    def _operation(self, args: list[str], target: str | None) -> tuple[dict, Permissions]:
+    def _operation(self, args: list[str], target: str | None, role: str | None = None) -> tuple[dict, Permissions]:
         if not args or args == ["list"]:
             rows = self.report()
             messages = ["Endbot controllers (live effective authorization):"]
-            messages.extend(
-                f"{row['name']}: {row['state']} - {row['reason']}" + (" (online)" if row.get("online") else "")
-                for row in rows
-            )
+            messages.extend(_describe(row) + (" (online)" if row.get("online") else "") for row in rows)
             if not rows:
                 messages.append("none; the server console remains authorized")
             return {"ok": True, "messages": messages, "entries": rows}, []
         operation = args[0].lower()
+        if operation == "add" and len(args) >= 3 and args[-2] == "--role":
+            # Console text: the option follows the GamerTag.
+            if role is None:
+                role = args[-1]
+            args = args[:-2]
+        if operation == "add" and role is not None and role not in ROLES:
+            raise ValueError("role must be scripter or controller")
         if target is None and len(args) >= 2:
             # Console text: quoted names may contain spaces.
             target = " ".join(shlex.split(" ".join(args[1:])))
         if operation not in {"add", "remove"} or not target:
-            raise ValueError("Use botcontrollers list|add <GamerTag>|remove <GamerTag|xuid:id|uuid:id>")
+            raise ValueError(
+                "Use botcontrollers list|add <GamerTag> [--role scripter|controller]|remove "
+                "<GamerTag|xuid:id|uuid:id>"
+            )
         player = next((record for record in self.presence.online()
                        if (record.get("name") or "").casefold() == target.casefold()), None)
         if operation == "add":
             binding = next((entry for entry in (*self.controllers.bindings, *self.policy.state.grants)
                             if entry.gamertag.casefold() == target.casefold()), None)
+            # Decide before the add: afterwards every new grant would look allowed.
+            existing = next((row for row in self.report()
+                             if row["name"].casefold() == target.casefold() and row["state"] == "allowed"), None)
+            xuid = player.get("xuid") if player is not None else binding.xuid if binding is not None else None
+            if role is not None:
+                effective = role
+            elif existing is None:
+                effective = "controller"
+            else:
+                effective = None  # An existing grant keeps its role unless --role is given.
+            # The role is written before the grant: if a write fails, a new grant never exists without its role,
+            # which would make it a scripter (the no-entry default).
+            if effective is not None:
+                if _is_xuid(xuid):
+                    self.roles.set(xuid, effective)
+                    self.roles.forget_pending([target])
+                else:
+                    self.roles.set_pending(target, effective)
             if player is not None:
                 self.policy.add(target, xuid=player.get("xuid") or "", player_uuid=player["playerId"])
             elif binding is not None:
@@ -221,11 +260,11 @@ class Authority:
                      or row.get("uuid") in denied.denied_uuids
                      or row.get("name", "").casefold() in denied.denied_names)
             )
+            self.roles.forget_pending([target])
         permissions = self.refresh()
         state = "updated" if operation == "add" else "revoked"
         rows = self.report()
-        details = [f"{row['name']}: {row['state']} - {row['reason']}"
-                   for row in rows if row["name"].casefold() == target.casefold()]
+        details = [_describe(row) for row in rows if row["name"].casefold() == target.casefold()]
         result = {"ok": True, "messages": [f"Endbot: controller {target} {state}", *details], "entries": rows}
         return result, permissions
 
@@ -242,8 +281,11 @@ class Authority:
             name = (player.get("name") or binding.gamertag) if player is not None else binding.gamertag
             identity = player["playerId"] if player is not None else binding.uuid
             allowed, reason = self.control_decision(name, binding.xuid, identity)
-            rows.append({"name": name, "state": "allowed" if allowed else "revoked", "reason": reason,
-                         "xuid": binding.xuid, "uuid": identity, "online": player is not None})
+            row = {"name": name, "state": "allowed" if allowed else "revoked", "reason": reason,
+                   "xuid": binding.xuid, "uuid": identity, "online": player is not None}
+            if allowed:
+                row["role"] = self.roles.role(binding.xuid)
+            rows.append(row)
             seen_xuids.add(binding.xuid)
             seen_uuids.add(identity)
             seen_names.add(binding.gamertag.casefold())
@@ -253,8 +295,11 @@ class Authority:
             if not _is_xuid(xuid) or xuid in seen_xuids:
                 continue
             allowed, reason = self.control_decision(name, xuid, identity)
-            rows.append({"name": name, "state": "allowed" if allowed else "denied", "reason": reason,
-                         "xuid": xuid, "uuid": identity, "online": True})
+            row = {"name": name, "state": "allowed" if allowed else "denied", "reason": reason,
+                   "xuid": xuid, "uuid": identity, "online": True}
+            if allowed:
+                row["role"] = self.roles.role(xuid)
+            rows.append(row)
             seen_xuids.add(xuid)
             seen_uuids.add(identity)
             seen_names.add(name.casefold())
@@ -262,8 +307,11 @@ class Authority:
             if name.casefold() in seen_names:
                 continue
             revoked = policy.name_denied(name)
-            rows.append({"name": name, "state": "revoked" if revoked else "pending",
-                         "reason": "revoked GamerTag" if revoked else "awaiting first Xbox-authenticated join"})
+            row = {"name": name, "state": "revoked" if revoked else "pending",
+                   "reason": "revoked GamerTag" if revoked else "awaiting first Xbox-authenticated join"}
+            if not revoked:
+                row["role"] = self.roles.pending_role(name) or "scripter"
+            rows.append(row)
             seen_names.add(name.casefold())
         for kind, configured, denied, seen in (
             ("xuid", self.allowed.xuids, policy.state.denied_xuids, seen_xuids),

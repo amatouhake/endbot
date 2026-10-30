@@ -278,7 +278,7 @@ class EndbotService:
 
     def _cli_controllers(self, body: dict) -> dict:
         """``endbot controllers add|remove|list`` (P8): run as the console, answered on the CLI connection."""
-        operation, target = body.get("operation"), body.get("target")
+        operation, target, role = body.get("operation"), body.get("target"), body.get("role")
         if operation not in {"add", "remove", "list"}:
             raise ValueError("expected add, remove or list")
         if operation == "list":
@@ -286,8 +286,13 @@ class EndbotService:
                 raise ValueError("list takes no target")
         elif not isinstance(target, str) or not target.strip() or not target.isprintable() or len(target) > 256:
             raise ValueError("a non-empty printable target of at most 256 characters is required")
+        if role is not None:
+            if not isinstance(role, str) or role not in {"scripter", "controller"}:
+                raise ValueError("role must be scripter or controller")
+            if operation != "add":
+                raise ValueError("role is only accepted for add")
         # The target is one whole name; it is never reparsed as console text.
-        result, permissions = self.authority.operation([operation], target)
+        result, permissions = self.authority.operation([operation], target, role=role)
         self._send_permissions(permissions)
         if operation != "list":
             self._log("info", f"endbot CLI controllers {operation}: {result['messages'][0]}")

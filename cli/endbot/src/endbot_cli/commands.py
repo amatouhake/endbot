@@ -293,7 +293,8 @@ def run_controllers_reset(paths: InstancePaths, gamertag: str) -> int:
     return 0
 
 
-def run_controllers_live(paths: InstancePaths, operation: str, target: str | None = None) -> int:
+def run_controllers_live(paths: InstancePaths, operation: str, target: str | None = None,
+                         role: str | None = None) -> int:
     """Ask endbotd over its loopback CLI endpoint; only endbotd writes policy (docs/ENDBOTD.md P8)."""
     from endbot_cli.endbotd_client import controllers_request
 
@@ -302,7 +303,9 @@ def run_controllers_live(paths: InstancePaths, operation: str, target: str | Non
     except ConfigError as error:
         return _fail(f"FAIL controllers: {error}")
     try:
-        result = controllers_request(paths.state_run, paths.endbotd_token, config.endbotd.link_port, operation, target)
+        result = controllers_request(
+            paths.state_run, paths.endbotd_token, config.endbotd.link_port, operation, target, role=role
+        )
     except KeyboardInterrupt:
         return _fail("FAIL controllers: interrupted; result is unknown; inspect controllers list before retrying")
     except (OSError, ValueError) as error:

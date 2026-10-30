@@ -164,6 +164,7 @@ once, against the endbotd endpoint, not against the file request channel being r
    - **3c. Assigning roles.** `--role scripter|controller` on `endbot controllers add` and the `botcontrollers` console
      command, the same option changing an existing grant, the default **controller** for a new grant, and the role in
      `endbot controllers list`. Operators see the option; new controllers can no longer author. *DeepSeek.*
+     **Landed** (2026-10-30 JST). A pending GamerTag's role is kept by name until its first authenticated join.
 4. **Ownership of Bots and Groups.** After BOT-020 3c and 4. Scripts already follow the model.
    - **4a. Ownership store** for Bots and Groups: owner and visibility by identity id, absent means unowned and shared
      (S2); a Bot spawned by a run or trigger is owned by its invoker or the trigger's owner; `[permissions]

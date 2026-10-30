@@ -197,6 +197,99 @@ class AuthorityTests(unittest.TestCase):
         self.assertEqual(authority.role(owner["xuid"]), "scripter")
         self.assertEqual(self.authority().role(owner["xuid"]), "scripter")
 
+    def test_a_new_grant_is_a_controller_and_a_repeated_add_keeps_it(self):
+        authority, owner = self.authority(), player()
+        self.join(authority, owner)
+        result, _ = authority.operation(["add", owner["name"]])
+        self.assertTrue(result["ok"])
+        self.assertEqual(authority.role(owner["xuid"]), "controller")
+        self.assertIn("(role controller)", result["messages"][1])
+        authority.operation(["add", owner["name"]])
+        self.assertEqual(authority.role(owner["xuid"]), "controller")
+
+    def test_a_failed_role_write_never_leaves_a_new_grant_without_its_role(self):
+        authority, owner = self.authority(), player()
+        self.join(authority, owner)
+
+        def fail(*args):
+            raise OSError("disk full")
+
+        authority.roles._save = fail
+        result, _ = authority.operation(["add", owner["name"]])
+        self.assertFalse(result["ok"])
+        # No grant was written, so the player is not a scripter by default either.
+        self.assertFalse(self.allows(authority, owner))
+
+    def test_role_changes_an_existing_grant_only_when_given(self):
+        authority, owner = self.authority(), player()
+        self.join(authority, owner)
+        authority.operation(["add", owner["name"]])
+        result, _ = authority.operation(["add", owner["name"]], role="scripter")
+        self.assertTrue(result["ok"])
+        self.assertEqual(authority.role(owner["xuid"]), "scripter")
+        self.assertIn("(role scripter)", result["messages"][1])
+        authority.operation(["add", owner["name"]])
+        self.assertEqual(authority.role(owner["xuid"]), "scripter")
+
+    def test_a_pending_role_binds_on_the_first_join(self):
+        authority = self.authority()
+        result, _ = authority.operation(["add"], "Pending Tag", role="scripter")
+        self.assertTrue(result["ok"])
+        self.assertEqual(authority.roles.pending_role("Pending Tag"), "scripter")
+        self.assertEqual(result["entries"][0]["role"], "scripter")
+        joiner = player("Pending Tag", "2535400000000042")
+        self.join(authority, joiner)
+        self.assertTrue(self.allows(authority, joiner))
+        self.assertEqual(authority.role(joiner["xuid"]), "scripter")
+        self.assertIsNone(authority.roles.pending_role("Pending Tag"))
+        self.assertEqual(authority.roles.entries(), {joiner["xuid"]: "scripter"})
+
+    def test_remove_clears_a_bound_or_a_pending_role(self):
+        authority, owner = self.authority(), player()
+        self.join(authority, owner)
+        authority.operation(["add", owner["name"]], role="controller")
+        authority.roles.set_pending(owner["name"], "scripter")
+        authority.operation(["remove", owner["name"]])
+        self.assertEqual(authority.roles.entries(), {})
+        self.assertEqual(authority.roles.pending_entries(), {})
+        authority.operation(["add"], "Pending Tag", role="controller")
+        self.assertEqual(authority.roles.pending_role("Pending Tag"), "controller")
+        authority.operation(["remove"], "Pending Tag")
+        self.assertEqual(authority.roles.pending_entries(), {})
+
+    def test_console_text_keeps_the_space_and_reads_the_role_option(self):
+        authority = self.authority()
+        lines, _ = authority.manage(["add", "Some", "Name", "--role", "scripter"])
+        self.assertEqual(lines[0], "Endbot: controller Some Name updated")
+        self.assertIn("Some Name: pending - awaiting first Xbox-authenticated join (role scripter)", lines)
+        self.assertEqual(authority.roles.pending_role("Some Name"), "scripter")
+
+    def test_an_invalid_role_changes_nothing(self):
+        authority, owner = self.authority(), player()
+        self.join(authority, owner)
+        result, permissions = authority.operation(["add", owner["name"]], role="admin")
+        self.assertFalse(result["ok"])
+        self.assertIn("role must be scripter or controller", result["messages"][0])
+        self.assertEqual(permissions, [])
+        self.assertFalse(authority.policy.path.exists())
+        self.assertEqual(authority.roles.entries(), {})
+        self.assertEqual(authority.roles.pending_entries(), {})
+        lines, _ = authority.manage(["add", "Someone", "--role", "owner"])
+        self.assertIn("role must be scripter or controller", lines[0])
+        self.assertIsNone(authority.roles.pending_role("Someone"))
+
+    def test_list_lines_show_roles_before_online_and_for_pending(self):
+        authority, owner = self.authority(), player()
+        self.join(authority, owner)
+        authority.operation(["add", owner["name"]])
+        authority.operation(["add"], "Pending Tag", role="scripter")
+        lines, _ = authority.manage(["list"])
+        allowed = next(line for line in lines if line.startswith(f"{owner['name']}:"))
+        pending = next(line for line in lines if line.startswith("Pending Tag:"))
+        self.assertIn("(role controller) (online)", allowed)
+        self.assertIn("(role scripter)", pending)
+        self.assertNotIn("(online)", pending)
+
     def test_local_bot_cannot_be_granted_control(self):
         authority, bot = self.authority(), player(xuid="")
         self.join(authority, bot)

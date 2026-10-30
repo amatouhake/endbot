@@ -31,7 +31,7 @@ endbot [--instance PATH] doctor [--live]
 endbot [--instance PATH] start
 endbot [--instance PATH] stop [--timeout SECONDS]
 endbot [--instance PATH] console <line...>
-endbot [--instance PATH] controllers add <gamertag>
+endbot [--instance PATH] controllers add <gamertag> [--role scripter|controller]
 endbot [--instance PATH] controllers remove <gamertag|xuid:id|uuid:id>
 endbot [--instance PATH] controllers list
 endbot [--instance PATH] controllers reset <gamertag>
@@ -115,6 +115,9 @@ root; `update` extracts exactly those into the instance and never touches
 
 With the supervisor running, `endbot controllers add "GamerTag"` grants Bot operation and
 `endbot controllers remove "GamerTag"` revokes it. `endbot controllers list` requests the current list.
+Add `--role scripter` or `--role controller` to set the grant's role; a new grant without it is a controller, and an
+existing grant keeps its role unless the option is given. The console command takes the same option
+(`botcontrollers add "GamerTag" --role scripter`).
 The CLI waits for execution and prints success, failure or the list in its own terminal (exit 0 for success, 1 for failure).
 A timeout/interruption reports an unknown outcome; inspect the list before retrying. Mutations are not auto-retried.
 Restart the supervisor/BDS after deploying this version to enable result replies. Online players update immediately;

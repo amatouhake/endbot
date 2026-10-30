@@ -46,6 +46,17 @@ are cleared by an explicit regrant. Offline unknown grants bind only on a normal
 rechecks authorization and its grant revision on the server thread, so queued commands cannot regain validity after a
 revoke/regrant or reconnect. Already-started operations may finish; see [runtime semantics](OPERATIONS.md#runtime-grants-and-revocations).
 
+Each controller grant has a role ([PERMISSIONS.md](PERMISSIONS.md#roles)), kept by endbotd in
+`state/controller-roles.json` by XUID; a grant with no entry is a scripter, and a revoke removes the entry. endbotd
+reads the role for every command it receives, so a role change applies to the next command without a restart or a
+grant revision change. A **controller** is refused script authoring (create, save, book import, copy, rename, restore,
+`share`, and opening the editor) with the authorization outcome, whether the request is typed, sent by a form or comes
+from any later surface; its menus leave those actions out. Running scripts, and making private and deleting the
+scripts it may change (its own, and unowned scripts saved before ownership existed), stay open; both only narrow what
+others can use. The console is never refused, and the check fails closed for any caller that is not a known player
+or the console. An older Endbot ignores the file, so after a rollback every controller
+can author again.
+
 Controller CLI requests use one atomic file per random request ID, bound to the current supervisor session. The
 supervisor validates and removes a request from the queue before forwarding its ID to the console-only plugin handler;
 only that handler executes the operation and writes the correlated result atomically. Old-session requests are rejected,

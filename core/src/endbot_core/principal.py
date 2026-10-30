@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 # run), "job" (work a Bot continues after its command returned, such as a
 # continuous mining loop). "web" and "trigger" arrive with BOT-021 and BOT-022.
 KINDS = frozenset({"player", "console", "run", "job"})
+ROLES = frozenset({None, "scripter", "controller"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,15 +40,25 @@ class Principal:
     authorization_revision: int | None = None
     group_guard: object | None = None
     run_id: str | None = None
+    # The controller's role (docs/PERMISSIONS.md), read when the command arrives: "scripter" or "controller".
+    # None is a grant with no recorded role, which is a scripter (the migration rule).
+    role: str | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
             raise ValueError(f"unknown principal kind: {self.kind}")
+        if self.role not in ROLES:
+            raise ValueError(f"unknown role: {self.role}")
 
     @property
     def console(self) -> bool:
         """The console, or a run or job the console started: always authorized."""
         return self.player_id is None and self.xuid is None
+
+    @property
+    def can_author(self) -> bool:
+        """Create, save, import, copy, rename, restore and share scripts (S6): the console and scripters."""
+        return self.console or self.role != "controller"
 
 
 def as_job(principal):

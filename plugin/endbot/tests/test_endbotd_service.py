@@ -10,6 +10,7 @@ from pathlib import Path
 
 from endbot_core.forms import ActionScreen, BotListView, Button, Run
 from endbot_core.group_forms import GroupGuard, GroupView
+from endbot_core.link import principal_from_wire, principal_to_wire
 from endbot_core.principal import Principal
 from endbot_core.script_forms import ScriptGuard
 from endbot_core.wire_views import decode_view, encode_view
@@ -113,6 +114,24 @@ class EndbotServiceTests(ServiceHarness):
         self.assertEqual(self.submit(link, alice_sender, "bot", "Steve", "spawn"), {"accepted": True, "code": "ok"})
         self.assertTrue(wait_for(lambda: any("Steve" in message for message in alice.messages[1:])))
         self.assertIn("spawn", [operation for operation, _ in self.control.calls])
+
+    def test_each_command_carries_the_senders_current_role(self):
+        link = self.link()
+        self.join(link, FakePlayer(ALICE, "Alice", xuid=OWNER))
+        self.console(link, "add", "Alice")
+        sender = {"kind": "player", "playerId": ALICE}
+        # A grant with no recorded role is a scripter (the migration rule).
+        self.assertEqual(self.service.link._sender(sender).role, "scripter")
+        self.assertTrue(self.service.link._sender(sender).can_author)
+        # S5: the role is read for each command, with no restart or grant revision change.
+        self.service.authority.roles.set(OWNER, "controller")
+        principal = self.service.link._sender(sender)
+        self.assertEqual((principal.role, principal.can_author), ("controller", False))
+        self.assertEqual(principal.grant_revision, 0)
+        self.assertEqual(self.service.link._sender({"kind": "console"}).role, None)
+        self.assertEqual(principal_from_wire(principal_to_wire(principal)).role, "controller")
+        with self.assertRaises(ValueError):
+            Principal("player", player_id=ALICE, role="operator")
 
     def test_controller_management_is_refused_to_players_even_over_the_link(self):
         link = self.link()

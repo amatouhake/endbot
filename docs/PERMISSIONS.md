@@ -158,7 +158,9 @@ once, against the endbotd endpoint, not against the file request channel being r
      migration and doctor `stores` check. Nothing players see. *Claude.* **Landed** (2026-10-30 JST).
    - **3b. Role in the principal and the check.** `Principal` carries the role, read at each action (S5);
      the authoring operations (S6) refuse a controller with the authorization code, from every surface.
-     Nobody is a controller yet, so nothing players see. *Claude.*
+     Nobody is a controller yet, so nothing players see. *Claude.* **Landed** (2026-10-30 JST). The role is read when
+     endbotd receives each command; `edit` (opening the editor) counts as authoring, and controller menus leave the
+     authoring actions out (S10).
    - **3c. Assigning roles.** `--role scripter|controller` on `endbot controllers add` and the `botcontrollers` console
      command, the same option changing an existing grant, the default **controller** for a new grant, and the role in
      `endbot controllers list`. Operators see the option; new controllers can no longer author. *DeepSeek.*

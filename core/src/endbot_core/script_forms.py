@@ -111,9 +111,18 @@ def _capped_view(source, lang, name=None):
     return source_view(source)
 
 
-def list_screen(scripts, lang="en", own=lambda script: False):
+def list_screen(scripts, lang="en", own=lambda script: False, author=True):
+    """``author`` False (a controller, S10) leaves out creating scripts; the server refuses it as well."""
     items = [f.Button(label(s, own(s), lang), run("menu", s.name, guard=ScriptGuard(s.revision, s.name)))
              for s in scripts]
+    if author:
+        items.append(_new_script_button(lang))
+    items.append(f.Button(tr(lang, "Reload script files"), run("reload")))
+    items.append(f.Button(tr(lang, "Back to Bot list"), f.run(f.menu_argv())))
+    return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
+
+
+def _new_script_button(lang):
     templates = [
         f.Button(tr(lang, title), f.Show(new_screen(source, "", lang))) for title, source in TEMPLATES.items()
     ]
@@ -121,21 +130,16 @@ def list_screen(scripts, lang="en", own=lambda script: False):
         f.Button(tr(lang, "Blank script"), f.Show(new_screen("params {}\n", "", lang))),
         f.Button(tr(lang, "From held book..."), f.Show(import_screen(lang))),
     ]
-    items.append(
-        f.Button(
-            tr(lang, "+ New script..."),
-            f.Show(
-                f.ActionScreen(
-                    tr(lang, "Script templates"),
-                    tr(lang, "Pick a template to start a new script, or read one from a held book."),
-                    tuple(templates),
-                )
-            ),
-        )
+    return f.Button(
+        tr(lang, "+ New script..."),
+        f.Show(
+            f.ActionScreen(
+                tr(lang, "Script templates"),
+                tr(lang, "Pick a template to start a new script, or read one from a held book."),
+                tuple(templates),
+            )
+        ),
     )
-    items.append(f.Button(tr(lang, "Reload script files"), run("reload")))
-    items.append(f.Button(tr(lang, "Back to Bot list"), f.run(f.menu_argv())))
-    return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
 
 
 def new_screen(source, name="", lang="en"):
@@ -173,12 +177,16 @@ def rename_screen(script, guard, lang="en"):
                          build, submit=tr(lang, "Rename"), command="botscript", guard=guard)
 
 
-def script_screen(script, lang="en", editable=True, book_export=False):
-    """The source itself, then the frequent actions; the owner's other actions are under More."""
+def script_screen(script, lang="en", editable=True, book_export=False, author=True):
+    """The source itself, then the frequent actions; the owner's other actions are under More.
+
+    ``author`` False (a controller, S10) leaves out copying, editing, renaming and sharing; the owner keeps running,
+    making private and deleting. The server refuses the left-out actions as well.
+    """
     guard = ScriptGuard(script.revision, script.name)
     # Names hold at most 16 characters, so a long name is shortened before the suffix.
-    copy = f.Button(tr(lang, "Copy and edit..."),
-                    f.Show(new_screen(script.source, f"{script.name[:11]}_copy", lang)))
+    copy = [f.Button(tr(lang, "Copy and edit..."),
+                     f.Show(new_screen(script.source, f"{script.name[:11]}_copy", lang)))] if author else []
     export = [f.Button(tr(lang, "Write into held book"), run("export", script.name, guard=guard))] if book_export \
         else []
     items = [
@@ -195,27 +203,29 @@ def script_screen(script, lang="en", editable=True, book_export=False):
         )
         visibility = "private" if script.visibility == "shared" else "share"
         more = (
-            f.Button(tr(lang, "Rename..."), f.Show(rename_screen(script, guard, lang))),
-            f.Button(tr(lang, "Make private") if visibility == "private" else tr(lang, "Share with controllers"),
-                     run(visibility, script.name, guard=guard)),
+            *([f.Button(tr(lang, "Rename..."), f.Show(rename_screen(script, guard, lang)))] if author else []),
+            *([f.Button(tr(lang, "Make private") if visibility == "private" else tr(lang, "Share with controllers"),
+                        run(visibility, script.name, guard=guard))] if author or visibility == "private" else []),
             f.Button(tr(lang, "Earlier revisions..."), run("history", script.name, guard=guard)),
-            copy,
+            *copy,
             *export,
             f.Button(tr(lang, "Delete"), f.Show(delete)),
             f.Button(tr(lang, "Back"), run("menu", script.name, guard=guard)),
         )
-        items += [
-            f.Button(tr(lang, "Edit lines..."), run("edit", script.name, guard=guard)),
-            f.Button(tr(lang, "More..."), f.Show(f.ActionScreen(script.name, "", more))),
-        ]
+        if author:
+            items.append(f.Button(tr(lang, "Edit lines..."), run("edit", script.name, guard=guard)))
+        items.append(f.Button(tr(lang, "More..."), f.Show(f.ActionScreen(script.name, "", more))))
     else:
-        items += [copy, *export]
+        items += [*copy, *export]
     items.append(f.Button(tr(lang, "Scripts..."), run("menu")))
+    owner = script.owner_name or tr(lang, "unowned")
     content = (tr(lang, "Your script ({visibility}).", visibility=tr(lang, script.visibility)) if editable
-               else tr(lang, "From {file}. Run it, or copy it to edit in game; the operator edits the file.",
-                       file=f"scripts/{script.name}.luau") if script.file
-               else tr(lang, "Shared by {owner}. Run it, or copy it to edit your own.",
-                       owner=script.owner_name or tr(lang, "unowned")))
+               else (tr(lang, "From {file}. Run it, or copy it to edit in game; the operator edits the file.",
+                        file=f"scripts/{script.name}.luau") if author
+                     else tr(lang, "From {file}. Run it; the operator edits the file.",
+                             file=f"scripts/{script.name}.luau")) if script.file
+               else tr(lang, "Shared by {owner}. Run it, or copy it to edit your own.", owner=owner) if author
+               else tr(lang, "Shared by {owner}. Run it.", owner=owner))
     return f.ActionScreen(script.name, content + "\n\n" + _capped_view(script.source, lang, script.name),
                           tuple(items))
 

@@ -11,6 +11,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from endbot_core import forms, script_forms
@@ -1094,6 +1095,79 @@ class OwnershipTests(unittest.TestCase):
     def save(self, source, name, text, revision=None):
         guard = script_forms.ScriptGuard(revision, None if revision is None else name, edit=True)
         return self.host.execute(["save", name, text], replace(source, group_guard=guard))
+
+    def test_a_controller_runs_and_narrows_but_never_authors(self):
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v1").accepted)
+        self.assertTrue(self.host.execute(["share", "mine"], self.alice).accepted)
+        self.assertTrue(self.save(self.alice, "theirs", "params {}\n").accepted)
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v2", self.store.get("mine").revision).accepted)
+        # Alice becomes a controller: S6 lists what authoring is.
+        controller = replace(self.alice, role="controller")
+        before = self.store.get("mine")
+        for argv in (["copy", "mine", "x"], ["rename", "mine", "other"], ["restore", "mine", "1"],
+                     ["share", "mine"], ["edit", "mine"], ["import", "fresh"]):
+            with self.subTest(argv=argv):
+                result = self.host.execute(argv, controller)
+                self.assertFalse(result.accepted)
+                self.assertEqual(result.code, "unauthorized")
+                self.assertIn("ask the operator for the scripter role", self.text(result))
+        refused = self.save(controller, "new", "params {}\n")
+        self.assertEqual((refused.accepted, refused.code), (False, "unauthorized"))
+        refused = self.save(controller, "mine", "params {}\n-- v3", before.revision)
+        self.assertEqual((refused.accepted, refused.code), (False, "unauthorized"))
+        self.assertEqual(self.store.get("mine"), before)
+        self.assertEqual({script.name for script in self.store.list()}, {"mine", "theirs"})
+        # Japanese players read it in Japanese.
+        japanese = self.host.execute(["copy", "mine", "x"], replace(controller, language="ja"))
+        self.assertIn("scripter ロール", self.text(japanese))
+        # Running, private and deleting their own scripts only narrow what others can use.
+        self.assertTrue(self.host.execute(["show", "mine"], controller).accepted)
+        self.assertTrue(self.host.execute(["private", "mine"], controller).accepted)
+        self.assertTrue(self.host.execute(["delete", "theirs"], controller).accepted)
+        # The console and scripters (and grants with no role recorded) still author.
+        self.assertTrue(self.host.execute(["copy", "mine", "x"], replace(self.alice, role="scripter")).accepted)
+        self.assertTrue(self.host.execute(["copy", "mine", "y"], self.alice).accepted)
+        self.assertTrue(self.host.execute(["copy", "mine", "z"], self.console).accepted)
+        # A caller that is not a Principal authors only if it is console-like (fails closed).
+        self.assertFalse(ScriptService._author(SimpleNamespace(player_id="a-uuid", xuid=None)))
+        self.assertTrue(ScriptService._author(SimpleNamespace(player_id=None, xuid=None)))
+
+    def test_a_controllers_menus_leave_out_authoring(self):
+        self.assertTrue(self.save(self.alice, "mine", "params {}\n").accepted)
+        self.assertTrue(self.host.execute(["share", "mine"], self.alice).accepted)
+        controller = replace(self.alice, role="controller")
+
+        def labels(screen):
+            found = []
+            for item in screen.items:
+                found.append(item.text)
+                action = getattr(item, "action", None)
+                if isinstance(action, forms.Show) and isinstance(action.screen, forms.ActionScreen):
+                    found.extend(button.text for button in action.screen.items)
+            return found
+
+        for source, author in ((self.alice, True), (controller, False)):
+            with self.subTest(author=author):
+                listing = script_view(self.host.execute(["menu"], source).data)
+                self.assertEqual("+ New script..." in labels(listing), author)
+                shown = labels(script_view(self.host.execute(["menu", "mine"], source).data))
+                for authoring in ("Copy and edit...", "Edit lines...", "Rename..."):
+                    self.assertEqual(authoring in shown, author, authoring)
+                # The owner may still make it private and delete it.
+                for kept in ("Run", "Make private", "Delete"):
+                    self.assertIn(kept, shown)
+        bob = replace(self.bob, role="controller")
+        other = script_view(self.host.execute(["menu", "mine"], bob).data)
+        self.assertTrue(other.content.startswith("Shared by Alice. Run it.\n"))
+        self.assertTrue(self.host.execute(["private", "mine"], self.alice).accepted)
+        shown = labels(script_view(self.host.execute(["menu", "mine"], controller).data))
+        self.assertNotIn("Share with controllers", shown)
+        self.assertIn("Share with controllers", labels(script_view(self.host.execute(["menu", "mine"],
+                                                                                    self.alice).data)))
+        guard = script_forms.ScriptGuard(self.store.get("mine").revision, "mine")
+        history = script_view(self.host.execute(["history", "mine"], replace(controller, group_guard=guard)).data)
+        # Earlier revisions are listed, not restorable.
+        self.assertFalse(any(isinstance(getattr(item, "action", None), forms.Show) for item in history.items))
 
     def text(self, result):
         return " ".join(result.messages)

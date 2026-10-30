@@ -137,7 +137,7 @@ once, against the endbotd endpoint, not against the file request channel being r
    - **1a. Every operation and Luau host request names its capability** in `operations.json` (schema-required
      field). Today everything is in the basic set (`act.bot`, `read.world`, `wait`, `log`); the classes in the table
      above are the only names. A test fails when an operation or a `runner/api.luau` request type has none
-     (principle 2). Nothing players see. *DeepSeek.*
+     (principle 2). Nothing players see. Step 1a landed 2026-10-30 JST. *DeepSeek.*
 2. **Script declarations.** Can land before endbotd, but not while 3c is open: it touches `scripting.py`, which the
    switch moves.
    - **2a. `requires {}` in the runner and inspection.** Exactly once, before `params{}`; an unknown name, a second
@@ -206,6 +206,19 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
   A controller may still run, `private` and delete their own scripts, which only narrows what others can use.
 - **S7. Setting names** are `[permissions] bots-default` and `groups-default`, each `shared` (default) or
   `private`.
+
+Decided 2026-10-30 JST, before the steps were implemented.
+
+- **S8. `requires {}` before events exist.** Until BOT-022 adds `observe.*`, the basic names (`act.bot`,
+  `read.world`, `wait`, `log`) are accepted and ignored, and every other name is an unknown-capability error.
+- **S9. Owner command names for Bots and Groups** follow the scripts' `share` / `private`; the interface guide
+  records them in 4c.
+- **S10. Authoring in menus.** A controller's menus leave out authoring buttons; a typed authoring command is
+  refused with the authorization code and a reason, as from every other surface.
+- **S11. Groups with someone else's private Bot** run per member: the members the invoker may operate run, the
+  others are refused in the result; the Group as a whole is not refused.
+- **S12. Someone else's shared Bot.** Anyone may operate it as today (move, mine, despawn and so on); `forget`,
+  `rename` and `share` / `private` stay with its owner and the console. Unowned Bots stay fully shared.
 
 ## Not decided here
 

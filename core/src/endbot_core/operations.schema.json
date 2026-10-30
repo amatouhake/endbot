@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/amatouhake/endbot/core/src/endbot_core/operations.schema.json",
   "title": "Endbot operation registry",
-  "description": "operations.json: every operation, the shapes of its typed parameters and their command clauses, and the reserved Bot names. Python (operations.py), the Luau bootstrap (runner/api.luau) and the operator reference read it; later the web Worker generates its types from it.",
+  "description": "operations.json: every operation, the shapes of its typed parameters and their command clauses, the capability each operation and Luau host request requires, and the reserved Bot names. Python (operations.py), the Luau bootstrap (runner/api.luau) and the operator reference read it; later the web Worker generates its types from it.",
   "type": "object",
-  "required": ["operations", "reservedBotNames"],
+  "required": ["operations", "capabilities", "hostRequests", "reservedBotNames"],
   "additionalProperties": false,
   "properties": {
     "operations": {
@@ -18,6 +18,20 @@
         "items": {"$ref": "#/$defs/shape"}
       }
     },
+    "capabilities": {
+      "description": "The capability each operation requires, keyed by operation name; one entry for every operation and nothing else.",
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z]+$"},
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/capability"}
+    },
+    "hostRequests": {
+      "description": "The capability each request type the Luau bootstrap sends to the host requires; operation means the named operation's capability, declaration the script's own declaration step.",
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][A-Za-z]*$"},
+      "minProperties": 1,
+      "additionalProperties": {"enum": ["act.bot", "read.world", "wait", "log", "operation", "declaration"]}
+    },
     "reservedBotNames": {
       "description": "Names no Bot may be created or renamed to, because a root command word takes them (interface guide D3). Compared without case.",
       "type": "array",
@@ -26,6 +40,10 @@
     }
   },
   "$defs": {
+    "capability": {
+      "description": "A permission class; today every run may use the basic set.",
+      "enum": ["act.bot", "read.world", "wait", "log"]
+    },
     "name": {
       "description": "A parameter name, spelled the same in commands, Luau and the web.",
       "type": "string",

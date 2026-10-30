@@ -7,8 +7,9 @@ belong to the single final validation pass of the BOT-020/024/021/022 release ([
 are listed below so that pass can run them as written. Runs use the locked pair: official BDS `1.26.52.3` and patched
 Endstone `0.11.13+endbot.1`. No server, world, identity, key, token or machine-local path is kept in the repository.
 
-Status: **autonomous smoke recorded; human checks open.** The release containing BOT-024 is not validated until every
-item below is recorded as passed on the final main.
+Status: **autonomous smoke recorded; an early one-account human check passed; the final human checks are open.** The
+release containing BOT-024 is not validated until every item in the last section is recorded as passed on the final
+main.
 
 ## Autonomous live smoke on the locked pair — 2026-10-30 JST
 
@@ -33,6 +34,40 @@ with `ok: true`, BDS `1.26.52.3` (build 51798905).
 - [x] World history stayed clean (no cheats, no experiments, never loaded in Creative).
 
 Not covered here, by design: anything that needs a player with an XUID (below).
+
+## Early human check with one account — 2026-10-30 JST
+
+Run by the operator with one unmodified Windows client (Xbox-authenticated, Japanese) against a Windows bundle built
+locally from main at `66b2b6b` with #168 (the bundle self-test fix found while building it): fresh RakNet setup,
+Survival, peaceful, `[scripting] enabled = true`. A second account could not join (no LAN multiplayer from the phone
+available), so **"someone else" was simulated**: with endbotd stopped, `ownership.json` was edited so one Bot
+(`Theirs`) and one Group (`#secret`) belonged to a made-up XUID ("OtherPlayer"), another Bot (`Common`) was made
+unowned, and endbotd was started again. This check does not replace the final pass; it covers what one account can.
+
+- [x] A role given before the first join (`endbot controllers add` while pending, no `--role`) moved to the player's
+      XUID on the first join as `controller`; the player's three new Bots were recorded as theirs, shared.
+- [x] Someone else's private Bot: listed by `/bot list`, refused alike by `/bot Theirs status`, a move from the Bot
+      menu form and an operator file script run against it; the same script ran on an unowned Bot.
+- [x] `/bot #crew jump` on a Group holding the private Bot and an unowned one: only the unowned member jumped; the
+      summary counted one "許可されていない操作".
+- [x] Someone else's private Group: absent from `/botgroup list`, "does not exist" for `/bot #secret status`, and
+      `/botgroup create #secret` said only that the name is not available.
+- [x] An unowned Bot refused `private` with the pointer to the console's `owner`.
+- [x] As a controller: the script menus left out *New script*, *Copy and edit* and *Edit lines*, and `/botscript copy`
+      was refused with the scripter-role reason in Japanese.
+- [x] Someone else's shared Bot (made shared from the console): moved and stopped normally; `rename`, `forget`,
+      `private` and `share` were refused with the owner-only reason.
+- [x] A `destroy continuous` job on that Bot ended with "Bot が private になりました" in chat when the console made it
+      private.
+- [x] `botcontrollers add amatouhake --role scripter` at the console applied on the next command, without a restart or
+      a rejoin: `copy` worked and *New script* appeared.
+- [x] The console's `bot Common owner amatouhake` gave the unowned Bot to the online player, who could then make it
+      private and shared again; the player's own `owner` was refused (console only).
+- [x] With `[limits] max-bots-per-controller = 1` and two owned Bots, a new spawn was refused with the count and the
+      limit; despawning and spawning an existing own Bot again still worked.
+
+Not covered by this check: a real second person (their own `private`, and `owner` to their XUID), update and rollback,
+`bots-default = "private"`, a Bot created by a player's script run, and achievement history.
 
 ## Human checks for the final validation pass
 

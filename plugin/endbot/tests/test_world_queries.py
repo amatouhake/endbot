@@ -1,6 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
+from endbot_core import areas
 from endbot_core.commands import CommandSyntaxError, parse_command, strip_colors
 from plain_service import PlainCommandService
 
@@ -146,20 +147,21 @@ class WorldQueryTests(unittest.TestCase):
     def test_a_sphere_area_scans_its_sphere_not_its_bounding_box(self):
         ore = Block("minecraft:diamond_ore")
         blocks = {(0, 64, 5): ore}
-        reads = []
-        dimension_get = Dimension.get_block_at
+        considered = []
+        contains = areas.contains
 
-        def counting(self, x, y, z):
-            reads.append((x, y, z))
-            return dimension_get(self, x, y, z)
+        def counting(area, cell):
+            considered.append(cell)
+            return contains(area, cell)
 
-        Dimension.get_block_at = counting
+        areas.contains = counting
         try:
             found = world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 10, within(6))
         finally:
-            Dimension.get_block_at = dimension_get
+            areas.contains = contains
         self.assertEqual([entry["z"] for entry in found], [5])
-        self.assertLess(len(reads), 2000)  # a radius-6 sphere reads about 1400 cells; its box corner 11000
+        # The old bounding-box radius-12 scan checked 8,925 cells; the radius-6 sphere checks 1,357.
+        self.assertLess(len(considered), 2000)
 
     def test_an_entity_behind_the_block_is_not_the_target_and_mushroom_stems_hide_ores(self):
         log = {(0, 65, 2): Block("minecraft:oak_log")}

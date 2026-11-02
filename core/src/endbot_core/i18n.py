@@ -449,8 +449,10 @@ JA: dict[str, str] = {
     "~ is relative to the Bot. Any loaded position can be read.":
         "~ は Bot からの相対位置です。読み込まれた位置なら調べられます。",
     "find the nearest exposed blocks of a type": "見えている指定の種類のブロックを近い順に探す",
-    "Only blocks with a face open to air, water or plants count, as a player could see them.":
-        "空気、水、植物に面したブロックだけを数えます。プレイヤーに見えるものだけです。",
+    "Only blocks with a face open to air, water, plants, leaves, glass or a partial shape such as a "
+    "slab or fence count, as a player could see them.":
+        "空気、水、植物、葉、ガラス、ハーフブロックなどの部分形状に面したブロックだけを数えます。"
+        "プレイヤーに見えるものだけです。",
     "Without within, a sphere of 8 around the Bot; limit defaults to 10; results are nearest the Bot first.":
         "within がなければ Bot から半径8の球を探します。件数の既定は10で、Bot に近い順に表示します。",
     "An area never reaches past 16 blocks from the Bot; see /bot help area.":

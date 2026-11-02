@@ -422,7 +422,8 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         "find the nearest exposed blocks of a type",
         ("blocks <type> [limit <1-64>] [within <area>] [except <area>]",),
         (
-            "Only blocks with a face open to air, water or plants count, as a player could see them.",
+            ("Only blocks with a face open to air, water, plants, leaves, glass or a partial shape such as a "
+             "slab or fence count, as a player could see them."),
             "Without within, a sphere of 8 around the Bot; limit defaults to 10; results are nearest the Bot first.",
             "An area never reaches past 16 blocks from the Bot; see /bot help area.",
         ),

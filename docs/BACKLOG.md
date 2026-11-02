@@ -1004,7 +1004,7 @@ fails after 60 s and the next one is scheduled.
 
 ## BOT-027: One area syntax for every operation
 
-Status: **Implemented, unreleased; live check pending** (2026-11-02 JST). Breaking change accepted.
+Status: **Implemented, unreleased; live check passed** (2026-11-02 JST). Breaking change accepted.
 `core/src/endbot_core/areas.py` parses, resolves and tests areas; chat and typed commands share it, the registry gains
 an `area` field type (the clause text, canonicalised by Python), and the Luau bootstrap builds areas with `area.cell`,
 `area.box`, `area.sphere` and `:minus` (frozen values only it can create). `~` and the Bot-centred sphere resolve
@@ -1015,7 +1015,13 @@ treats a crosshair block outside the area as no target. `blocks` scans a sphere 
 `radius`, an area query `area` (its canonical text). See [areas](COMMANDS.md#areas-within-and-except) and
 [areas in scripts](SCRIPTING.md#areas). Unit tests cover every form, wrong value counts, a repeated chat clause, typed
 chaining, felling with the footing in `except`, and the reach limits (`plugin/endbot/tests/test_areas.py`,
-`runner/runner.test.mjs`). Not yet run on BDS: a felling script that keeps the footing on a real tree.
+`runner/runner.test.mjs`). Live run on BDS (2026-11-02 JST, `raknet_spike.py --mining`, patched Endstone
+`0.11.15+endbot.1` / BDS `1.26.60.6`): a box, a sphere around a point and `except` each narrowed `blocks`
+exactly, `blocks ... radius` was refused naming the new syntax, `destroy oak_log count 3 within <box> except
+~ ~-1 ~` broke the three logs in the box and left both the footing log and a log outside the box, and a log
+inside a one-cell area but 6.5 blocks away stayed out of reach (the typed loop waited with `no oak_log it can
+break within 6 blocks`). See [mining validation](MINING_VALIDATION.md#area-syntax-gate-2026-11-02-jst). A felling
+script on a real tree is still not covered.
 
 Areas exist only as `blocks`' `radius`/`at` (a sphere around a point). They cannot describe a box or an exclusion,
 `radius` collides with the chunk-radius command, typed `destroy`/`interact` cannot be scoped at all (a felling

@@ -473,6 +473,87 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     if not all(reach[label]["broke"] for label in ("5.0", "5.5", "5.95")):
         raise RuntimeError(f"destroy failed inside the 6 block reach: {reach}")
 
+    # BOT-027: one area syntax. A box, a sphere around a point and `except` narrow `blocks`; typed
+    # `destroy` keeps the footing out and an area never reaches past the 6 block limit.
+    state = scene("area-blocks", [[0, 201, 2, "minecraft:oak_log"], [1, 201, 2, "minecraft:oak_log"],
+                                  [3, 201, 2, "minecraft:oak_log"]],
+                  watch=[[0, 201, 2], [1, 201, 2], [3, 201, 2]])
+    near, middle, corner = state["targets"]
+
+    def in_listing(listing, cell):
+        return f"{cell[0]} {cell[1]} {cell[2]} (" in listing
+
+    offset = len(log())
+    console(f"bot {BOT} blocks minecraft:oak_log within {near[0]} 201 {near[2]} {middle[0]} 201 {middle[2]}")
+    wait("box area listing", lambda: "oak_log:" in said(offset), 5)
+    listing = said(offset)
+    if not (in_listing(listing, near) and in_listing(listing, middle)):
+        raise RuntimeError(f"a log inside the box was not listed: {listing}")
+    if in_listing(listing, corner):
+        raise RuntimeError(f"a log outside the box was listed: {listing}")
+    report["mining"]["area-blocks-box"] = True
+
+    offset = len(log())
+    console(f"bot {BOT} blocks minecraft:oak_log within 1 of {corner[0]} 201 {corner[2]}")
+    wait("sphere around a point listing", lambda: "oak_log:" in said(offset), 5)
+    listing = said(offset)
+    if not in_listing(listing, corner):
+        raise RuntimeError(f"a log at the sphere's centre was not listed: {listing}")
+    if in_listing(listing, near) or in_listing(listing, middle):
+        raise RuntimeError(f"a log outside the point sphere was listed: {listing}")
+    report["mining"]["area-blocks-sphere-of-point"] = True
+
+    offset = len(log())
+    console(f"bot {BOT} blocks minecraft:oak_log within 5 except {near[0]} 201 {near[2]} "
+            f"{middle[0]} 201 {middle[2]}")
+    wait("except area listing", lambda: "oak_log:" in said(offset), 5)
+    listing = said(offset)
+    if not in_listing(listing, corner):
+        raise RuntimeError(f"the log outside the excluded box was not listed: {listing}")
+    if in_listing(listing, near) or in_listing(listing, middle):
+        raise RuntimeError(f"an excluded log was listed: {listing}")
+    report["mining"]["area-blocks-except"] = True
+
+    offset = len(log())
+    console(f"bot {BOT} blocks minecraft:oak_log radius 5")
+    wait("old blocks syntax refused", lambda: "replaced by areas" in said(offset), 5)
+    report["mining"]["area-old-syntax-refused"] = True
+
+    # Typed destroy over a box that holds the footing and the three logs: `except ~ ~-1 ~` leaves the
+    # footing, and the count ends the loop without touching the log outside the box.
+    state = scene("area-destroy", [
+        [0, 199, 0, "minecraft:oak_log"],
+        [0, 201, 2, "minecraft:oak_log"], [1, 201, 2, "minecraft:oak_log"], [-1, 201, 2, "minecraft:oak_log"],
+        [0, 201, 7, "minecraft:oak_log"],
+    ], watch=[[0, 201, 2], [1, 201, 2], [-1, 201, 2], [0, 201, 7], [0, 199, 0]])
+    base_x, base_z = state["target"][0], state["target"][2] - 2
+    far = state["targets"][3]
+    offset = len(log())
+    console(f"bot {BOT} destroy minecraft:oak_log count 3 within {base_x - 1} 199 {base_z} "
+            f"{base_x + 1} 201 {base_z + 2} except ~ ~-1 ~")
+    wait("area destroy started", lambda: "destroy continuous started" in said(offset), 10)
+    wait("area destroy count reached", lambda: "destroy continuous stopped: block count reached" in said(offset), 25)
+    final = observed()
+    if final["blocks"][:3] != ["minecraft:air"] * 3:
+        raise RuntimeError(f"the area destroy did not break the three logs in the box: {final['blocks']}")
+    if final["blocks"][4] != "minecraft:oak_log":
+        raise RuntimeError(f"except did not protect the footing: {final['blocks']}")
+    if final["blocks"][3] != "minecraft:oak_log":
+        raise RuntimeError(f"a log outside the box was broken: {final['blocks']}")
+    report["mining"]["area-destroy-except"] = True
+
+    # An area narrows candidates only: the same log is out of reach inside a one-cell area, so the typed
+    # loop starts and waits instead of breaking it.
+    offset = len(log())
+    console(f"bot {BOT} destroy minecraft:oak_log count 1 within {far[0]} 201 {far[2]} {far[0]} 201 {far[2]}")
+    wait("area does not widen reach",
+         lambda: "no oak_log it can break within 6 blocks" in said(offset), 10)
+    if observed()["blocks"][3] != "minecraft:oak_log":
+        raise RuntimeError("an area widened the 6 block reach")
+    console(f"bot {BOT} destroy stop")
+    time.sleep(0.5)
+    report["mining"]["area-narrows-only"] = True
+
     # A hotbar switch restarts the current block with the new item.
     setup("hotbar-restart", "minecraft:obsidian", "minecraft:diamond_pickaxe")
     console("bot RakNetSpike destroy continuous")

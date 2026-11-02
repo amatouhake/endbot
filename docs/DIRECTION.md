@@ -332,5 +332,9 @@ contract, `look` completion, translucent blocks, the throttling rate limit) plus
 changes reach users in one documented breaking change instead of waiting behind a larger release. The next release is
 still BOT-021 and BOT-022.
 
+0.6.0 was published on 2026-11-03 JST (tag `v0.6.0` = `1d1b8ce`, release-candidate run 41466589712). A human client
+pass ran on a build from `main` `ecaea7f`; the BDS live smoke on the candidate and the update from a published 0.5.0
+instance were not run, and are recorded as such in [FINAL_CHECKLIST.md](../release/FINAL_CHECKLIST.md).
+
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

@@ -226,8 +226,9 @@ three targeting cases added to `scripts/mining_probe.py` all passed.
   `Target block is out of reach (maximum 6 blocks)`. At exactly `6.0` the refusal was instead
   `Target is blocked by another block` with no obstruction: the eye sits 0.12 above the aimed side's centre and all
   five face samples are just outside the 6-block sphere (the nearest is 6.0012), so a target that only touches the
-  limit reads as blocked. Reach is usable to about 5.99 blocks; the exact boundary carries the wrong code and no
-  obstruction. Recorded as observed, no code changed for this run.
+  limit reads as blocked. Reach is usable to about 5.99 blocks; the exact boundary carried the wrong code and no
+  obstruction. Recorded as observed, no code changed for this run. Fixed afterwards on the same branch: a block
+  whose only clear lines end past the limit now reports `out_of_reach` (unit test; not rerun on BDS).
 
 Not covered by this run: typed `destroy`/`interact` (`destroy minecraft:oak_log`), the `except`/area forms, and the
 script-facing `reachCode` fields (unit tests only). The probe's `cells`/`watch`/`position` request fields exist for

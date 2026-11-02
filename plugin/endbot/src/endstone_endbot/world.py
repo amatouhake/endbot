@@ -472,6 +472,10 @@ class EndstoneWorld:
         visible = None if nearest == eye else cls._visible_point(dimension, eye, cell, REACH, faces)
         if visible is not None:
             return {"reachable": True, "face": visible[0], "point": visible[1]}
+        # The nearest point is in reach but every aimed point on a side is just past it (a block touching the
+        # limit): a clear line that only misses on distance is out of reach, not blocked.
+        if nearest != eye and cls._visible_point(dimension, eye, cell, math.inf, faces) is not None:
+            return {"reachable": False, "reachCode": "out_of_reach"}
         obstruction = cls._obstruction(dimension, eye, cell, faces)
         return {"reachable": False, "reachCode": "blocked", **({"obstruction": obstruction} if obstruction else {})}
 

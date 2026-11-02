@@ -1042,7 +1042,8 @@ and `obstruction`; `destroy`/`interact` refusals use the same codes (`unbreakabl
 [targeting blocks](SCRIPTING.md#targeting-blocks). Live checks passed on BDS (2026-11-02 JST): a named log behind
 short grass was listed `in reach` and broke, a log wrapped in leaves was listed without `in reach`, answered
 `blocked by oak_leaves` and was refused, and 5.0/5.5/5.95 blocks broke while 6.5 was out of reach; an exact 6.0
-reports `blocked` with no obstruction because the face samples sit just outside the sphere. See
+reported `blocked` with no obstruction because the face samples sit just outside the sphere; such a block now reports
+`out_of_reach` (unit-tested, not rerun on BDS). See
 [mining validation](MINING_VALIDATION.md#block-targeting-gate-2026-11-02-jst).
 
 `blocks`, coordinate/typed `destroy` and crosshair `destroy`/`target` decide "this block" with three different

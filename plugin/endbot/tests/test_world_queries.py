@@ -101,6 +101,12 @@ class WorldQueryTests(unittest.TestCase):
         far = world(blocks).block_info(BOT["identityId"], [0, 65, 7])
         self.assertEqual((far["reachable"], far["reachCode"]), (False, "out_of_reach"))
         self.assertNotIn("obstruction", far)
+        # A side touching the 6-block limit, with every aimed point just past it, is out of reach, not blocked
+        # (found at exactly 6.0 on BDS, 2026-11-02).
+        edge = world({(0, 65, 6): Block("minecraft:oak_log")}, position=(0.5, 64.0, 0.0)).block_info(
+            BOT["identityId"], [0, 65, 6])
+        self.assertEqual((edge["reachable"], edge["reachCode"]), (False, "out_of_reach"))
+        self.assertNotIn("obstruction", edge)
         air = world(blocks).block_info(BOT["identityId"], [0, 65, 2])
         self.assertEqual((air["reachable"], air["reachCode"]), (False, "not_a_target"))
 

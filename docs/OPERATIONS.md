@@ -46,6 +46,11 @@ Ownership rules:
 - **State** (`state/`): created on first setup, carried across updates. Holds the only secrets. Never world data.
 - **Operator-owned BDS** (worlds, `server.properties`, `allowlist.json`, `permissions.json`, packs): Endbot only
   reads these, except for the explicit, backed-up, previewed changes in §6. Updates never touch worlds.
+- **The instance directory is not relocatable as it stands.** Generated files hold absolute paths: the plugin's
+  `config.toml` names `state/secrets/endbotd.token` by full path. A copied or moved instance therefore fails
+  `endbot update` and `doctor` on `plugin-port` (the plugin is told to read the old path) until `endbot start`
+  regenerates that file, which it does on every start; deleting `<server>/plugins/endbot/config.toml` has the same
+  effect. Restore backups at the original path, or start once and re-run `doctor` after moving the directory.
 
 ## 2. Configuration
 

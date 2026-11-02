@@ -227,8 +227,10 @@ three targeting cases added to `scripts/mining_probe.py` all passed.
   `Target is blocked by another block` with no obstruction: the eye sits 0.12 above the aimed side's centre and all
   five face samples are just outside the 6-block sphere (the nearest is 6.0012), so a target that only touches the
   limit reads as blocked. Reach is usable to about 5.99 blocks; the exact boundary carried the wrong code and no
-  obstruction. Recorded as observed, no code changed for this run. Fixed afterwards on the same branch: a block
-  whose only clear lines end past the limit now reports `out_of_reach` (unit test; not rerun on BDS).
+  obstruction. Recorded as observed, no code changed for this run. `772ca14` fixed it on the same branch (a block
+  whose only clear lines end past the limit now reports `out_of_reach`), and a rerun of the same smoke on that head
+  confirmed it on BDS: `6.0` answered `destroy failed: Target block is out of reach (maximum 6 blocks)` while `5.0`,
+  `5.5` and `5.95` still broke and the grass and leaf cases still passed (`ok`, stage `complete`).
 
 The server's own limit is higher than the product's: with `REACH` and the runtime's `BLOCK_REACH` raised to 24 on a
 throwaway branch (`probe/bot028-max-reach`, not for merge), a nearest face at 10.0 blocks from the eyes still broke while

@@ -446,6 +446,10 @@ job:wait{}
 `blocks(type, x, y, z)` and `{radius = r}` were removed; calling them fails with a message naming
 `blocks(type, {area = area.sphere(r, x, y, z)})`.
 
+`interact` shares one `target` argument for a block type and an `@entity` selector, so `{area = a}` is part of
+its signature. It applies only when the target is a block type (`interact("chest", {area = ...})`); an `@entity`
+target is refused by the command layer with "An area applies to a block type …", because areas narrow blocks.
+
 ### Targeting blocks
 
 Three questions about a block have one answer each (BOT-028, BOT-030). Block properties come from minecraft-data

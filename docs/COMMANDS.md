@@ -44,7 +44,8 @@ help page 1, and a bare target keeps the player-only menu reply.
 vanilla Bedrock `/help`, and `/bot help <operation>` (for example `/bot help move`) shows every supported
 syntax for that operation with a concise explanation. `/bot list` summarizes every known profile and
 its lifecycle state. `/bot Alice status` combines runtime state with authoritative dimension/position/rotation when the
-BDS player entity is present.
+BDS player entity is present. Its `yaw=` uses the same [0, 360) convention as `look` and as script `status`'s
+`data.look`; the Look form's slider stays in -180..180 for input, and any value it sends is taken modulo 360.
 
 ```text
 --- Endbot help page 1 of 3: lifecycle, status and teleport ---

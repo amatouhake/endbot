@@ -398,6 +398,32 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     def listed_in_reach(listing, cell):
         return re.search(rf"{cell[0]} {cell[1]} {cell[2]} \([^)]*in reach", listing) is not None
 
+    if os.environ.get("ENDBOT_REACH_ONLY"):
+        # Experiment branch only: the plugin and runtime reaches are raised, so this sweep measures where
+        # BDS itself stops completing a break.
+        reach = {}
+        for distance in (10.0, 10.25, 10.5, 10.75, 11.0):
+            target_dz = 12
+            state = scene(f"max-reach-{distance}", [[0, 201, target_dz, "minecraft:oak_log"]],
+                          watch=[[0, 201, target_dz]], position=[0.0, 200.0, target_dz - 0.5 - distance])
+            target = state["target"]
+            measured = round(target[2] - state["position"][2], 2)
+            offset = len(log())
+            console(f"bot {BOT} destroy {target[0]} {target[1]} {target[2]}")
+            broke, waited = False, ""
+            try:
+                wait(f"destroy at {measured} blocks", lambda: observed().get("block") == "minecraft:air", 10)
+                broke = True
+            except Exception as refused:  # noqa: BLE001 - a refusal is the observation for this distance
+                waited = str(refused)[:120]
+            text = said(offset)
+            reach[str(distance)] = {"distance": measured, "broke": broke, "wait": waited,
+                                    "reply": (text.strip().splitlines() or [""])[-1][:160]}
+            if not broke:
+                console(f"bot {BOT} look 0 0")
+        report["mining"]["max-reach"] = reach
+        return
+
     # Grass has no collision box: a named block behind it stays targetable and BDS breaks it.
     state = scene("targeting-grass",
                   [[0, 201, 2, "minecraft:oak_log"], [0, 201, 1, "minecraft:short_grass"]], watch=[[0, 201, 2]])

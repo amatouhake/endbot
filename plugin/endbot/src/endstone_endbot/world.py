@@ -79,7 +79,7 @@ def _exit_cells(forward: tuple[int, int], vehicle_type: str) -> list[tuple[int, 
 
 # Read-only queries (BOT-014). One reach for every block and entity a Bot targets: destroy, interact, `target`,
 # `block`'s and `blocks`' `reachable` (BOT-028); the runtime holds a mining job to the same distance.
-REACH = 6.0
+REACH = 24.0
 SEARCH_RADIUS_MAX = 12
 SEARCH_LIMIT_MAX = 64
 DIMENSION_HEIGHTS = {"Overworld": (-64, 319), "Nether": (0, 127), "TheEnd": (0, 255)}

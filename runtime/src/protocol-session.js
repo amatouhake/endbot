@@ -34,6 +34,8 @@ function vector (value) { return { x: value.x, y: value.y, z: value.z } }
 export const ENTITY_REACH = 6
 // Survival melee reach, as for the crosshair attack target.
 export const ATTACK_REACH = 4.5
+// Block reach from the eyes for destroy, the same distance the plugin targets blocks within (BOT-028).
+export const BLOCK_REACH = 6
 // Nearby listings stay short and exclude players: they are interaction targets.
 export const ENTITY_LIST_RADIUS = 16
 export const ENTITY_LIST_LIMIT = 10
@@ -354,7 +356,7 @@ export class BedrockSession extends EventEmitter {
     return Math.hypot(...blockPosition.map((value, axis) => {
       const coordinate = this.position[['x', 'y', 'z'][axis]]
       return coordinate - Math.max(value, Math.min(coordinate, value + 1))
-    })) <= 5.0
+    })) <= BLOCK_REACH
   }
 
   #miningTick (inputData) {

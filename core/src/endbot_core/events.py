@@ -63,10 +63,10 @@ def _job_ended(data, lang, sink):
 
 def _job_waiting(data, lang, sink):
     if data["blockType"]:
-        text = tr(lang, "destroy is waiting: no {block} it can break within 5 blocks; move the Bot closer",
+        text = tr(lang, "destroy is waiting: no {block} it can break within 6 blocks; move the Bot closer",
                   block=data["blockType"].removeprefix("minecraft:"))
     else:
-        text = tr(lang, "destroy continuous is waiting: no block it can break within 5 blocks")
+        text = tr(lang, "destroy continuous is waiting: no block it can break within 6 blocks")
     return (reply(text, data["bot"], ""),)
 
 

@@ -1031,7 +1031,21 @@ lets `blocks` or `destroy` reach past their normal limits; SCRIPTING.md and `/bo
 
 ## BOT-028: One block-targeting contract for scripts
 
-Status: **Idea** (2026-11-02 JST). Found while writing a single-tree felling script on 0.5.0.
+Status: **Implemented with BOT-030, unreleased; live check passed** (2026-11-02 JST). Found while writing a
+single-tree felling script on 0.5.0. Decided 2026-11-02 JST, replacing the `visible` field and the "pick one plant
+rule" below: block properties are generated from minecraft-data (`transparent`, `boundingBox`, `diggable`) for the
+locked Bedrock version; a named target (coordinates or type) is aimed at through blocks without a collision box
+(grass, flowers, torches, snow layers), while the crosshair stays vanilla and stops at the first non-air, non-liquid
+block; `blocks` entries carry `reachable` and `block` adds `reachCode` (`not_a_target`, `out_of_reach`, `blocked`)
+and `obstruction`; `destroy`/`interact` refusals use the same codes (`unbreakable` is `destroy`'s own); one reach of
+6 blocks for every block target (destroy moved from 5); `status.mining.target`. See
+[targeting blocks](SCRIPTING.md#targeting-blocks). Live checks passed on BDS (2026-11-02 JST): a named log behind
+short grass was listed `in reach` and broke, a log wrapped in leaves was listed without `in reach`, answered
+`blocked by oak_leaves` and was refused, and 5.0/5.5/5.95 blocks broke while 6.5 was out of reach; an exact 6.0
+reported `blocked` with no obstruction because the face samples sit just outside the sphere; such a block now reports
+`out_of_reach` (`772ca14`, verified on BDS in a rerun of the same smoke: 6.0 answers `out of reach` while 5.0/5.5/5.95
+still break). See
+[mining validation](MINING_VALIDATION.md#block-targeting-gate-2026-11-02-jst).
 
 `blocks`, coordinate/typed `destroy` and crosshair `destroy`/`target` decide "this block" with three different
 predicates (`_exposed`, `_visible_point`, `_ray_block`): listing ignores the Bot's viewpoint, coordinate aiming sees
@@ -1073,13 +1087,16 @@ SCRIPTING.md states the convention.
 
 ## BOT-030: Translucent blocks do not hide blocks from `blocks`
 
-Status: **Idea** (2026-11-02 JST).
+Status: **Implemented with BOT-028, unreleased; live check passed** (2026-11-02 JST). Covers every block
+minecraft-data marks `transparent`, including partial shapes (slabs, stairs, fences, walls, panes, doors), decided
+2026-11-02 JST.
 
 "No x-ray" means what a player can see; players see through leaves, glass and similar blocks, and `block x y z` can
 already read any position. Exposure for `blocks` treats a named translucent set as see-through. Aiming and breaking
 keep treating leaves as obstructions, as in vanilla (BOT-028 reports them).
 
-Acceptance: a log wrapped in leaves is listed; `destroy` on it reports the leaf as the obstruction.
+Acceptance: a log wrapped in leaves is listed; `destroy` on it reports the leaf as the obstruction. Passed against
+BDS on 2026-11-02 (listed without `in reach`, `blocked by oak_leaves at ...`, `destroy` refused, block stayed).
 
 ## BOT-031: Script rate limit throttles instead of failing
 

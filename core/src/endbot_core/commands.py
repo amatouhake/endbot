@@ -43,7 +43,9 @@ class LookNotObserved(LocalizedError):
 # Outcome codes, coarse by what the user should do next; refined only when a
 # caller needs to tell two cases apart. "ok" is the only success code.
 OUTCOME_CODES = frozenset({"ok", "unauthorized", "not_found", "invalid_argument", "unavailable", "conflict",
-                           "timeout"})
+                           "timeout",
+                           # Why a block cannot be targeted (BOT-028); `blocked` carries data.obstruction.
+                           "not_a_target", "out_of_reach", "blocked", "unbreakable"})
 # How long `look` waits for BDS to report the new rotation, and how close it must be (BOT-029). Each poll
 # already waits for a server tick through the world link; the sleep keeps a fast adapter from spinning.
 LOOK_TIMEOUT_TICKS = 10
@@ -65,6 +67,25 @@ ERROR_CODES = {
     "unauthorized": "unavailable", "unavailable": "unavailable", "protocol": "unavailable",
     "runtime_error": "unavailable", "disconnect_failed": "unavailable",
 }
+
+
+def _reach_text(data, lang) -> str:
+    """`block`'s reach note (BOT-028): in reach, out of reach, not a target, or what blocks it."""
+    if data["reachable"]:
+        return tr(lang, "in reach")
+    obstruction = data.get("obstruction")
+    if data.get("reachCode") == "blocked" and obstruction:
+        return tr(lang, "blocked by {block} at {position}", block=obstruction["type"].removeprefix("minecraft:"),
+                  position=f"{obstruction['x']} {obstruction['y']} {obstruction['z']}")
+    return tr(lang, {"out_of_reach": "out of reach", "not_a_target": "not a target"}.get(
+        data.get("reachCode"), "blocked"))
+
+
+def _mining_target(mining) -> dict | None:
+    position = mining.get("blockPosition") or []
+    if len(position) != 3:
+        return None
+    return {"x": position[0], "y": position[1], "z": position[2], "type": mining.get("blockName")}
 
 
 def error_code(error: BaseException) -> str:
@@ -419,7 +440,7 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ),
         (
             "once (default) breaks one block in sight; x y z breaks that block. ~ is relative to the Bot.",
-            "A block type breaks the nearest one the Bot can see within 5 blocks.",
+            "A block type breaks the nearest one the Bot can see within 6 blocks.",
             "continuous holds left-click along the Bot's sight, also after you log off; waits when empty.",
             "Other commands do not cancel it; only destroy stop, stop, death or disconnect end it.",
             "for ends continuous mining after that many ticks, aborting a block in progress.",
@@ -1430,7 +1451,9 @@ class BotCommandService:
                 if len(tokens) >= 2 and tokens[0].lower() != "help":
                     # Syntax errors still name the Bot the operator addressed.
                     name = tokens[0]
-            return CommandResult(True, (reply(detail, name, ERROR),), accepted=False, code=error_code(error))
+            data = getattr(error, "data", None)
+            return CommandResult(True, (reply(detail, name, ERROR),), accepted=False, code=error_code(error),
+                                 data=data if isinstance(data, dict) else None)
 
     def owner_check(self, command: BotCommand, sender, identity: str | None = None) -> None:
         """Refuse someone else's private Bot, or an owner-only action on someone else's Bot (4b, S4, S12).
@@ -1631,7 +1654,7 @@ class BotCommandService:
                 status = control.request("status", name=command.name)
                 parameters = command.parameters
                 if "blockType" in parameters:
-                    cell = self.world.reachable_block(status["identityId"], parameters["blockType"], 5.0)
+                    cell = self.world.reachable_block(status["identityId"], parameters["blockType"], 6.0)
                     parameters = {"coordinates": cell}
                 target = self.world.resolve_mining(status["identityId"], parameters, sender)
             result = control.request("mine", name=command.name, **target)
@@ -1772,6 +1795,7 @@ class BotCommandService:
                           block=data["type"].removeprefix("minecraft:"))
                 if states:
                     text += f" {DIM}[{states}]{RESET}"
+                text += f" {DIM}({_reach_text(data, lang)}){RESET}" if "reachable" in data else ""
             else:
                 parameters = command.parameters
                 found = self.world.find_blocks(identity, parameters["type"], parameters["radius"], parameters["limit"],
@@ -1779,8 +1803,10 @@ class BotCommandService:
                 data = {"type": parameters["type"], "radius": parameters["radius"], "blocks": found}
                 block_name = parameters["type"].removeprefix("minecraft:")
                 if found:
-                    listed = ", ".join(f"{entry['x']} {entry['y']} {entry['z']} {DIM}({entry['distance']}m){RESET}"
-                                       for entry in found[:10])
+                    in_reach = tr(lang, "in reach")
+                    listed = ", ".join(
+                        f"{entry['x']} {entry['y']} {entry['z']} {DIM}({entry['distance']}m"
+                        f"{', ' + in_reach if entry.get('reachable') else ''}){RESET}" for entry in found[:10])
                     more = "" if len(found) <= 10 else f" (+{len(found) - 10})"
                     text = tr(lang, "{block}: {positions}", block=block_name, positions=listed) + more
                 else:
@@ -2094,6 +2120,8 @@ class BotCommandService:
                 "blocksBroken": mining.get("blocksBroken", 1 if mining.get("state") == "completed" else 0),
                 "blockCount": mining.get("blockCount"),
                 "reason": None if active else mining.get("reason"),
+                # The block being broken now (BOT-028); nil while a loop waits for one.
+                "target": _mining_target(mining) if mining.get("state") == "active" else None,
             },
         }
 

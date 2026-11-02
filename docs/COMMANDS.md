@@ -179,13 +179,17 @@ symbols (arrows show as boxes). How it looks on a real client is a manual check:
 `destroy` takes the same mode words as `jump`, `attack` and `use`: `once` (the default), `continuous` and `stop`.
 There is no `interval` mode, because `continuous` already waits for the next block.
 
-`destroy` (or `destroy once`) starts holding left-click on one block in the Bot's current line of sight, within 5 blocks. Explicit coordinates
+`destroy` (or `destroy once`) starts holding left-click on one block in the Bot's current line of sight, within 6 blocks. Explicit coordinates
 target one reachable, unobstructed block and turn the Bot toward it; an optional face uses the same names as `interact`.
+Grass, flowers, torches and other blocks without a collision box do not obstruct a named block, while the crosshair
+stops at them as a player's does; a refusal names the block in the way (see
+[targeting blocks](SCRIPTING.md#targeting-blocks)).
 Relative coordinates are measured from the Bot, including commands from the server console. Movement, attack and item
 use inputs are cleared on start. Select the desired tool with `hotbar` first; mining does not walk or select tools.
 
 `destroy continuous` holds left-click along the Bot's current sight direction. After each BDS target update it selects the
-next reachable block along that same ray. When there is no target within 5 blocks (or bedrock is in front), it waits;
+next reachable block along that same ray. When there is no target within 6 blocks (or an unbreakable block such as bedrock
+is in front), it waits;
 placing a reachable block in sight resumes mining automatically. It stays in place and does not excavate a chosen area.
 Use `destroy stop` to disable this waiting/resume behavior as well as an active break attempt.
 `destroy for <ticks>` (or `destroy continuous for <ticks>`) runs continuous mining for that many input ticks from the
@@ -240,7 +244,8 @@ Start and stop are confirmed by the command reply and logged on the server conso
 any other reason (a failed single block, death, disconnect, revocation, a lost runtime), the starting controller gets
 one chat message, for example `Endbot: Alice: destroy continuous stopped: canceled by death`. The console log records
 the same message at warning level, also for controllers who are offline. Successfully broken blocks are not announced.
-Sight selection currently uses occupied block cells (ignoring air/liquid); complex partial-block shapes are conservative.
+Targeting works on whole block cells: a partial shape such as a slab or fence stops an aimed line as a full block would,
+while `blocks` treats it as see-through ([targeting blocks](SCRIPTING.md#targeting-blocks)).
 
 See [mining validation](MINING_VALIDATION.md) for the exact real-server coverage. `attack` remains entity attack; use
 `destroy` for blocks. The name follows the game's "Attack/Destroy" control.
@@ -549,7 +554,7 @@ Left- and right-click verbs stay separate (`attack`/`destroy`, `use`/`interact`)
 | --- | --- | --- |
 | none | what the Bot is looking at | `interact`, `destroy`, `attack` |
 | `<x> <y> <z> [face]` | that block; `~` is relative to the Bot; without a face, the side facing the Bot | `interact ~~-1~`, `destroy 1 64 2 up` |
-| `<block type>` | the nearest block of that type the Bot can see (`interact` within 6 blocks, `destroy` within 5) | `interact chest`, `destroy oak_log` |
+| `<block type>` | the nearest block of that type the Bot can reach within 6 blocks | `interact chest`, `destroy oak_log` |
 | `@<type\|id\|nearest>` | the nearest matching non-player entity (`interact` within 6 blocks, `attack` within 4.5) | `interact @cow`, `attack @zombie`, `interact @9` |
 
 `@` follows vanilla's entity-selector sign and is required for every entity, including `entity @cow` and ids
@@ -579,12 +584,14 @@ Coordinates anywhere in `/bot` accept vanilla's compact relative form: `~~-1~` i
 blocks in detail (id, distance, position, health, name tag); without an argument it is the nearest.
 
 `target` shows what the Bot's crosshair hits within 6 blocks: the nearer of a block (position, face, type) and a
-non-player entity. `block <x> <y> <z>` shows one block's type and states; `~` is relative to the Bot, and coordinates beyond
+non-player entity. `block <x> <y> <z>` shows one block's type and states and whether the Bot can target it now (in reach,
+out of reach, or what blocks it); `~` is relative to the Bot, and coordinates beyond
 30000000 are refused. `blocks <type>`
 lists the nearest blocks of that type, as `x y z (distance)`, nearest cells first (it stops reading once `limit`
 matches are certain), within a radius (default 8, at most 16), up to `limit`
 (default 10, at most 64),
-counting only blocks with a face open to air, water or plants, so it does not reveal buried ores. `at <x> <y> <z>`
+counting only blocks a player could see (a face touching air, liquid, plants, leaves, glass or a partial shape such as a
+slab or fence), so it does not reveal buried ores; entries the Bot can target now are marked `in reach`. `at <x> <y> <z>`
 moves the scan centre (and the distances) to that point instead of the Bot, so a tall structure can be searched from
 the height that matters; `~` is relative to the Bot. All three read BDS
 through the Endstone SDK, never change anything, and return data to scripts; Group targets print every member's

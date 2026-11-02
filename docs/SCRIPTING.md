@@ -337,7 +337,8 @@ Ordinary operation calls return **acceptance**, not completion: `{ok=true,code="
 `{ok=false,code=...,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
 `code` says what to do next and is the same in every language: `unauthorized` (permission), `not_found` (no such
 Bot or target), `invalid_argument` (fix the request), `unavailable` (try again later) or `conflict` (the Bot's state
-does not allow it now, for example offline or a name in use). A Group's code is its first failed member's; each query
+does not allow it now, for example offline or a name in use). A block the Bot cannot target has its own codes, listed
+under [targeting blocks](#targeting-blocks). A Group's code is its first failed member's; each query
 row also carries its member's `code`. Branch on `code`; `reason` is wording for people.
 Handle rejected calls explicitly, for example `assert(r.ok, r.reason)`. Revocation, rate/deadline and protocol errors end the run.
 Use `wait(ticks)` (20 ticks = one wall-clock second) and `waitOnline(bot("Alice"))`, which also accepts a name
@@ -383,6 +384,7 @@ the world (or before BDS has sent it).
 | `data.mining.blocksBroken` | Runtime continuous-loop count; for a single block, 1 if completed, otherwise 0; 0 with no job |
 | `data.mining.blockCount` | Continuous count limit, or nil when unlimited/no job |
 | `data.mining.reason` | Nil while active; otherwise the runtime's terminal reason, or nil with no job |
+| `data.mining.target` | `{x, y, z, type}` of the block being broken while `state` is `active`, else nil |
 | `data.running` | Running input job ids by kind (`move`, `jump`, `attack`, `use`, `interact`); nil when none runs |
 | `data.ended` | The last end of each input kind: `{job, reason}` |
 | `data.teleports` | Server teleports the Bot has acknowledged since the runtime started |
@@ -407,11 +409,43 @@ World queries read BDS on the server thread and count as operations:
 | Call | `data` |
 | --- | --- |
 | `bot:target()` | `kind` (`"block"`, `"entity"` or nil), `distance`, and `block = {x, y, z, face, type}` or `entity = {runtimeId, type}`: the nearer hit within 6 blocks of the Bot's eyes, ignoring players |
-| `bot:block(x, y, z)` | `{x, y, z, type, states}`; `"~"`/`"~-1"` strings are relative to the Bot; any loaded position |
-| `bot:blocks("oak_log", {radius=8, limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance}` nearest first, only blocks with a face open to air, water or plants (no x-ray); radius 1-16, limit 1-64 |
+| `bot:block(x, y, z)` | `{x, y, z, type, states, reachable}`, plus `reachCode` and, for `blocked`, `obstruction` when not reachable; `"~"`/`"~-1"` strings are relative to the Bot; any loaded position |
+| `bot:blocks("oak_log", {radius=8, limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance, reachable}` nearest first, only blocks a player could see (no x-ray, see below); radius 1-16, limit 1-64 |
 | `bot:blocks("oak_log", vector.create(x, y, z), {radius=16})` | the same query around a point (`blocks <type> at <x> <y> <z>`), for a treetop out of reach of the Bot's feet |
 
 A radius-12 search took about 23 ms of server-thread time in the live check (2026-10-24).
+
+### Targeting blocks
+
+Three questions about a block have one answer each (BOT-028, BOT-030). Block properties come from minecraft-data
+for the locked Bedrock version (`scripts/generate_block_properties.py`).
+
+| Question | Rule | Used by |
+| --- | --- | --- |
+| Could a player see it? | One of its faces touches a block light passes: air, liquids, plants, leaves, glass, ice and partial shapes such as slabs, stairs, fences, walls, panes and doors | which blocks `blocks` lists |
+| Can the Bot target it now? | It is not air or liquid, part of it is within 6 blocks of the Bot's eyes, and a straight line reaches a side facing the Bot through blocks without a collision box only (air, liquids, grass, flowers, torches, rails, snow layers). Leaves, glass and partial shapes stop the line | `reachable`, `destroy x y z`, `destroy <type>`, `interact x y z`, `interact <type>` |
+| What is under the crosshair? | The first block along the Bot's look within 6 blocks that is not air or liquid, as for a player: grass and torches are hit, light blocks are not | `target`, `destroy` and `interact` without a target |
+
+So a log behind tall grass is reachable by name or coordinates, while the crosshair hits the grass in front of it;
+a log wrapped in leaves is listed by `blocks` but not reachable until a leaf is broken.
+
+When a block cannot be targeted, `block` reports `reachable = false` and `reachCode`, and `destroy`/`interact` fail
+with the same value as `code`:
+
+| Code | Meaning |
+| --- | --- |
+| `not_a_target` | Air or liquid, or nothing under the crosshair |
+| `out_of_reach` | No part of it is within 6 blocks of the Bot's eyes |
+| `blocked` | Something stops every line to it; `obstruction = {x, y, z, type}` (in `data` for a refused operation) names the first block in the way, when one is found |
+| `unbreakable` | `destroy` only: bedrock, barriers and other blocks Survival cannot break; they can still be targeted |
+
+```lua
+local info = bot:block(x, y, z).data
+if not info.reachable and info.reachCode == "blocked" and info.obstruction then
+  local o = info.obstruction
+  bot:destroy(o.x, o.y, o.z)  -- clear the leaf first
+end
+```
 
 ### Jobs and waits
 

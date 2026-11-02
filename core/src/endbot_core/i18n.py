@@ -420,8 +420,8 @@ JA: dict[str, str] = {
         "面を省くと Bot に向いた面です。届くかどうかと結果は BDS が決めます。プレイヤーは対象外です。",
     "@ turns to the nearest matching entity within 4.5 blocks and attacks it once; players are never targets.":
         "@ は4.5ブロック以内で一番近い該当エンティティの方を向き、1回攻撃します。プレイヤーは対象外です。",
-    "A block type breaks the nearest one the Bot can see within 5 blocks.":
-        "ブロックの種類を指定すると、5ブロック以内で Bot に見えている一番近いものを壊します。",
+    "A block type breaks the nearest one the Bot can see within 6 blocks.":
+        "ブロックの種類を指定すると、6ブロック以内で Bot に見えている一番近いものを壊します。",
     "Entities take @: use @{id}": "エンティティには @ を付けてください: @{id}",
     "Use entity @<type|id|nearest>": "entity @<type|id|nearest> の形で指定してください",
     "Repeat {action} @<entity> with continuous, interval <ticks>, for <ticks> or count <n>":
@@ -461,6 +461,11 @@ JA: dict[str, str] = {
     "looking at {entity} @{id} ({distance}m)": "{entity} @{id} を見ています ({distance}m)",
     "looking at nothing within 6 blocks": "6ブロック以内に見ているものはありません",
     "block at {position}: {block}": "{position} のブロック: {block}",
+    "in reach": "届く",
+    "out of reach": "届かない",
+    "not a target": "対象外",
+    "blocked": "さえぎられている",
+    "blocked by {block} at {position}": "{position} の {block} にさえぎられている",
     "{block}: {positions}": "{block}: {positions}",
     "no exposed {block} within {radius} blocks": "{radius}ブロック以内に見えている {block} はありません",
     "Use block <x> <y> <z>": "block <x> <y> <z> の形で指定してください",
@@ -702,10 +707,10 @@ JA: dict[str, str] = {
     "block count reached": "指定のブロック数に達しました",
     "ended": "終了",
     "{command} stopped: {reason}": "{command} が止まりました: {reason}",
-    "destroy is waiting: no {block} it can break within 5 blocks; move the Bot closer":
-        "destroy は待機中です: 5ブロック以内に壊せる {block} がありません。Bot を近づけてください",
-    "destroy continuous is waiting: no block it can break within 5 blocks":
-        "destroy continuous は待機中です: 5ブロック以内に壊せるブロックがありません",
+    "destroy is waiting: no {block} it can break within 6 blocks; move the Bot closer":
+        "destroy は待機中です: 6ブロック以内に壊せる {block} がありません。Bot を近づけてください",
+    "destroy continuous is waiting: no block it can break within 6 blocks":
+        "destroy continuous は待機中です: 6ブロック以内に壊せるブロックがありません",
     "control permission revoked": "操作権限が取り消されました",
     "the Bot became private": "Bot が非公開になりました",
     "Bot was renamed or removed": "Bot の名前が変わったか、削除されました",
@@ -725,11 +730,13 @@ JA: dict[str, str] = {
     "Player {name} is not online": "プレイヤー {name} はオンラインではありません",
     "Endstone rejected the teleport": "Endstone がテレポートを拒否しました",
     "An online player named {name} already exists": "{name} という名前のプレイヤーがすでにオンラインです",
-    "Target block is out of reach (maximum 5 blocks)": "対象のブロックに届きません (最大 5 ブロック)",
+    "Target block is out of reach (maximum {reach} blocks)": "対象のブロックに届きません (最大 {reach} ブロック)",
     "Target block overlaps the Bot's eye position": "対象のブロックが Bot の目の位置と重なっています",
-    "Target is air/liquid or blocked by another block": "対象が空気か液体、またはほかのブロックにさえぎられています",
-    "No block in the Bot's line of sight within 5 blocks": "Bot の視線の先 5 ブロック以内にブロックがありません",
-    "Bedrock cannot be destroyed in Survival": "サバイバルでは岩盤を壊せません",
+    "Target is air or liquid": "対象が空気か液体です",
+    "Target is blocked by another block": "対象がほかのブロックにさえぎられています",
+    "Target is blocked by {block} at {x} {y} {z}": "対象が {x} {y} {z} の {block} にさえぎられています",
+    "No block in the Bot's line of sight within {reach} blocks": "Bot の視線の先 {reach} ブロック以内にブロックがありません",
+    "{block} cannot be destroyed in Survival": "サバイバルでは {block} を壊せません",
     "A dimension is required for this command source": "このコマンドの出し方ではディメンションの指定が必要です",
     "Relative coordinates require a player command source": "相対座標はプレイヤーだけが使えます",
     "Unknown dimension: {dimension}": "不明なディメンションです: {dimension}",

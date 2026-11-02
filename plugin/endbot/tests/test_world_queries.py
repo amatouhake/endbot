@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from endbot_core.commands import CommandSyntaxError, parse_command
+from endbot_core.commands import CommandSyntaxError, parse_command, strip_colors
 from plain_service import PlainCommandService
 
 from endstone_endbot.world import EndstoneWorld
@@ -59,7 +59,8 @@ class WorldQueryTests(unittest.TestCase):
     def test_block_info_resolves_relative_coordinates_and_states(self):
         blocks = {(0, 63, 0): Block("minecraft:wheat", {"growth": 7})}
         info = world(blocks).block_info(BOT["identityId"], [("relative", 0), ("relative", -1), ("relative", 0)])
-        self.assertEqual(info, {"x": 0, "y": 63, "z": 0, "type": "minecraft:wheat", "states": {"growth": 7}})
+        self.assertEqual(info, {"x": 0, "y": 63, "z": 0, "type": "minecraft:wheat", "states": {"growth": 7},
+                                "reachable": True})
 
     def test_find_blocks_skips_hidden_blocks_and_sorts_by_distance(self):
         stone = Block("minecraft:stone")
@@ -74,6 +75,40 @@ class WorldQueryTests(unittest.TestCase):
         self.assertEqual([(entry["x"], entry["y"], entry["z"]) for entry in found], [(1, 64, 0), (3, 64, 0)])
         self.assertEqual(len(world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 8, 1)), 1)
 
+
+    def test_blocks_lists_blocks_seen_through_leaves_glass_and_partial_shapes(self):
+        # BOT-030: what touches a block light passes is listed; aiming still stops at it (BOT-028).
+        log = Block("minecraft:oak_log")
+        for cover in ("minecraft:oak_leaves", "minecraft:glass", "minecraft:oak_slab", "minecraft:oak_fence",
+                      "minecraft:ice", "minecraft:short_grass"):
+            blocks = {(0, 64, 3): log}
+            for dx, dy, dz in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+                blocks[(dx, 64 + dy, 3 + dz)] = Block(cover)
+            found = world(blocks).find_blocks(BOT["identityId"], "minecraft:oak_log", 8, 10)
+            self.assertEqual([(entry["x"], entry["y"], entry["z"]) for entry in found], [(0, 64, 3)], cover)
+            plant = cover == "minecraft:short_grass"
+            self.assertEqual(found[0]["reachable"], plant, cover)
+            info = world(blocks).block_info(BOT["identityId"], [0, 64, 3])
+            self.assertEqual(info["reachable"], plant, cover)
+            if not plant:
+                self.assertEqual((info["reachCode"], info["obstruction"]),
+                                 ("blocked", {"x": 0, "y": 64, "z": 2, "type": cover}), cover)
+
+    def test_reachable_is_false_past_six_blocks_and_for_air(self):
+        blocks = {(0, 65, 6): Block("minecraft:oak_log"), (0, 65, 7): Block("minecraft:oak_log")}
+        found = world(blocks).find_blocks(BOT["identityId"], "minecraft:oak_log", 12, 10)
+        self.assertEqual([(entry["z"], entry["reachable"]) for entry in found], [(6, True), (7, False)])
+        far = world(blocks).block_info(BOT["identityId"], [0, 65, 7])
+        self.assertEqual((far["reachable"], far["reachCode"]), (False, "out_of_reach"))
+        self.assertNotIn("obstruction", far)
+        # A side touching the 6-block limit, with every aimed point just past it, is out of reach, not blocked
+        # (found at exactly 6.0 on BDS, 2026-11-02).
+        edge = world({(0, 65, 6): Block("minecraft:oak_log")}, position=(0.5, 64.0, 0.0)).block_info(
+            BOT["identityId"], [0, 65, 6])
+        self.assertEqual((edge["reachable"], edge["reachCode"]), (False, "out_of_reach"))
+        self.assertNotIn("obstruction", edge)
+        air = world(blocks).block_info(BOT["identityId"], [0, 65, 2])
+        self.assertEqual((air["reachable"], air["reachCode"]), (False, "not_a_target"))
 
     def test_find_blocks_stops_early_but_keeps_the_nearest_matches(self):
         ore = Block("minecraft:diamond_ore")
@@ -169,6 +204,24 @@ class QueryCommandTests(unittest.TestCase):
                          ("minecraft:oak_log", 8, 10, [("relative", 0.0), ("relative", 10.0), ("relative", 0.0)]))
         self.assertEqual(found.messages, ("Endbot: Alice: oak_log: 1 64 0 (1.2m)",))
         self.assertEqual(found.data["blocks"][0]["x"], 1)
+
+    def test_block_and_blocks_replies_say_what_is_in_reach(self):
+        queries = FakeQueries()
+        service = PlainCommandService(Control(), queries)
+        cover = {"x": 0, "y": 64, "z": 2, "type": "minecraft:oak_leaves"}
+        for reach, note in (({"reachable": True}, "in reach"),
+                            ({"reachable": False, "reachCode": "out_of_reach"}, "out of reach"),
+                            ({"reachable": False, "reachCode": "blocked", "obstruction": cover},
+                             "blocked by oak_leaves at 0 64 2")):
+            queries.block_info = lambda identity, coordinates, reach=reach: {
+                "x": 0, "y": 64, "z": 3, "type": "minecraft:oak_log", "states": {}, **reach}
+            block = service.execute(["Alice", "block", "0", "64", "3"])
+            self.assertEqual(strip_colors(block.messages[0]), f"Endbot: Alice: block at 0 64 3: oak_log ({note})")
+        queries.find_blocks = lambda *args, **kwargs: [{"x": 1, "y": 64, "z": 0, "distance": 1.2, "reachable": True},
+                                                       {"x": 9, "y": 64, "z": 0, "distance": 9.0, "reachable": False}]
+        found = service.execute(["Alice", "blocks", "oak_log"])
+        self.assertEqual(strip_colors(found.messages[0]),
+                         "Endbot: Alice: oak_log: 1 64 0 (1.2m, in reach), 9 64 0 (9.0m)")
 
 
 if __name__ == "__main__":
@@ -344,7 +397,7 @@ class SelectorCommandTests(unittest.TestCase):
         self.assertEqual(world_view.reach, ("minecraft:chest", 6.0))
         self.assertEqual(world_view.interaction, {"coordinates": [1, 64, 2]})
         service.execute(["Alice", "destroy", "oak_log"])
-        self.assertEqual(world_view.reach, ("minecraft:oak_log", 5.0))
+        self.assertEqual(world_view.reach, ("minecraft:oak_log", 6.0))
         self.assertEqual(world_view.mining, {"coordinates": [1, 64, 2]})
 
 

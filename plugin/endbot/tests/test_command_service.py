@@ -322,7 +322,7 @@ class CommandServiceTests(unittest.TestCase):
         for _ in range(WAITING_NOTICE_POLLS - 1):
             self.assertEqual(self.service.poll_mining(lambda _: True), [])
         notices = self.service.poll_mining(lambda _: True)
-        waiting = "Endbot: Alice: destroy is waiting: no oak_log it can break within 5 blocks; move the Bot closer"
+        waiting = "Endbot: Alice: destroy is waiting: no oak_log it can break within 6 blocks; move the Bot closer"
         self.assertEqual(notices, [(source, "info", waiting)])
         for _ in range(WAITING_NOTICE_POLLS):
             self.assertEqual(self.service.poll_mining(lambda _: True), [])
@@ -576,6 +576,30 @@ class CommandServiceTests(unittest.TestCase):
         self.assertIn("look set to yaw=90.0 pitch=-10.0", result.message)
         # BDS reported the same direction as -270; the result carries one convention, [0, 360).
         self.assertEqual(result.data, {"look": {"yaw": 90.0, "pitch": -10.0}})
+
+    def test_a_refused_destroy_returns_its_code_and_obstruction(self) -> None:
+        # BOT-028: the outcome code and the covering block reach the result, for scripts and Groups alike.
+        self.service.execute(["Alice", "spawn"], object())
+        cover = {"x": 0, "y": 65, "z": 1, "type": "minecraft:oak_leaves"}
+
+        def refuse(identity_id, parameters, sender):
+            error = LocalizedError("Target is blocked by {block} at {x} {y} {z}", block="oak_leaves", x=0, y=65, z=1)
+            error.code, error.data = "blocked", {"obstruction": cover}
+            raise error
+
+        self.world.resolve_mining = refuse
+        result = self.service.execute(["Alice", "destroy", "0", "65", "2"], object())
+        self.assertFalse(result.accepted)
+        self.assertEqual((result.code, result.data), ("blocked", {"obstruction": cover}))
+        self.assertIn("Target is blocked by oak_leaves at 0 65 1", result.message)
+
+    def test_status_mining_names_the_block_being_broken(self) -> None:
+        status = {"name": "Alice", "identityId": "id", "connectionState": "online",
+                  "mining": {"state": "active", "blockPosition": [1, 64, 2], "blockName": "minecraft:oak_log"}}
+        self.assertEqual(self.service.script_status(status)["mining"]["target"],
+                         {"x": 1, "y": 64, "z": 2, "type": "minecraft:oak_log"})
+        waiting = {**status, "mining": {"state": "waiting", "continuous": True, "loopId": "l", "blockPosition": []}}
+        self.assertIsNone(self.service.script_status(waiting)["mining"]["target"])
 
     def test_look_waits_until_bds_reports_the_rotation(self) -> None:
         self.service.execute(["Alice", "spawn"], object())
@@ -1243,7 +1267,7 @@ class ResolveMiningBatchTests(unittest.TestCase):
             {"target": {"blockPosition": [1, 64, 2], "blockName": "minecraft:stone", "identityId": "untyped"}},
         ])
         self.assertEqual(world.calls, [
-            ("reachable_block", "typed", "minecraft:oak_log", 5.0),
+            ("reachable_block", "typed", "minecraft:oak_log", 6.0),
             ("resolve_mining", "typed", {"coordinates": [1, 64, 2]}, None),
             ("resolve_mining", "untyped", {"continuous": True}, None),
         ])

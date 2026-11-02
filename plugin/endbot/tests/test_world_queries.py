@@ -133,6 +133,24 @@ class WorldQueryTests(unittest.TestCase):
         self.assertEqual(sorted((entry["x"], entry["distance"]) for entry in found), [(-1, 1.1), (1, 1.1)])
         self.assertLess(len(reads), 2000)  # a full radius-12 scan reads over 7000 cells
 
+    def test_a_sphere_area_scans_its_sphere_not_its_bounding_box(self):
+        ore = Block("minecraft:diamond_ore")
+        blocks = {(0, 64, 5): ore}
+        reads = []
+        dimension_get = Dimension.get_block_at
+
+        def counting(self, x, y, z):
+            reads.append((x, y, z))
+            return dimension_get(self, x, y, z)
+
+        Dimension.get_block_at = counting
+        try:
+            found = world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 10, within(6))
+        finally:
+            Dimension.get_block_at = dimension_get
+        self.assertEqual([entry["z"] for entry in found], [5])
+        self.assertLess(len(reads), 2000)  # a radius-6 sphere reads about 1400 cells; its box corner 11000
+
     def test_an_entity_behind_the_block_is_not_the_target_and_mushroom_stems_hide_ores(self):
         log = {(0, 65, 2): Block("minecraft:oak_log")}
         cow = actor(9, "minecraft:cow", 0.5, 65.0, 2.4)  # past the log face (1.5) but before its centre (2.0)

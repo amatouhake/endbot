@@ -697,13 +697,18 @@ class EndstoneWorld:
         location = bot.location
         area = self._area(area, location)
         radius = BLOCKS_RADIUS
-        bounds = areas.bounds(area)
-        if bounds is not None:
+        within = None if area is None else area.get("within")
+        if within is not None:
             feet = self._coordinates(location)
-            corners = [[(bounds[0] if corner >> axis & 1 else bounds[1])[axis] + 0.5 for axis in range(3)]
-                       for corner in range(8)]
-            farthest = max(math.dist(feet, corner) for corner in corners) + 1
-            radius = min(BLOCKS_RANGE, math.ceil(farthest))
+            if within["shape"] == "sphere":
+                # Every cell of a sphere lies within its radius of the centre, so its bounding box would
+                # overstate the scan (a corner is sqrt(3) radii away).
+                radius = min(BLOCKS_RANGE, math.ceil(math.dist(feet, within["at"]) + within["radius"]))
+            else:
+                bounds = areas.bounds(area)
+                corners = [[(bounds[0] if corner >> axis & 1 else bounds[1])[axis] + 0.5 for axis in range(3)]
+                           for corner in range(8)]
+                radius = min(BLOCKS_RANGE, math.ceil(max(math.dist(feet, corner) for corner in corners) + 1))
         return self._find(location, block_type, radius, limit, area)
 
     def _find(self, location, block_type: str, radius: int, limit: int, area: dict | None) -> list[dict]:

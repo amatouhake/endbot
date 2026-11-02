@@ -478,12 +478,15 @@ class EndstoneWorld:
         nearest = [max(cell[i], min(eye[i], cell[i] + 1)) for i in range(3)]
         if math.dist(eye, nearest) > REACH:
             return {"reachable": False, "reachCode": "out_of_reach"}
-        visible = None if nearest == eye else cls._visible_point(dimension, eye, cell, REACH, faces)
+        if nearest == eye:
+            # The eye is inside the block: no side faces it, so there is nothing to aim at.
+            return {"reachable": False, "reachCode": "blocked", "overlaps": True}
+        visible = cls._visible_point(dimension, eye, cell, REACH, faces)
         if visible is not None:
             return {"reachable": True, "face": visible[0], "point": visible[1]}
         # The nearest point is in reach but every aimed point on a side is just past it (a block touching the
         # limit): a clear line that only misses on distance is out of reach, not blocked.
-        if nearest != eye and cls._visible_point(dimension, eye, cell, math.inf, faces) is not None:
+        if cls._visible_point(dimension, eye, cell, math.inf, faces) is not None:
             return {"reachable": False, "reachCode": "out_of_reach"}
         obstruction = cls._obstruction(dimension, eye, cell, faces)
         return {"reachable": False, "reachCode": "blocked", **({"obstruction": obstruction} if obstruction else {})}
@@ -539,6 +542,8 @@ class EndstoneWorld:
         code = reach["reachCode"]
         template = REFUSALS[code]
         obstruction = reach.get("obstruction")
+        if code == "blocked" and reach.get("overlaps"):
+            raise TargetRefused(code, "Target block overlaps the Bot's eye position", obstruction)
         if code == "blocked" and obstruction is not None:
             raise TargetRefused(code, "Target is blocked by {block} at {x} {y} {z}", obstruction,
                                 block=obstruction["type"].removeprefix("minecraft:"), x=obstruction["x"],

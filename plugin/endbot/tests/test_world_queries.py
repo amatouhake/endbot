@@ -115,6 +115,16 @@ class WorldQueryTests(unittest.TestCase):
         air = world(blocks).block_info(BOT["identityId"], [0, 65, 2])
         self.assertEqual((air["reachable"], air["reachCode"]), (False, "not_a_target"))
 
+    def test_a_block_around_the_eye_is_blocked_and_says_so(self):
+        # The Bot's head is in the target cell: no side faces the eye, so there is nothing to aim at.
+        target = {(0, 65, 0): Block("minecraft:oak_log")}
+        info = world(target, position=(0.5, 64.0, 0.0)).block_info(BOT["identityId"], [0, 65, 0])
+        self.assertEqual((info["reachable"], info["reachCode"]), (False, "blocked"))
+        self.assertNotIn("obstruction", info)
+        with self.assertRaisesRegex(ValueError, "overlaps the Bot's eye"):
+            world(target, position=(0.5, 64.0, 0.0)).resolve_mining(
+                BOT["identityId"], {"coordinates": [0, 65, 0]}, None)
+
     def test_find_blocks_stops_early_but_keeps_the_nearest_matches(self):
         ore = Block("minecraft:diamond_ore")
         blocks = {(x, 64, 0): ore for x in range(-6, 7) if x}

@@ -326,8 +326,15 @@ class RealOSBase(unittest.TestCase):
         env["PYTHONPATH"] = os.pathsep.join(filter(None, (
             str(Path(confine.__file__).resolve().parents[1]), env.get("PYTHONPATH"),
         )))
+        # A Windows venv's python.exe is a redirector: assigning that launcher to the job blocks the
+        # base interpreter it starts (ActiveProcessLimit=1), so spawn the real interpreter directly.
+        executable = sys.executable
+        if sys.platform == "win32":
+            base = getattr(sys, "_base_executable", None)
+            if base and Path(base).is_file():
+                executable = base
         process = subprocess.Popen(
-            [sys.executable, "-u", "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            [executable, "-u", "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, env=env, **limits.popen_kwargs,
         )
 

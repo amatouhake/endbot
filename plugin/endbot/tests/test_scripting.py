@@ -1145,14 +1145,19 @@ class OwnershipTests(unittest.TestCase):
         guard = script_forms.ScriptGuard(revision, None if revision is None else name, edit=True)
         return self.host.execute(["save", name, text], replace(source, group_guard=guard))
 
-    def test_the_0_4_0_share_and_private_spellings_still_change_visibility(self):
+    def test_the_0_4_0_share_and_private_spellings_are_removed(self):
         self.assertTrue(self.save(self.alice, "mine", "params {}\n").accepted)
-        self.assertTrue(self.host.execute(["share", "mine"], self.alice).accepted)
+        for argv in (["share", "mine"], ["private", "mine"]):
+            with self.subTest(argv=argv):
+                result = self.host.execute(argv, self.alice)
+                self.assertFalse(result.accepted)
+                self.assertEqual(result.code, "invalid_argument")
+                self.assertIn("visibility <name> shared|private", str(result.messages))
+        self.assertEqual(self.store.get("mine").visibility, "private")
+        self.assertTrue(self.host.execute(["visibility", "mine", "shared"], self.alice).accepted)
         self.assertEqual(self.store.get("mine").visibility, "shared")
-        self.assertTrue(self.host.execute(["private", "mine"], self.alice).accepted)
-        self.assertEqual(self.store.get("mine").visibility, "private")
         self.assertFalse(self.host.execute(["visibility", "mine", "public"], self.alice).accepted)
-        self.assertEqual(self.store.get("mine").visibility, "private")
+        self.assertEqual(self.store.get("mine").visibility, "shared")
 
     def test_a_controller_runs_and_narrows_but_never_authors(self):
         self.assertTrue(self.save(self.alice, "mine", "params {}\n-- v1").accepted)
@@ -1163,7 +1168,7 @@ class OwnershipTests(unittest.TestCase):
         controller = replace(self.alice, role="controller")
         before = self.store.get("mine")
         for argv in (["copy", "mine", "x"], ["rename", "mine", "other"], ["restore", "mine", "1"],
-                     ["visibility", "mine", "shared"], ["share", "mine"], ["edit", "mine"], ["import", "fresh"]):
+                     ["visibility", "mine", "shared"], ["edit", "mine"], ["import", "fresh"]):
             with self.subTest(argv=argv):
                 result = self.host.execute(argv, controller)
                 self.assertFalse(result.accepted)

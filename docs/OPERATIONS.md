@@ -452,6 +452,14 @@ set up with `--transport raknet` keeps 0.4.0 current and the update reports the 
 `transport=nethernet` in `server.properties` and `[server] transport = "nethernet"` in `endbot.toml`, then rerun
 `endbot update --force`.
 
+Updating from 0.5.0 to 0.6.0 keeps Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` and protocol `2225`, so no BDS update
+runs and `endbot.toml` needs no change. The command surface changes: areas replace `blocks ... radius` and
+`blocks ... at` (use `within <r>` and `within <r> of <x> <y> <z>`; the old spellings are refused with a message naming
+the new ones), `look` answers after BDS has the rotation, `destroy` reaches 6 blocks, `blocks` sees through leaves, and
+the 0.4.0 script spellings `share <name>` and `private <name>` are refused in favour of
+`visibility <name> shared|private`. A script that calls `blocks(type, x, y, z)` passes an area value instead. See
+[areas](COMMANDS.md#areas-within-and-except).
+
 ## 7. Doctor
 
 `endbot doctor` reports, without changing anything:

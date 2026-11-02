@@ -180,8 +180,8 @@ Each script records its creator as owner (by XUID, else player UUID). Only the o
 delete, restore or change its visibility; everyone else gets "only the owner may change" and is pointed to
 **Copy and edit**. A script is `private` (only the owner sees and runs it; to others it does not exist) or
 `shared` (every controller may list, show, run and copy it). New scripts and copies start `private`;
-`visibility <name> shared|private` switches it (0.4.0's `share <name>` and `private <name>` still work in 0.5.0 and are
-removed in the next release). `copy <name> <new-name>` makes a private copy owned by the copier, and the owner's
+`visibility <name> shared|private` switches it (the 0.4.0 `share <name>` and `private <name>` spellings were removed in
+0.6.0 and are refused with a pointer to this form). `copy <name> <new-name>` makes a private copy owned by the copier, and the owner's
 `rename <name> <new-name>` keeps the owner, visibility and history (running copies keep the old name). Every save keeps
 the previous source in a history of the last 10 revisions; `history` lists them (newest first, with time and
 line count) and `restore <name> <n>` makes revision `n` current as a new save, keeping the replaced source in the

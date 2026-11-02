@@ -745,8 +745,8 @@ class ScriptService:
                 tokens = shlex.split(" ".join(argv))
                 operation, tail = (tokens[0].lower(), tokens[1:]) if tokens else ("menu", [])
             if operation in {"share", "private"} and len(tail) == 1:
-                # The 0.4.0 spelling, kept for one release beside `visibility <name> shared|private`.
-                operation, tail = "visibility", [tail[0], "shared" if operation == "share" else "private"]
+                # The 0.4.0 spelling, removed in 0.6.0 as the 0.5.0 notes said.
+                raise LocalizedError("share and private were replaced by visibility <name> shared|private")
             # Sharing widens who can use a script, so it is authoring; making one private only narrows it.
             sharing = operation == "visibility" and len(tail) == 2 and tail[1].lower() == "shared"
             if (operation in AUTHORING or sharing) and not self._author(source):

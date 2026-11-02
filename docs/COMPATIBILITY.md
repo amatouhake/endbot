@@ -1,6 +1,6 @@
 # Compatibility and releases
 
-## Current baseline (0.5.0)
+## Current baseline (0.5.0 and 0.6.0)
 
 `endstone.lock` pins Endstone `v0.11.15` at `b4aaa87d2c5305e7d340168f824ac2e2ea722e44`, with BDS `1.26.60.6`
 (Linux build `52886190`, Windows build `52886189`) and protocol `2225`, `support_status: "validated-baseline"` since the
@@ -36,6 +36,11 @@ gate below passed on 2026-10-30.
   each. On an instance updated from 0.4.0 the player unlocked the Xbox achievement **Body Guard** with no
   achievements-disabled notice, and `level.dat` stayed clean (see
   [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md#050-human-pass-with-one-account--2026-10-30-jst)).
+
+0.6.0 (2026-11-02 JST) keeps this pair unchanged: no `endstone.lock`, `patches/endstone/` or runtime dependency
+changed, so no new compatibility gate applies and the 2026-10-30 gate and achievement observation stand. Its release
+records the client pass for the new command surface; see
+[MINING_VALIDATION.md](MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst).
 
 ## Previous baseline (0.2.1 to 0.4.0)
 

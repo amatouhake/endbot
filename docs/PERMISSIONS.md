@@ -229,7 +229,7 @@ Decided 2026-10-30 JST, before the steps were implemented.
 - **S9. Owner command names for Bots and Groups** first followed the scripts' `share` / `private`. Revised
   2026-10-30 JST before release: the verb `share` and the adjective `private` do not pair, and the settings already
   say `shared`, so Bots, Groups and scripts all use `visibility shared|private`. The scripts' 0.4.0 `share <name>` /
-  `private <name>` stay as aliases for one release. The interface guide records the names in D4.
+  `private <name>` aliases lasted one release and were removed in 0.6.0. The interface guide records the names in D4.
 - **S10. Authoring in menus.** A controller's menus leave out authoring buttons; a typed authoring command is
   refused with the authorization code and a reason, as from every other surface.
 - **S11. Groups with someone else's private Bot** run per member: the members the invoker may operate run, the

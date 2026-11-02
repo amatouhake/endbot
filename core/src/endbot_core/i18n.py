@@ -1107,6 +1107,8 @@ JA.update({
     "Stopping {count} script runs": "スクリプト {count} 件を停止します",
     "Script {name} saved": "スクリプト {name} を保存しました",
     "Use /botscript help": "/botscript help を使ってください",
+    "share and private were replaced by visibility <name> shared|private":
+        "share と private は visibility <name> shared|private に変わりました",
     "Script source page is out of range": "ソースのページ番号が範囲外です",
     "Script {name} deleted": "スクリプト {name} を削除しました",
     "Script {name} started: {run}": "スクリプト {name} を開始: {run}",

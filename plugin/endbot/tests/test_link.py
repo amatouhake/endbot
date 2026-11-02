@@ -402,6 +402,24 @@ class WorldCallTests(LinkHarness):
         self.assertIsInstance(error, LocalizedError)
         self.assertEqual((error.template, error.params), ("No {block} in sight", {"block": "stone"}))
 
+    def test_a_target_refusal_keeps_its_code_and_obstruction_over_the_link(self):
+        # BOT-028: a script sees `blocked` and the covering block, not a generic invalid argument.
+        from endstone_endbot.world import TargetRefused
+
+        self.linked()
+        cover = {"x": 0, "y": 65, "z": 1, "type": "minecraft:oak_leaves"}
+
+        def resolve(identity_id, parameters, sender):
+            raise TargetRefused("blocked", "Target is blocked by {block} at {x} {y} {z}", cover,
+                                block="oak_leaves", x=0, y=65, z=1)
+
+        self.world.resolve_mining = resolve
+        with self.assertRaises(LocalizedError) as raised:
+            self.endbotd.world.resolve_mining("bot-1", {"coordinates": [0, 65, 2]}, None)
+        self.assertEqual(raised.exception.code, "blocked")
+        self.assertEqual(raised.exception.data, {"obstruction": cover})
+        self.assertEqual(str(raised.exception), "Target is blocked by oak_leaves at 0 65 1")
+
     def test_unknown_world_methods_are_neither_sent_nor_served(self):
         self.linked()
         self.assertFalse(hasattr(self.endbotd.world, "shutdown"))

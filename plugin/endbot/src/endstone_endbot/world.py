@@ -9,6 +9,7 @@ from endbot_core.i18n import LocalizedError
 from endbot_core.script_books import book_pages, fill_book
 from endstone.level import Location
 
+from endstone_endbot.block_properties import NO_COLLISION, SEE_THROUGH, UNBREAKABLE
 from endstone_endbot.inventory_sync import inventory_snapshot, item_summary
 
 DIMENSIONS = {
@@ -76,7 +77,8 @@ def _exit_cells(forward: tuple[int, int], vehicle_type: str) -> list[tuple[int, 
     return order
 
 
-# Read-only queries (BOT-014).
+# Read-only queries (BOT-014). One reach for every block and entity a Bot targets: destroy, interact, `target`,
+# `block`'s and `blocks`' `reachable` (BOT-028); the runtime holds a mining job to the same distance.
 REACH = 6.0
 SEARCH_RADIUS_MAX = 12
 SEARCH_LIMIT_MAX = 64
@@ -90,9 +92,33 @@ NEIGHBOURS_BY_FACE = ((0, -1, 0), (0, 1, 0), (0, 0, -1), (0, 0, 1), (-1, 0, 0), 
 FACE_SAMPLES = ((0.0, 0.0), (-0.4, -0.4), (-0.4, 0.4), (0.4, -0.4), (0.4, 0.4))
 
 
-def _see_through(block_type: str) -> bool:
-    """Sight passes air, liquids and thin plants such as grass and flowers; leaves and solids block it."""
-    return block_type in NON_MINING_TARGETS or _passable(block_type)
+def _sight_through(block_type: str) -> bool:
+    """A player sees past it (BOT-030): air, liquids, plants, leaves, glass, ice and partial shapes such as slabs,
+    stairs, fences, panes and doors. Used for what `blocks` lists; never for aiming."""
+    return block_type in NON_MINING_TARGETS or block_type in SEE_THROUGH or _passable(block_type)
+
+
+def _aim_through(block_type: str) -> bool:
+    """A line to an explicitly named block passes it (BOT-028): blocks without a collision box, such as air,
+    liquids, grass, flowers, torches, rails and snow layers. Leaves, glass and partial shapes stop it.
+    The crosshair is different: like a player's it stops at the first block that is not air or liquid."""
+    return block_type in NON_MINING_TARGETS or block_type in NO_COLLISION or _passable(block_type)
+
+
+class TargetRefused(LocalizedError):
+    """A block a Bot cannot target now (BOT-028): ``code`` says why and ``data`` names the obstruction."""
+
+    def __init__(self, code: str, template: str, obstruction: dict | None = None, **params: object) -> None:
+        super().__init__(template, **params)
+        self.code = code
+        self.data = {"obstruction": obstruction} if obstruction is not None else None
+
+
+REFUSALS = {
+    "not_a_target": "Target is air or liquid",
+    "out_of_reach": "Target block is out of reach (maximum {reach} blocks)",
+    "blocked": "Target is blocked by another block",
+}
 
 
 def _state_value(value):
@@ -131,8 +157,9 @@ def _ray_entry(eye, direction, cell) -> float:
 
 
 def _exposed(dimension, x, y, z) -> bool:
-    """A block a player could see: at least one face touches a passable block."""
-    return any(_passable(str(dimension.get_block_at(x + dx, y + dy, z + dz).type)) for dx, dy, dz in NEIGHBOURS)
+    """A block a player could see: at least one face touches a block light passes (BOT-030)."""
+    return any(_sight_through(str(dimension.get_block_at(x + dx, y + dy, z + dz).type))
+               for dx, dy, dz in NEIGHBOURS)
 
 
 # Half the collision width of common rideables (Bedrock entity definitions); a
@@ -389,13 +416,15 @@ class EndstoneWorld:
         # `~` is relative to the Bot, as for destroy and block.
         coordinates = self._resolve_coordinates(parameters["coordinates"], bot.location)
         block_position = [math.floor(value) for value in coordinates]
-        block = bot.location.dimension.get_block_at(*block_position)
+        location = bot.location
+        block = location.dimension.get_block_at(*block_position)
+        eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
         face = parameters.get("face")
+        reach = self._reach(location.dimension, eye, block_position, None if face is None else (int(face),))
+        if not reach["reachable"]:
+            self._refuse(reach)
         if face is None:
-            location = bot.location
-            eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
-            visible = self._visible_point(location.dimension, eye, block_position, REACH)
-            face = visible[0] if visible else self._face_toward(location, block_position)
+            face = reach["face"]
         return {
             "blockPosition": block_position,
             "blockRuntimeId": int(block.data.runtime_id),
@@ -418,11 +447,94 @@ class EndstoneWorld:
         candidates = self.find_blocks(identity_id, block_type, math.ceil(reach) + 1, SEARCH_LIMIT_MAX)
         candidates.sort(key=lambda entry: math.dist(eye, (entry["x"] + 0.5, entry["y"] + 0.5, entry["z"] + 0.5)))
         for entry in candidates:
+            # find_blocks already applied the one targeting rule (REACH); a shorter reach narrows it.
             cell = [entry["x"], entry["y"], entry["z"]]
-            if self._visible_point(location.dimension, eye, cell, reach) is not None:
+            if entry["reachable"] and (reach >= REACH or self._visible_point(
+                    location.dimension, eye, cell, reach) is not None):
                 return cell
         raise LocalizedError("No {block} in sight within {reach} blocks",
                              block=block_type.removeprefix("minecraft:"), reach=f"{reach:g}")
+
+    @classmethod
+    def _reach(cls, dimension, eye, cell, faces=None) -> dict:
+        """Whether the Bot can target ``cell`` from ``eye`` now (BOT-028), by the one rule destroy and interact use.
+
+        ``{"reachable": True, "face": f, "point": p}`` when a clear line reaches a facing side within REACH;
+        otherwise ``{"reachable": False, "reachCode": code}`` with ``obstruction`` ``{x, y, z, type}`` for
+        ``blocked``. Codes: ``not_a_target`` (air or liquid), ``out_of_reach``, ``blocked``.
+        """
+        block_type = str(dimension.get_block_at(*cell).type)
+        if block_type in NON_MINING_TARGETS:
+            return {"reachable": False, "reachCode": "not_a_target"}
+        nearest = [max(cell[i], min(eye[i], cell[i] + 1)) for i in range(3)]
+        if math.dist(eye, nearest) > REACH:
+            return {"reachable": False, "reachCode": "out_of_reach"}
+        visible = None if nearest == eye else cls._visible_point(dimension, eye, cell, REACH, faces)
+        if visible is not None:
+            return {"reachable": True, "face": visible[0], "point": visible[1]}
+        obstruction = cls._obstruction(dimension, eye, cell, faces)
+        return {"reachable": False, "reachCode": "blocked", **({"obstruction": obstruction} if obstruction else {})}
+
+    @classmethod
+    def _obstruction(cls, dimension, eye, cell, faces=None) -> dict | None:
+        """The first block that stops the line from the eye to ``cell``'s centre, else the block covering its
+        nearest facing side; None when neither is found (the eye is inside the block)."""
+        centre = [value + 0.5 for value in cell]
+        stop = cls._first_stop(dimension, eye, centre, cell)
+        if stop is None:
+            for face in faces if faces is not None else range(6):
+                axis = FACE_AXES[face]
+                plane = cell[axis] + (1 if face % 2 else 0)
+                if (eye[axis] - plane if face % 2 else plane - eye[axis]) <= 0:
+                    continue
+                neighbour = [cell[index] + NEIGHBOURS_BY_FACE[face][index] for index in range(3)]
+                if not _aim_through(str(dimension.get_block_at(*neighbour).type)):
+                    stop = neighbour
+                    break
+        if stop is None:
+            return None
+        return {"x": stop[0], "y": stop[1], "z": stop[2], "type": str(dimension.get_block_at(*stop).type)}
+
+    @staticmethod
+    def _first_stop(dimension, origin, point, target) -> list[int] | None:
+        """The first cell on the segment that an aimed line cannot pass, before ``target``; None if it is clear."""
+        vector = [point[i] - origin[i] for i in range(3)]
+        distance = math.sqrt(sum(value * value for value in vector))
+        if distance < 0.001:
+            return None
+        direction = [value / distance for value in vector]
+        cell = [math.floor(value) for value in origin]
+        steps = [1 if value > 0 else -1 for value in direction]
+        delta = [abs(1 / value) if value else math.inf for value in direction]
+        crossings = [
+            ((cell[i] + (1 if steps[i] > 0 else 0) - origin[i]) / direction[i]) if direction[i] else math.inf
+            for i in range(3)
+        ]
+        while True:
+            if cell == list(target):
+                return None
+            if not _aim_through(str(dimension.get_block_at(*cell).type)):
+                return list(cell)
+            axis = min(range(3), key=lambda index: crossings[index])
+            if crossings[axis] > distance + 0.01:
+                return None
+            cell[axis] += steps[axis]
+            crossings[axis] += delta[axis]
+
+    @staticmethod
+    def _refuse(reach: dict):
+        code = reach["reachCode"]
+        template = REFUSALS[code]
+        obstruction = reach.get("obstruction")
+        if code == "blocked" and obstruction is not None:
+            raise TargetRefused(code, "Target is blocked by {block} at {x} {y} {z}", obstruction,
+                                block=obstruction["type"].removeprefix("minecraft:"), x=obstruction["x"],
+                                y=obstruction["y"], z=obstruction["z"])
+        raise TargetRefused(code, template, obstruction, **({"reach": f"{REACH:g}"} if code == "out_of_reach" else {}))
+
+    @staticmethod
+    def _public_reach(reach: dict) -> dict:
+        return {key: value for key, value in reach.items() if key in {"reachable", "reachCode", "obstruction"}}
 
     @classmethod
     def _visible_point(cls, dimension, eye, cell, reach, faces=None):
@@ -439,7 +551,7 @@ class EndstoneWorld:
             if beyond <= 0:
                 continue  # the eye is behind or level with this side
             neighbour = [cell[index] + NEIGHBOURS_BY_FACE[face][index] for index in range(3)]
-            if not _see_through(str(dimension.get_block_at(*neighbour).type)):
+            if not _aim_through(str(dimension.get_block_at(*neighbour).type)):
                 continue  # covered by another block
             facing.append((beyond, face, axis, plane))
         for _, face, axis, plane in sorted(facing, reverse=True):
@@ -472,7 +584,7 @@ class EndstoneWorld:
         while travelled <= distance + 0.01:
             if cell == target:
                 return True
-            if not _see_through(str(dimension.get_block_at(*cell).type)):
+            if not _aim_through(str(dimension.get_block_at(*cell).type)):
                 return False
             axis = min(range(3), key=lambda index: crossings[index])
             travelled = crossings[axis]
@@ -539,10 +651,13 @@ class EndstoneWorld:
         """One block's type and states; `~` is relative to the Bot. Any position is allowed."""
         bot = self._bot(identity_id)
         position = [math.floor(value) for value in self._resolve_coordinates(coordinates, bot.location)]
-        block = bot.location.dimension.get_block_at(*position)
+        location = bot.location
+        block = location.dimension.get_block_at(*position)
         states = getattr(block.data, "block_states", None) or {}
+        eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
         return {"x": position[0], "y": position[1], "z": position[2], "type": str(block.type),
-                "states": {str(key): _state_value(value) for key, value in dict(states).items()}}
+                "states": {str(key): _state_value(value) for key, value in dict(states).items()},
+                **self._public_reach(self._reach(location.dimension, eye, position))}
 
     def _known_block(self, block_type: str) -> None:
         try:
@@ -575,7 +690,10 @@ class EndstoneWorld:
             if distance <= radius and _exposed(dimension, x, y, z):
                 found.append({"x": x, "y": y, "z": z, "distance": round(distance, 1), "exact": distance})
                 found.sort(key=lambda entry: entry["exact"])
-        return [{key: value for key, value in entry.items() if key != "exact"} for entry in found[:limit]]
+        eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
+        return [{**{key: value for key, value in entry.items() if key != "exact"},
+                 "reachable": self._reach(dimension, eye, [entry["x"], entry["y"], entry["z"]])["reachable"]}
+                for entry in found[:limit]]
 
     def resolve_dismount(self, identity_id: str, vehicle_runtime_id: str | None) -> dict[str, float] | None:
         """Pick a vanilla-style exit next to the vehicle, as a feet position.
@@ -634,7 +752,8 @@ class EndstoneWorld:
         travelled, face = 0.0, 1
         while travelled <= distance:
             block = dimension.get_block_at(*cell)
-            if block.type not in NON_MINING_TARGETS:
+            # Light blocks are invisible in Survival; the crosshair passes them like air.
+            if block.type not in NON_MINING_TARGETS and not str(block.type).startswith("minecraft:light_block"):
                 return list(cell), block, face
             axis = min(range(3), key=lambda index: crossings[index])
             travelled = crossings[axis]
@@ -653,33 +772,30 @@ class EndstoneWorld:
         dimension = location.dimension
         if "coordinates" in parameters:
             target = [math.floor(value) for value in self._resolve_coordinates(parameters["coordinates"], location)]
-            nearest = [max(target[i], min(eye[i], target[i] + 1)) for i in range(3)]
-            if math.dist(eye, nearest) > 5.0:
-                raise ValueError("Target block is out of reach (maximum 5 blocks)")
-            if nearest == eye:
-                raise ValueError("Target block overlaps the Bot's eye position")
-            block = dimension.get_block_at(*target)
             faces = (int(parameters["face"]),) if "face" in parameters else None
-            # Aim at a visible part of a side toward the Bot; grass and flowers do not hide it.
-            visible = None if block.type in NON_MINING_TARGETS else self._visible_point(
-                dimension, eye, target, 5.0, faces)
-            if visible is None:
-                raise ValueError("Target is air/liquid or blocked by another block")
-            face, hit = visible
+            # Aim at a visible part of a side toward the Bot; grass, flowers and torches do not hide it.
+            reach = self._reach(dimension, eye, target, faces)
+            if not reach["reachable"]:
+                self._refuse(reach)
+            block = dimension.get_block_at(*target)
+            face, hit = reach["face"], reach["point"]
         else:
+            # The crosshair stops at the first block that is not air or liquid, as a player's does.
             yaw, pitch = math.radians(location.yaw), math.radians(location.pitch)
             direction = [-math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch)]
-            found = self._ray_block(dimension, eye, direction, 5.0)
+            found = self._ray_block(dimension, eye, direction, REACH)
             if found is None:
                 if parameters.get("continuous"):
                     return None
-                raise ValueError("No block in the Bot's line of sight within 5 blocks")
+                raise TargetRefused("not_a_target", "No block in the Bot's line of sight within {reach} blocks",
+                                    reach=f"{REACH:g}")
             target, block, face = found
             hit = [value + 0.5 for value in target]
-        if block.type == "minecraft:bedrock":
+        if str(block.type) in UNBREAKABLE:
             if parameters.get("continuous"):
                 return None
-            raise ValueError("Bedrock cannot be destroyed in Survival")
+            raise TargetRefused("unbreakable", "{block} cannot be destroyed in Survival",
+                                block=str(block.type).removeprefix("minecraft:"))
         yaw, pitch = self._facing(eye, hit)
         if parameters.get("continuous"):
             yaw, pitch = float(location.yaw), float(location.pitch)

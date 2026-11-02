@@ -1061,3 +1061,11 @@ test('drop all before BDS sent the inventory is an error, not an empty success',
   const { session } = await entitySession(t, [])
   assert.throws(() => session.drop({ selector: 'all' }), /not synchronized/)
 })
+
+test('mining accepts a block up to six blocks from the eyes, the reach the plugin targets within', async t => {
+  const { session } = await entitySession(t, [])
+  session.serverAuthoritativeMining = true
+  session.startMining({ blockPosition: [0, 64, 6], blockRuntimeId: 1, blockName: 'minecraft:stone', face: 2 })
+  assert.equal(session.miningStatus().state, 'active')
+  assert.throws(() => session.startMining({ blockPosition: [0, 64, 7], blockRuntimeId: 1, face: 2 }), /out of reach/)
+})

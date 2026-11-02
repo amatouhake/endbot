@@ -212,7 +212,14 @@ def error_to_wire(error: BaseException) -> dict:
     if isinstance(error, LocalizedError):
         params = {key: value if value is None or isinstance(value, (str, int, float, bool)) else str(value)
                   for key, value in error.params.items()}
-        return {"code": "invalid", "message": str(error), "template": error.template, "params": params}
+        wire = {"code": "invalid", "message": str(error), "template": error.template, "params": params}
+        # A refusal's outcome code and data (BOT-028: out_of_reach, blocked with its obstruction, ...).
+        outcome, data = getattr(error, "code", None), getattr(error, "data", None)
+        if isinstance(outcome, str):
+            wire["outcome"] = outcome
+        if isinstance(data, dict):
+            wire["data"] = data
+        return wire
     if isinstance(error, ValueError):
         return {"code": "invalid", "message": str(error)}
     if isinstance(error, TimeoutError):
@@ -229,7 +236,12 @@ def error_from_wire(detail: object) -> Exception:
     if code == "invalid":
         template, params = detail.get("template"), detail.get("params")
         if isinstance(template, str) and isinstance(params, dict):
-            return LocalizedError(template, **params)
+            error = LocalizedError(template, **params)
+            if isinstance(detail.get("outcome"), str):
+                error.code = detail["outcome"]
+            if isinstance(detail.get("data"), dict):
+                error.data = detail["data"]
+            return error
         return ValueError(message)
     return LinkError(code, message)
 
@@ -262,7 +274,7 @@ def resolve_mining_batch(world, requests: list[dict]) -> list[dict]:
         try:
             if block_type is not None:
                 try:
-                    cell = world.reachable_block(identity, block_type, 5.0)
+                    cell = world.reachable_block(identity, block_type, 6.0)
                     target = {**world.resolve_mining(identity, {"coordinates": cell}, None), "turn": True}
                 except ValueError:
                     target = None

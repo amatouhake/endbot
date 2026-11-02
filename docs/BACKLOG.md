@@ -1031,7 +1031,16 @@ lets `blocks` or `destroy` reach past their normal limits; SCRIPTING.md and `/bo
 
 ## BOT-028: One block-targeting contract for scripts
 
-Status: **Idea** (2026-11-02 JST). Found while writing a single-tree felling script on 0.5.0.
+Status: **Implemented with BOT-030, unreleased; live check pending** (2026-11-02 JST). Found while writing a
+single-tree felling script on 0.5.0. Decided 2026-11-02 JST, replacing the `visible` field and the "pick one plant
+rule" below: block properties are generated from minecraft-data (`transparent`, `boundingBox`, `diggable`) for the
+locked Bedrock version; a named target (coordinates or type) is aimed at through blocks without a collision box
+(grass, flowers, torches, snow layers), while the crosshair stays vanilla and stops at the first non-air, non-liquid
+block; `blocks` entries carry `reachable` and `block` adds `reachCode` (`not_a_target`, `out_of_reach`, `blocked`)
+and `obstruction`; `destroy`/`interact` refusals use the same codes (`unbreakable` is `destroy`'s own); one reach of
+6 blocks for every block target (destroy moved from 5); `status.mining.target`. See
+[targeting blocks](SCRIPTING.md#targeting-blocks). Live checks still open: breaking a named block through grass on
+BDS, destroy at 5-6 blocks, and a log wrapped in leaves (listed, `blocked` by the leaf).
 
 `blocks`, coordinate/typed `destroy` and crosshair `destroy`/`target` decide "this block" with three different
 predicates (`_exposed`, `_visible_point`, `_ray_block`): listing ignores the Bot's viewpoint, coordinate aiming sees
@@ -1073,7 +1082,8 @@ SCRIPTING.md states the convention.
 
 ## BOT-030: Translucent blocks do not hide blocks from `blocks`
 
-Status: **Idea** (2026-11-02 JST).
+Status: **Implemented with BOT-028, unreleased** (2026-11-02 JST). Covers every block minecraft-data marks
+`transparent`, including partial shapes (slabs, stairs, fences, walls, panes, doors), decided 2026-11-02 JST.
 
 "No x-ray" means what a player can see; players see through leaves, glass and similar blocks, and `block x y z` can
 already read any position. Exposure for `blocks` treats a named translucent set as see-through. Aiming and breaking

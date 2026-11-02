@@ -83,7 +83,7 @@ class WorldTests(unittest.TestCase):
         self.assertEqual((first["yaw"], first["pitch"]), (0, 0))
         self.mining_blocks({(0, 65, 3): "dirt"})
         self.assertEqual(self.world.resolve_mining(identity, {"continuous": True}, None)["blockPosition"], [0, 65, 3])
-        for cells in ({}, {(0, 65, 2): "bedrock", (0, 65, 3): "stone"}, {(0, 65, 6): "stone"}):
+        for cells in ({}, {(0, 65, 2): "bedrock", (0, 65, 3): "stone"}, {(0, 65, 7): "stone"}):
             self.mining_blocks(cells)
             self.assertIsNone(self.world.resolve_mining(identity, {"continuous": True}, None))
 
@@ -97,15 +97,56 @@ class WorldTests(unittest.TestCase):
         self.assertGreater(target["pitch"], 60)
 
     def test_mining_rejects_occluded_distant_air_and_bedrock_targets(self):
-        for cells, coordinates, message in (
-            ({(0, 65, 1): "stone", (0, 65, 2): "dirt"}, [0, 65, 2], "blocked"),
-            ({(0, 65, 9): "dirt"}, [0, 65, 9], "out of reach"),
-            ({}, [0, 65, 2], "air/liquid"),
-            ({(0, 65, 2): "bedrock"}, [0, 65, 2], "Bedrock"),
+        stone = {"x": 0, "y": 65, "z": 1, "type": "minecraft:stone"}
+        for cells, coordinates, message, code, data in (
+            ({(0, 65, 1): "stone", (0, 65, 2): "dirt"}, [0, 65, 2], "blocked by stone at 0 65 1", "blocked",
+             {"obstruction": stone}),
+            ({(0, 65, 9): "dirt"}, [0, 65, 9], r"out of reach \(maximum 6 blocks\)", "out_of_reach", None),
+            ({}, [0, 65, 2], "air or liquid", "not_a_target", None),
+            ({(0, 65, 2): "water"}, [0, 65, 2], "air or liquid", "not_a_target", None),
+            ({(0, 65, 2): "bedrock"}, [0, 65, 2], "bedrock cannot be destroyed", "unbreakable", None),
+            ({(0, 65, 2): "barrier"}, [0, 65, 2], "barrier cannot be destroyed", "unbreakable", None),
         ):
             self.mining_blocks(cells)
-            with self.assertRaisesRegex(ValueError, message):
+            with self.assertRaisesRegex(ValueError, message) as caught:
                 self.world.resolve_mining(str(self.alice.unique_id), {"coordinates": coordinates}, None)
+            self.assertEqual((caught.exception.code, caught.exception.data), (code, data))
+
+    def test_explicit_targets_aim_past_grass_and_torches_but_not_leaves_glass_or_slabs(self):
+        # BOT-028: a named block is aimed at through blocks without a collision box only.
+        identity = str(self.alice.unique_id)
+        for cover in ("short_grass", "torch", "snow_layer", "tall_grass"):
+            self.mining_blocks({(0, 65, 1): cover, (0, 65, 2): "oak_log"})
+            self.assertEqual(self.world.resolve_mining(identity, {"coordinates": [0, 65, 2]}, None)["blockPosition"],
+                             [0, 65, 2])
+        for cover in ("oak_leaves", "glass", "oak_slab", "oak_fence", "glass_pane"):
+            self.mining_blocks({(0, 65, 1): cover, (0, 65, 2): "oak_log"})
+            with self.assertRaises(ValueError) as caught:
+                self.world.resolve_mining(identity, {"coordinates": [0, 65, 2]}, None)
+            self.assertEqual(caught.exception.code, "blocked")
+            self.assertEqual(caught.exception.data["obstruction"]["type"], f"minecraft:{cover}")
+
+    def test_the_crosshair_stops_at_grass_and_torches_like_a_players(self):
+        identity = str(self.alice.unique_id)
+        for cover in ("short_grass", "torch", "oak_leaves"):
+            self.mining_blocks({(0, 65, 1): cover, (0, 65, 2): "oak_log"})
+            self.assertEqual(self.world.resolve_mining(identity, {}, None)["blockPosition"], [0, 65, 1])
+        self.mining_blocks({(0, 65, 1): "light_block_15", (0, 65, 2): "oak_log"})
+        self.assertEqual(self.world.resolve_mining(identity, {}, None)["blockPosition"], [0, 65, 2])
+
+    def test_a_block_exposed_only_on_its_far_side_is_blocked_by_its_near_cover(self):
+        # Exposed (air beyond it) but every side facing the Bot is covered: listed, not reachable.
+        identity = str(self.alice.unique_id)
+        cells = {(0, 65, 2): "oak_log", (0, 65, 1): "dirt", (0, 66, 2): "dirt", (0, 64, 2): "dirt",
+                 (1, 65, 2): "dirt", (-1, 65, 2): "dirt"}
+        self.mining_blocks(cells)
+        with self.assertRaises(ValueError) as caught:
+            self.world.resolve_mining(identity, {"coordinates": [0, 65, 2]}, None)
+        self.assertEqual(caught.exception.code, "blocked")
+        self.assertEqual(caught.exception.data["obstruction"], {"x": 0, "y": 65, "z": 1, "type": "minecraft:dirt"})
+        info = self.world.block_info(identity, [0, 65, 2])
+        self.assertEqual((info["reachable"], info["reachCode"], info["obstruction"]["type"]),
+                         (False, "blocked", "minecraft:dirt"))
 
     def setUp(self):
         world_module.Location = FakeLocation
@@ -229,6 +270,7 @@ class WorldTests(unittest.TestCase):
 
     def test_interaction_is_relative_to_the_bot_in_its_dimension_with_public_block_runtime_id(self):
         # `~` follows the Bot (as destroy and block do), not the sender, and needs no player sender.
+        self.mining_blocks({(1, 64, -3): "chest"})
         for sender in (self.steve, None):
             result = self.world.resolve_interaction(
                 str(self.alice.unique_id),

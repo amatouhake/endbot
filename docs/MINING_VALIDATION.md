@@ -230,6 +230,11 @@ three targeting cases added to `scripts/mining_probe.py` all passed.
   obstruction. Recorded as observed, no code changed for this run. Fixed afterwards on the same branch: a block
   whose only clear lines end past the limit now reports `out_of_reach` (unit test; not rerun on BDS).
 
+The server's own limit is higher than the product's: with `REACH` and the runtime's `BLOCK_REACH` raised to 24 on a
+throwaway branch (`probe/bot028-max-reach`, not for merge), a nearest face at 10.0 blocks from the eyes still broke while
+10.25, 10.5, 10.75 and 11.0 were accepted by the plugin but never changed, so moving the reach from 5 to 6 does not
+lean on BDS's edge, and there is room above 6 if a later task needs it.
+
 Not covered by this run: typed `destroy`/`interact` (`destroy minecraft:oak_log`), the `except`/area forms, and the
 script-facing `reachCode` fields (unit tests only). The probe's `cells`/`watch`/`position` request fields exist for
 these scenes; every earlier mining case passed unchanged with them in place.

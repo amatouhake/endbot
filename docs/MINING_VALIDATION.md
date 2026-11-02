@@ -175,3 +175,35 @@ the `feat/destroy-count` tree — RakNet and NetherNet (the default transport), 
 `scripts/mining_probe.py` carries both count cases now, so the check is reproducible with the same command. Exact
 break ownership beyond "the watched target changed" remains as documented (another actor changing the watched block
 counts too), and a human client is not covered by these runs.
+
+## `look` observation gate (2026-11-02 JST)
+
+Real Windows run on the BOT-029 branch (`ccr-02ffe5b7-fbvlzv-bot029` at `58473ae`): patched Endstone
+`0.11.15+endbot.1` (the release-candidate Windows wheel) with plugin `0.5.0` built from the branch, BDS `1.26.60.6`
+(build `52886189`, protocol `2225`), NetherNet (the default transport), Python `3.12.10`, Node.js `v24.17.0`, and a
+fresh Survival world (`online-mode=true`, `allow-cheats=false`, `allow-list=true`, no experiments).
+`scripts/raknet_spike.py --mining` reported `ok` at stage `complete`, with every mining case passing.
+
+- `look-then-destroy` passed on all three attempts: with the Bot turned away (`look 90 0`), `look 0 0` and a
+  crosshair `destroy` sent back to back with no pause each broke the aimed `minecraft:dirt` at `23 201 -30`
+  (15:13:46, 15:13:51 and 15:13:55 JST). The `destroy` resolves its target from the Bot's current BDS rotation, so
+  it can only hit the aimed block if BDS already holds the rotation `look` asked for.
+- All ten `look` commands in the run were answered and none failed (`look failed` appears nowhere in `server.log`).
+  Back-to-back pairs such as `look 90 0` then `look 0 0` answered in the same or the next second, so BDS reported
+  the rotation within the 1 degree tolerance well inside the 0.5 s budget, right after the runtime took the look.
+- That answers the question the PR left open: on this pair Endstone's `Player.location` yaw and pitch for a Bot are
+  within 1 degree of the rotation the Bot sends in `player_auth_input` at yaw 0, 30, 45 and 90 and at pitch 10. The
+  smoke cannot report the exact observed angle, because the chat reply echoes the requested one and
+  the observed values travel only in `data.look`, which the console path does not print.
+- The rest of the smoke passed unchanged: bare-hand and iron-pickaxe breaking with loot and durability, continuous
+  retarget/wait/resume/stop, mid-break operations, look pause/resume, hotbar restart, explicit and all stop,
+  protected block, death notice, `for`/`count` ends, radius, movement and jump, same-identity reconnect, despawn,
+  four negative-auth variants, controller policy across a restart, clean shutdown and world history
+  (`allow-cheats=false`, no Creative and no experiment history). `runtime.log` carries no warnings; `server.log`
+  only the allow-list notice of a world with no players, the canceled-by-death case and the link closing at
+  shutdown.
+
+Not covered by this run: the script-facing `data.look` values (unit-tested only), `Group look` against BDS, and the
+`code="timeout"` path, which needs a Bot BDS cannot observe. The wait's budget is ten ticks expressed as 0.5 s of
+wall clock (`LOOK_TIMEOUT_TICKS / 20`), so a server running below 20 TPS gets fewer than ten observations before the
+timeout expires; the intent, roughly half a second, is unchanged. Reproduce with the same command from the branch.

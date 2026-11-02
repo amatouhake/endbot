@@ -1051,12 +1051,14 @@ three paths in one table. Live check: a script that clears a covered log by brea
 
 ## BOT-029: `look` completes when BDS observes the rotation
 
-Status: **Implemented, unreleased; live check pending** (2026-11-02 JST). The command service polls the Bot's BDS
+Status: **Implemented, unreleased; live check passed** (2026-11-02 JST). The command service polls the Bot's BDS
 rotation through the world link after the runtime accepts the look (1 degree, at most 10 ticks) and returns the
 observed `{yaw, pitch}` as `data.look`; a timeout is `code="timeout"`, a Bot BDS does not have is `not_found`. Group
 `look` waits per member the same way. `status.look` uses the same [0, 360) yaw. The mining smoke
 (`raknet_spike.py --mining`) gains `look-then-destroy`: `look 0 0` and crosshair `destroy` sent back to back break
-the aimed block three times; it has not run against BDS yet.
+the aimed block three times. It passed against BDS on Endstone `0.11.15+endbot.1` / BDS `1.26.60.6` (three rounds,
+ten looks, no timeout, and Endstone's reported rotation within 1 degree of what the Bot sends); see
+[mining validation](MINING_VALIDATION.md#look-observation-gate-2026-11-02-jst).
 
 `look` returns before the next input tick carries the rotation, so crosshair operations issued right after it
 (`destroy`, `attack`, `use`, `target`) resolve against the old view. Scripts work around it with polling and their

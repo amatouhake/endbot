@@ -611,7 +611,8 @@ history, actual Xbox achievement unlocks or another Endstone/BDS pair's support.
 
 ## Live validation
 
-Live results below come from `build/scripting-live-3` and, after the run-lifetime/status/`waitMining` changes, `build/scripting-live-4` (all cases including Mine at spots) on 2026-10-23 JST (Windows RakNet, Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, reusable sandbox). Earlier attempts found that Endstone's tomlkit config integers were rejected (fixed) and that the probe sampled positions too coarsely (fixed). In the pinned Python environment with the plugin
+Live results below come from `build/scripting-live-3` and, after the run-lifetime/status/`waitMining` changes, `build/scripting-live-4` (all cases including Mine at spots) on 2026-10-23 JST (Windows RakNet, Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, reusable sandbox). The two rate-limit rows come from a rerun on 2026-11-02 JST (patched Endstone `0.11.15+endbot.1` / BDS
+`1.26.60.6`, NetherNet, `build/live-2026-11-02-bot031`). Earlier attempts found that Endstone's tomlkit config integers were rejected (fixed) and that the probe sampled positions too coarsely (fixed). In the pinned Python environment with the plugin
 installed and runtime dependencies present, build the native runner, then run from the repository root:
 
 ```text
@@ -630,6 +631,8 @@ fail with the build command. No server settings are weakened. Omit `--scripting`
 | Patrol stopped by name and run ID | Real move/wait loop runs listed; both Bots move, stop retires the run, fresh BDS samples stay within 0.15 blocks over 1.2 seconds | Passed |
 | Console overlap and subsequent input | Later console movement survives run cleanup; console movement after stop also advances by at least 0.5 blocks | Passed |
 | Runaway loop | `while true do end` terminates with `execution budget exceeded` and cleanup log | Passed |
+| Operation rate limit throttles | 80 read-only `status` calls with no `wait` at the default `operations-per-second = 20`; the throttle notice is logged once and the run completes with all 80 results (4.01 s, 20.0 operations/s) | Passed (2026-11-02) |
+| Message flood still bounded | 2000 `log` lines from one run; the 81st message inside a second ends the run with `Script operation rate limit reached` and input cleanup | Passed (2026-11-02) |
 | Mine at spots (new case) | Four SDK-placed dirt blocks at two spots become air in BDS; each spot logs `block count reached`; normal completion and cleanup | Passed |
 | Console list/runs | Stored names, active run ID/name and final empty runs output | Passed |
 | Disabled default | Unit coverage in `test_scripting.py`: every `/botscript` entry rejects under default `ScriptConfig`, without constructing a runner; no restart phase | Passed (plugin unittest suite) |

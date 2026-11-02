@@ -1100,13 +1100,17 @@ BDS on 2026-11-02 (listed without `in reach`, `blocked by oak_leaves at ...`, `d
 
 ## BOT-031: Script rate limit throttles instead of failing
 
-Status: **Implemented, unreleased** (2026-11-02 JST). Unit-tested; no live run yet. The wait runs on the run's
+Status: **Implemented, unreleased; live check passed** (2026-11-02 JST). The wait runs on the run's
 own thread, before the operation is queued to the server task, so a throttled run never holds the queue.
 
 Up to `operations-per-second`, an operation over the sliding window waits for a free slot instead of ending the run;
 the existing IPC bound (`4 * operations-per-second`) still fails the run. The run log notes the first throttle.
 
 Acceptance: a read-only loop without `wait` completes at the configured rate; a flood past the IPC bound still fails.
+Live run (Windows, patched Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, `scripts/raknet_spike.py --scripting`):
+80 read-only `status` calls with no `wait` at the default 20 operations-per-second completed in 4.01 s (20.0/s),
+logged the throttle notice once and reported all 80 results; a 2000-line log flood stopped at the 81st message
+inside a second and ended the run with `Script operation rate limit reached` plus input cleanup.
 
 ## Deferred priorities
 

@@ -76,6 +76,15 @@ def _skipped(data, lang):
 
 def _run_log(data, lang, sink):
     run, limited = data["run"], data["limited"]
+    if data.get("notice") == "throttled":
+        if sink == "log":
+            return (f"Endbot script {run}: operation rate limit reached; operations now wait for a free slot",)
+        if not data["chat"]:
+            return ()
+        text = tr(lang, "operation rate limit reached; operations now wait for a free slot")
+        if data["skipped"]:
+            text += " " + _skipped(data, lang)
+        return (reply(text, f"{data['name']} ({run})", DIM),)
     if sink == "log":
         return (f"Endbot script {run}: log limit reached; further logs are dropped" if limited
                 else f"Endbot script {run}: {data['text']}",)

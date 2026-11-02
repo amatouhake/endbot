@@ -993,6 +993,7 @@ JA.update({
         "スクリプト名は英字か下線で始まる 1 から 16 文字の英数字と下線にしてください",
     "Script {name} already has the book's source": "スクリプト {name} はすでに本と同じ内容です",
     "log limit reached; further logs are dropped": "ログの上限に達しました。以降のログは記録されません",
+    "operation rate limit reached; operations now wait for a free slot": "操作頻度の上限に達しました。以降の操作は空きを待って実行されます",
     "({count} log lines not shown)": "(ログ {count} 行を省略)",
     "Not loaded: a stored script named {name} already exists":
         "読み込みませんでした。同じ名前の保存済みスクリプト {name} があります",

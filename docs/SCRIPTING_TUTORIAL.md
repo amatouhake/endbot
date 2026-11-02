@@ -209,8 +209,10 @@ stop the job. `group:waitMining{...}` waits for every member.
   not undo what Bots already did.
 - A mistake in the code (a missing `end`, a typo) is reported with its line, such as `script:4: ...`, when you
   save or run the script, and with `reload` for script files. Fix that line and try again.
-- A script is also stopped when it does more than about 20 operations per second, runs out of CPU time, or you
-  lose permission to control Bots. The end message says which.
+- A script that asks for more than about 20 operations per second is slowed down, not stopped: each extra operation
+  waits for its turn, and the log says so once. A script is stopped when it floods the host with far more requests
+  (logs and zero waits included), runs out of CPU time, or you lose permission to control Bots. The end message says
+  which.
 - Runs survive you logging out; they do not survive a server restart.
 
 ## 9. Cheat sheet

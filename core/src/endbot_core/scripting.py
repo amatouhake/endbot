@@ -90,6 +90,8 @@ class ScriptRun:
     log_lines: int = 0
     log_bytes: int = 0
     log_dropped: bool = False
+    # Whether an operation already waited for a free rate slot (the run log notes only the first).
+    throttled: bool = False
     # Log lines in the starter's chat: the current window's start and count, and lines held back.
     chat_window: float = 0.0
     chat_lines: int = 0
@@ -400,14 +402,34 @@ class ScriptService:
         mode = self.config.replies
         return mode == "all" or (mode == "failures" and not result.accepted)
 
+    def _throttle(self, run):
+        """Take a slot in the sliding one-second operation window, waiting for one when the window is full (BOT-031).
+
+        The wait runs on the run's own thread, outside ``ordered``, so a throttled run never holds the server task
+        queue. It honours the run's deadline and stop like ``wait``. The first throttle of a run is noted in its log.
+        """
+        while True:
+            self._alive(run)
+            now = time.monotonic()
+            while run.calls and run.calls[0] <= now - 1:
+                run.calls.popleft()
+            if len(run.calls) < self.config.operations_per_second:
+                run.calls.append(now)
+                return
+            if not run.throttled:
+                run.throttled = True
+                self._notice(run, "throttled")
+            self._wait(run, max(0.0, run.calls[0] + 1 - now))
+
+    def _notice(self, run, notice):
+        if self.publish:
+            shown = self._chat_log(run)
+            self.publish(Event(run.source, "run.log", {
+                "run": run.identity, "name": run.name, "text": "", "limited": False, "notice": notice,
+                "chat": shown, "skipped": self._skipped_logs(run) if shown else 0}))
+
     def _operation(self, run, event, *, audit=True):
         self._alive(run)
-        now = time.monotonic()
-        while run.calls and run.calls[0] <= now - 1:
-            run.calls.popleft()
-        if len(run.calls) >= self.config.operations_per_second:
-            raise LocalizedError("Script operation rate limit reached")
-        run.calls.append(now)
         target = event.get("target")
         guard = self._guard(run, target)
         source = replace(run.source, group_guard=guard)
@@ -623,6 +645,7 @@ class ScriptService:
                                                 or not 0 <= timeout <= 2147483647):
                         raise LocalizedError("Invalid script wait")
                     end = None if timeout is None else time.monotonic() + timeout / 20
+                    self._throttle(run)
                     payload = self.ordered(lambda event=event: self._operation(run, event))
                     while kind == "waitOnline" and not payload["ok"]:
                         if end is not None and time.monotonic() >= end:
@@ -630,6 +653,7 @@ class ScriptService:
                             break
                         pause = max(0.25, 1 / self.config.operations_per_second)
                         self._wait(run, pause if end is None else min(pause, max(0, end - time.monotonic())))
+                        self._throttle(run)
                         payload = self.ordered(lambda event=event: self._operation(run, event))
                     if kind == "waitOnline":
                         payload = {"result": {**payload, "code": "ok" if payload["ok"] else "timeout",

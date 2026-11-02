@@ -6,6 +6,7 @@ import math
 import re
 import shlex
 import threading
+import time
 from dataclasses import dataclass, field
 
 from endbot_core.control import RuntimeControlError, bot_profiles
@@ -27,10 +28,27 @@ class ControllerLimitReached(LocalizedError):
     code = "conflict"
 
 
+class BotNotObserved(LocalizedError):
+    """The runtime has the Bot online but BDS has no player for it to observe."""
+
+    code = "not_found"
+
+
+class LookNotObserved(LocalizedError):
+    """BDS did not report the rotation `look` asked for in time (BOT-029)."""
+
+    code = "timeout"
+
+
 # Outcome codes, coarse by what the user should do next; refined only when a
 # caller needs to tell two cases apart. "ok" is the only success code.
 OUTCOME_CODES = frozenset({"ok", "unauthorized", "not_found", "invalid_argument", "unavailable", "conflict",
                            "timeout"})
+# How long `look` waits for BDS to report the new rotation, and how close it must be (BOT-029). Each poll
+# already waits for a server tick through the world link; the sleep keeps a fast adapter from spinning.
+LOOK_TIMEOUT_TICKS = 10
+LOOK_TOLERANCE = 1.0
+LOOK_POLL_SECONDS = 0.025
 # Input channels whose continuing work is a job a script can wait for (BOT-016).
 INPUT_JOBS = ("move", "jump", "attack", "use", "interact")
 # Operations that name no Bot to act on, so ownership never refuses them (BOT-024 4b).
@@ -1835,10 +1853,16 @@ class BotCommandService:
             return say(
                 "drop stack requested" if command.parameters["stack"] else "drop one item requested", result["name"]
             )
-        elif command.operation == "look" and "targetCoordinates" in command.parameters:
-            status = control.request("status", name=command.name)
-            yaw, pitch = self.world.look_at(status["identityId"], command.parameters["targetCoordinates"])
+        elif command.operation == "look":
+            if "targetCoordinates" in command.parameters:
+                status = control.request("status", name=command.name)
+                yaw, pitch = self.world.look_at(status["identityId"], command.parameters["targetCoordinates"])
+            else:
+                yaw, pitch = command.parameters["yaw"], command.parameters["pitch"]
             result = control.request("look", name=command.name, yaw=yaw, pitch=pitch)
+            observed = self._await_look(result, yaw, pitch)
+            if observed is not None:
+                started.update(look={"yaw": observed[0], "pitch": observed[1]})
         elif command.operation == "rename":
             _assert_not_reserved(command.parameters["newName"])
             status = control.request("status", name=command.name)
@@ -1872,8 +1896,6 @@ class BotCommandService:
             direction = parameters["direction"]
             return say("movement set to {direction}{duration}", name, direction=direction, duration=duration)
         if command.operation == "look":
-            if "targetCoordinates" not in parameters:
-                yaw, pitch = parameters["yaw"], parameters["pitch"]
             return say("look set to yaw={yaw} pitch={pitch}", name, yaw=f"{yaw:.1f}", pitch=f"{pitch:.1f}")
         if command.operation == "action":
             action, mode = parameters["action"], parameters["mode"]
@@ -2004,6 +2026,30 @@ class BotCommandService:
             parts.append(" ".join(words))
         return tr(lang, "timed: {inputs}", inputs=", ".join(parts)) if parts else None
 
+    def _await_look(self, status, yaw, pitch):
+        """Wait until BDS reports the rotation ``look`` asked for (BOT-029); return the observed ``(yaw, pitch)``.
+
+        The runtime carries a new look on its next input tick, so a crosshair operation issued right after an
+        unconfirmed look would resolve against the old view. This polls the Bot's BDS rotation (one server tick
+        per poll through the world link) until yaw and pitch are within LOOK_TOLERANCE degrees, for at most
+        LOOK_TIMEOUT_TICKS ticks. Yaw is returned in [0, 360), 0 facing +Z (south), 90 facing -X (west); pitch
+        is -90 (up) to 90 (down). Without a world adapter there is nothing to observe and None is returned.
+        """
+        if self.world is None:
+            return None
+        deadline = time.monotonic() + LOOK_TIMEOUT_TICKS / 20
+        while True:
+            observed = self.world.observe(status["identityId"])
+            if observed is None:
+                raise BotNotObserved("Bot is not present in the world")
+            seen_yaw, seen_pitch = float(observed["yaw"]) % 360, float(observed["pitch"])
+            if (abs((seen_yaw - yaw + 180) % 360 - 180) <= LOOK_TOLERANCE
+                    and abs(seen_pitch - pitch) <= LOOK_TOLERANCE):
+                return round(seen_yaw, 3) % 360, round(seen_pitch, 3)
+            if time.monotonic() >= deadline:
+                raise LookNotObserved("look was not observed within {ticks} ticks", ticks=LOOK_TIMEOUT_TICKS)
+            time.sleep(LOOK_POLL_SECONDS)
+
     @staticmethod
     def input_job(status, channel):
         """The id of the job ``channel`` (move or an action) is running in a runtime status, or None."""
@@ -2027,7 +2073,8 @@ class BotCommandService:
             "vehicle": status.get("vehicle"),
             "position": position,
             "dimension": observed.get("dimension"),
-            "look": {"yaw": observed["yaw"], "pitch": observed["pitch"]} if "yaw" in observed else None,
+            # One yaw convention for status, look input and look's result (BOT-029): [0, 360).
+            "look": {"yaw": float(observed["yaw"]) % 360, "pitch": observed["pitch"]} if "yaw" in observed else None,
             "health": observed.get("health"),
             "maxHealth": observed.get("maxHealth"),
             "hunger": vitals.get("hunger"),

@@ -720,6 +720,7 @@ JA: dict[str, str] = {
     "Command player is no longer online": "コマンドを出したプレイヤーがもういません",
     # World errors.
     "Bot is not present in the world": "Bot がワールドにいません",
+    "look was not observed within {ticks} ticks": "{ticks} tick 以内に向きの反映を確認できませんでした",
     "tp me requires a player command source": "tp me はプレイヤーだけが使えます",
     "Player {name} is not online": "プレイヤー {name} はオンラインではありません",
     "Endstone rejected the teleport": "Endstone がテレポートを拒否しました",

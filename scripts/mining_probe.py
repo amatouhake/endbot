@@ -348,6 +348,21 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     console("bot RakNetSpike destroy stop")
     report["mining"]["continuous-follows-look"] = True
 
+    # BOT-029: look returns once BDS has the rotation, so a crosshair destroy sent right after it, with no pause,
+    # targets the newly aimed block every time.
+    for attempt in range(3):
+        setup(f"look-then-destroy-{attempt}", "minecraft:dirt")
+        offset = len(log())
+        console("bot RakNetSpike look 90 0")
+        wait("Bot faces away", lambda offset=offset: "look set to yaw=90.0" in log()[offset:], 5)
+        offset = len(log())
+        console("bot RakNetSpike look 0 0")
+        console("bot RakNetSpike destroy")
+        wait("destroy right after look breaks the aimed block", lambda: observed().get("block") == "minecraft:air", 10)
+        if "look failed" in log()[offset:]:
+            raise RuntimeError(f"look was not observed: {log()[offset:]}")
+    report["mining"]["look-then-destroy"] = True
+
     # A hotbar switch restarts the current block with the new item.
     setup("hotbar-restart", "minecraft:obsidian", "minecraft:diamond_pickaxe")
     console("bot RakNetSpike destroy continuous")

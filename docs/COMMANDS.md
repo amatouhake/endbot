@@ -394,7 +394,7 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 Omitting an action mode means `once`. Continuous actions run each 20 Hz input tick; interval actions accept 1–72000
 ticks. Movement behaves as held input. Global `stop` clears movement, scheduled actions, sprint, and sneak while keeping
 the session connected. `look` remains at its last rotation after stop.
-`look` answers once BDS reports the new rotation (within 1 degree, for at most 10 ticks), so an `attack`, `use`,
+`look` answers once BDS reports the new rotation (within 1 degree, for about 0.5 s: 10 ticks at 20 TPS), so an `attack`, `use`,
 `destroy` or `interact` sent right after it acts on the new view; when BDS does not report it in time, `look` fails
 with a timeout and the Bot may still turn. Yaw is in degrees, 0 facing south (+Z), 90 west (-X), 180 north, 270 east,
 and any value is accepted (taken modulo 360); pitch is -90 (up) to 90 (down). `use` sends the held item's normal Bedrock

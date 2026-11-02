@@ -497,7 +497,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:tp()` | target: string | none |
 | `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: string, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
 | `:move()` | direction: forward / backward / left / right / stop | ticks: integer |
-| `:look()` | yaw: number, pitch: number | none; returns once BDS reports the rotation, with `data.look` the observed `{yaw, pitch}`, or `code="timeout"` after 10 ticks |
+| `:look()` | yaw: number, pitch: number | none |
 | `:look()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:swap()` | a: integer, b: integer | none |
 | `:hold()` | item: string | none |
@@ -532,6 +532,9 @@ Sprint/sneak take booleans. Teleport options pair `yaw,pitch`, or use `facing` f
 `facingX,facingY,facingZ`; `dimension` becomes the leading `in` clause. Three-argument `look(x,y,z)` is `look at`,
 relative to the Bot as in commands. `group:members()` pins UUID/membership order and returns indexed member
 handles. Root list/ping/help retain their root semantics. A script `menu()` returns acceptance without opening UI.
+`look` (both forms) returns once BDS reports the new rotation, with the observed `{yaw, pitch}` as `data.look`, so a
+crosshair operation right after it uses the new view; if BDS does not report it within 10 ticks the result has
+`code="timeout"`.
 
 ## Lifetime, boundaries and unverified gates
 

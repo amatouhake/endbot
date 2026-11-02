@@ -601,6 +601,15 @@ class CommandServiceTests(unittest.TestCase):
         waiting = {**status, "mining": {"state": "waiting", "continuous": True, "loopId": "l", "blockPosition": []}}
         self.assertIsNone(self.service.script_status(waiting)["mining"]["target"])
 
+    def test_status_prints_yaw_in_the_look_convention(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        self.world.rotation = {"dimension": "Overworld", "x": 1.0, "y": 64.0, "z": 2.0,
+                               "yaw": -90.0, "pitch": 10.0}
+        self.assertIn("yaw=270.0", self.service.execute(["Alice", "status"], object()).message)
+        # Rounding to one decimal must not leave the range: -0.04 is in [0, 360) as 0.0, not 360.0.
+        self.world.rotation = {**self.world.rotation, "yaw": -0.04}
+        self.assertIn("yaw=0.0", self.service.execute(["Alice", "status"], object()).message)
+
     def test_look_waits_until_bds_reports_the_rotation(self) -> None:
         self.service.execute(["Alice", "spawn"], object())
         seen = iter([{"yaw": 0.0, "pitch": 0.0}, {"yaw": 0.0, "pitch": 0.0}, {"yaw": 45.4, "pitch": 30.2}])

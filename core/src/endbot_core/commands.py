@@ -2067,9 +2067,10 @@ class BotCommandService:
             tr(lang, "desired={state}", state=Text(status["desiredState"])),
         ]
         if observed:
+            yaw = round(float(observed["yaw"]) % 360, 1) % 360
             fields.append(
                 f"{observed['dimension']} {observed['x']:.2f} {observed['y']:.2f} {observed['z']:.2f} "
-                f"yaw={float(observed['yaw']) % 360:.1f} pitch={observed['pitch']:.1f}"
+                f"yaw={yaw:.1f} pitch={observed['pitch']:.1f}"
             )
         if status.get("lastError"):
             fields.append(f"{ERROR}{tr(lang, 'error={error}', error=status['lastError'])}{RESET}")

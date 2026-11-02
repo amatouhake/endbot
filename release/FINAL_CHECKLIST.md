@@ -364,18 +364,22 @@ commands; the old spellings answer with a message naming the new ones.
 Decided 2026-11-02 JST: ship without a new BDS live smoke on the candidate. The branch gates recorded for BOT-027 to
 BOT-031 ran on the same code (only versions and documentation differ), as 0.3.0 cited its branch evidence.
 
-- [ ] Build `release-candidate.yml` for `0.6.0` from the release-prepared `main` commit; the Windows/Linux wheel,
-  bundle, runner and clean-consumer jobs and `assemble` must pass.
-- [ ] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.6.0`; verify checksums, attestations and the
-  source commit in the manifest.
+- [x] Build `release-candidate.yml` for `0.6.0` from `main` `1d1b8ce`; the `windows` and `linux` jobs, both
+  clean-consumer E2E legs and `assemble` passed (run
+  [41466589712](https://github.com/amatouhake/endbot/actions/runs/41466589712)). The consumer legs ran over NetherNet
+  on `windows-2022` and `ubuntu-22.04` with no Python or Node.js on PATH.
+- [x] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.6.0`; every one of the 11 listed checksums
+  matched a re-download, `gh attestation verify` passed for all 12 files including `SHA256SUMS`, and the manifest
+  records source revision `1d1b8ce`.
 - [x] Human Windows-client pass (2026-11-02 JST) on a bundle built from `main` `ecaea7f` (dev stamp `0.5.1-dev.1`):
   `/bot help area` and `/bot help blocks` in Japanese, the **Find blocks** form (type, radius, optional centre),
   `look 0 0` followed by a crosshair `destroy`, and the refusal of the removed `blocks oak_log radius 5` all behaved
   as expected. See [mining validation](../docs/MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst).
-- [ ] Update from a published-0.5.0 instance: BDS `1.26.60.6` and `endbot.toml` unchanged, the Bot rejoins with the
-  same identity, `doctor --live` passes.
+- [ ] Update from a published-0.5.0 instance: **not run for this release** (decided 2026-11-02). No BDS, lock or store
+  moves, and the two consumer legs above exercise the same setup/update path on both platforms.
 - [x] Release notes list the remaining manual gates as known limitations.
-- [ ] Publish the tested draft unchanged, then verify published asset checksums and provenance.
+- [x] Publish the tested draft unchanged (2026-11-03: tag `v0.6.0` = `1d1b8ce`, published as the latest release;
+  every re-downloaded asset matches `SHA256SUMS`, which is identical to the candidate's).
 
 ### After 0.1.0 (direction)
 

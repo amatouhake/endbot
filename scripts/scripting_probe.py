@@ -201,6 +201,27 @@ def distance(a, b):
     return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
 
 
+# BOT-031: 80 read-only operations with no wait. At the default 20 operations-per-second the first 20 run
+# at once and the rest wait for a slot, so the run takes about three seconds and still completes.
+THROTTLE_SCRIPT = """params {}
+local b = bot("BOT")
+local ok = 0
+for index = 1, 80 do
+    local result = b:status()
+    if result.ok then ok = ok + 1 end
+end
+log("status calls: " .. ok)
+""".replace("BOT", BOT)
+
+# BOT-031: messages are not throttled, so a log flood still hits the IPC bound (4 * operations-per-second)
+# and ends the run, which is the behaviour the change deliberately kept.
+FLOOD_SCRIPT = """params {}
+for index = 1, 2000 do
+    log("flood " .. index)
+end
+"""
+
+
 def exercise_scripting(output, console, request, wait, log, report):
     from e2e_consumer import ConsumerError
 
@@ -367,6 +388,37 @@ end
         if missing:
             raise ConsumerError(f"job waits did not report: {missing}")
         results["waits"]["outcome"] = "passed"
+
+        # BOT-031: operations over the sliding one-second window wait for a slot instead of ending the run.
+        save("throttle", THROTTLE_SCRIPT)
+        run_id, offset = start("throttle", "")
+        started = time.monotonic()
+        results["throttle"] = {"run_id": run_id, "operations": 80, "operations_per_second": 20,
+                               "expected_minimum_seconds": 2.5}
+        results["throttle"]["output"] = ended("throttle", run_id, offset, "completed")
+        elapsed = round(time.monotonic() - started, 2)
+        results["throttle"]["seconds"] = elapsed
+        if "status calls: 80" not in results["throttle"]["output"]:
+            raise ConsumerError("throttled operations did not all run")
+        if "operation rate limit reached; operations now wait for a free slot" not in results["throttle"]["output"]:
+            raise ConsumerError("the throttle notice was not logged")
+        if elapsed < results["throttle"]["expected_minimum_seconds"]:
+            raise ConsumerError(f"80 operations at 20/s finished in {elapsed}s; the run was not throttled")
+        results["throttle"]["observed_operations_per_second"] = round(80 / elapsed, 1)
+        results["throttle"]["outcome"] = "passed"
+
+        # BOT-031: a message flood is still bounded by the IPC limit and ends the run.
+        save("flood", FLOOD_SCRIPT)
+        run_id, offset = start("flood", "")
+        results["flood"] = {"run_id": run_id, "ipc_bound_per_second": 80, "messages": 2000}
+        wait("flood run ended", lambda offset=offset, run_id=run_id: (
+            "flood ended:" in log()[offset:]
+            and f"Endbot script {run_id}: input cleanup completed" in log()[offset:]
+        ), 20)
+        results["flood"]["output"] = log()[offset:]
+        if "rate limit" not in results["flood"]["output"]:
+            raise ConsumerError("a log flood past the IPC bound did not fail the run")
+        results["flood"]["outcome"] = "passed"
 
         run_id, offset = start("runaway", "")
         results["runaway"] = {"run_id": run_id}

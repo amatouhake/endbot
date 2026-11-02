@@ -458,7 +458,7 @@ def find_blocks_modal(name: str, lang: str = "en") -> ModalScreen:
 
     return ModalScreen(f"{name}: blocks", (
         TextInput(tr(lang, "Block type"), "oak_log"),
-        Slider(tr(lang, "Radius"), 1, 16, 1, 8),
+        Slider(tr(lang, "Scan radius"), 1, 16, 1, 8),
         TextInput(tr(lang, "x y z (optional scan centre; ~ is relative to the Bot)"), ""),
     ), build, tr(lang, "Run"))
 

@@ -626,9 +626,9 @@ out of reach, or what blocks it); `~` is relative to the Bot, and coordinates be
 lists the nearest blocks of that type, as `x y z (distance)`, nearest the Bot first (it stops reading once `limit`
 matches are certain), within a sphere of 8 around the Bot or the given [area](#areas-within-and-except) (never past 16
 blocks from the Bot), up to `limit` (default 10, at most 64),
-counting only blocks a player could see (a face touching air, liquid, plants, leaves, glass or a partial shape such as a
-slab or fence), so it does not reveal buried ores; entries the Bot can target now are marked `in reach`. A tall
-structure is searched with an area around the height that matters, for example `blocks oak_log within 5 of ~ ~8 ~`;
+counting only blocks a player could see (a face touching air, liquid, plants, leaves, glass, ice or a partial shape
+such as a slab or fence), so it does not reveal buried ores; entries the Bot can target now are marked `in reach`. A
+tall structure is searched with an area around the height that matters, for example `blocks oak_log within 5 of ~ ~8 ~`;
 `~` is relative to the Bot. All three read BDS
 through the Endstone SDK, never change anything, and return data to scripts; Group targets print every member's
 result like `status`. The Gameplay form's **Look around...** offers them with the nearby-entity list.

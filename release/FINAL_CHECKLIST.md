@@ -375,8 +375,15 @@ BOT-031 ran on the same code (only versions and documentation differ), as 0.3.0 
   `/bot help area` and `/bot help blocks` in Japanese, the **Find blocks** form (type, radius, optional centre),
   `look 0 0` followed by a crosshair `destroy`, and the refusal of the removed `blocks oak_log radius 5` all behaved
   as expected. See [mining validation](../docs/MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst).
-- [ ] Update from a published-0.5.0 instance: **not run for this release** (decided 2026-11-02). No BDS, lock or store
-  moves, and the two consumer legs above exercise the same setup/update path on both platforms.
+- [x] Update from a published-0.5.0 instance (2026-11-03 JST, after publication): a fresh 0.5.0 instance
+  (`2026-10-30-v0.5.0-gate\fresh\endbot-0.5.0`, installed from the published bundle) ran the published
+  `endbot-0.6.0-windows-x86_64.zip` with `endbot update --backup-worlds`. It verified the archive against
+  `SHA256SUMS`, installed `app/0.6.0`, kept `app/0.5.0`, switched `app/current` to `0.6.0`, and the new version's
+  doctor passed (`bds-version` 26.60, `endstone-version` `0.11.15+endbot.1`, `stores` authoritative). `endbot.toml`
+  stayed byte-identical (SHA-256 `8C1062…C927`), the BDS version and worlds did not move, and `endbot update
+  --rollback` returned `app/current` to `0.5.0` with doctor passing. Note: copying an instance directory to another
+  path is not supported — the plugin `config.toml` stores an absolute `token-file`, so the first attempt, made on a
+  copy, failed `plugin-port` until it was run in place.
 - [x] Release notes list the remaining manual gates as known limitations.
 - [x] Publish the tested draft unchanged (2026-11-03: tag `v0.6.0` = `1d1b8ce`, published as the latest release;
   every re-downloaded asset matches `SHA256SUMS`, which is identical to the candidate's).

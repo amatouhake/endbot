@@ -524,7 +524,7 @@ JA: dict[str, str] = {
     "Find blocks...": "ブロックを探す...",
     "Enter one block type": "ブロックの種類を1つ入力してください",
     "Block type": "ブロックの種類",
-    "Radius": "半径",
+    "Scan radius": "探索半径",
     "x y z (optional scan centre; ~ is relative to the Bot)": "x y z (省略可・探索の中心。~ は Bot からの相対位置)",
     "health {health}/{max}": "体力 {health}/{max}",
     "food {food}": "満腹度 {food}",

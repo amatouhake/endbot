@@ -924,18 +924,60 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual({op for op, _ in self.raw.calls}, {"action", "mine"})
         self.assertEqual(next(p for op, p in self.raw.calls if op == "mine")["loopId"], "loop-1")
 
-    def test_crash_timeout_and_rate_limit_retire_only_affected_run(self):
+    def test_crash_and_timeout_retire_only_affected_run(self):
         self.start([self.op(2, "move", {"direction": "forward"}), {"type": "error", "message": "crash"}])
         self.wait_finished()
         self.assertEqual([p["direction"] for op, p in self.raw.calls if op == "move"], ["forward", "stop"])
-        self.host.config = replace(self.config, operations_per_second=1)
-        self.raw.calls.clear()
-        self.start([self.op(2, "look", {"yaw": 0, "pitch": 0}), self.op(3, "look", {"yaw": 90, "pitch": 0})])
-        self.wait_finished()
-        self.assertEqual(sum(op == "look" for op, _ in self.raw.calls), 1)
         self.host.config = replace(self.config, wall_seconds=1)
         self.start([])
         self.wait_finished()
+
+    def test_operations_over_the_rate_wait_for_a_slot_and_the_log_notes_it_once(self):
+        # BOT-031: a read-only loop without wait completes at the configured rate instead of ending the run.
+        self.host.config = replace(self.config, operations_per_second=2, wall_seconds=0)
+        started = time.monotonic()
+        self.start([*(self.op(index, "status", {}) for index in range(2, 7)), {"type": "done"}])
+        self.wait_finished()
+        elapsed = time.monotonic() - started
+        results = [reply["result"] for reply in self.runner.replies if "result" in reply]
+        self.assertEqual(len(results), 5)
+        self.assertTrue(all(result["ok"] for result in results))
+        # Five operations at two per second need two full windows of waiting.
+        self.assertGreaterEqual(elapsed, 1.9)
+        deadline = time.monotonic() + 2
+        while not any("ended" in line for line in self.logs()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(len([line for line in self.logs() if "wait for a free slot" in line]), 1)
+        self.assertTrue(any("ended: completed" in line for line in self.logs()))
+
+    def test_a_throttled_operation_still_ends_at_the_deadline_or_stop(self):
+        self.host.config = replace(self.config, operations_per_second=1, wall_seconds=1)
+        self.start([self.op(index, "look", {"yaw": index, "pitch": 0}) for index in range(2, 6)])
+        self.wait_finished()
+        self.assertLess(sum(op == "look" for op, _ in self.raw.calls), 3)
+        self.host.config = replace(self.config, operations_per_second=1, wall_seconds=0)
+        self.raw.calls.clear()
+        identity = self.start([self.op(index, "look", {"yaw": index, "pitch": 0}) for index in range(2, 6)])
+        deadline = time.monotonic() + 2
+        while not any(op == "look" for op, _ in self.raw.calls) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(self.host.stop(self.source, identity), 1)
+        self.wait_finished()
+        self.assertEqual(sum(op == "look" for op, _ in self.raw.calls), 1)
+
+    def test_throttle_waits_outside_the_ordered_server_task(self):
+        self.host.config = replace(self.config, operations_per_second=1)
+        run, clock, inside = ScriptRun("throttle", "test", self.source), [100.0], []
+        run.calls.append(100.0)
+        def pause(run, seconds):
+            inside.append(seconds)
+            clock[0] += seconds
+        with patch.object(self.host, "_wait", side_effect=pause), \
+             patch("endbot_core.scripting.time.monotonic", side_effect=lambda: clock[0]):
+            self.host._throttle(run)
+        self.assertEqual(inside, [1.0])
+        self.assertTrue(run.throttled)
+        self.assertEqual(list(run.calls), [101.0])
 
     def test_group_replacement_after_members_enumeration_is_rejected(self):
         group = self.service.groups.create("miners")

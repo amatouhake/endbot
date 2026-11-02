@@ -1076,7 +1076,8 @@ Acceptance: a log wrapped in leaves is listed; `destroy` on it reports the leaf 
 
 ## BOT-031: Script rate limit throttles instead of failing
 
-Status: **Idea** (2026-11-02 JST).
+Status: **Implemented, unreleased** (2026-11-02 JST). Unit-tested; no live run yet. The wait runs on the run's
+own thread, before the operation is queued to the server task, so a throttled run never holds the queue.
 
 Up to `operations-per-second`, an operation over the sliding window waits for a free slot instead of ending the run;
 the existing IPC bound (`4 * operations-per-second`) still fails the run. The run log notes the first throttle.

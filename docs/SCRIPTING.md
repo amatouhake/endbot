@@ -48,7 +48,7 @@ Startup limits (integers from 1 to 2147483647, except the zero/boolean settings 
 | `wall-seconds` | 0 | No total run deadline; positive values limit declarations, waits and IPC in wall seconds |
 | `slice-ms` | 100 | Cooperative VM deadline between yields |
 | `interrupt-budget` | 1000000 | Safepoint callbacks per VM slice between yields, not exact instructions |
-| `operations-per-second` | 20 | Sliding one-second host operation limit; exceeding fails the run |
+| `operations-per-second` | 20 | Sliding one-second host operation limit; an operation over it waits for a free slot |
 | `max-script-bytes` | 32768 | UTF-8 source limit on save/run, maximum 65536 (protocol bound) |
 | `max-scripts` | 64 | Stored-script creation limit |
 | `memory-bytes` | 33554432 | VM allocator bound, minimum 1 MiB; excludes compiler/process allocations |
@@ -134,8 +134,10 @@ The protocol also bounds frames to 256 KiB and bounds nesting/string/object size
 hit the frame bound earlier. Form/save declaration inspection has a deadline of at most five seconds and
 requires available concurrency capacity. Changes apply on restart. Disabling scripting or lowering storage
 limits retains stored source; oversized stored scripts cannot run until edited or the limit is raised.
-IPC events (including logs and zero waits) are bounded by `4 * operations-per-second` in a sliding
-one-second window, independently of run lifetime. Each run logs at most 2000 lines or 512 KiB; past that one
+An operation over `operations-per-second` waits on the host until the window has room, then runs; the wait counts
+against `wall-seconds` and ends on `/botscript stop` like `wait`, and the run log notes the first such wait. IPC events
+(including logs and zero waits) are bounded by `4 * operations-per-second` in a sliding one-second window,
+independently of run lifetime; exceeding that bound still fails the run. Each run logs at most 2000 lines or 512 KiB; past that one
 notice is logged and further `log` output is dropped. Script text reaching the log or chat (logs and error
 messages) has color codes and control characters (CR, LF, ESC) replaced, so it cannot forge log lines or
 drive a terminal. Negative `wall-seconds` values are rejected.

@@ -592,7 +592,7 @@ class CommandServiceTests(unittest.TestCase):
     def test_look_reports_timeout_or_an_absent_bot(self) -> None:
         self.service.execute(["Alice", "spawn"], object())
         self.world.rotation = {"yaw": 0.0, "pitch": 0.0}
-        clock = iter(range(0, 100))
+        clock = iter(range(100))
         with patch("endbot_core.commands.time.sleep"), \
              patch("endbot_core.commands.time.monotonic", side_effect=lambda: next(clock) * 0.1):
             result = self.service.execute(["Alice", "look", "180", "0"], object())

@@ -1002,6 +1002,87 @@ while their Bots were online, two at once, with UDP 7551 held by one BDS. The sa
 the runtime, which starts before BDS, could reach BDS mid-start and wait forever for a login; such an attempt now
 fails after 60 s and the next one is scheduled.
 
+## BOT-027: One area syntax for every operation
+
+Status: **Idea** (2026-11-02 JST). Breaking change accepted.
+
+Areas exist only as `blocks`' `radius`/`at` (a sphere around a point). They cannot describe a box or an exclusion,
+`radius` collides with the chunk-radius command, typed `destroy`/`interact` cannot be scoped at all (a felling
+script breaks the log it stands on), and nothing else can share the clause.
+
+- One area value. `within <area>` and `except <area>` accept the same forms: `<x> <y> <z>` (one cell),
+  `<x1> <y1> <z1> <x2> <y2> <z2>` (box, as `/fill`), `<r>` (sphere around the Bot), `<r> of <x> <y> <z>` (sphere
+  around a point). The number of values selects the form; other counts are syntax errors. Later shapes take a
+  leading shape word (`within cylinder ...`). Example: `destroy acacia_log within 6 except ~ ~-1 ~ count 20`.
+- Luau builds areas as values: `area.cell`, `area.box`, `area.sphere(r[, x, y, z])`, and `:minus(area)` with any
+  form, chained freely; operations take `{area = a}`. Chat allows one `except`, like every other clause.
+- Same meaning everywhere: an area only narrows candidates and never widens reach or sight; `~` resolves when the
+  command is accepted, so a continuous loop keeps its area while the Bot moves; the volume is capped (about a
+  radius-16 sphere). Without an area each operation keeps its current default. The Bot's footing is not
+  special-cased; `except` protects it explicitly.
+- First users: `blocks`, typed `destroy`, typed `interact`; every retarget of a continuous loop applies the area.
+  `entities` and BOT-022 watch filters take the same value later.
+- `limit` (results) and `count` (blocks to break) stay. Removed: `blocks ... radius/at` and Luau
+  `blocks(type, x, y, z)`; the old forms fail with a message naming the new syntax.
+
+Acceptance: parser tests for every form, wrong value counts and a repeated chat clause; unit tests where typed
+`destroy` with the footing in `except` breaks every other reachable log and leaves the footing, and an area never
+lets `blocks` or `destroy` reach past their normal limits; SCRIPTING.md and `/bot help` show one area table.
+
+## BOT-028: One block-targeting contract for scripts
+
+Status: **Idea** (2026-11-02 JST). Found while writing a single-tree felling script on 0.5.0.
+
+`blocks`, coordinate/typed `destroy` and crosshair `destroy`/`target` decide "this block" with three different
+predicates (`_exposed`, `_visible_point`, `_ray_block`): listing ignores the Bot's viewpoint, coordinate aiming sees
+through plants but not leaves, and the crosshair stops at plants and leaves. A script cannot tell which listed block
+an action can reach, or what stopped it.
+
+- `blocks` entries add `visible` (a facing side reachable within destroy reach from the current eye, by the same
+  test `destroy x y z` uses).
+- A refused `destroy x y z` returns a machine-readable `code` (`out_of_reach`, `blocked`, `not_a_target`) and, for
+  `blocked`, the first obstructing cell `{x, y, z, type}`.
+- Crosshair targeting and coordinate aiming agree on plants (pick one rule; document it).
+- `status.mining` adds the current target `{x, y, z, type}`.
+
+Acceptance: unit tests on synthetic worlds where a block is exposed only on its far side (listed, `visible=false`,
+`destroy` returns `blocked` with the covering cell), behind leaves, and behind grass; SCRIPTING.md documents the
+three paths in one table. Live check: a script that clears a covered log by breaking the reported obstruction.
+
+## BOT-029: `look` completes when BDS observes the rotation
+
+Status: **Idea** (2026-11-02 JST).
+
+`look` returns before the next input tick carries the rotation, so crosshair operations issued right after it
+(`destroy`, `attack`, `use`, `target`) resolve against the old view. Scripts work around it with polling and their
+own angle maths, which also trips over the yaw range.
+
+- `look` waits until the server-side rotation matches within a small tolerance, or a short tick timeout, and returns
+  the observed `{yaw, pitch}` in `data` (refusing or reporting `code="timeout"` otherwise).
+- One documented yaw convention for `status.look`, `look` input and its returned value.
+
+Acceptance: an integration test where `look` then crosshair `destroy` hits the newly aimed block every time;
+SCRIPTING.md states the convention.
+
+## BOT-030: Translucent blocks do not hide blocks from `blocks`
+
+Status: **Idea** (2026-11-02 JST).
+
+"No x-ray" means what a player can see; players see through leaves, glass and similar blocks, and `block x y z` can
+already read any position. Exposure for `blocks` treats a named translucent set as see-through. Aiming and breaking
+keep treating leaves as obstructions, as in vanilla (BOT-028 reports them).
+
+Acceptance: a log wrapped in leaves is listed; `destroy` on it reports the leaf as the obstruction.
+
+## BOT-031: Script rate limit throttles instead of failing
+
+Status: **Idea** (2026-11-02 JST).
+
+Up to `operations-per-second`, an operation over the sliding window waits for a free slot instead of ending the run;
+the existing IPC bound (`4 * operations-per-second`) still fails the run. The run log notes the first throttle.
+
+Acceptance: a read-only loop without `wait` completes at the configured rate; a flood past the IPC bound still fails.
+
 ## Deferred priorities
 
 - Container/UI operations — crafting, villager trading, enchanting — use `item_stack_request` on current Bedrock, which

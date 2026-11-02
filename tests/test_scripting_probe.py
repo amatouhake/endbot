@@ -219,13 +219,17 @@ class ScriptingProbeTests(unittest.TestCase):
     def test_console_smoke_records_authoritative_samples_commands_and_both_stop_selectors(self):
         result, driver = self.run_probe()
         self.assertEqual(result["status"], "passed")
-        for phase in ("row", "stop_patrol", "overlap_cleanup", "mine", "waits", "runaway"):
+        for phase in ("row", "stop_patrol", "overlap_cleanup", "mine", "waits", "throttle", "flood", "runaway"):
             self.assertEqual(result[phase]["outcome"], "passed")
         self.assertIn("botscript stop patrol", driver.commands)
         # The declares run (BOT-024) takes id 0001, so the second patrol is 0004.
         self.assertIn("botscript stop 0004", driver.commands)
         self.assertIn('botscript run line #script_probe "0.5 200 0.5" 3', driver.commands)
-        self.assertEqual(set(driver.saved), {"line", "patrol", "mine", "waits", "runaway", "declares"})
+        self.assertEqual(set(driver.saved), {"line", "patrol", "mine", "waits", "throttle", "flood", "runaway",
+                                              "declares"})
+        self.assertIn("status calls: 80", result["throttle"]["output"])
+        self.assertGreaterEqual(result["throttle"]["seconds"], 2.5)
+        self.assertIn("rate limit", result["flood"]["output"])
         self.assertIn(":job:wait{timeout = 200}", driver.saved["waits"].replace(").job", ":job"))
         self.assertTrue(all(block["type"] == "minecraft:air" for block in result["mine"]["after"]))
         self.assertIn("spot 2: block count reached", result["mine"]["output"])
@@ -253,6 +257,8 @@ class FakeBds:
         self.movement, self.console_owned = {}, set()
         self.fixture_id, self.active, self.run_id = None, None, None
         self.mining_blocks = []
+        # A throttled run takes about three seconds of the fake clock before it finishes.
+        self.pending_throttle = None
 
     def emit(self, text):
         self.log += text + "\n"
@@ -264,6 +270,11 @@ class FakeBds:
             self.positions[name][axis] += seconds * 3
         self.sequence += 1
         self.write_state()
+        if self.pending_throttle is not None and self.clock >= self.pending_throttle[1]:
+            run_id = self.pending_throttle[0]
+            self.pending_throttle = None
+            self.emit(f"Endbot script {run_id}: status calls: 80")
+            self.finish("throttle", run_id, "completed")
 
     def write_state(self):
         from endbot_core.script_forms import TEMPLATES
@@ -344,6 +355,14 @@ class FakeBds:
                 for reported in WAITS_EXPECTED[:-1] if self.failure == "waits" else WAITS_EXPECTED:
                     self.emit(f"Endbot script {self.run_id}: {reported}")
                 self.finish("waits", self.run_id, "completed")
+            elif self.active == "throttle":
+                # BOT-031: the notice lands first, the 80 results only after the window frees up.
+                self.emit(f"Endbot script {self.run_id}: operation rate limit reached; operations now wait for a free slot")
+                self.pending_throttle = (self.run_id, self.clock + 3.0)
+            elif self.active == "flood":
+                for index in range(1, 81):
+                    self.emit(f"Endbot script {self.run_id}: flood {index}")
+                self.finish("flood", self.run_id, "Script operation rate limit reached")
             else:
                 reason = "Script runner failed: script:2: execution budget exceeded" if self.failure != "budget" else "completed"
                 self.finish("runaway", self.run_id, reason)

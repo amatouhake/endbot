@@ -533,7 +533,7 @@ Sprint/sneak take booleans. Teleport options pair `yaw,pitch`, or use `facing` f
 relative to the Bot as in commands. `group:members()` pins UUID/membership order and returns indexed member
 handles. Root list/ping/help retain their root semantics. A script `menu()` returns acceptance without opening UI.
 `look` (both forms) returns once BDS reports the new rotation, with the observed `{yaw, pitch}` as `data.look`, so a
-crosshair operation right after it uses the new view; if BDS does not report it within 10 ticks the result has
+crosshair operation right after it uses the new view; if BDS does not report it within about 0.5 s (10 ticks at 20 TPS) the result has
 `code="timeout"`.
 
 ## Lifetime, boundaries and unverified gates

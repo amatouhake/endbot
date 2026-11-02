@@ -138,7 +138,8 @@ Bot movement/action/look/stop/lifecycle replies identify the requested operation
 
 ## Upstream update candidates — checked 2026-10-16 JST
 
-Endbot is still locked to Endstone `0.11.13+endbot.1`. Upstream
+At that check Endbot was still locked to Endstone `0.11.13+endbot.1`; 0.5.0 moved the lock to `0.11.15+endbot.1`, and
+this section keeps its 2026-10-16 wording otherwise. Upstream
 [0.11.14](https://github.com/EndstoneMC/endstone/releases/tag/v0.11.14), released 2026-10-12, is a candidate for compatibility
 evaluation: it improves packet/compression, chunk and terrain generation, multi-player performance, and several Windows
 CPU/status issues. It also drops Python 3.10 and changes fresh-server view-distance/client-generation defaults. These
@@ -1004,7 +1005,7 @@ fails after 60 s and the next one is scheduled.
 
 ## BOT-027: One area syntax for every operation
 
-Status: **Implemented, unreleased; live check passed** (2026-11-02 JST). Breaking change accepted.
+Status: **Implemented and released in 0.6.0; live check passed** (2026-11-02 JST). Breaking change accepted.
 `core/src/endbot_core/areas.py` parses, resolves and tests areas; chat and typed commands share it, the registry gains
 an `area` field type (the clause text, canonicalised by Python), and the Luau bootstrap builds areas with `area.cell`,
 `area.box`, `area.sphere` and `:minus` (frozen values only it can create). `~` and the Bot-centred sphere resolve
@@ -1048,7 +1049,7 @@ lets `blocks` or `destroy` reach past their normal limits; SCRIPTING.md and `/bo
 
 ## BOT-028: One block-targeting contract for scripts
 
-Status: **Implemented with BOT-030, unreleased; live check passed** (2026-11-02 JST). Found while writing a
+Status: **Implemented with BOT-030 and released in 0.6.0; live check passed** (2026-11-02 JST). Found while writing a
 single-tree felling script on 0.5.0. Decided 2026-11-02 JST, replacing the `visible` field and the "pick one plant
 rule" below: block properties are generated from minecraft-data (`transparent`, `boundingBox`, `diggable`) for the
 locked Bedrock version; a named target (coordinates or type) is aimed at through blocks without a collision box
@@ -1082,7 +1083,7 @@ three paths in one table. Live check: a script that clears a covered log by brea
 
 ## BOT-029: `look` completes when BDS observes the rotation
 
-Status: **Implemented, unreleased; live check passed** (2026-11-02 JST). The command service polls the Bot's BDS
+Status: **Implemented and released in 0.6.0; live check passed** (2026-11-02 JST). The command service polls the Bot's BDS
 rotation through the world link after the runtime accepts the look (1 degree, for about 0.5 s of wall-clock time, 10 ticks at 20 TPS) and returns the
 observed `{yaw, pitch}` as `data.look`; a timeout is `code="timeout"`, a Bot BDS does not have is `not_found`. Group
 `look` waits per member the same way. `status.look` uses the same [0, 360) yaw. The mining smoke
@@ -1104,7 +1105,7 @@ SCRIPTING.md states the convention.
 
 ## BOT-030: Translucent blocks do not hide blocks from `blocks`
 
-Status: **Implemented with BOT-028, unreleased; live check passed** (2026-11-02 JST). Covers every block
+Status: **Implemented with BOT-028 and released in 0.6.0; live check passed** (2026-11-02 JST). Covers every block
 minecraft-data marks `transparent`, including partial shapes (slabs, stairs, fences, walls, panes, doors), decided
 2026-11-02 JST.
 
@@ -1117,7 +1118,7 @@ BDS on 2026-11-02 (listed without `in reach`, `blocked by oak_leaves at ...`, `d
 
 ## BOT-031: Script rate limit throttles instead of failing
 
-Status: **Implemented, unreleased; live check passed** (2026-11-02 JST). The wait runs on the run's
+Status: **Implemented and released in 0.6.0; live check passed** (2026-11-02 JST). The wait runs on the run's
 own thread, before the operation is queued to the server task, so a throttled run never holds the queue.
 
 Up to `operations-per-second`, an operation over the sliding window waits for a free slot instead of ending the run;

@@ -326,5 +326,11 @@ discovery (UDP 7551, one owner per machine) leaves Bots unable to reach every se
 0.5.0 was published on 2026-10-30 (tag `v0.5.0` = `8e81923`, release-candidate run 41063813075). The checks that need
 a real second person were not run; see [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md).
 
+0.6.0 was added on 2026-11-02 JST: the finished script-facing work (BOT-027 to BOT-031 — areas, one block-targeting
+contract, `look` completion, translucent blocks, the throttling rate limit) plus the removal of the 0.4.0
+`share`/`private` script spellings, on the unchanged 0.5.0 pair. It was cut ahead of the web and triggers so those
+changes reach users in one documented breaking change instead of waiting behind a larger release. The next release is
+still BOT-021 and BOT-022.
+
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

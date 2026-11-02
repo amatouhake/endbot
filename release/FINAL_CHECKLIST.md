@@ -351,6 +351,32 @@ release ([delivery](../docs/DIRECTION.md#delivery)).
   `v0.5.0` = `8e81923`, published 14:36 UTC as the latest release; every re-downloaded asset matches
   `SHA256SUMS`, which is identical to the candidate's, and the bundle and `SHA256SUMS` attestations verified)
 
+### 0.6.0 release — script targeting and completion on the unchanged 0.5.0 pair (decided 2026-11-02)
+
+Scope: everything merged since `v0.5.0` — one block-targeting contract for scripts (BOT-028), one area syntax replacing
+`blocks ... radius`/`at` (BOT-027), `look` that completes when BDS holds the rotation (BOT-029), translucent blocks that
+no longer hide blocks from `blocks` (BOT-030), and a script rate limit that waits instead of ending the run (BOT-031).
+It also removes the 0.4.0 script spellings `share <name>` and `private <name>`, as the 0.5.0 notes said it would.
+`endstone.lock`, `patches/endstone/` and the runtime dependencies are unchanged from 0.5.0, so no compatibility gate is
+required and the 2026-10-30 human/Xbox observation stands. The area syntax is a breaking change for scripts and typed
+commands; the old spellings answer with a message naming the new ones.
+
+Decided 2026-11-02 JST: ship without a new BDS live smoke on the candidate. The branch gates recorded for BOT-027 to
+BOT-031 ran on the same code (only versions and documentation differ), as 0.3.0 cited its branch evidence.
+
+- [ ] Build `release-candidate.yml` for `0.6.0` from the release-prepared `main` commit; the Windows/Linux wheel,
+  bundle, runner and clean-consumer jobs and `assemble` must pass.
+- [ ] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.6.0`; verify checksums, attestations and the
+  source commit in the manifest.
+- [x] Human Windows-client pass (2026-11-02 JST) on a bundle built from `main` `ecaea7f` (dev stamp `0.5.1-dev.1`):
+  `/bot help area` and `/bot help blocks` in Japanese, the **Find blocks** form (type, radius, optional centre),
+  `look 0 0` followed by a crosshair `destroy`, and the refusal of the removed `blocks oak_log radius 5` all behaved
+  as expected. See [mining validation](../docs/MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst).
+- [ ] Update from a published-0.5.0 instance: BDS `1.26.60.6` and `endbot.toml` unchanged, the Bot rejoins with the
+  same identity, `doctor --live` passes.
+- [x] Release notes list the remaining manual gates as known limitations.
+- [ ] Publish the tested draft unchanged, then verify published asset checksums and provenance.
+
 ### After 0.1.0 (direction)
 
 - 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).

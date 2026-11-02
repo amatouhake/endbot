@@ -266,3 +266,25 @@ fresh Survival world. `scripts/raknet_spike.py --mining` reported `ok` at stage 
 Not covered by this run: the Luau `area.cell`/`area.box`/`area.sphere`/`:minus` values (unit-tested in
 `runner/runner.test.mjs` and `plugin/endbot/tests/test_areas.py`, not run through a live script), `interact <type>`
 with an area, a continuous loop that keeps its area while the Bot moves, and a felling script on a real tree.
+
+## Human Windows-client pass (2026-11-02 JST)
+
+One normally Microsoft/Xbox-authenticated client (Minecraft 26.60, Japanese) joined a Windows instance built from `main`
+`ecaea7f` (`2026-10-31-spruce-group`, app dev stamp `0.5.1-dev.1`; the installed `endbot_core/areas.py` is byte-identical
+to the release source and its `commands.py` carries the current blocks help), on NetherNet, with BDS `1.26.60.6`
+(build `52886189`) and the patched Endstone `0.11.15+endbot.1` Windows wheel. Four client-visible changes were checked;
+all behaved as expected:
+
+- **Help pages.** `/bot help area` (23:20:32 JST) and `/bot help blocks` (23:20:56 JST) render in Japanese, including
+  the area table and the pointer from the blocks page to `/bot help area`.
+- **Find blocks form.** `/bot <Bot>` → Gameplay... → Look around... → Find blocks... shows the block type, the radius
+  slider and the optional scan centre, and the submission echoes its typed form with `within <r>`.
+- **`look` then crosshair `destroy`.** `look 0 0` at 23:21:09 and 23:21:38 JST, with `destroy` at 23:21:27, :30 and :32,
+  turned the Bot and broke the aimed block each time.
+- **The removed spelling.** `blocks oak_log radius 5` (23:22:07 JST) was refused with the message naming
+  `blocks <type> within <r> [of <x> <y> <z>]`.
+
+The run's console log records the four issued commands and the refusals; the form echo is a chat line, so the form check
+rests on the operator's observation of the client. This is a client-surface pass only: it does not re-run the BDS smoke,
+and the live Luau `area.*` values, `interact` with an area and a continuous loop keeping its area while the Bot moves
+remain unit-tested only.

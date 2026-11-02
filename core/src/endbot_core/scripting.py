@@ -397,9 +397,16 @@ class ScriptService:
         self.service._form_group(replace(run.source, group_guard=guard), group)
         return guard
 
-    def _reply_chat(self, result) -> bool:
-        """Whether this operation is echoed to the invoker's chat (``[scripting] replies``)."""
+    def _reply_chat(self, result, operation: str | None = None) -> bool:
+        """Whether this operation is echoed to the invoker's chat (``[scripting] replies``).
+
+        Under ``failures``, a ``destroy`` refused as ``not_a_target`` is not echoed (#186): ``block``/``blocks`` are
+        reads, not reservations, so a target can vanish between the read and the swing. The script still gets the
+        refusal and its code.
+        """
         mode = self.config.replies
+        if mode == "failures" and operation == "destroy" and result.code == "not_a_target":
+            return False
         return mode == "all" or (mode == "failures" and not result.accepted)
 
     def _throttle(self, run):
@@ -459,7 +466,7 @@ class ScriptService:
                 return {"result": {"ok": False, "code": error_code(error), "reason": localize_error(error, "en")}}
             if audit and self.notify:
                 # Preserve existing command audit, even if the controller logged out.
-                self.notify(source, result, chat=self._reply_chat(result))
+                self.notify(source, result, chat=self._reply_chat(result, operation.op))
             job = self._job(result.data)
             return {
                 "result": {

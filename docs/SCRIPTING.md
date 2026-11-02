@@ -353,7 +353,8 @@ Every operation a script issues is also a normal `/bot` command, so its reply wo
 typed. That echo is noise for a script that issues dozens of operations, so `[scripting] replies` (plugin
 `config.toml`, or `endbot.toml` for managed instances) chooses the policy: `all` echoes every operation like a typed
 command, `failures` (default) echoes only rejected operations while accepted ones keep their console log line, and
-`none` is silent. The run's start/end lines and `log()` are unaffected, and the mining loop's start/stop notices
+`none` is silent. Under `failures`, a `destroy` refused as `not_a_target` is not echoed, because its target can vanish
+after the script read it (see [Targeting blocks](#targeting-blocks)); the script still receives the refusal. The run's start/end lines and `log()` are unaffected, and the mining loop's start/stop notices
 still reach the chat. Scripts cannot change the policy.
 
 ### Structured status and mining waits
@@ -473,6 +474,11 @@ with the same value as `code`:
 | `out_of_reach` | No part of it is within 6 blocks of the Bot's eyes |
 | `blocked` | Something stops every line to it; `obstruction = {x, y, z, type}` (in `data` for a refused operation) names the first block in the way, when one is found |
 | `unbreakable` | `destroy` only: bedrock, barriers and other blocks Survival cannot break; they can still be targeted |
+
+`block` and `blocks` are reads, not reservations: `reachable` describes the moment of the read, and `destroy` and
+`interact` check the target again when they run. A block can vanish in between — the Bot's own previous swing is
+still resolving, a leaf decays, or another Bot or player breaks it — and the operation then fails with
+`not_a_target`. A script that only wants the block gone can treat that code on `destroy` as done.
 
 ```lua
 local info = bot:block(x, y, z).data

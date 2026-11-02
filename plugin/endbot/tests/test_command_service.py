@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from endbot_core.commands import UNREACHABLE_POLL_LIMIT, WAITING_NOTICE_POLLS
 from endbot_core.control import RuntimeControlError
@@ -72,6 +73,8 @@ class FakeWorld:
         self.collisions = {}
         self.invalid_dimensions = set()
         self.look_targets = []
+        # The BDS rotation observe() reports, or None for a Bot BDS does not have (BOT-029 waits for it).
+        self.rotation = None
 
     def default_spawn(self, sender):
         if getattr(sender, "is_console", False):
@@ -110,7 +113,7 @@ class FakeWorld:
         self.placements = [entry for entry in self.placements if entry[0] != identity_id]
 
     def observe(self, identity_id):
-        return None
+        return None if self.rotation is None else dict(self.rotation)
 
     def inventory(self, name, identity_id=None):
         raise ValueError("Bot is not present in the world")
@@ -560,6 +563,7 @@ class CommandServiceTests(unittest.TestCase):
         self.service.execute(["Alice", "spawn"], object())
         identity_id = self.control.bots["Alice"]["identityId"]
         self.control.calls.clear()
+        self.world.rotation = {"yaw": -270.0, "pitch": -10.0}
 
         result = self.service.execute(["Alice", "look", "at", "1", "64", "2"], object())
 
@@ -570,6 +574,37 @@ class CommandServiceTests(unittest.TestCase):
         )
         self.assertEqual(self.control.calls[-1], ("look", {"name": "Alice", "yaw": 90.0, "pitch": -10.0}))
         self.assertIn("look set to yaw=90.0 pitch=-10.0", result.message)
+        # BDS reported the same direction as -270; the result carries one convention, [0, 360).
+        self.assertEqual(result.data, {"look": {"yaw": 90.0, "pitch": -10.0}})
+
+    def test_look_waits_until_bds_reports_the_rotation(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        seen = iter([{"yaw": 0.0, "pitch": 0.0}, {"yaw": 0.0, "pitch": 0.0}, {"yaw": 45.4, "pitch": 30.2}])
+        self.world.observe = lambda identity_id: next(seen)
+        with patch("endbot_core.commands.time.sleep") as sleep:
+            result = self.service.execute(["Alice", "look", "45", "30"], object())
+        self.assertTrue(result.accepted)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(result.data, {"look": {"yaw": 45.4, "pitch": 30.2}})
+        # The reply keeps the requested angles; the observed ones are data.
+        self.assertIn("look set to yaw=45.0 pitch=30.0", result.message)
+
+    def test_look_reports_timeout_or_an_absent_bot(self) -> None:
+        self.service.execute(["Alice", "spawn"], object())
+        self.world.rotation = {"yaw": 0.0, "pitch": 0.0}
+        clock = iter(range(0, 100))
+        with patch("endbot_core.commands.time.sleep"), \
+             patch("endbot_core.commands.time.monotonic", side_effect=lambda: next(clock) * 0.1):
+            result = self.service.execute(["Alice", "look", "180", "0"], object())
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.code, "timeout")
+        self.assertIn("look was not observed within 10 ticks", result.message)
+        self.world.rotation = None
+        result = self.service.execute(["Alice", "look", "180", "0"], object())
+        self.assertEqual(result.code, "not_found")
+        # The yaw tolerance wraps: 359.6 is within a degree of 0.
+        self.world.rotation = {"yaw": 359.6, "pitch": 0.0}
+        self.assertTrue(self.service.execute(["Alice", "look", "0", "0"], object()).accepted)
 
     def test_player_primitives_route_authoritative_parameters(self) -> None:
         self.service.execute(["Alice", "spawn"], object())

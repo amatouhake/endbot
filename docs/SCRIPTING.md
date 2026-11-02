@@ -371,7 +371,7 @@ the world (or before BDS has sent it).
 | `data.vehicle` | `{type, runtimeId}` while riding, else nil |
 | `data.position` | Feet position `{x, y, z}` |
 | `data.dimension` | `Overworld`, `Nether` or `TheEnd` |
-| `data.look` | `{yaw, pitch}` in degrees |
+| `data.look` | `{yaw, pitch}` in degrees: yaw 0-360 with 0 south (+Z) and 90 west (-X), pitch -90 (up) to 90 (down), the same convention as `look` |
 | `data.health`, `data.maxHealth` | BDS health |
 | `data.hunger`, `data.saturation` | Food level (0-20) and saturation |
 | `data.onGround`, `data.inWater` | Booleans |
@@ -497,7 +497,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:tp()` | target: string | none |
 | `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: string, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
 | `:move()` | direction: forward / backward / left / right / stop | ticks: integer |
-| `:look()` | yaw: number, pitch: number | none |
+| `:look()` | yaw: number, pitch: number | none; returns once BDS reports the rotation, with `data.look` the observed `{yaw, pitch}`, or `code="timeout"` after 10 ticks |
 | `:look()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:swap()` | a: integer, b: integer | none |
 | `:hold()` | item: string | none |

@@ -421,6 +421,7 @@ class GroupServiceTests(unittest.TestCase):
         self.assertEqual(self.control.calls, [])
 
     def test_group_inputs_use_one_snapshot_and_one_pinned_batch_with_ordinary_replies(self):
+        self.world.rotation = {"yaw": 90.0, "pitch": -10.0}
         for arguments in (["jump"], ["move", "forward", "for", "20"], ["hotbar", "2"],
                           ["look", "at", "1", "64", "2"], ["sprint", "on"], ["drop"]):
             self.control.calls.clear()

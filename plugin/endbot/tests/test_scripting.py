@@ -576,6 +576,17 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(self.host._reply_chat(accepted), accepted_chat, mode)
             self.assertEqual(self.host._reply_chat(rejected), rejected_chat, mode)
 
+    def test_vanished_destroy_target_is_not_echoed_as_a_failure(self):
+        # #186: the target can vanish between the script's read and the swing.
+        gone = CommandResult(True, ("no",), accepted=False, code="not_a_target")
+        blocked = CommandResult(True, ("no",), accepted=False, code="blocked")
+        self.host.config = replace(self.config, replies="failures")
+        self.assertFalse(self.host._reply_chat(gone, "destroy"))
+        self.assertTrue(self.host._reply_chat(blocked, "destroy"))
+        self.assertTrue(self.host._reply_chat(gone, "interact"))
+        self.host.config = replace(self.config, replies="all")
+        self.assertTrue(self.host._reply_chat(gone, "destroy"))
+
     def test_default_config_reports_failures_only(self):
         self.assertEqual(ScriptConfig.from_config({}).replies, "failures")
         self.assertEqual(ScriptConfig.from_config({"replies": "all"}).replies, "all")

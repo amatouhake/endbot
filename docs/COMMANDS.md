@@ -173,6 +173,7 @@ symbols (arrows show as boxes). How it looks on a real client is a manual check:
 /bot Alice destroy 100 64 -20
 /bot Alice destroy ~ ~-1 ~ up
 /bot Alice destroy stop
+/bot Alice destroy acacia_log within 6 except ~ ~-1 ~ count 20
 /bot Alice status
 ```
 
@@ -377,16 +378,17 @@ does not itself move a Bot or guarantee terrain generation across an area. See [
 /bot Alice hotbar <1-9>
 /bot Alice swap <a> <b>
 /bot Alice hold <item>
-/bot Alice interact [<x> <y> <z> [face] | <block type> | @<type|id|nearest>]
+/bot Alice interact [<x> <y> <z> [face] | <block type> [within <area>] [except <area>] | @<type|id|nearest>]
 /bot Alice attack @<type|id|nearest> [once|continuous|interval <ticks>|stop] [for <ticks>] [count <n>]
 /bot Alice interact @<type|id|nearest> [once|continuous|interval <ticks>|stop] [for <ticks>] [count <n>]
 /bot Alice interact stop
-/bot Alice destroy <block type> [continuous] [for <ticks>] [count <blocks>]
+/bot Alice destroy <block type> [continuous] [for <ticks>] [count <blocks>] [within <area>] [except <area>]
+/bot Alice destroy continuous [for <ticks>] [count <blocks>] [within <area>] [except <area>]
 /bot Alice entities
 /bot Alice entity [@<type|id|nearest>]
 /bot Alice target
 /bot Alice block <x> <y> <z>
-/bot Alice blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>]
+/bot Alice blocks <type> [limit <1-64>] [within <area>] [except <area>]
 /bot Alice dismount
 /bot Alice drop
 /bot Alice drop stack
@@ -545,6 +547,38 @@ item can therefore place a block in Survival without the plugin editing the worl
 `drop stack` requests the selected stack through normal inventory transactions; wider selectors use the same legacy
 container-to-world path with exact observed item data (see the inventory/drop grammar above).
 
+### Areas: `within` and `except`
+
+One area value narrows the blocks an operation may pick (BOT-027). `within <area>` keeps only the blocks inside it,
+`except <area>` leaves out the blocks inside it, and both take the same forms; the number of values selects the form:
+
+| Area | Shape | Example |
+| --- | --- | --- |
+| `<x> <y> <z>` | one block | `except ~ ~-1 ~` (the block under the Bot) |
+| `<x1> <y1> <z1> <x2> <y2> <z2>` | a box, both corners included, as for `/fill` | `within ~-3 ~ ~-3 ~3 ~10 ~3` |
+| `<r>` | a sphere of radius `r` around the Bot | `within 6` |
+| `<r> of <x> <y> <z>` | a sphere of radius `r` around a point | `within 4 of 10 70 -3` |
+
+Other counts are syntax errors; later shapes will take a leading shape word (`within cylinder ...`). The same meaning
+holds everywhere:
+
+- An area only narrows candidates. It never widens reach or sight: `destroy` and `interact` keep their 6-block reach and
+  line of sight, and `blocks` never looks past 16 blocks from the Bot.
+- `~` (and the centre of `<r>`) resolves against the Bot when the command is accepted, so a continuous loop keeps its
+  area while the Bot moves.
+- `within` holds at most a radius-16 sphere (17157 blocks); a larger box is refused. `except` is not capped.
+- Without an area each operation keeps its default: `blocks` scans a sphere of 8 around the Bot, typed `destroy` and
+  `interact` pick from everything in reach, and a sight loop mines what the crosshair finds.
+- The Bot's footing is not special-cased; `except ~ ~-1 ~` protects it explicitly.
+- Chat takes `within` and `except` once each, like every other clause, in any position after the operation. Luau
+  scripts may chain several exclusions with `area:minus()` (see [areas in scripts](SCRIPTING.md#areas)).
+
+Areas apply to `blocks <type>`, `destroy <block type>`, `destroy continuous` (also through `for`/`count`) and
+`interact <block type>`; a continuous loop applies its area on every retarget, and a sight loop whose crosshair rests
+outside the area waits as if nothing were in sight. Coordinates, the single crosshair block and `@` entities take no
+area. `blocks ... radius` and `blocks ... at` were removed in favour of `within <r>` and `within <r> of <x> <y> <z>`;
+the old spellings fail with a message naming the new syntax. `/bot help area` shows the table in game.
+
 ### Targets: crosshair, coordinates, block types and `@` entities
 
 Left- and right-click verbs stay separate (`attack`/`destroy`, `use`/`interact`), and their targets share one syntax
@@ -587,13 +621,13 @@ blocks in detail (id, distance, position, health, name tag); without an argument
 non-player entity. `block <x> <y> <z>` shows one block's type and states and whether the Bot can target it now (in reach,
 out of reach, or what blocks it); `~` is relative to the Bot, and coordinates beyond
 30000000 are refused. `blocks <type>`
-lists the nearest blocks of that type, as `x y z (distance)`, nearest cells first (it stops reading once `limit`
-matches are certain), within a radius (default 8, at most 16), up to `limit`
-(default 10, at most 64),
+lists the nearest blocks of that type, as `x y z (distance)`, nearest the Bot first (it stops reading once `limit`
+matches are certain), within a sphere of 8 around the Bot or the given [area](#areas-within-and-except) (never past 16
+blocks from the Bot), up to `limit` (default 10, at most 64),
 counting only blocks a player could see (a face touching air, liquid, plants, leaves, glass or a partial shape such as a
-slab or fence), so it does not reveal buried ores; entries the Bot can target now are marked `in reach`. `at <x> <y> <z>`
-moves the scan centre (and the distances) to that point instead of the Bot, so a tall structure can be searched from
-the height that matters; `~` is relative to the Bot. All three read BDS
+slab or fence), so it does not reveal buried ores; entries the Bot can target now are marked `in reach`. A tall
+structure is searched with an area around the height that matters, for example `blocks oak_log within 5 of ~ ~8 ~`;
+`~` is relative to the Bot. All three read BDS
 through the Endstone SDK, never change anything, and return data to scripts; Group targets print every member's
 result like `status`. The Gameplay form's **Look around...** offers them with the nearby-entity list.
 

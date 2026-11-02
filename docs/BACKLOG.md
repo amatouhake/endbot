@@ -1004,7 +1004,18 @@ fails after 60 s and the next one is scheduled.
 
 ## BOT-027: One area syntax for every operation
 
-Status: **Idea** (2026-11-02 JST). Breaking change accepted.
+Status: **Implemented, unreleased; live check pending** (2026-11-02 JST). Breaking change accepted.
+`core/src/endbot_core/areas.py` parses, resolves and tests areas; chat and typed commands share it, the registry gains
+an `area` field type (the clause text, canonicalised by Python), and the Luau bootstrap builds areas with `area.cell`,
+`area.box`, `area.sphere` and `:minus` (frozen values only it can create). `~` and the Bot-centred sphere resolve
+through the world link (`resolve_area`) when the command is accepted; a continuous loop stores the resolved area and
+sends it with every retarget in `resolve_mining_batch`, where a typed loop narrows its candidates and a sight loop
+treats a crosshair block outside the area as no target. `blocks` scans a sphere of 8 without `within` and never past
+16 blocks from the Bot with one; `destroy`/`interact` keep the 6-block reach. The default `blocks` reply data carries
+`radius`, an area query `area` (its canonical text). See [areas](COMMANDS.md#areas-within-and-except) and
+[areas in scripts](SCRIPTING.md#areas). Unit tests cover every form, wrong value counts, a repeated chat clause, typed
+chaining, felling with the footing in `except`, and the reach limits (`plugin/endbot/tests/test_areas.py`,
+`runner/runner.test.mjs`). Not yet run on BDS: a felling script that keeps the footing on a real tree.
 
 Areas exist only as `blocks`' `radius`/`at` (a sphere around a point). They cannot describe a box or an exclusion,
 `radius` collides with the chunk-radius command, typed `destroy`/`interact` cannot be scoped at all (a felling

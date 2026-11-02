@@ -451,10 +451,10 @@ JA: dict[str, str] = {
     "find the nearest exposed blocks of a type": "見えている指定の種類のブロックを近い順に探す",
     "Only blocks with a face open to air, water or plants count, as a player could see them.":
         "空気、水、植物に面したブロックだけを数えます。プレイヤーに見えるものだけです。",
-    "Radius (1-16) defaults to 8 and limit to 10; results are nearest first.":
-        "半径は1-16(既定8)、件数の既定は10です。近い順に表示します。",
-    "at <x> <y> <z> scans a sphere around that point instead of the Bot; ~ is relative to the Bot.":
-        "at <x> <y> <z> を付けると Bot ではなくその地点を中心に探します。~ は Bot からの相対位置です。",
+    "Without within, a sphere of 8 around the Bot; limit defaults to 10; results are nearest the Bot first.":
+        "within がなければ Bot から半径8の球を探します。件数の既定は10で、Bot に近い順に表示します。",
+    "An area never reaches past 16 blocks from the Bot; see /bot help area.":
+        "範囲を指定しても Bot から16ブロックより先は探しません。/bot help area を参照してください。",
     "looking around, entities and vehicles": "周囲の確認、エンティティと乗り物",
     "looking at {block} at {position} face {face} ({distance}m)":
         "{position} の {block} の面 {face} を見ています ({distance}m)",
@@ -469,8 +469,50 @@ JA: dict[str, str] = {
     "{block}: {positions}": "{block}: {positions}",
     "no exposed {block} within {radius} blocks": "{radius}ブロック以内に見えている {block} はありません",
     "Use block <x> <y> <z>": "block <x> <y> <z> の形で指定してください",
-    "Use blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>]":
-        "blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>] の形で指定してください",
+    "Use blocks <type> [limit <1-64>] [within <area>] [except <area>]":
+        "blocks <type> [limit <1-64>] [within <area>] [except <area>] の形で指定してください",
+    "blocks radius and at were replaced by areas: use blocks <type> within <r> [of <x> <y> <z>]":
+        "blocks の radius と at は範囲指定に変わりました。blocks <type> within <r> [of <x> <y> <z>] を使ってください",
+    "no exposed {block} in the area": "範囲内に見えている {block} はありません",
+    "An area applies to a block type (blocks, destroy and interact <type>) or to destroy continuous":
+        "範囲を指定できるのはブロックの種類 (blocks、destroy と interact <type>) か destroy continuous だけです",
+    "{clause} takes an area: <x> <y> <z>, <x1> <y1> <z1> <x2> <y2> <z2>, <r> or <r> of <x> <y> <z>":
+        "{clause} には範囲を指定してください: <x> <y> <z>、<x1> <y1> <z1> <x2> <y2> <z2>、<r>、<r> of <x> <y> <z>",
+    "Area values must be within the world (at most 30000000 from 0)":
+        "範囲の値はワールド内 (0 から 30000000 以内) で指定してください",
+    "An area radius is a plain number, not a ~ coordinate": "範囲の半径は ~ ではなく数値で指定してください",
+    "An area radius must be greater than 0": "範囲の半径は 0 より大きくしてください",
+    "An area may be at most a radius-{radius} sphere ({cells} blocks)":
+        "範囲は最大で半径{radius}の球 ({cells}ブロック) までです",
+    "within can be given once": "within は1回だけ指定できます",
+    "except can be given once; scripts chain area:minus()":
+        "except は1回だけ指定できます。スクリプトでは area:minus() をつなげられます",
+    "Unknown area shape '{shape}'": "不明な範囲の形 '{shape}'",
+    "An area must be built with area.cell, area.box or area.sphere":
+        "範囲は area.cell、area.box、area.sphere で作ってください",
+    "Invalid area": "範囲が正しくありません",
+    "Invalid area coordinate": "範囲の座標が正しくありません",
+    "Invalid area radius": "範囲の半径が正しくありません",
+    "narrow blocks, destroy and interact to an area": "blocks、destroy、interact の対象を範囲で絞る",
+    "within <area> keeps only blocks inside it; except <area> leaves out blocks inside it.":
+        "within <area> は範囲内のブロックだけを対象にし、except <area> は範囲内のブロックを対象から外します。",
+    "<x> <y> <z>: one block.": "<x> <y> <z>: 1ブロック。",
+    "<x1> <y1> <z1> <x2> <y2> <z2>: a box, corners included, as for /fill.":
+        "<x1> <y1> <z1> <x2> <y2> <z2>: 直方体。/fill と同じく角を含みます。",
+    "<r>: a sphere of radius r around the Bot.": "<r>: Bot を中心とする半径 r の球。",
+    "<r> of <x> <y> <z>: a sphere of radius r around a point.": "<r> of <x> <y> <z>: その地点を中心とする半径 r の球。",
+    "~ is relative to the Bot when the command is accepted; a continuous loop keeps its area as it moves.":
+        "~ はコマンドを受け付けた時点の Bot からの相対位置です。連続破壊は Bot が動いても同じ範囲を使います。",
+    "An area only narrows: reach and sight stay the same. It holds at most a radius-16 sphere.":
+        "範囲は対象を絞るだけで、届く距離や見える範囲は変わりません。大きさは最大で半径16の球までです。",
+    "Used by blocks, destroy <type>, destroy continuous and interact <type>; one except per command.":
+        "blocks、destroy <type>、destroy continuous、interact <type> で使えます。except は1コマンドに1回です。",
+    "Example: destroy acacia_log within 6 except ~ ~-1 ~ count 20":
+        "例: destroy acacia_log within 6 except ~ ~-1 ~ count 20",
+    "within and except narrow which blocks of the type count; see /bot help area.":
+        "within と except で対象にするブロックを絞れます。/bot help area を参照してください。",
+    "within and except narrow a block type or a continuous loop; see /bot help area.":
+        "within と except でブロックの種類や連続破壊の対象を絞れます。/bot help area を参照してください。",
     "Invalid block type": "ブロックの種類が正しくありません",
     "{clause} must be an integer from {low} to {high}": "{clause} は {low} から {high} の整数で指定してください",
     "Look around...": "周囲を確認...",

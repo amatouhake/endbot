@@ -450,10 +450,10 @@ def find_blocks_modal(name: str, lang: str = "en") -> ModalScreen:
         block_type = _text(values[0]).lower()
         if not re.fullmatch(r"(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+", block_type):
             raise FormResponseError("Enter one block type")
-        command = (name, "blocks", block_type, "radius", str(int(values[1])))
+        command = (name, "blocks", block_type, "within", str(int(values[1])))
         centre = _text(values[2]) if len(values) > 2 else ""
         if centre:
-            return (command + ("at", *_coordinates(centre)),)
+            return (command + ("of", *_coordinates(centre)),)
         return (command,)
 
     return ModalScreen(f"{name}: blocks", (

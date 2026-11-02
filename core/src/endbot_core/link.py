@@ -38,6 +38,7 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from pathlib import Path
 
+from endbot_core import areas
 from endbot_core.i18n import LocalizedError
 from endbot_core.operations import REGISTRY
 from endbot_core.principal import Principal
@@ -60,8 +61,9 @@ PRESENCE_KINDS = frozenset({"snapshot", "join", "quit", "locale"})
 # The ServerThreadWorld methods endbotd may call on the plugin.
 WORLD_METHODS = frozenset({
     "default_spawn", "resolve_spawn_placement", "queue_spawn_placement", "clear_pending_placement", "observe",
-    "target", "block_info", "reachable_block", "find_blocks", "describe_entities", "inventory", "held_book_pages",
-    "fill_held_book", "teleport", "look_at", "resolve_interaction", "resolve_mining", "resolve_mining_batch",
+    "target", "block_info", "reachable_block", "find_blocks", "resolve_area", "describe_entities", "inventory",
+    "held_book_pages", "fill_held_book", "teleport", "look_at", "resolve_interaction", "resolve_mining",
+    "resolve_mining_batch",
     "resolve_dismount", "assert_name_available", "capacity",
 })
 
@@ -249,7 +251,9 @@ def error_from_wire(detail: object) -> Exception:
 def resolve_mining_batch(world, requests: list[dict]) -> list[dict]:
     """Resolve one mining target per request, isolating failures per item.
 
-    ``requests`` is a list of ``{"identityId": str, "blockType": str | None}``.
+    ``requests`` is a list of ``{"identityId": str, "blockType": str | None[, "area": dict]}``; a
+    resolved ``area`` (BOT-027) narrows a typed loop's candidates and turns a sight loop's target outside
+    it into no target.
     Item *i* of the result is ``{"target": <dict or None>}`` or ``{"error":
     error_to_wire(exc)}``, in request order. A typed request keeps the old
     waiting semantics (a ``ValueError`` means no target); any other exception
@@ -268,18 +272,26 @@ def resolve_mining_batch(world, requests: list[dict]) -> list[dict]:
         block_type = request.get("blockType")
         if block_type is not None and not isinstance(block_type, str):
             raise ValueError("mining batch blockType must be a string or null")
-        parsed.append((identity, block_type))
+        area = request.get("area")
+        if area is not None and not isinstance(area, dict):
+            raise ValueError("mining batch area must be an object or absent")
+        parsed.append((identity, block_type, area))
     results = []
-    for identity, block_type in parsed:
+    for identity, block_type, area in parsed:
         try:
             if block_type is not None:
                 try:
-                    cell = world.reachable_block(identity, block_type, 6.0)
+                    if area is None:
+                        cell = world.reachable_block(identity, block_type, 6.0)
+                    else:
+                        cell = world.reachable_block(identity, block_type, 6.0, area=area)
                     target = {**world.resolve_mining(identity, {"coordinates": cell}, None), "turn": True}
                 except ValueError:
                     target = None
             else:
                 target = world.resolve_mining(identity, {"continuous": True}, None)
+                if target is not None and not areas.contains(area, target["blockPosition"]):
+                    target = None  # the crosshair rests outside the area: wait, as with nothing in sight
         except Exception as error:  # noqa: BLE001 - one item's failure must not end the batch
             results.append({"error": error_to_wire(error)})
         else:

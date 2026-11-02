@@ -71,22 +71,35 @@ class DispatchTests(unittest.TestCase):
         with self.assertRaises(LocalizedError):
             world.teleport("bot-id", {"coordinates": [1., 64., 2.]}, source)
 
-    def test_find_blocks_forwards_the_scan_centre_to_the_world(self):
+    def test_area_queries_forward_the_area_to_the_world(self):
         from types import SimpleNamespace
 
         calls = []
 
         class World:
             def find_blocks(self, *args):
-                calls.append(args)
+                calls.append(("find_blocks", *args))
                 return []
 
+            def reachable_block(self, *args):
+                calls.append(("reachable_block", *args))
+                return [1, 64, 2]
+
+            def resolve_area(self, *args):
+                calls.append(("resolve_area", *args))
+                return args[1]
+
+        area = {"within": {"shape": "sphere", "radius": 6.0, "at": [0.5, 64.0, 0.5]}, "except": []}
         bridge = SimpleNamespace(call=lambda callback: callback())
         world = ServerThreadWorld(World(), bridge, lambda source: None)
-        world.find_blocks("bot-id", "minecraft:oak_log", 8, 10)
-        world.find_blocks("bot-id", "minecraft:oak_log", 16, 3, [("relative", 0.0), 70.0, 2.0])
-        self.assertEqual(calls, [("bot-id", "minecraft:oak_log", 8, 10, None),
-                                 ("bot-id", "minecraft:oak_log", 16, 3, [("relative", 0.0), 70.0, 2.0])])
+        world.find_blocks("bot-id", "minecraft:oak_log", 10)
+        world.find_blocks("bot-id", "minecraft:oak_log", 3, area)
+        world.reachable_block("bot-id", "minecraft:oak_log", 6.0, area=area)
+        world.resolve_area("bot-id", area)
+        self.assertEqual(calls, [("find_blocks", "bot-id", "minecraft:oak_log", 10, None),
+                                 ("find_blocks", "bot-id", "minecraft:oak_log", 3, area),
+                                 ("reachable_block", "bot-id", "minecraft:oak_log", 6.0, area),
+                                 ("resolve_area", "bot-id", area)])
 
     def test_server_thread_world_methods_take_the_world_parameters(self):
         # world.py needs endstone, so read its signatures from the source; a missed
@@ -502,7 +515,7 @@ class DispatchTests(unittest.TestCase):
                 return callback()
 
         class World:
-            def reachable_block(self, identity_id, block_type, reach):
+            def reachable_block(self, identity_id, block_type, reach, area=None):
                 world_calls.append(("reachable_block", identity_id, block_type, reach))
                 return [1, 64, 2]
 

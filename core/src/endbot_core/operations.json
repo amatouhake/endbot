@@ -84,53 +84,12 @@
           ]
         ],
         "options": {
-          "radius": {
-            "type": "integer",
-            "clause": "radius"
-          },
           "limit": {
             "type": "integer",
             "clause": "limit"
-          }
-        },
-        "prefix": []
-      },
-      {
-        "positional": [
-          [
-            "type",
-            {
-              "type": "string"
-            }
-          ],
-          [
-            "x",
-            {
-              "type": "coordinate",
-              "clause": "at"
-            }
-          ],
-          [
-            "y",
-            {
-              "type": "coordinate"
-            }
-          ],
-          [
-            "z",
-            {
-              "type": "coordinate"
-            }
-          ]
-        ],
-        "options": {
-          "radius": {
-            "type": "integer",
-            "clause": "radius"
           },
-          "limit": {
-            "type": "integer",
-            "clause": "limit"
+          "area": {
+            "type": "area"
           }
         },
         "prefix": []
@@ -580,6 +539,9 @@
           "count": {
             "type": "integer",
             "clause": "count"
+          },
+          "area": {
+            "type": "area"
           }
         },
         "prefix": []
@@ -604,6 +566,9 @@
           "count": {
             "type": "integer",
             "clause": "count"
+          },
+          "area": {
+            "type": "area"
           }
         },
         "prefix": []
@@ -667,6 +632,9 @@
           "count": {
             "type": "integer",
             "clause": "count"
+          },
+          "area": {
+            "type": "area"
           }
         },
         "prefix": []

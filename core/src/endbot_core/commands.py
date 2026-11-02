@@ -7,8 +7,11 @@ import re
 import shlex
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 
+from endbot_core import areas
 from endbot_core.control import RuntimeControlError, bot_profiles
 from endbot_core.i18n import LocalizedError, Text, localize_error, tr
 from endbot_core.limits import BotLimits
@@ -381,9 +384,11 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "interact": HelpTopic(
         "interact",
         "right-click a block or an entity",
-        ("interact", "interact <x> <y> <z> [face]", "interact <block type>", "interact @<type|id|nearest>"),
+        ("interact", "interact <x> <y> <z> [face]", "interact <block type> [within <area>] [except <area>]",
+         "interact @<type|id|nearest>"),
         (
             "No argument right-clicks what the Bot looks at. A block type is the nearest visible one within 6 blocks.",
+            "within and except narrow which blocks of the type count; see /bot help area.",
             "@ picks an entity within 6 blocks, turns to it and uses the held item: feed, breed, shear, name, ride.",
             "Without a face, the side facing the Bot. BDS decides reach and outcome; players are never targets.",
         ),
@@ -415,11 +420,11 @@ HELP_TOPICS: dict[str, HelpTopic] = {
     "blocks": HelpTopic(
         "blocks",
         "find the nearest exposed blocks of a type",
-        ("blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>]",),
+        ("blocks <type> [limit <1-64>] [within <area>] [except <area>]",),
         (
             "Only blocks with a face open to air, water or plants count, as a player could see them.",
-            "Radius (1-16) defaults to 8 and limit to 10; results are nearest first.",
-            "at <x> <y> <z> scans a sphere around that point instead of the Bot; ~ is relative to the Bot.",
+            "Without within, a sphere of 8 around the Bot; limit defaults to 10; results are nearest the Bot first.",
+            "An area never reaches past 16 blocks from the Bot; see /bot help area.",
         ),
     ),
     "dismount": HelpTopic(
@@ -436,11 +441,13 @@ HELP_TOPICS: dict[str, HelpTopic] = {
             "destroy [continuous] for <ticks> [count <blocks>]",
             "destroy [continuous] count <blocks>",
             "destroy <x> <y> <z> [down|up|north|south|west|east]",
-            "destroy <block type>",
+            "destroy <block type> [continuous] [for <ticks>] [count <blocks>]",
+            "destroy ... [within <area>] [except <area>]",
         ),
         (
             "once (default) breaks one block in sight; x y z breaks that block. ~ is relative to the Bot.",
             "A block type breaks the nearest one the Bot can see within 6 blocks.",
+            "within and except narrow a block type or a continuous loop; see /bot help area.",
             "continuous holds left-click along the Bot's sight, also after you log off; waits when empty.",
             "Other commands do not cancel it; only destroy stop, stop, death or disconnect end it.",
             "for ends continuous mining after that many ticks, aborting a block in progress.",
@@ -490,6 +497,23 @@ HELP_TOPICS: dict[str, HelpTopic] = {
         ),
         named=False,
     ),
+    "area": HelpTopic(
+        "area",
+        "narrow blocks, destroy and interact to an area",
+        (),
+        (
+            "within <area> keeps only blocks inside it; except <area> leaves out blocks inside it.",
+            "<x> <y> <z>: one block.",
+            "<x1> <y1> <z1> <x2> <y2> <z2>: a box, corners included, as for /fill.",
+            "<r>: a sphere of radius r around the Bot.",
+            "<r> of <x> <y> <z>: a sphere of radius r around a point.",
+            "~ is relative to the Bot when the command is accepted; a continuous loop keeps its area as it moves.",
+            "An area only narrows: reach and sight stay the same. It holds at most a radius-16 sphere.",
+            "Used by blocks, destroy <type>, destroy continuous and interact <type>; one except per command.",
+            "Example: destroy acacia_log within 6 except ~ ~-1 ~ count 20",
+        ),
+        named=False,
+    ),
     "help": HelpTopic(
         "help",
         "show this help",
@@ -505,8 +529,40 @@ INTERACT_USAGE = ("Use interact, interact <x> <y> <z> [face], interact <block ty
                   "or interact @<entity> [continuous|interval <ticks>] [for <ticks>] [count <n>]")
 TARGET_REPEAT_USAGE = "Repeat {action} @<entity> with continuous, interval <ticks>, for <ticks> or count <n>"
 
-BLOCKS_USAGE = "Use blocks <type> [radius <1-16>] [limit <1-64>] [at <x> <y> <z>]"
-BLOCKS_CLAUSES = {"radius": (1, 16), "limit": (1, 64)}
+BLOCKS_USAGE = "Use blocks <type> [limit <1-64>] [within <area>] [except <area>]"
+BLOCKS_REMOVED = "blocks radius and at were replaced by areas: use blocks <type> within <r> [of <x> <y> <z>]"
+BLOCKS_RADIUS = 8  # the scan without an area: a sphere of this radius around the Bot
+AREA_TARGETS = ("An area applies to a block type (blocks, destroy and interact <type>) "
+                "or to destroy continuous")
+
+# A typed operation (Luau area:minus) may chain several except clauses; chat takes one.
+_TYPED_AREAS: ContextVar[bool] = ContextVar("typed_areas", default=False)
+
+
+@contextmanager
+def typed_areas():
+    """Parse commands as a typed operation spells them: ``except`` may repeat."""
+    token = _TYPED_AREAS.set(True)
+    try:
+        yield
+    finally:
+        _TYPED_AREAS.reset(token)
+
+
+def _take_area(tokens: list[str]) -> tuple[dict | None, list[str]]:
+    try:
+        return areas.take_area(tokens, chain=_TYPED_AREAS.get())
+    except areas.AreaError as error:
+        raise CommandSyntaxError(error.template, **error.params) from error
+
+
+def _with_area(command: BotCommand, area: dict) -> BotCommand:
+    parameters = command.parameters
+    typed = "blockType" in parameters
+    loop = command.operation == "destroy" and parameters.get("mode") == "continuous"
+    if command.operation not in {"destroy", "interact"} or not (typed or loop):
+        raise CommandSyntaxError(AREA_TARGETS)
+    return BotCommand(command.operation, command.name, {**parameters, "area": area})
 
 HELP_PAGES: tuple[tuple[str, ...], ...] = (
     ("spawn", "resume", "reconnect", "despawn", "status", "teleport"),
@@ -986,33 +1042,32 @@ def parse_command(arguments: list[str]) -> BotCommand:
         assert not unused
         return BotCommand(operation, name, position)
     if operation == "blocks":
-        if not remaining:
+        if any(token.lower() in {"radius", "at"} for token in remaining[1:]):
+            raise CommandSyntaxError(BLOCKS_REMOVED)
+        area, tokens = _take_area(remaining)
+        if not tokens:
             raise CommandSyntaxError(BLOCKS_USAGE)
-        block_type = remaining[0].lower()
+        block_type = tokens.pop(0).lower()
         block_type = block_type if ":" in block_type else f"minecraft:{block_type}"
         if not re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_./-]+", block_type):
             raise CommandSyntaxError("Invalid block type")
-        parameters = {"type": block_type, "radius": 8, "limit": 10}
-        tokens = remaining[1:]
-        seen = set()
-        while tokens:
-            clause = tokens.pop(0).lower()
-            if clause not in BLOCKS_CLAUSES and clause != "at" or clause in seen or not tokens:
+        parameters = {"type": block_type, "limit": 10}
+        if tokens:
+            if len(tokens) != 2 or tokens[0].lower() != "limit":
                 raise CommandSyntaxError(BLOCKS_USAGE)
-            seen.add(clause)
-            if clause == "at":
-                # Scan centre: ~ is relative to the Bot, as for block.
-                if len(tokens) < 3:
-                    raise CommandSyntaxError(BLOCKS_USAGE)
-                parameters["coordinates"] = [_coordinate(tokens.pop(0)) for _ in range(3)]
-                continue
-            low, high = BLOCKS_CLAUSES[clause]
-            value = tokens.pop(0)
-            if not value.isascii() or not value.isdecimal() or not low <= int(value) <= high:
+            value = tokens[1]
+            if not value.isascii() or not value.isdecimal() or not 1 <= int(value) <= 64:
                 raise CommandSyntaxError("{clause} must be an integer from {low} to {high}",
-                                         clause=clause, low=low, high=high)
-            parameters[clause] = int(value)
+                                         clause="limit", low=1, high=64)
+            parameters["limit"] = int(value)
+        if area is not None:
+            parameters["area"] = area
         return BotCommand(operation, name, parameters)
+    if operation in {"destroy", "interact"}:
+        # within/except narrow the blocks a typed target or a continuous loop may pick (BOT-027).
+        area, rest = _take_area(remaining)
+        if area is not None:
+            return _with_area(parse_command([name, operation, *rest]), area)
     # Like tp, the argument shape picks the target: one token is an entity,
     # coordinates and a face are a block.
     # attack, destroy and interact share target forms: nothing is the crosshair,
@@ -1237,7 +1292,7 @@ class BotCommandService:
         requests = []
         pending = []
         for key, entry in loops:
-            name, identity, loop_id, source, position = entry
+            name, identity, loop_id, source, position, area = entry
             try:
                 if not authorize(source):
                     if self._end_mining_loop(key, entry):
@@ -1264,7 +1319,8 @@ class BotCommandService:
                     request = None
                     if mining.get("state") != "active":
                         request = len(requests)
-                        requests.append({"identityId": identity, "blockType": position or None})
+                        requests.append({"identityId": identity, "blockType": position or None,
+                                         **({"area": area} if area is not None else {})})
                     pending.append((key, entry, mining, request))
                     continue
                 if reason is False:
@@ -1297,7 +1353,7 @@ class BotCommandService:
         # Phase three finishes in the original loop order, with the same
         # per-loop try/except as a single retarget had.
         for key, entry, mining, request in pending:
-            name, identity, loop_id, source, _ = entry
+            name, identity, loop_id, source, _, _ = entry
             try:
                 if request is None:
                     target = None
@@ -1326,12 +1382,29 @@ class BotCommandService:
                     notices.append(self._mining_notice(entry, "warning", error))
         return notices
 
+    def _resolve_area(self, identity: str, area: dict) -> dict:
+        """``area`` with ``~`` fixed against the Bot's BDS position now (BOT-027)."""
+        if areas.has_relative(area):
+            if self.world is None:
+                raise ValueError("Bot is not present in the world")
+            return self.world.resolve_area(identity, area)
+        try:
+            return areas.resolve_area(area, (0.0, 0.0, 0.0))
+        except areas.AreaError as error:
+            raise CommandSyntaxError(error.template, **error.params) from error
+
+    def _reachable_block(self, identity: str, block_type: str, area: dict | None) -> list[int]:
+        """The nearest reachable block of a type, narrowed by an area when one is given."""
+        if area is None:
+            return self.world.reachable_block(identity, block_type, 6.0)
+        return self.world.reachable_block(identity, block_type, 6.0, area=self._resolve_area(identity, area))
+
     @staticmethod
     def _mining_notice(entry, level: str, cause):
         """A job.ended Event; ``cause`` is an English reason or an error."""
         from endbot_core.events import Event, reason
 
-        name, _, loop_id, source, _ = entry
+        name, _, loop_id, source, _, _ = entry
         return Event(source, "job.ended", {"bot": name, "job": "destroy continuous" if loop_id else "destroy",
                                            "reason": reason(cause)}, level)
 
@@ -1340,7 +1413,7 @@ class BotCommandService:
         """A one-time job.waiting Event: nothing in sight, or the runtime refused what was."""
         from endbot_core.events import Event
 
-        name, _, _, source, block_type = entry
+        name, _, _, source, block_type, _ = entry
         return Event(source, "job.waiting", {"bot": name, "blockType": block_type})
 
     def _waited(self, key, entry, waiting) -> int:
@@ -1400,7 +1473,7 @@ class BotCommandService:
     def _end_mining_loop(self, key, entry=None):
         entry = self._take_mining_loop(key, entry)
         if entry and entry[2]:
-            name, _, loop_id, _, _ = entry
+            name, _, loop_id, _, _, _ = entry
             try:
                 self.control.request("mine", name=name, mode="stop", loopId=loop_id)
             except (RuntimeError, ValueError):
@@ -1422,10 +1495,11 @@ class BotCommandService:
         validator, so both entries accept the same combinations.
         """
         arguments = operation.argv()
-        if parse_command(arguments).operation == "help" and operation.op != "help":
-            # A Bot called help can never be addressed as text; say so instead of answering with help.
-            _assert_not_reserved(operation.target)
-        return self.execute(arguments, sender)
+        with typed_areas():
+            if parse_command(arguments).operation == "help" and operation.op != "help":
+                # A Bot called help can never be addressed as text; say so instead of answering with help.
+                _assert_not_reserved(operation.target)
+            return self.execute(arguments, sender)
 
     def execute(self, arguments: list[str], sender=None) -> CommandResult:
         """The command-text entry: parse ``arguments``, then run them for ``sender``."""
@@ -1643,18 +1717,24 @@ class BotCommandService:
             return CommandResult(True, (reply(self._radius_summary(result, lang), result["name"]),), data=data)
         if command.operation == "destroy":
             mode = command.parameters.get("mode")
+            area = None
             if mode == "continuous":
                 target = {"mode": "start"}  # Runtime IPC name for a continuous loop.
                 for limit in ("durationTicks", "blockCount"):
                     if limit in command.parameters:
                         target[limit] = command.parameters[limit]
+                if "area" in command.parameters:
+                    # ~ resolves now: the loop keeps this area while the Bot moves.
+                    status = control.request("status", name=command.name)
+                    area = self._resolve_area(status["identityId"], command.parameters["area"])
             elif mode == "stop":
                 target = {"mode": "stop"}
             else:
                 status = control.request("status", name=command.name)
                 parameters = command.parameters
                 if "blockType" in parameters:
-                    cell = self.world.reachable_block(status["identityId"], parameters["blockType"], 6.0)
+                    cell = self._reachable_block(status["identityId"], parameters["blockType"],
+                                                 parameters.get("area"))
                     parameters = {"coordinates": cell}
                 target = self.world.resolve_mining(status["identityId"], parameters, sender)
             result = control.request("mine", name=command.name, **target)
@@ -1662,13 +1742,14 @@ class BotCommandService:
             with self._mining_lock:
                 self._mining_loops.pop(key, None)
                 if mode == "continuous":
-                    # The last slot is the block type a typed loop retargets to (None: sight).
+                    # The block type a typed loop retargets to (None: sight), then its resolved area.
                     self._mining_loops[key] = (
                         result["name"],
                         result["identityId"],
                         result["mining"]["loopId"],
                         as_job(sender),
                         command.parameters.get("blockType"),
+                        area,
                     )
                 elif mode != "stop":
                     self._mining_loops[key] = (
@@ -1677,6 +1758,7 @@ class BotCommandService:
                         None,
                         as_job(sender),
                         list(target["blockPosition"]),
+                        None,
                     )
             if mode != "stop":
                 started.update(name=result["name"], identityId=result["identityId"], job={"kind": "mining"})
@@ -1767,7 +1849,8 @@ class BotCommandService:
             if self.world is None:
                 raise ValueError("Bot is not present in the world")
             status = control.request("status", name=command.name)
-            cell = self.world.reachable_block(status["identityId"], command.parameters["blockType"], 6.0)
+            cell = self._reachable_block(status["identityId"], command.parameters["blockType"],
+                                         command.parameters.get("area"))
             command = BotCommand("interact", command.name, {"coordinates": cell})
         if command.operation in {"target", "block", "blocks"}:
             if self.world is None:
@@ -1798,9 +1881,11 @@ class BotCommandService:
                 text += f" {DIM}({_reach_text(data, lang)}){RESET}" if "reachable" in data else ""
             else:
                 parameters = command.parameters
-                found = self.world.find_blocks(identity, parameters["type"], parameters["radius"], parameters["limit"],
-                                            parameters.get("coordinates"))
-                data = {"type": parameters["type"], "radius": parameters["radius"], "blocks": found}
+                area = parameters.get("area")
+                found = self.world.find_blocks(identity, parameters["type"], parameters["limit"],
+                                               None if area is None else self._resolve_area(identity, area))
+                data = {"type": parameters["type"], "blocks": found,
+                        **({"area": areas.area_text(area)} if area is not None else {"radius": BLOCKS_RADIUS})}
                 block_name = parameters["type"].removeprefix("minecraft:")
                 if found:
                     in_reach = tr(lang, "in reach")
@@ -1809,9 +1894,11 @@ class BotCommandService:
                         f"{', ' + in_reach if entry.get('reachable') else ''}){RESET}" for entry in found[:10])
                     more = "" if len(found) <= 10 else f" (+{len(found) - 10})"
                     text = tr(lang, "{block}: {positions}", block=block_name, positions=listed) + more
+                elif area is not None:
+                    text = tr(lang, "no exposed {block} in the area", block=block_name)
                 else:
                     text = tr(lang, "no exposed {block} within {radius} blocks", block=block_name,
-                              radius=parameters["radius"])
+                              radius=BLOCKS_RADIUS)
             return CommandResult(True, (reply(text, name),), data={"name": name, **data})
         if command.operation == "dismount":
             status = control.request("status", name=command.name)

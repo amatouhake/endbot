@@ -141,9 +141,13 @@ class EntityFormTests(unittest.TestCase):
         self.assertEqual(modal_commands(around.items[3].action.screen, '["~ ~-1 ~"]'),
                          (("Alice", "block", "~", "~-1", "~"),))
         self.assertEqual(modal_commands(around.items[4].action.screen, '["oak_log", 5, ""]'),
-                         (("Alice", "blocks", "oak_log", "radius", "5"),))
+                         (("Alice", "blocks", "oak_log", "within", "5"),))
         self.assertEqual(modal_commands(around.items[4].action.screen, '["oak_log", 5, "~ ~10 ~"]'),
-                         (("Alice", "blocks", "oak_log", "radius", "5", "at", "~", "~10", "~"),))
+                         (("Alice", "blocks", "oak_log", "within", "5", "of", "~", "~10", "~"),))
+        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "within", "5", "of", "~", "~10", "~"])
+                         .parameters["area"]["within"],
+                         {"shape": "sphere", "radius": 5.0,
+                          "at": [("relative", 0.0), ("relative", 10.0), ("relative", 0.0)]})
         modal = gameplay.items[4].action
         self.assertIsInstance(modal, Show)
         self.assertIsInstance(modal.screen, ModalScreen)

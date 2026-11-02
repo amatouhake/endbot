@@ -403,7 +403,7 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
                   [[0, 201, 2, "minecraft:oak_log"], [0, 201, 1, "minecraft:short_grass"]], watch=[[0, 201, 2]])
     target = state["target"]
     offset = len(log())
-    console(f"bot {BOT} blocks minecraft:oak_log radius 5")
+    console(f"bot {BOT} blocks minecraft:oak_log within 5")
     wait("grass-covered log listed", lambda: "oak_log:" in said(offset), 5)
     listing = said(offset)
     if not listed_in_reach(listing, target):
@@ -425,7 +425,7 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
     ], watch=[[0, 201, 2]])
     target = state["target"]
     offset = len(log())
-    console(f"bot {BOT} blocks minecraft:oak_log radius 5")
+    console(f"bot {BOT} blocks minecraft:oak_log within 5")
     wait("leaf-wrapped log listed", lambda: "oak_log:" in said(offset), 5)
     listing = said(offset)
     if f"{target[0]} {target[1]} {target[2]} (" not in listing:

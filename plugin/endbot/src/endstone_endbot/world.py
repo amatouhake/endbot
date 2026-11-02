@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from uuid import UUID
 
+from endbot_core import areas
 from endbot_core.i18n import LocalizedError
 from endbot_core.script_books import book_pages, fill_book
 from endstone.level import Location
@@ -82,6 +83,9 @@ def _exit_cells(forward: tuple[int, int], vehicle_type: str) -> list[tuple[int, 
 REACH = 6.0
 SEARCH_RADIUS_MAX = 12
 SEARCH_LIMIT_MAX = 64
+# blocks scans a sphere of this radius around the Bot without an area, and never past BLOCKS_RANGE with one.
+BLOCKS_RADIUS = 8
+BLOCKS_RANGE = areas.MAX_RADIUS
 DIMENSION_HEIGHTS = {"Overworld": (-64, 319), "Nether": (0, 127), "TheEnd": (0, 255)}
 FACE_NAMES = ("down", "up", "north", "south", "west", "east")
 NEIGHBOURS = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
@@ -439,12 +443,17 @@ class EndstoneWorld:
         # Face numbering uses Y, Z, X order; parity is down/north/west versus up/south/east.
         return ((5, 4), (1, 0), (3, 2))[axis][0 if offsets[axis] > 0 else 1]
 
-    def reachable_block(self, identity_id: str, block_type: str, reach: float) -> list[int]:
-        """The nearest block of a type the Bot can see and reach (any part of a facing side); x-ray never."""
+    def reachable_block(self, identity_id: str, block_type: str, reach: float, area: dict | None = None) -> list[int]:
+        """The nearest block of a type the Bot can see and reach (any part of a facing side); x-ray never.
+
+        ``area`` (BOT-027) only narrows the candidates; reach and sight stay the same.
+        """
         bot = self._bot(identity_id)
+        self._known_block(block_type)
         location = bot.location
         eye = [float(location.x), float(location.y) + 1.62, float(location.z)]
-        candidates = self.find_blocks(identity_id, block_type, math.ceil(reach) + 1, SEARCH_LIMIT_MAX)
+        candidates = self._find(location, block_type, math.ceil(reach) + 1, SEARCH_LIMIT_MAX,
+                                self._area(area, location))
         candidates.sort(key=lambda entry: math.dist(eye, (entry["x"] + 0.5, entry["y"] + 0.5, entry["z"] + 0.5)))
         for entry in candidates:
             # find_blocks already applied the one targeting rule (REACH); a shorter reach narrows it.
@@ -669,18 +678,38 @@ class EndstoneWorld:
         except (RuntimeError, ValueError) as error:
             raise LocalizedError("Unknown block type: {block}", block=block_type.removeprefix("minecraft:")) from error
 
-    def find_blocks(self, identity_id: str, block_type: str, radius: int, limit: int,
-                    coordinates: list[object] | None = None) -> list[dict]:
-        """Nearest exposed blocks of one type around the Bot or a given point; hidden blocks are never reported."""
+    def resolve_area(self, identity_id: str, area: dict) -> dict:
+        """``area`` with ``~`` and the Bot-centred sphere fixed at the Bot's position now (BOT-027)."""
+        return self._area(area, self._bot(identity_id).location)
+
+    def _area(self, area: dict | None, location) -> dict | None:
+        # Resolving a resolved area returns it unchanged; it also validates what crossed the link.
+        return None if area is None else areas.resolve_area(area, self._coordinates(location))
+
+    def find_blocks(self, identity_id: str, block_type: str, limit: int, area: dict | None = None) -> list[dict]:
+        """Nearest exposed blocks of one type, nearest the Bot first; hidden blocks are never reported.
+
+        Without an area (or with only ``except``), a sphere of BLOCKS_RADIUS around the Bot; an area's
+        ``within`` replaces it but never reaches past BLOCKS_RANGE from the Bot (BOT-027).
+        """
         bot = self._bot(identity_id)
         self._known_block(block_type)
         location = bot.location
+        area = self._area(area, location)
+        radius = BLOCKS_RADIUS
+        bounds = areas.bounds(area)
+        if bounds is not None:
+            feet = self._coordinates(location)
+            corners = [[(bounds[0] if corner >> axis & 1 else bounds[1])[axis] + 0.5 for axis in range(3)]
+                       for corner in range(8)]
+            farthest = max(math.dist(feet, corner) for corner in corners) + 1
+            radius = min(BLOCKS_RANGE, math.ceil(farthest))
+        return self._find(location, block_type, radius, limit, area)
+
+    def _find(self, location, block_type: str, radius: int, limit: int, area: dict | None) -> list[dict]:
         dimension = location.dimension
         low, high = DIMENSION_HEIGHTS.get(dimension.name, (-64, 319))
-        if coordinates is None:
-            feet = [float(location.x), float(location.y), float(location.z)]
-        else:
-            feet = self._resolve_coordinates(coordinates, location)
+        feet = self._coordinates(location)
         origin = [math.floor(value) for value in feet]
         found = []
         # Nearest cells first; stop once no farther cell can beat the limit-th match.
@@ -688,7 +717,9 @@ class EndstoneWorld:
             if len(found) >= limit and cell_distance - CELL_SLACK > found[limit - 1]["exact"]:
                 break
             x, y, z = origin[0] + dx, origin[1] + dy, origin[2] + dz
-            if not low <= y <= high or str(dimension.get_block_at(x, y, z).type) != block_type:
+            if not low <= y <= high or not areas.contains(area, (x, y, z)):
+                continue
+            if str(dimension.get_block_at(x, y, z).type) != block_type:
                 continue
             distance = math.dist(feet, (x + 0.5, y + 0.5, z + 0.5))
             if distance <= radius and _exposed(dimension, x, y, z):

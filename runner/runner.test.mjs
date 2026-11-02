@@ -233,6 +233,45 @@ bot("Alice"):tp(a.origin, {yaw=90, pitch=0})`;
   assert.throws(() => parameters(run.events[0].schema, { mode: 'twice' }), /invalid argument: mode/);
 });
 
+test('areas are built with area.*, chain minus and reach the host as their clause text', async () => {
+  const events = [];
+  const source = `params{}
+local footing = area.cell("~", "~-1", "~")
+local b = bot("Alice")
+b:blocks("oak_log", {area = area.sphere(6)})
+b:blocks("oak_log", {limit = 3, area = area.sphere(2.5, vector.create(1, 64, -2)):minus(footing)})
+b:destroy("acacia_log", {count = 20, area = area.sphere(6):minus(footing):minus(area.box(0, 60, 0, 2, 66, 2))})
+b:destroy({mode = "continuous", area = area.box(vector.create(0, 60, 0), vector.create(2, 66, 2))})
+b:interact("chest", {area = area.cell(1, 64, 2)})`;
+  const run = startRun(source, {}, { onOperation: e => { events.push(e); return { ok: true }; } });
+  assert.equal((await run.done).type, 'done');
+  assert.deepEqual(events.map(e => e.params), [
+    { type: 'oak_log', area: 'within 6' },
+    { type: 'oak_log', limit: 3, area: 'within 2.5 of 1 64 -2 except ~ ~-1 ~' },
+    { type: 'acacia_log', count: 20, area: 'within 6 except ~ ~-1 ~ except 0 60 0 2 66 2' },
+    { mode: 'continuous', area: 'within 0 60 0 2 66 2' },
+    { target: 'chest', area: 'within 1 64 2' },
+  ]);
+  for (const [call, message] of [
+    ['bot("A"):blocks("oak_log", 1, 70, 2)', /area\.sphere\(r, x, y, z\)/],
+    ['bot("A"):blocks("oak_log", {radius = 8})', /area\.sphere\(r, x, y, z\)/],
+    ['bot("A"):blocks("oak_log", {area = "within 6"})', /invalid typed operation arguments/],
+    ['bot("A"):blocks("oak_log", {area = {}})', /invalid typed operation arguments/],
+    ['bot("A"):blocks("oak_log", area.sphere(6))', /\{area = a\}/],
+    ['area.cell(1, 2)', /needs 3 coordinates/],
+    ['area.sphere(0)', /invalid area radius/],
+    ['area.sphere(6):minus(area.sphere(2):minus(area.cell(0, 0, 0)))', /minus takes an area/],
+    ['area.cell(0, 0, 0).base = "6; stop"', /readonly|frozen/i],
+  ]) {
+    let invoked = false;
+    const failed = startRun(`params{}\n${call}`, {}, { onOperation: () => { invoked = true; return { ok: true }; } });
+    const result = await failed.done;
+    assert.equal(result.type, 'error', call);
+    assert.match(result.message, message, call);
+    assert.equal(invoked, false, call);
+  }
+});
+
 test('typed API rejects surplus options, bad types and command-string escape attempts before IPC', async () => {
   for (const call of ['bot("A"):move("forward",{raw="stop"})', 'bot("A"):look(true,0)',
     'bot("A"):tp("Player",{raw="stop"})', 'bot("A"):command("stop")']) {

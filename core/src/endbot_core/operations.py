@@ -14,6 +14,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from endbot_core import areas
+
 REGISTRY = json.loads(Path(__file__).with_name("operations.json").read_text(encoding="utf-8"))
 OPERATIONS = REGISTRY["operations"]
 CAPABILITIES = REGISTRY["capabilities"]
@@ -27,6 +29,14 @@ GROUPS = (("yaw", "pitch"), ("facingX", "facingY", "facingZ"))
 TARGET = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
 
 
+def area_argument(value) -> list[str]:
+    """The canonical ``within``/``except`` tokens of a typed area value (its clause text, as Luau builds it)."""
+    try:
+        return areas.area_tokens(areas.parse_area(value))
+    except areas.AreaError as error:
+        raise ValueError(str(error)) from error
+
+
 def scalar(value, spec):
     kind = spec["type"]
     number = type(value) in (int, float) and math.isfinite(value)
@@ -38,6 +48,7 @@ def scalar(value, spec):
         "coordinate": number or (isinstance(value, str) and bool(re.fullmatch(r"~(?:-?\d+(?:\.\d+)?)?", value))),
         "stringOrInteger": isinstance(value, str) or (number and int(value) == value),
         "integerOrDefault": value == "default" or (number and int(value) == value),
+        "area": False,  # never one token: operation_argv writes its clauses through area_argument
     }.get(kind, False)
     if not valid or ("choices" in spec and value not in spec["choices"]):
         raise ValueError("Invalid typed operation argument")
@@ -69,6 +80,9 @@ def operation_argv(target, operation, parameters):
             tokens = ["in", scalar(parameters["dimension"], allowed["dimension"]), *tokens]
         for key, spec in (*shape["positional"], *shape["options"].items()):
             if key not in parameters or (operation == "tp" and key == "dimension"):
+                continue
+            if spec["type"] == "area":
+                tokens.extend(area_argument(parameters[key]))
                 continue
             if "clause" in spec:
                 tokens.append(spec["clause"])
@@ -121,6 +135,17 @@ def _options(options: list, tokens: list[str]):
             yield {}
         return
     (key, spec), rest = options[0], options[1:]
+    if spec["type"] == "area":
+        # An area is the last option and holds every remaining token as its clauses.
+        if tokens and tokens[0] in areas.CLAUSES and not rest:
+            try:
+                value = " ".join(area_argument(" ".join(tokens)))
+            except ValueError:
+                pass
+            else:
+                yield {key: value}
+        yield from _options(rest, tokens)
+        return
     clause = [spec["clause"]] if "clause" in spec else []
     if tokens[:len(clause)] == clause and len(tokens) > len(clause):
         try:

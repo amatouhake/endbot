@@ -119,6 +119,63 @@ function log(text)
     assert(type(text) == "string", "log expects text")
     emitLog(text)
 end
+-- Areas (BOT-027): values built only here, so a script cannot forge one. Each is an empty frozen
+-- table; its clause text ("within 6 except ~ ~-1 ~") stays private and is what the host parses.
+local AREAS = setmetatable({}, {__mode = "k"})
+local AreaMethods = {}
+local AreaMeta = table.freeze({__index = AreaMethods})
+local function areaNumber(value, what)
+    if type(value) == "string" and string.match(value, "^~%-?%d*%.?%d*$") then return value end
+    assert(type(value) == "number" and value == value and math.abs(value) <= 30000000, "invalid area " .. what)
+    if value % 1 == 0 then return string.format("%d", value) end
+    return (string.gsub(string.format("%.6f", value), "%.?0+$", ""))
+end
+-- Coordinates as numbers or "~" strings, or a vector for three of them.
+local function areaPoints(count, ...)
+    local values = {}
+    for index = 1, select("#", ...) do
+        local value = select(index, ...)
+        if type(value) == "vector" then
+            table.insert(values, areaNumber(value.x, "coordinate"))
+            table.insert(values, areaNumber(value.y, "coordinate"))
+            table.insert(values, areaNumber(value.z, "coordinate"))
+        else
+            table.insert(values, areaNumber(value, "coordinate"))
+        end
+    end
+    assert(#values == count, "an area needs " .. count .. " coordinates")
+    return table.concat(values, " ")
+end
+local function newArea(base, excepts)
+    local value = setmetatable({}, AreaMeta)
+    AREAS[value] = {base = base, excepts = excepts}
+    return table.freeze(value)
+end
+function AreaMethods.minus(self, other)
+    local own, removed = AREAS[self], AREAS[other]
+    assert(own, "minus is called on an area: a:minus(b)")
+    assert(removed and #removed.excepts == 0, "minus takes an area built with area.cell, area.box or area.sphere")
+    local excepts = table.clone(own.excepts)
+    table.insert(excepts, removed.base)
+    return newArea(own.base, table.freeze(excepts))
+end
+table.freeze(AreaMethods)
+local function areaText(value)
+    local entry = AREAS[value]
+    local text = "within " .. entry.base
+    for _, base in entry.excepts do text ..= " except " .. base end
+    return text
+end
+area = table.freeze({
+    cell = function(...) return newArea(areaPoints(3, ...), table.freeze({})) end,
+    box = function(...) return newArea(areaPoints(6, ...), table.freeze({})) end,
+    sphere = function(radius, ...)
+        assert(type(radius) == "number" and radius > 0, "invalid area radius")
+        local base = areaNumber(radius, "radius")
+        if select("#", ...) > 0 then base ..= " of " .. areaPoints(3, ...) end
+        return newArea(base, table.freeze({}))
+    end,
+})
 local function valid(value, spec)
     local kind, t = spec.type, type(value)
     local number = t == "number" and value == value and math.abs(value) < math.huge
@@ -127,11 +184,12 @@ local function valid(value, spec)
         or (kind == "coordinate" and (number or t == "string"))
         or (kind == "stringOrInteger" and (t == "string" or (number and value % 1 == 0)))
         or (kind == "integerOrDefault" and (value == "default" or (number and value % 1 == 0)))
+        or (kind == "area" and AREAS[value] ~= nil)
     if not ok then return false end
     if spec.choices and not table.find(spec.choices, value) then return false end
     return true
 end
-local function arguments(variants, ...)
+local function arguments(variants, operation, ...)
     -- A vector stands for three coordinates: `bot:tp(a.origin)` is `bot:tp(x, y, z)`.
     local input = {n = 0}
     for index = 1, select("#", ...) do
@@ -154,14 +212,19 @@ local function arguments(variants, ...)
                 named[key] = input[index]
             end
             if ok and input.n > count then
+                if AREAS[input[count + 1]] then error("pass an area as an option: {area = a}", 3) end
                 for key, value in input[count + 1] do
                     local spec = shape.options[key]
                     if not spec or not valid(value, spec) then ok = false; break end
-                    named[key] = value
+                    named[key] = if spec.type == "area" then areaText(value) else value
                 end
             end
         end
         if ok then return named end
+    end
+    if operation == "blocks" and (input.n >= 4 or (type(input[input.n]) == "table" and input[input.n].radius ~= nil)) then
+        error("blocks(type, x, y, z) and {radius = r} were replaced by areas: "
+            .. "blocks(type, {area = area.sphere(r, x, y, z)})", 3)
     end
     error("invalid typed operation arguments", 3)
 end
@@ -183,7 +246,7 @@ target = function(name, isGroup)
     local handle = {}
     for operation, variants in definitions do
         handle[operation] = function(self, ...)
-            local named = arguments(variants, ...)
+            local named = arguments(variants, operation, ...)
             local reply = request({type = "operation", target = name, operation = operation, params = named})
             local result = reply.result
             -- A continuing operation's result carries its job: `b:move("forward", {ticks = 40}).job:wait{}`.

@@ -60,8 +60,8 @@
       "additionalProperties": false,
       "properties": {
         "type": {
-          "description": "The value's type; coordinate also takes ~ relative forms, the two unions take either kind.",
-          "enum": ["string", "number", "integer", "boolean", "coordinate", "stringOrInteger", "integerOrDefault"]
+          "description": "The value's type; coordinate also takes ~ relative forms, the two unions take either kind. area is an area value (BOT-027): its own within/except clauses, built in Luau with area.cell, area.box or area.sphere; it is the last option of a shape.",
+          "enum": ["string", "number", "integer", "boolean", "coordinate", "stringOrInteger", "integerOrDefault", "area"]
         },
         "choices": {
           "description": "The only values allowed.",

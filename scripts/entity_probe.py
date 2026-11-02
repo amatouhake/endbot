@@ -34,7 +34,8 @@ def install_probe(plugin_class):
         # Evidence only: server-thread time of each block search.
         start = time.perf_counter()
         found = original_find(self, *arguments)
-        searches.append({"radius": arguments[2], "milliseconds": round((time.perf_counter() - start) * 1000, 1)})
+        area = arguments[3] if len(arguments) > 3 else None
+        searches.append({"area": area, "milliseconds": round((time.perf_counter() - start) * 1000, 1)})
         return found
 
     world_module.EndstoneWorld.find_blocks = find_blocks
@@ -241,7 +242,7 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     command("entity @cow", "cow @")
     command("block ~~-1~", ": stone")
     start = time.monotonic()
-    found = command("blocks diamond_ore radius 12", "diamond_ore: ")
+    found = command("blocks diamond_ore within 12", "diamond_ore: ")
     search_seconds = round(time.monotonic() - start, 2)
     ore_line = next(line for line in found.splitlines() if "diamond_ore: " in line)
     if "195" in ore_line or ore_line.count("m") < 1 or "," in ore_line.split("diamond_ore: ", 1)[1]:

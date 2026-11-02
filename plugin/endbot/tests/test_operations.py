@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from endbot_core import operations
-from endbot_core.commands import parse_command
+from endbot_core.commands import parse_command, typed_areas
 from endbot_core.operations import (
     CAPABILITIES,
     GROUPS,
@@ -28,6 +28,7 @@ SAMPLES = {
     "boolean": (True, False),
     "stringOrInteger": (3, "dirt"),
     "integerOrDefault": (8, "default"),
+    "area": ("within 6", "within ~ ~-1 ~ 3 4 5 except 1 2 3 except 2 of ~ ~ ~"),
 }
 
 
@@ -57,7 +58,8 @@ def generated():
                     for target in ((None,) if op in ROOT_OPERATIONS else ("Alice", "#miners", "#miners[2]")):
                         operation = Operation(op, target, params)
                         try:
-                            parse_command(operation.argv())
+                            with typed_areas():
+                                parse_command(operation.argv())
                         except ValueError:
                             continue
                         yield operation

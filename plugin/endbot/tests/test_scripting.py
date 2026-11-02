@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from endbot_core import forms, script_forms
-from endbot_core.commands import HELP_TOPICS, CommandResult, parse_command, strip_colors
+from endbot_core.commands import HELP_TOPICS, CommandResult, parse_command, strip_colors, typed_areas
 from endbot_core.control import RuntimeControlError
 from endbot_core.events import Event, render
 from endbot_core.groups import GroupCommandService, GroupStore
@@ -249,9 +249,11 @@ class OperationParityTests(unittest.TestCase):
             "block": [({"x": 1, "y": "~-1", "z": "~"}, ["block", "1", "~-1", "~"])],
             "blocks": [
                 ({"type": "oak_log"}, ["blocks", "oak_log"]),
-                ({"type": "oak_log", "radius": 16, "limit": 3}, ["blocks", "oak_log", "radius", "16", "limit", "3"]),
-                ({"type": "oak_log", "x": 1, "y": 70, "z": 2, "radius": 16},
-                 ["blocks", "oak_log", "at", "1", "70", "2", "radius", "16"]),
+                ({"type": "oak_log", "limit": 3, "area": "within 16"},
+                 ["blocks", "oak_log", "limit", "3", "within", "16"]),
+                ({"type": "oak_log", "area": "within 16 of 1 70 2 except ~ ~-1 ~ except 0 64 0 2 66 2"},
+                 ["blocks", "oak_log", "within", "16", "of", "1", "70", "2", "except", "~", "~-1", "~",
+                  "except", "0", "64", "0", "2", "66", "2"]),
             ],
             **{
                 op: [({"mode": "continuous", "ticks": 20}, [op, "continuous", "for", "20"])]
@@ -267,7 +269,8 @@ class OperationParityTests(unittest.TestCase):
                         expected = suffix if op in {"list", "help", "ping"} else [target, *suffix]
                         argv = operation_argv(target, op, params)
                         self.assertEqual(argv, expected)
-                        self.assertEqual(parse_command(argv), parse_command(expected))
+                        with typed_areas():  # a typed area may chain except clauses
+                            self.assertEqual(parse_command(argv), parse_command(expected))
         for op, params in (
             ("move", {"direction": "forward", "raw": "stop"}),
             ("look", {"yaw": True, "pitch": 0}),

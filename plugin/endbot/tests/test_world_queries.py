@@ -6,6 +6,11 @@ from plain_service import PlainCommandService
 
 from endstone_endbot.world import EndstoneWorld
 
+
+def within(radius):
+    return {"within": {"shape": "sphere", "radius": radius}, "except": []}
+
+
 BOT = {"identityId": "00000000-0000-4000-8000-000000000001", "name": "Alice", "desiredState": "online",
        "connectionState": "online"}
 
@@ -71,9 +76,9 @@ class WorldQueryTests(unittest.TestCase):
         blocks[buried] = ore
         for dx, dy, dz in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
             blocks[(buried[0] + dx, buried[1] + dy, buried[2] + dz)] = stone
-        found = world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 8, 10)
+        found = world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 10)
         self.assertEqual([(entry["x"], entry["y"], entry["z"]) for entry in found], [(1, 64, 0), (3, 64, 0)])
-        self.assertEqual(len(world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 8, 1)), 1)
+        self.assertEqual(len(world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 1)), 1)
 
 
     def test_blocks_lists_blocks_seen_through_leaves_glass_and_partial_shapes(self):
@@ -84,7 +89,7 @@ class WorldQueryTests(unittest.TestCase):
             blocks = {(0, 64, 3): log}
             for dx, dy, dz in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
                 blocks[(dx, 64 + dy, 3 + dz)] = Block(cover)
-            found = world(blocks).find_blocks(BOT["identityId"], "minecraft:oak_log", 8, 10)
+            found = world(blocks).find_blocks(BOT["identityId"], "minecraft:oak_log", 10)
             self.assertEqual([(entry["x"], entry["y"], entry["z"]) for entry in found], [(0, 64, 3)], cover)
             plant = cover == "minecraft:short_grass"
             self.assertEqual(found[0]["reachable"], plant, cover)
@@ -96,7 +101,7 @@ class WorldQueryTests(unittest.TestCase):
 
     def test_reachable_is_false_past_six_blocks_and_for_air(self):
         blocks = {(0, 65, 6): Block("minecraft:oak_log"), (0, 65, 7): Block("minecraft:oak_log")}
-        found = world(blocks).find_blocks(BOT["identityId"], "minecraft:oak_log", 12, 10)
+        found = world(blocks).find_blocks(BOT["identityId"], "minecraft:oak_log", 10, within(12))
         self.assertEqual([(entry["z"], entry["reachable"]) for entry in found], [(6, True), (7, False)])
         far = world(blocks).block_info(BOT["identityId"], [0, 65, 7])
         self.assertEqual((far["reachable"], far["reachCode"]), (False, "out_of_reach"))
@@ -122,7 +127,7 @@ class WorldQueryTests(unittest.TestCase):
 
         Dimension.get_block_at = counting
         try:
-            found = world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 12, 2)
+            found = world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 2, within(12))
         finally:
             Dimension.get_block_at = dimension_get
         self.assertEqual(sorted((entry["x"], entry["distance"]) for entry in found), [(-1, 1.1), (1, 1.1)])
@@ -137,7 +142,7 @@ class WorldQueryTests(unittest.TestCase):
         blocks = {(0, 60, 5): ore}
         for dx, dy, dz in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
             blocks[(dx, 60 + dy, 5 + dz)] = stem
-        self.assertEqual(world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 8, 10), [])
+        self.assertEqual(world(blocks).find_blocks(BOT["identityId"], "minecraft:diamond_ore", 10), [])
 
     def test_rafts_and_wood_boats_are_standable_and_coordinates_stay_in_the_world(self):
         from endstone_endbot.world import _standable_half_width
@@ -164,27 +169,53 @@ class FakeQueries:
         self.coordinates = coordinates
         return {"x": 0, "y": 63, "z": 0, "type": "minecraft:wheat", "states": {"growth": 7}}
 
-    def find_blocks(self, identity, block_type, radius, limit, coordinates=None):
-        self.search = (block_type, radius, limit, coordinates)
+    def find_blocks(self, identity, block_type, limit, area=None):
+        self.search = (block_type, limit, area)
         return [{"x": 1, "y": 64, "z": 0, "distance": 1.2}]
+
+    def resolve_area(self, identity, area):
+        from endbot_core.areas import resolve_area
+
+        self.resolved = area
+        return resolve_area(area, [10.5, 64.0, 10.5])
+
+
+def sphere(radius, at=None):
+    return {"shape": "sphere", "radius": radius, **({} if at is None else {"at": at})}
+
+
+RELATIVE_FEET = [("relative", 0.0), ("relative", -1.0), ("relative", 0.0)]
 
 
 class QueryCommandTests(unittest.TestCase):
     def test_parsing(self):
         self.assertEqual(parse_command(["Alice", "blocks", "OAK_LOG", "limit", "3"]).parameters,
-                         {"type": "minecraft:oak_log", "radius": 8, "limit": 3})
-        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "radius", "16"]).parameters,
-                         {"type": "minecraft:oak_log", "radius": 16, "limit": 10})
-        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "at", "~", "~10", "~", "limit", "4"]).parameters,
-                         {"type": "minecraft:oak_log", "radius": 8, "limit": 4,
-                          "coordinates": [("relative", 0.0), ("relative", 10.0), ("relative", 0.0)]})
-        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "at", "1", "2", "3"]).parameters,
-                         {"type": "minecraft:oak_log", "radius": 8, "limit": 10, "coordinates": [1.0, 2.0, 3.0]})
-        for arguments in (["blocks"], ["blocks", "oak_log", "radius", "17"], ["blocks", "oak_log", "radius"],
-                          ["blocks", "oak_log", "at", "1", "2"], ["blocks", "oak_log", "at", "1", "2", "3", "at",
-                                                                    "1", "2", "3"],
-                          ["blocks", "oak_log", "radius", "2", "radius", "3"], ["block", "1", "2"], ["target", "x"]):
+                         {"type": "minecraft:oak_log", "limit": 3})
+        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "within", "16"]).parameters,
+                         {"type": "minecraft:oak_log", "limit": 10, "area": {"within": sphere(16.0), "except": []}})
+        self.assertEqual(
+            parse_command(["Alice", "blocks", "oak_log", "within", "4", "of", "~", "~10", "~", "limit", "4"])
+            .parameters,
+            {"type": "minecraft:oak_log", "limit": 4,
+             "area": {"within": sphere(4.0, [("relative", 0.0), ("relative", 10.0), ("relative", 0.0)]),
+                      "except": []}})
+        # Clauses go in any order; except alone narrows the default sphere.
+        self.assertEqual(parse_command(["Alice", "blocks", "oak_log", "except", "~", "~-1", "~", "limit", "2"])
+                         .parameters,
+                         {"type": "minecraft:oak_log", "limit": 2,
+                          "area": {"within": None, "except": [{"shape": "cell", "at": RELATIVE_FEET}]}})
+        for arguments in (["blocks"], ["blocks", "oak_log", "within", "17"], ["blocks", "oak_log", "within"],
+                          ["blocks", "oak_log", "within", "1", "2"],
+                          ["blocks", "oak_log", "within", "1", "within", "2"],
+                          ["blocks", "oak_log", "limit", "2", "limit", "3"], ["blocks", "oak_log", "limit", "65"],
+                          ["block", "1", "2"], ["target", "x"]):
             with self.subTest(arguments=arguments), self.assertRaises(CommandSyntaxError):
+                parse_command(["Alice", *arguments])
+
+    def test_the_removed_blocks_forms_name_the_new_syntax(self):
+        for arguments in (["blocks", "oak_log", "radius", "12"], ["blocks", "oak_log", "at", "1", "2", "3"],
+                          ["blocks", "oak_log", "radius", "5", "at", "~", "~10", "~"]):
+            with self.subTest(arguments=arguments), self.assertRaisesRegex(CommandSyntaxError, "within <r>"):
                 parse_command(["Alice", *arguments])
 
     def test_replies_and_data(self):
@@ -196,14 +227,25 @@ class QueryCommandTests(unittest.TestCase):
         block = service.execute(["Alice", "block", "~", "~-1", "~"])
         self.assertEqual(block.messages, ("Endbot: Alice: block at 0 63 0: wheat [growth=7]",))
         self.assertEqual(block.data["states"], {"growth": 7})
-        found = service.execute(["Alice", "blocks", "oak_log", "radius", "12"])
-        self.assertEqual(queries.search, ("minecraft:oak_log", 12, 10, None))
-        # at <x y z> moves the scan centre without moving the Bot.
-        service.execute(["Alice", "blocks", "oak_log", "at", "~", "~10", "~"])
-        self.assertEqual(queries.search,
-                         ("minecraft:oak_log", 8, 10, [("relative", 0.0), ("relative", 10.0), ("relative", 0.0)]))
+        found = service.execute(["Alice", "blocks", "oak_log"])
+        self.assertEqual(queries.search, ("minecraft:oak_log", 10, None))
+        self.assertEqual(found.data["radius"], 8)
+        # An area resolves its ~ against the Bot when the command is accepted.
+        found = service.execute(["Alice", "blocks", "oak_log", "within", "12", "except", "~", "~-1", "~"])
+        self.assertEqual(queries.search, ("minecraft:oak_log", 10, {
+            "within": {"shape": "sphere", "radius": 12.0, "at": [10.5, 64.0, 10.5]},
+            "except": [{"shape": "cell", "at": [10, 63, 10]}]}))
+        self.assertEqual(found.data["area"], "within 12 except ~ ~-1 ~")
         self.assertEqual(found.messages, ("Endbot: Alice: oak_log: 1 64 0 (1.2m)",))
         self.assertEqual(found.data["blocks"][0]["x"], 1)
+        # A fully absolute area needs no world call to resolve.
+        queries.resolved = None
+        service.execute(["Alice", "blocks", "oak_log", "within", "0", "60", "0", "4", "66", "4"])
+        self.assertIsNone(queries.resolved)
+        self.assertEqual(queries.search[2]["within"], {"shape": "box", "from": [0, 60, 0], "to": [4, 66, 4]})
+        queries.find_blocks = lambda *args: []
+        none = service.execute(["Alice", "blocks", "oak_log", "within", "3"])
+        self.assertEqual(none.messages, ("Endbot: Alice: no exposed oak_log in the area",))
 
     def test_block_and_blocks_replies_say_what_is_in_reach(self):
         queries = FakeQueries()
@@ -317,7 +359,7 @@ class SelectorTests(unittest.TestCase):
         with self.assertRaises(LocalizedError):
             world(walled).reachable_block(BOT["identityId"], "minecraft:oak_log", 5.0)
         with self.assertRaisesRegex(ValueError, "Unknown block type"):
-            world(blocks).find_blocks(BOT["identityId"], "minecraft:start", 8, 10)
+            world(blocks).find_blocks(BOT["identityId"], "minecraft:start", 10)
 
     def test_sight_passes_grass_and_sees_a_partly_hidden_side(self):
         log = Block("minecraft:oak_log")

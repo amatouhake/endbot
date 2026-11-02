@@ -410,10 +410,41 @@ World queries read BDS on the server thread and count as operations:
 | --- | --- |
 | `bot:target()` | `kind` (`"block"`, `"entity"` or nil), `distance`, and `block = {x, y, z, face, type}` or `entity = {runtimeId, type}`: the nearer hit within 6 blocks of the Bot's eyes, ignoring players |
 | `bot:block(x, y, z)` | `{x, y, z, type, states, reachable}`, plus `reachCode` and, for `blocked`, `obstruction` when not reachable; `"~"`/`"~-1"` strings are relative to the Bot; any loaded position |
-| `bot:blocks("oak_log", {radius=8, limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance, reachable}` nearest first, only blocks a player could see (no x-ray, see below); radius 1-16, limit 1-64 |
-| `bot:blocks("oak_log", vector.create(x, y, z), {radius=16})` | the same query around a point (`blocks <type> at <x> <y> <z>`), for a treetop out of reach of the Bot's feet |
+| `bot:blocks("oak_log", {limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance, reachable}` nearest the Bot first, only blocks a player could see (no x-ray, see below), within a sphere of 8 around the Bot; limit 1-64 |
+| `bot:blocks("oak_log", {area=area.sphere(5, x, y, z)})` | `{type, area, blocks}`: the same query narrowed to an [area](#areas), for example around a treetop; never past 16 blocks from the Bot |
 
 A radius-12 search took about 23 ms of server-thread time in the live check (2026-10-24).
+
+### Areas
+
+One area value narrows the blocks `blocks`, typed `destroy`, `destroy` continuous loops and typed `interact` may pick
+(BOT-027). Build it with `area`, then pass it as `{area = a}`:
+
+| Luau | Chat | Shape |
+| --- | --- | --- |
+| `area.cell(x, y, z)` or `area.cell(v)` | `within <x> <y> <z>` | one block |
+| `area.box(x1, y1, z1, x2, y2, z2)` or `area.box(v1, v2)` | `within <x1> <y1> <z1> <x2> <y2> <z2>` | a box, both corners included, as for `/fill` |
+| `area.sphere(r)` | `within <r>` | a sphere of radius `r` around the Bot |
+| `area.sphere(r, x, y, z)` or `area.sphere(r, v)` | `within <r> of <x> <y> <z>` | a sphere of radius `r` around a point |
+| `a:minus(b)` | `except <b>` | `a` without the blocks of `b`; `b` takes any form above |
+
+Coordinates are numbers, vectors, or `"~"`/`"~-1"` strings relative to the Bot. `:minus` chains freely
+(`area.sphere(6):minus(footing):minus(trunk)`); chat takes one `except`. Area values are built only by these
+functions, so a table or a string is refused before anything reaches the host.
+
+The rules are the [command rules](COMMANDS.md#areas-within-and-except): an area only narrows, never widens reach or
+sight; `~` resolves when the operation is accepted, so a continuous loop keeps its area while the Bot moves; `within`
+holds at most a radius-16 sphere; without an area each operation keeps its default. The Bot's footing is not
+special-cased, so exclude it explicitly:
+
+```lua
+local footing = area.cell("~", "~-1", "~")
+local job = bot:destroy("acacia_log", {count = 20, area = area.sphere(6):minus(footing)}).job
+job:wait{}
+```
+
+`blocks(type, x, y, z)` and `{radius = r}` were removed; calling them fails with a message naming
+`blocks(type, {area = area.sphere(r, x, y, z)})`.
 
 ### Targeting blocks
 
@@ -514,8 +545,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:entity()` | target: string | none |
 | `:target()` | none | none |
 | `:block()` | x: coordinate, y: coordinate, z: coordinate | none |
-| `:blocks()` | type: string | radius: integer, limit: integer |
-| `:blocks()` | type: string, x: coordinate, y: coordinate, z: coordinate | radius: integer, limit: integer |
+| `:blocks()` | type: string | limit: integer, area: area |
 | `:resume()` | none | none |
 | `:reconnect()` | none | none |
 | `:despawn()` | none | none |
@@ -542,10 +572,10 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:interact()` | none | none |
 | `:interact()` | x: coordinate, y: coordinate, z: coordinate | none |
 | `:interact()` | x: coordinate, y: coordinate, z: coordinate, face: down / up / north / south / west / east | none |
-| `:interact()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer |
-| `:destroy()` | none | mode: once / continuous / stop, ticks: integer, count: integer |
+| `:interact()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer, area: area |
+| `:destroy()` | none | mode: once / continuous / stop, ticks: integer, count: integer, area: area |
 | `:destroy()` | x: coordinate, y: coordinate, z: coordinate | face: down / up / north / south / west / east |
-| `:destroy()` | type: string | mode: continuous, ticks: integer, count: integer |
+| `:destroy()` | type: string | mode: continuous, ticks: integer, count: integer, area: area |
 | `:drop()` | none | none |
 | `:drop()` | selector: stringOrInteger | count: integer |
 | `:jump()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |

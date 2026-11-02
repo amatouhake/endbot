@@ -240,3 +240,29 @@ lean on BDS's edge, and there is room above 6 if a later task needs it.
 Not covered by this run: typed `destroy`/`interact` (`destroy minecraft:oak_log`), the `except`/area forms, and the
 script-facing `reachCode` fields (unit tests only). The probe's `cells`/`watch`/`position` request fields exist for
 these scenes; every earlier mining case passed unchanged with them in place.
+
+## Area syntax gate (2026-11-02 JST)
+
+Real Windows run on the BOT-027 branch (`ccr-ac4de14d-dnrfac` at `153c4dc`), same pair as the gates above: patched
+Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` (build `52886189`), NetherNet, plugin and probe built from the branch, a
+fresh Survival world. `scripts/raknet_spike.py --mining` reported `ok` at stage `complete`; the area cases are in
+`scripts/mining_probe.py` and every earlier case passed with the new grammar.
+
+- **Box.** With logs at `140 201 29`, `141 201 29` and `143 201 29`, `blocks minecraft:oak_log within 140 201 29 141 201 29`
+  answered `oak_log: 140 201 29 (2.5m, in reach), 141 201 29 (2.7m, in reach)` and did not list the third.
+- **Sphere around a point.** `blocks minecraft:oak_log within 1 of 143 201 29` listed only `143 201 29 (3.9m, in reach)`.
+- **`except`.** `blocks minecraft:oak_log within 5 except 140 201 29 141 201 29` listed only `143 201 29 (3.9m, in reach)`.
+- **The old syntax is refused.** `blocks minecraft:oak_log radius 5` answered
+  `blocks radius and at were replaced by areas: use blocks <type> within <r> [of <x> <y> <z>]`.
+- **Felling with the footing excepted.** A log under the Bot plus three logs in one box:
+  `destroy minecraft:oak_log count 3 within 139 199 27 141 201 29 except ~ ~-1 ~` started
+  `destroy continuous started oak_log until 3 blocks` and ended `stopped: block count reached` 2.5 s later. The three
+  logs in the box became air, the log the Bot stood on stayed, and the log outside the box stayed.
+- **An area does not widen reach.** The same out-of-reach log (6.5 blocks) inside a one-cell area:
+  `destroy minecraft:oak_log count 1 within 140 201 34 140 201 34` started the loop and then reported
+  `destroy is waiting: no oak_log it can break within 6 blocks; move the Bot closer`; the log stayed. A typed `destroy`
+  is a continuous loop, so an empty area waits rather than failing.
+
+Not covered by this run: the Luau `area.cell`/`area.box`/`area.sphere`/`:minus` values (unit-tested in
+`runner/runner.test.mjs` and `plugin/endbot/tests/test_areas.py`, not run through a live script), `interact <type>`
+with an area, a continuous loop that keeps its area while the Bot moves, and a felling script on a real tree.

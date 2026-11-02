@@ -61,7 +61,7 @@ class TickThread:
 
 
 class World:
-    def reachable_block(self, identity_id, block_type, reach):
+    def reachable_block(self, identity_id, block_type, reach, area=None):
         return [1, 64, 2]
 
     def resolve_mining(self, identity_id, parameters, sender):

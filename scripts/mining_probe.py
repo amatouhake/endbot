@@ -7,6 +7,7 @@ observer into its isolated plugin source; it prepares blocks/tools via the SDK.
 import json
 import math
 import os
+import re
 import time
 from pathlib import Path
 
@@ -115,6 +116,20 @@ def install_probe(plugin_class):
                     ]
                     for cell in targets:
                         dimension.get_block_at(*cell).set_type(data["block"])
+                    # A scene (BOT-028/BOT-030 live checks): ``cells`` are [dx, y, dz, type] from the base
+                    # cell, ``watch`` the cells the state reports, ``position`` an offset for the feet so a
+                    # target can sit at an exact distance from the eyes.
+                    cells = data.get("cells") or []
+                    watch = data.get("watch") or []
+                    span = max([0] + [int(cell[2]) for cell in cells] + [int(cell[2]) for cell in watch])
+                    for dz in range(span + 2):  # clear the sight line a far target needs
+                        for y in range(200, 204):
+                            dimension.get_block_at(x, y, z + dz).set_type("minecraft:air")
+                    for dx, y, dz, block_type in cells:
+                        dimension.get_block_at(x + int(dx), int(y), z + int(dz)).set_type(block_type)
+                    if watch:
+                        targets = [[x + int(dx), int(y), z + int(dz)] for dx, y, dz in watch]
+                        target = targets[0]
                     player.inventory.clear()
                     for attribute in EQUIPMENT.values():
                         setattr(player.inventory, attribute, None)
@@ -146,7 +161,9 @@ def install_probe(plugin_class):
                     if data.get("tool"):
                         player.inventory.set_item(0, ItemStack(data["tool"], 1))
                     player.inventory.held_item_slot = 0
-                    player.teleport(Location(dimension, x + 0.5, 200, z + 0.5, 0, 0))
+                    offset = data.get("position") or [0.0, 200.0, 0.0]
+                    player.teleport(Location(dimension, x + 0.5 + float(offset[0]), float(offset[1]),
+                                             z + 0.5 + float(offset[2]), 0, 0))
                     self._mining_probe = {
                         "id": data["id"],
                         "target": target,
@@ -362,6 +379,99 @@ def exercise_mining(output: Path, console, control, wait, report, log=lambda: ""
         if "look failed" in log()[offset:]:
             raise RuntimeError(f"look was not observed: {log()[offset:]}")
     report["mining"]["look-then-destroy"] = True
+
+    # BOT-028/BOT-030: the three targeting rules against a real server. ``cells`` are placed relative to
+    # the fixture's base cell and ``position`` offsets the feet, so a target can sit at an exact distance.
+    def scene(name, cells, watch, position=None, tool="minecraft:iron_axe"):
+        control("mine", mode="stop")
+        request({"id": name, "block": "minecraft:air", "tool": tool, "cancel": False, "count": 1,
+                 "cells": cells, "watch": watch, "position": position or [0.0, 200.0, 0.0]})
+        wait("targeting fixture setup", lambda: observed().get("id") == name, 10)
+        time.sleep(0.3)
+        console(f"bot {BOT} hotbar 1")
+        time.sleep(0.15)
+        return observed()
+
+    def said(offset):
+        return re.sub(r"§.", "", log()[offset:])
+
+    def listed_in_reach(listing, cell):
+        return re.search(rf"{cell[0]} {cell[1]} {cell[2]} \([^)]*in reach", listing) is not None
+
+    # Grass has no collision box: a named block behind it stays targetable and BDS breaks it.
+    state = scene("targeting-grass",
+                  [[0, 201, 2, "minecraft:oak_log"], [0, 201, 1, "minecraft:short_grass"]], watch=[[0, 201, 2]])
+    target = state["target"]
+    offset = len(log())
+    console(f"bot {BOT} blocks minecraft:oak_log radius 5")
+    wait("grass-covered log listed", lambda: "oak_log:" in said(offset), 5)
+    listing = said(offset)
+    if not listed_in_reach(listing, target):
+        raise RuntimeError(f"grass-covered log was not listed in reach: {listing}")
+    offset = len(log())
+    console(f"bot {BOT} destroy {target[0]} {target[1]} {target[2]}")
+    wait("named block broken through grass", lambda: observed().get("block") == "minecraft:air", 15)
+    if "destroy failed" in said(offset):
+        raise RuntimeError(f"destroy through grass was refused: {said(offset)}")
+    report["mining"]["targeting-grass-cover"] = True
+
+    # Leaves are visible but have a collision box: the log is listed, not reachable, and the refusal names
+    # the leaf that stops the line.
+    state = scene("targeting-leaves", [
+        [0, 201, 2, "minecraft:oak_log"],
+        [0, 201, 1, "minecraft:oak_leaves"], [0, 201, 3, "minecraft:oak_leaves"],
+        [1, 201, 2, "minecraft:oak_leaves"], [-1, 201, 2, "minecraft:oak_leaves"],
+        [0, 202, 2, "minecraft:oak_leaves"],
+    ], watch=[[0, 201, 2]])
+    target = state["target"]
+    offset = len(log())
+    console(f"bot {BOT} blocks minecraft:oak_log radius 5")
+    wait("leaf-wrapped log listed", lambda: "oak_log:" in said(offset), 5)
+    listing = said(offset)
+    if f"{target[0]} {target[1]} {target[2]} (" not in listing:
+        raise RuntimeError(f"leaf-wrapped log was not listed: {listing}")
+    if listed_in_reach(listing, target):
+        raise RuntimeError(f"leaf-wrapped log was listed in reach: {listing}")
+    offset = len(log())
+    console(f"bot {BOT} block {target[0]} {target[1]} {target[2]}")
+    wait("block detail for the leaf-wrapped log", lambda: "block at" in said(offset), 5)
+    detail = said(offset)
+    if "blocked by oak_leaves" not in detail:
+        raise RuntimeError(f"a log wrapped in leaves was not reported blocked by leaves: {detail}")
+    offset = len(log())
+    console(f"bot {BOT} destroy {target[0]} {target[1]} {target[2]}")
+    time.sleep(2)
+    refused = said(offset)
+    if observed().get("block") != "minecraft:oak_log" or "destroy failed" not in refused:
+        raise RuntimeError(f"a leaf-wrapped log was not refused: {refused} {observed().get('block')}")
+    report["mining"]["targeting-leaves-blocked"] = True
+
+    # destroy reach from the eyes (BOT-028 moved it from 5 to 6): the plugin allows it and BDS validates
+    # the break itself, so record the reply and whether the block actually broke at each distance.
+    reach = {}
+    for label, feet_offset, target_dz in (
+        ("5.0", 0.5, 6), ("5.5", 0.0, 6), ("5.95", -0.45, 6), ("6.0", -0.5, 6), ("6.5", 0.0, 7),
+    ):
+        state = scene(f"reach-{label}", [[0, 201, target_dz, "minecraft:oak_log"]],
+                      watch=[[0, 201, target_dz]], position=[0.0, 200.0, feet_offset])
+        target = state["target"]
+        distance = round(target[2] - state["position"][2], 2)
+        offset = len(log())
+        console(f"bot {BOT} destroy {target[0]} {target[1]} {target[2]}")
+        broke, waited = False, ""
+        try:
+            wait(f"destroy at {label} blocks", lambda: observed().get("block") == "minecraft:air", 8)
+            broke = True
+        except Exception as refused:  # noqa: BLE001 - a refusal is the observation for this distance
+            waited = str(refused)[:120]
+        text = said(offset)
+        reach[label] = {"distance": distance, "broke": broke, "failed": "destroy failed" in text,
+                        "reply": (text.strip().splitlines() or [""])[-1][:160], "wait": waited}
+        if not broke:
+            console(f"bot {BOT} look 0 0")
+    report["mining"]["destroy-reach"] = reach
+    if not all(reach[label]["broke"] for label in ("5.0", "5.5", "5.95")):
+        raise RuntimeError(f"destroy failed inside the 6 block reach: {reach}")
 
     # A hotbar switch restarts the current block with the new item.
     setup("hotbar-restart", "minecraft:obsidian", "minecraft:diamond_pickaxe")

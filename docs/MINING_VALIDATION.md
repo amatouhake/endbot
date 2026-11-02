@@ -207,3 +207,28 @@ Not covered by this run: the script-facing `data.look` values (unit-tested only)
 `code="timeout"` path, which needs a Bot BDS cannot observe. The wait's budget is ten ticks expressed as 0.5 s of
 wall clock (`LOOK_TIMEOUT_TICKS / 20`), so a server running below 20 TPS gets fewer than ten observations before the
 timeout expires; the intent, roughly half a second, is unchanged. Reproduce with the same command from the branch.
+
+## Block targeting gate (2026-11-02 JST)
+
+Real Windows run on the BOT-028/BOT-030 branch (`ccr-02ffe5b7-fbvlzv-bot028` at `7b638e7`), same pair as the look
+gate above: patched Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` (build `52886189`), NetherNet, plugin and probe built
+from the branch, fresh Survival world. `scripts/raknet_spike.py --mining` reported `ok` at stage `complete`, and the
+three targeting cases added to `scripts/mining_probe.py` all passed.
+
+- **Grass does not hide a named block.** A log at `601 201 570` with `minecraft:short_grass` in the cell in front was
+  listed as `oak_log: 601 201 570 (2.5m, in reach)`, and `destroy 601 201 570` broke it on BDS.
+- **A log wrapped in leaves is listed, not reachable, and names the leaf.** The same log with `minecraft:oak_leaves`
+  on the other five sides was listed as `oak_log: 601 201 570 (2.5m)` with no `in reach`;
+  `block 601 201 570` answered `block at 601 201 570: oak_log [pillar_axis=y] (blocked by oak_leaves at 601 201 569)`;
+  `destroy 601 201 570` was refused with `destroy failed: Target is blocked by oak_leaves at 601 201 569` and the block
+  stayed.
+- **Reach 5 to 6, eye to the nearest face.** `5.0`, `5.5` and `5.95` each broke the log; `6.5` was refused with
+  `Target block is out of reach (maximum 6 blocks)`. At exactly `6.0` the refusal was instead
+  `Target is blocked by another block` with no obstruction: the eye sits 0.12 above the aimed side's centre and all
+  five face samples are just outside the 6-block sphere (the nearest is 6.0012), so a target that only touches the
+  limit reads as blocked. Reach is usable to about 5.99 blocks; the exact boundary carries the wrong code and no
+  obstruction. Recorded as observed, no code changed for this run.
+
+Not covered by this run: typed `destroy`/`interact` (`destroy minecraft:oak_log`), the `except`/area forms, and the
+script-facing `reachCode` fields (unit tests only). The probe's `cells`/`watch`/`position` request fields exist for
+these scenes; every earlier mining case passed unchanged with them in place.

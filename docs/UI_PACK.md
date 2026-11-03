@@ -211,4 +211,6 @@ The pack relies on unofficial JSON UI internals, which may change with a client 
 screens to Ore UI; if server forms move, the pack stops applying and forms fall back to vanilla. Nothing breaks on the
 server side. After a client update, run `python scripts/build_ui_pack.py --check --vanilla <dir>` against that
 version's `bedrock-samples/resource_pack`, bump `header.version` and the module version in `ui-pack/manifest.json`
-when the pack changes (clients cache packs by version), and repeat checks 1–5.
+when the pack changes (clients cache packs by version), and repeat checks 1–5. Repeat check 11 as well after any change
+to the name, the description or the icon: that is the one the identity change introduced, and the release list is the
+only place it shows. Checks 9 and 10 stay waived until they are run.

@@ -39,7 +39,7 @@ trademarks of Microsoft; this project is not affiliated with or endorsed by Micr
 
 `ui-pack/` is Endbot's own JSON UI written for the Minecraft Bedrock client. It names and inherits vanilla UI
 elements but contains no Mojang files. Its layout was written against the
-[bedrock-samples](https://github.com/Mojang/bedrock-samples) vanilla resource pack 1.26.50.4, which is
+[bedrock-samples](https://github.com/Mojang/bedrock-samples) vanilla resource pack 1.26.60.5, which is
 subject to the Minecraft EULA. That pack is neither vendored here nor redistributed; `scripts/build_ui_pack.py --vanilla`
 reads a copy the operator fetches.
 

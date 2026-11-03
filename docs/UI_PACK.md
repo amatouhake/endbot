@@ -2,8 +2,9 @@
 
 Status: **prototype merged on `main` (#111); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
 the buttons and the multi-line field, with the focus limitation recorded below; without the pack that field cannot be
-edited at all. Four [checks](#manual-client-check) remain. The server feature that relies on it,
-`[scripting] ui-pack-editor`, stays off by default.
+edited at all, and its input field also stops at about 100 characters. The [mobile field](#manual-client-check) and a
+fresh achievement unlock remain unverified. The server feature that relies on it, `[scripting] ui-pack-editor`, stays
+off by default.
 
 ## Why
 
@@ -113,8 +114,9 @@ checks were done:
 On the locked pair (Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, protocol 2225), pack active as a global resource,
 default GUI scale, 1080p:
 
-- The pack imports and activates with no content-log error. The settings screen still offers world achievements; a
-  real unlock is check 10 and has not been run.
+- The pack imports and activates with no content-log error. With the pack active the achievements screen shows no
+  notice that achievements are disabled; a real unlock could not be observed because the operator's account has
+  already unlocked the simple ones (check 10, partial).
 - `/bot` and `/botscript` open in the larger window; buttons are compact and no label is clipped.
 - A marked input shows the tall field. Typing, backspace and Enter work, and saving keeps the line breaks: a 12-line
   script with Japanese text, `§` codes, a tab and trailing spaces round-trips unchanged.
@@ -137,8 +139,20 @@ default GUI scale, 1080p:
   handle. The entry is therefore usable only by players who install the pack, and `ui-pack-editor` is a switch for an
   operator whose players do.
 
-Still open: checks 4 (paste a 3-line block), 6 (the client's 100-character limit), 9 (mobile) and 10 (a world
-achievement unlock). Check 8 found the without-pack behaviour above instead of the refusal it expected.
+- **Check 4 passed** on a copy of a stored script (the checked script was a file-backed one, which the menus do not
+  edit): three `log(...)` lines pasted into **Add a line below** were added below the edited line, indented like it
+  (the source had no indentation to match).
+- **Check 6:** with the pack, a 152-character and a 2603-character line round-trip unchanged, and pastes of 156 and
+  2508 characters keep every character. **Without the pack the client's field stops at about 100 characters** — an
+  input-field limit rather than a paste limit — so a longer line cannot be typed or pasted by hand, and saving that
+  field writes the cut text. That is vanilla `custom_input`'s `$max_text_edit_length: 100`; a long line needs the
+  pack, a script file, or the book.
+- **Check 9 was not run.** The operator's phone cannot join multiplayer at all (other servers included), so the
+  mobile field stays unverified.
+- Check 8 found the without-pack behaviour above instead of the refusal it expected.
+
+Remaining: check 9 (mobile, not testable on the operator's device) and a fresh achievement unlock (check 10; the
+operator's account has the simple ones already).
 
 ## Manual client check
 

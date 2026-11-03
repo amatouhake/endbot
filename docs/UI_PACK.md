@@ -1,8 +1,9 @@
 # Optional Endbot UI resource pack
 
 Status: **prototype merged on `main` (#111); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
-the buttons and the multi-line field, with the focus limitation recorded below. Five [checks](#manual-client-check)
-remain. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off by default.
+the buttons and the multi-line field, with the focus limitation recorded below; without the pack that field cannot be
+edited at all. Four [checks](#manual-client-check) remain. The server feature that relies on it,
+`[scripting] ui-pack-editor`, stays off by default.
 
 ## Why
 

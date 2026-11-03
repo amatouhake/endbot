@@ -1,7 +1,7 @@
 # Optional Endbot UI resource pack
 
 Status: **prototype merged on `main` (#111); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
-the buttons and the multi-line field, with the focus limitation recorded below. Four [checks](#manual-client-check)
+the buttons and the multi-line field, with the focus limitation recorded below. Five [checks](#manual-client-check)
 remain. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off by default.
 
 ## Why
@@ -116,10 +116,12 @@ default GUI scale, 1080p:
   with the wheel and follows the caret. The non-scrolling variant takes focus from anywhere but cannot show a long
   source, and a script is meant to be edited in one field rather than in pages, so the scrolling variant is kept.
 - The control recipe this settled on: `endbot_multiline_control` inherits `common.scrollable_multiline_text_edit_box`,
-  sets `size` 150 and `max_length` from `$max_text_edit_length` (32768), binds the form's own collection explicitly
-  (`#custom_input_text`, `#custom_input_enabled`, `custom_form`) instead of the undefined `$option_*` variables the
-  first prototype used, and binds `#focus_identifier` from `#custom_text`, the pattern vanilla uses for its own
-  multi-line inputs (`npc_interact_screen.json`).
+  sets `size` 150 and `max_length` from `$max_text_edit_length` (32768), and inherits the content binding
+  (`#custom_input_text` on `custom_form`) from vanilla `server_form.custom_input`. It reads `#custom_input_enabled`
+  from the `custom_form` collection; vanilla's `option_text_edit_control` instead drops the enabled binding because
+  `$option_enabled_binding_name` is undefined there. It binds `#focus_identifier` from `#custom_text`, the pattern
+  vanilla uses for its own multi-line inputs (`npc_interact_screen.json`). The collection has no dedicated id, so
+  the focus id is the label: two marked inputs on one form need distinct labels.
 
 Still open: checks 4 (paste a 3-line block), 6 (the client's 100-character limit), 8 (the refusal with the pack
 deactivated), 9 (mobile) and 10 (a world achievement unlock).

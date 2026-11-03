@@ -39,6 +39,20 @@ class UiPackTests(unittest.TestCase):
         forms = (ROOT / "core/src/endbot_core/forms.py").read_text(encoding="utf-8")
         self.assertEqual(re.search(r'^MULTILINE_MARKER = "([^"]+)"$', forms, re.MULTILINE).group(1), MULTILINE_MARKER)
 
+    def test_multiline_control_binds_the_form_collection(self) -> None:
+        forms = json.loads((PACK_DIR / "ui/server_form.json").read_text(encoding="utf-8"))
+        control = forms["endbot_multiline_control@common.scrollable_multiline_text_edit_box"]
+        self.assertEqual(control["$text_box_enabled_binding_name"], "#custom_input_enabled")
+        self.assertEqual(control["$text_edit_box_enabled_binding_type"], "collection")
+        self.assertNotIn("$option_binding_name", json.dumps(control))
+        self.assertIn({
+            "binding_type": "collection",
+            "binding_name": "#custom_text",
+            "binding_name_override": "#focus_identifier",
+            "binding_collection_name": "custom_form",
+            "binding_condition": "once",
+        }, control["bindings"])
+
     def test_build_is_reproducible_and_holds_only_the_pack(self) -> None:
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACK_DIR = ROOT / "ui-pack"
 PACK_FILES = ("manifest.json", "ui/server_form.json")
-# The vanilla version the overrides were written against (bedrock-samples tag/date).
+# The latest vanilla version the overrides were verified against (bedrock-samples tag/date).
 VANILLA_VERSION = "1.26.60.5"
 # Vanilla elements the pack inherits from or names. A new client version may rename one;
 # `--vanilla` confirms them against that version's bedrock-samples resource pack.

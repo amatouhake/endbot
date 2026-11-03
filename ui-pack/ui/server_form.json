@@ -275,10 +275,8 @@
   "endbot_multiline_control@common.scrollable_multiline_text_edit_box": {
     "size": ["100%", 150],
     "max_length": "$max_text_edit_length",
-    "$text_edit_box_content_binding_name": "#custom_input_text",
-    "$text_edit_box_content_binding_type": "collection",
-    "$text_edit_box_grid_collection_name": "custom_form",
     "$text_box_enabled_binding_name": "#custom_input_enabled",
+    "$text_edit_box_enabled_binding_type": "collection",
     "$place_holder_text": "$option_place_holder_text",
     "$text_box_tts_header": "$option_label",
     "bindings": [

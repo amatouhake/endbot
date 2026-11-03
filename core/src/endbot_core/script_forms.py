@@ -164,7 +164,8 @@ def new_screen(source, name="", lang="en", whole_editor=False):
         return (("save", f._text(values[-1]), "\n".join(typed) + "\n" if typed else ""),)
 
     controls = (
-        (f.TextInput(tr(lang, "Script source"), default_value=source.removesuffix("\n"), multiline=True),
+        (f.Label(_capped_view(source, lang)),
+         f.TextInput(tr(lang, "Script source"), default_value=source.removesuffix("\n"), multiline=True),
          f.Label(tr(lang, "Edit the whole script, name it, then save it. This field needs the optional Endbot UI "
                           "resource pack; without it, turn on Save as shown and change lines after saving.")),
          f.Toggle(tr(lang, "Save as shown (without the UI pack)")))

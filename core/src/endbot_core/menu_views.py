@@ -37,12 +37,13 @@ def _list(data: dict, lang: str):
                         visibility=row["visibility"], file=row["file"], own=row["own"])
         for row in data.get("scripts", ())
     )
-    return script_forms.list_screen(scripts, lang, own=lambda script: script.own, author=data.get("author", True))
+    return script_forms.list_screen(scripts, lang, own=lambda script: script.own, author=data.get("author", True),
+                                    whole_editor=data.get("whole_editor", False))
 
 
 def _screen(data: dict, lang: str):
     return script_forms.script_screen(_script(data["script"]), lang, data["editable"], data["book_export"],
-                                      author=data.get("author", True))
+                                      author=data.get("author", True), whole_editor=data.get("whole_editor", False))
 
 
 def _lines(data: dict, lang: str):

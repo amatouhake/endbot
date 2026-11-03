@@ -73,13 +73,15 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.assertEqual(
             self.screen(result),
             script_forms.list_screen(self.store.list(), "en",
-                                     own=lambda script: script.owner == self.host.owner_key(self.alice)))
+                                     own=lambda script: script.owner == self.host.owner_key(self.alice),
+                                     whole_editor=self.config.ui_pack_editor))
 
         result = self.host.execute(["menu", "mine"], self.alice)
         self.assertEqual(result.data["menu"], "script")
         self.assertEqual(
             self.screen(result),
-            script_forms.script_screen(self.script(), "en", True, self.config.book_export))
+            script_forms.script_screen(self.script(), "en", True, self.config.book_export,
+                                       whole_editor=self.config.ui_pack_editor))
 
         # A shared script shows the non-owner screen.
         revision = self.script().revision
@@ -88,7 +90,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.assertEqual(result.data["menu"], "script")
         self.assertEqual(
             self.screen(result, self.bob),
-            script_forms.script_screen(self.script(), "en", False, self.config.book_export))
+            script_forms.script_screen(self.script(), "en", False, self.config.book_export,
+                                       whole_editor=self.config.ui_pack_editor))
 
     def test_edit_and_save_outcomes_build_the_old_screens(self):
         result = self.host.execute(["edit", "mine"], self.alice)
@@ -103,7 +106,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.assertEqual(result.data["menu"], "script")
         self.assertEqual(
             self.screen(result),
-            script_forms.script_screen(self.script("new"), "en", True, self.config.book_export))
+            script_forms.script_screen(self.script("new"), "en", True, self.config.book_export,
+                                       whole_editor=self.config.ui_pack_editor))
 
         result = self.host.execute(["save", "mine", "params {}\n-- v3\n"],
                                    replace(self.alice, group_guard=self.guard(edit=True, page=1)))
@@ -228,7 +232,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         result = self.host.execute(["menu"], source)
         self.assertEqual(result.data["lang"], "ja")
         expected = script_forms.list_screen(
-            self.store.list(), "ja", own=lambda script: script.owner == self.host.owner_key(source))
+            self.store.list(), "ja", own=lambda script: script.owner == self.host.owner_key(source),
+            whole_editor=self.config.ui_pack_editor)
         self.assertEqual(self.screen(result, source), expected)
         self.assertNotEqual(expected.title, "Endbot: scripts")
 
@@ -240,7 +245,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.store.set_visibility("legacy", "shared", legacy.revision)
         result = self.host.execute(["menu"], self.alice)
         expected = script_forms.list_screen(
-            self.store.list(), "en", own=lambda script: script.owner == self.host.owner_key(self.alice))
+            self.store.list(), "en", own=lambda script: script.owner == self.host.owner_key(self.alice),
+            whole_editor=self.config.ui_pack_editor)
         screen = self.screen(result)
         self.assertEqual(screen, expected)
         texts = [item.text for item in screen.items]

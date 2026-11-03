@@ -111,23 +111,24 @@ def _capped_view(source, lang, name=None):
     return source_view(source)
 
 
-def list_screen(scripts, lang="en", own=lambda script: False, author=True):
+def list_screen(scripts, lang="en", own=lambda script: False, author=True, whole_editor=False):
     """``author`` False (a controller, S10) leaves out creating scripts; the server refuses it as well."""
     items = [f.Button(label(s, own(s), lang), run("menu", s.name, guard=ScriptGuard(s.revision, s.name)))
              for s in scripts]
     if author:
-        items.append(_new_script_button(lang))
+        items.append(_new_script_button(lang, whole_editor))
     items.append(f.Button(tr(lang, "Reload script files"), run("reload")))
     items.append(f.Button(tr(lang, "Back to Bot list"), f.run(f.menu_argv())))
     return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
 
 
-def _new_script_button(lang):
+def _new_script_button(lang, whole_editor=False):
     templates = [
-        f.Button(tr(lang, title), f.Show(new_screen(source, "", lang))) for title, source in TEMPLATES.items()
+        f.Button(tr(lang, title), f.Show(new_screen(source, "", lang, whole_editor)))
+        for title, source in TEMPLATES.items()
     ]
     templates += [
-        f.Button(tr(lang, "Blank script"), f.Show(new_screen("params {}\n", "", lang))),
+        f.Button(tr(lang, "Blank script"), f.Show(new_screen("params {}\n", "", lang, whole_editor))),
         f.Button(tr(lang, "From held book..."), f.Show(import_screen(lang))),
     ]
     return f.Button(
@@ -142,17 +143,37 @@ def _new_script_button(lang):
     )
 
 
-def new_screen(source, name="", lang="en"):
-    """Name a new script starting from ``source`` (a template or a copy); its lines are edited after saving."""
+def new_screen(source, name="", lang="en", whole_editor=False):
+    """Name a new script starting from ``source`` (a template or a copy); with ``whole_editor`` the whole source is
+    edited here, in the same field the line editor offers for existing scripts."""
+
+    lines = source.splitlines()
 
     def build(values):
-        return (("save", f._text(values[-1]), source),)
+        if not whole_editor:
+            return (("save", f._text(values[-1]), source),)
+        # Without the pack the field cannot keep line breaks (or be cleared), so the toggle saves ``source`` as is.
+        as_is = values[-2]
+        if not isinstance(as_is, bool):
+            raise f.FormResponseError("the form response was not understood")
+        if as_is:
+            return (("save", f._text(values[-1]), source),)
+        typed = _whole_lines(values[-4], lines, "The line breaks were lost, so nothing was saved. This needs the "
+                                                "Endbot UI resource pack; turn on Save as shown, then edit lines "
+                                                "one at a time.")
+        return (("save", f._text(values[-1]), "\n".join(typed) + "\n" if typed else ""),)
 
-    return f.ModalScreen(
-        tr(lang, "New script"),
+    controls = (
         (f.Label(_capped_view(source, lang)),
-         f.Label(tr(lang, "Name it and save; then change lines with Edit lines.")),
-         f.TextInput(tr(lang, "Script name"), default_value=name)),
+         f.TextInput(tr(lang, "Script source"), default_value=source.removesuffix("\n"), multiline=True),
+         f.Label(tr(lang, "Edit the whole script, name it, then save it. This field needs the optional Endbot UI "
+                          "resource pack; without it, turn on Save as shown and change lines after saving.")),
+         f.Toggle(tr(lang, "Save as shown (without the UI pack)")))
+        if whole_editor else
+        (f.Label(_capped_view(source, lang)), f.Label(tr(lang, "Name it and save; then change lines with Edit lines.")))
+    )
+    return f.ModalScreen(
+        tr(lang, "New script"), (*controls, f.TextInput(tr(lang, "Script name"), default_value=name)),
         build, submit=tr(lang, "Save"), command="botscript", guard=ScriptGuard(edit=True),
     )
 
@@ -177,7 +198,7 @@ def rename_screen(script, guard, lang="en"):
                          build, submit=tr(lang, "Rename"), command="botscript", guard=guard)
 
 
-def script_screen(script, lang="en", editable=True, book_export=False, author=True):
+def script_screen(script, lang="en", editable=True, book_export=False, author=True, whole_editor=False):
     """The source itself, then the frequent actions; the owner's other actions are under More.
 
     ``author`` False (a controller, S10) leaves out copying, editing, renaming and sharing; the owner keeps running,
@@ -186,7 +207,8 @@ def script_screen(script, lang="en", editable=True, book_export=False, author=Tr
     guard = ScriptGuard(script.revision, script.name)
     # Names hold at most 16 characters, so a long name is shortened before the suffix.
     copy = [f.Button(tr(lang, "Copy and edit..."),
-                     f.Show(new_screen(script.source, f"{script.name[:11]}_copy", lang)))] if author else []
+                     f.Show(new_screen(script.source, f"{script.name[:11]}_copy", lang, whole_editor)))] \
+        if author else []
     export = [f.Button(tr(lang, "Write into held book"), run("export", script.name, guard=guard))] if book_export \
         else []
     items = [
@@ -263,6 +285,17 @@ def _typed_lines(value):
     return [line.rstrip() for line in value.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
 
 
+def _whole_lines(value, lines, refusal):
+    """A whole-source field's lines without trailing blanks; a reply that lost the line breaks of multi-line
+    ``lines`` is refused with ``refusal``, never saved as one long line."""
+    typed = _typed_lines(value)
+    while typed and not typed[-1]:
+        typed.pop()
+    if len(lines) > 1 and len(typed) <= 1:
+        raise f.FormResponseError(refusal)
+    return typed
+
+
 def _indent(line):
     return line[: len(line) - len(line.lstrip())]
 
@@ -324,14 +357,10 @@ def source_screen(script, page, lang="en"):
     lines = script.source.splitlines()
 
     def build(values):
-        typed = _typed_lines(values[-1])
-        while typed and not typed[-1]:
-            typed.pop()
+        typed = _whole_lines(values[-1], lines, "The line breaks were lost, so nothing was saved. This needs the "
+                                                "Endbot UI resource pack; use the line buttons or a book instead.")
         if typed == [line.rstrip() for line in lines]:
             return (("edit", script.name, str(page)),)
-        if len(lines) > 1 and len(typed) <= 1:
-            raise f.FormResponseError("The line breaks were lost, so nothing was saved. This needs the Endbot UI "
-                                      "resource pack; use the line buttons or a book instead.")
         return (("save", script.name, "\n".join(typed) + "\n"),)
 
     return f.ModalScreen(

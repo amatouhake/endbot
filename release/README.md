@@ -22,7 +22,8 @@ Both Endstone wheels in the candidate (Linux `manylinux` and Windows `win_amd64`
 pure-Python plugin and CLI wheels from the same commit plus its own self-tested operator bundle
 (`scripts/build_bundle.py`, toolchain pinned in `packaging/toolchain.lock.json`). The `assemble` job
 combines both wheels with the Linux-built plugin and CLI wheels (exactly one of each), both operator
-bundles, the runtime/config tarballs, license, manifest, and checksums into the single candidate.
+bundles, the runtime/config tarballs, the optional UI pack (`scripts/build_ui_pack.py`, named by the pack's own
+manifest version), license, manifest, and checksums into the single candidate.
 The Windows wheel is no longer a local build.
 
 Both platform jobs also build the native Luau runner using
@@ -47,7 +48,8 @@ The eventual release job must add built artifact checksums and include the licen
 See `docs/INSTALL.md` for the candidate contents and the Linux/Windows installation, start, configuration, and
 update paths supported by the current artifact model.
 
-Every file in the candidate (bundles, wheels, tarballs, manifest, `SHA256SUMS`) receives a GitHub build provenance
-attestation in the `assemble` job (`actions/attest-build-provenance`). Anyone can verify a downloaded file with
+Every file in the candidate (bundles, wheels, tarballs, UI pack, manifest, `SHA256SUMS`) receives a GitHub build
+provenance attestation in the `assemble` job (`actions/attest-build-provenance`). Anyone can verify a downloaded file with
 `gh attestation verify <file> --repo amatouhake/endbot`; the attestation binds its SHA-256 to this repository, the
-`release-candidate.yml` workflow, and the commit it ran on. Publish the attested files unchanged.
+`release-candidate.yml` workflow, and the commit it ran on. Publish every attested file unchanged, the
+`endbot-ui-*.mcpack` included: players download the UI pack from the release on its own.

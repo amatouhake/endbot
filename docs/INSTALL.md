@@ -69,6 +69,16 @@ Updating to a newer bundle: `endbot update <bundle> [--sums PATH]` verifies the 
 `app/<version>/`, runs its doctor against the existing instance (moving BDS only with a §6 backup when the new version
 locks a different BDS), switches `app/current`, and keeps the old version for `endbot update --rollback`.
 
+### Optional UI pack
+
+The release also carries `endbot-ui-<pack version>.mcpack`, an optional client-side resource pack: it enlarges server
+forms and turns Endbot's marked inputs into a multi-line field (see [UI_PACK.md](UI_PACK.md)). It is not needed to run a
+server. A player who wants it imports the file on their own device and activates it under **Settings → Global
+Resources**; the server's pack stack stays empty. The pack has its own version, so its number differs from the Endbot
+version and only moves when the pack itself changes. Its mobile field and a world achievement unlock with the pack
+active are unverified, so it is not claimed to be achievement-safe; serving it as a world resource pack is unverified
+too.
+
 ## Developer install
 
 The remainder of this guide is the developer/source-build path: it reconstructs the stack from the release-candidate
@@ -88,6 +98,7 @@ contains exactly:
 | `endbot-runtime-0.6.0.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
 | `endbot-config-0.6.0.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
 | `ENDSTONE_LICENSE` | Upstream Endstone license carried from the pinned checkout. |
+| `endbot-ui-<pack version>.mcpack` | Optional client-side UI resource pack, also attached to the published release (see [UI_PACK.md](UI_PACK.md)). Its version is the pack's own and only moves when the pack changes. |
 | `compatibility-manifest.json` | Machine-readable binding of Endbot revision, Endstone tag/commit/package, BDS version/build/protocol, patch revision, and validation state (schema: `release/compatibility-manifest.schema.json`). |
 | `SHA256SUMS` | SHA-256 checksums of every file above. |
 

@@ -3,8 +3,9 @@
 Status: **merged on `main` (#111, #197); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
 the buttons and the multi-line field, with the focus limitation recorded below; without the pack that field cannot be
 edited at all, and its input field also stops at about 100 characters. The pack is *Endbot UI*; its name, two-line
-description and icon are checked on the client at 0.3.0. The [mobile field](#manual-client-check) and a fresh
-achievement unlock remain unverified. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off
+description and icon are checked on the client at 0.3.0. The [mobile field](#manual-client-check) (check 9) and a
+fresh achievement unlock (check 10) remain unverified; both were waived on 2026-11-03 JST so the pack can ship beside
+the release candidate. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off
 by default.
 
 ## Why
@@ -58,9 +59,10 @@ window, smaller buttons). The tall field appears only for Endbot's marked inputs
 The pack is client-side only. Add it as a **global resource pack** on the player's device. The server's pack stack
 stays empty: no `world_resource_packs.json` and no `texturepacks-required`. Nothing in `server.properties` changes.
 
-1. Download `endbot-ui-<version>.mcpack` from the GitHub release. It ships as a release asset only, with no external
-   site; a server operator who would rather players did not visit GitHub can offer the same file as a server resource
-   pack instead.
+1. Download `endbot-ui-<pack version>.mcpack` from the GitHub release. The release workflow builds it beside the
+   candidate and `SHA256SUMS` covers it; it ships as a release asset only, with no external site. Its version is the
+   pack's own, so it differs from the Endbot version and only moves when the pack changes. Serving the same file as a
+   server resource pack instead is unverified: it puts the pack in the server's pack stack, which no check covered.
 2. On Windows, open the `.mcpack` file. Minecraft imports it.
 3. **Settings → Global Resources**: activate *Endbot UI*.
 4. The operator sets `ui-pack-editor = true` under `[scripting]` (plugin `config.toml`, or `endbot.toml` for managed
@@ -92,7 +94,8 @@ controller uses the pack.
 The [achievement gate](ACHIEVEMENTS.md) was observed with an empty pack stack and no global packs. This pack does not
 touch the server or the world. It is a resource-only pack: no behavior pack, scripts, experiments or Beta APIs.
 Resource packs are not known to disable achievements. Still, **a world achievement unlock with the pack active is a
-manual gate of its own** (AGENTS.md). Until that unlock is observed, the pack is not claimed to be achievement-safe.
+manual gate of its own** (AGENTS.md, check 10). That gate was waived for shipping on 2026-11-03 JST, not passed:
+until the unlock is observed, the pack is not claimed to be achievement-safe.
 
 ## What was checked in the cloud (2026-10-25 JST)
 
@@ -169,8 +172,9 @@ default GUI scale, 1080p:
   description fits without being clipped, and the 128x128 icon reads as the abstract E. The pack's effect is
   unchanged (larger window, compact buttons, editable tall field) and the achievements screen still shows no notice.
 
-Remaining: check 9 (mobile, not testable on the operator's device) and a fresh achievement unlock (check 10; the
-operator's account has the simple ones already).
+Waived (2026-11-03 JST): check 9 (mobile, not testable on the operator's device) and a fresh achievement unlock
+(check 10; the operator's account has the simple ones already). Both stay unverified; the waiver only lets the pack
+ship beside the release candidate.
 
 ## Manual client check
 
@@ -207,4 +211,6 @@ The pack relies on unofficial JSON UI internals, which may change with a client 
 screens to Ore UI; if server forms move, the pack stops applying and forms fall back to vanilla. Nothing breaks on the
 server side. After a client update, run `python scripts/build_ui_pack.py --check --vanilla <dir>` against that
 version's `bedrock-samples/resource_pack`, bump `header.version` and the module version in `ui-pack/manifest.json`
-when the pack changes (clients cache packs by version), and repeat checks 1–5.
+when the pack changes (clients cache packs by version), and repeat checks 1–5. Repeat check 11 as well after any change
+to the name, the description or the icon: that is the one the identity change introduced, and the release list is the
+only place it shows. Checks 9 and 10 stay waived until they are run.

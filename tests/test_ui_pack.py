@@ -61,6 +61,12 @@ class UiPackTests(unittest.TestCase):
         first = build(Path(directory.name) / "a")
         second = build(Path(directory.name) / "b")
         self.assertEqual(first.read_bytes(), second.read_bytes())
+        # The release step writes this file into dist/ and publishes it by name, so the name is part of the contract:
+        # a rename would leave CI green while the release asset drifted from docs/INSTALL.md.
+        version = ".".join(str(part) for part in json.loads((PACK_DIR / "manifest.json").read_text(encoding="utf-8"))
+                           ["header"]["version"])
+        self.assertEqual(first.name, f"endbot-ui-{version}.mcpack")
+        self.assertEqual(first.parent, Path(directory.name) / "a")
         with zipfile.ZipFile(first) as archive:
             self.assertEqual(archive.namelist(),
                              ["LICENSE", "NOTICE", "manifest.json", "pack_icon.png", "ui/server_form.json"])

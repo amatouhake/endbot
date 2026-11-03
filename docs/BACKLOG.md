@@ -782,13 +782,13 @@ Worker (BOT-021) and saves through endbotd with the same compile/declaration/own
 Status: **Merged on `main` (#111, #197); the 1.26.60.5 client check passed for the window, the buttons, the
 multi-line field, the long-line and paste checks, and the 0.3.0 identity check (name, two-line description, icon),
 with focus limited to a frame click. Without the pack that field cannot be edited and its input stops at about 100
-characters.** Remaining: the mobile field (the operator's phone cannot join multiplayer) and a fresh achievement
-unlock (the account has the simple ones) (2026-11-03 JST; offline validation against bedrock-samples
-`v1.26.60.5` the same day).
+characters.** Checks 9 (the mobile field; the operator's phone cannot join multiplayer) and 10 (a fresh achievement
+unlock; the account has the simple ones) were waived for shipping and stay unverified (2026-11-03 JST; offline
+validation against bedrock-samples `v1.26.60.5` the same day).
 
 Identity: the pack is **Endbot UI**, ships a 128x128 icon drawn from a vector source, and carries Apache-2.0
 `LICENSE` plus `NOTICE` inside the zip because players download it on its own. It is distributed as a release asset
-only; a server operator who wants players to get it without visiting GitHub can set it as a server resource pack.
+only. Serving it as a server resource pack instead is possible but unverified: no client check covered that path.
 
 Question: can an optional resource pack make the menus easier to read and let script source be written over several
 lines in a form, and how does that compare with the web editor (BOT-013)? Answer so far: yes, as a stopgap. A
@@ -807,7 +807,9 @@ unchanged.
 
 Manual gates: [UI_PACK.md checks 1–10](UI_PACK.md#manual-client-check), including whether the client cuts inputs at
 100 characters (which would also affect the existing line editor for long lines) and a world achievement unlock with
-the pack active. Do not enable `ui-pack-editor` by default or ship the pack in release bundles before those pass.
+the pack active. Checks 9 and 10 were waived on 2026-11-03 JST, so the pack ships beside the release candidate as an
+optional asset (never inside the operator bundles) without a claim of achievement safety. Do not enable
+`ui-pack-editor` by default before checks 9 and 10 pass.
 
 ## BOT-019: One Operation API and principals
 

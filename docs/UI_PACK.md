@@ -1,7 +1,7 @@
 # Optional Endbot UI resource pack
 
-Status: **prototype, not yet checked on a real client** (2026-10-25 JST). Everything below that depends on how the
-Bedrock client renders or submits a form is an expectation, not an observation, until the
+Status: **prototype merged on `main` (#111), not yet checked on a real client** (2026-11-03 JST). Everything below
+that depends on how the Bedrock client renders or submits a form is an expectation, not an observation, until the
 [manual check](#manual-client-check) passes. The server feature that relies on it, `[scripting] ui-pack-editor`, is
 off by default.
 
@@ -76,8 +76,10 @@ manual gate of its own** (AGENTS.md). Until that unlock is observed, the pack is
 No Minecraft client or BDS could run there: `www.minecraft.net` is outside that environment's network policy. These
 checks were done:
 
-- **Vanilla UI read**: [bedrock-samples](https://github.com/Mojang/bedrock-samples) `main`, version **1.26.50.4**.
-  Findings:
+- **Vanilla UI read**: [bedrock-samples](https://github.com/Mojang/bedrock-samples) `main`, version **1.26.50.4**,
+  and repeated against tag **`v1.26.60.5`** on 2026-11-03 JST for the client the manual check targets (same four
+  files: `ui/server_form.json`, `ui/ui_common.json`, `ui/ui_template_buttons.json`,
+  `ui/settings_sections/settings_common.json`). Findings, unchanged in both versions:
   - `server_form.custom_input` sets **`$max_text_edit_length: 100`** and inherits `common.text_edit_box`, which has
     no `enabled_newline`. That explains the dropped line breaks. It may also mean the client keeps only 100
     characters of a typed or pasted input (see check 6).
@@ -87,8 +89,9 @@ checks were done:
   - Server forms are built by one factory (`main_screen_content`) whose `long_form` and `custom_form` ids pick the
     form type. The pack redirects those two ids.
 - **Pack validation**: `scripts/build_ui_pack.py --check --vanilla <bedrock-samples>/resource_pack` confirmed that
-  all 23 vanilla elements the pack inherits from or names exist in 1.26.50.4, that the pack's own references
-  resolve, and that the manifest is a single resources module. `tests/test_ui_pack.py` runs the offline part in CI,
+  all 23 vanilla elements the pack inherits from or names exist in 1.26.50.4 and in `v1.26.60.5`, that the pack's
+  own references resolve, and that the manifest is a single resources module. `tests/test_ui_pack.py` runs the
+  offline part in CI,
   including that the pack's marker equals the plugin's.
 - **Server path read**: locked Endstone `v0.11.13` (`3491c609`) passes a modal form reply from BDS's `Json::Value`
   to the plugin with `asString()` and `nlohmann::json::dump()` (`src/endstone/core/json.h`,
@@ -100,8 +103,8 @@ checks were done:
 
 ## Manual client check
 
-On the locked pair (Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`), a normally authenticated Windows client
-(1.26.5x) at default GUI scale, 1080p, with the pack active as a global resource:
+On the locked pair (Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, protocol 2225), a normally authenticated Windows
+client (1.26.60.5) at default GUI scale, 1080p, with the pack active as a global resource:
 
 1. The pack imports and activates without a content-log error. *Fails* → note the error. A changed vanilla element
    name usually shows here.

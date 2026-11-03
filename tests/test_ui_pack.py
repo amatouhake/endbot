@@ -11,6 +11,7 @@ from scripts.build_ui_pack import (
     PACK_DIR,
     PackError,
     build,
+    check_icon,
     check_pack,
     check_vanilla,
     strip_comments,
@@ -33,7 +34,8 @@ class UiPackTests(unittest.TestCase):
         path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
     def test_tracked_pack_is_valid(self) -> None:
-        self.assertEqual(sorted(check_pack()), ["manifest.json", "ui/server_form.json"])
+        self.assertEqual(sorted(check_pack()),
+                         ["LICENSE", "NOTICE", "manifest.json", "pack_icon.png", "ui/server_form.json"])
 
     def test_marker_matches_the_plugin(self) -> None:
         forms = (ROOT / "core/src/endbot_core/forms.py").read_text(encoding="utf-8")
@@ -60,7 +62,8 @@ class UiPackTests(unittest.TestCase):
         second = build(Path(directory.name) / "b")
         self.assertEqual(first.read_bytes(), second.read_bytes())
         with zipfile.ZipFile(first) as archive:
-            self.assertEqual(archive.namelist(), ["manifest.json", "ui/server_form.json"])
+            self.assertEqual(archive.namelist(),
+                             ["LICENSE", "NOTICE", "manifest.json", "pack_icon.png", "ui/server_form.json"])
 
     def test_rejects_broken_packs(self) -> None:
         cases = {
@@ -90,6 +93,22 @@ class UiPackTests(unittest.TestCase):
         (pack / "ui" / "extra.json").write_text("{}", encoding="utf-8")
         with self.assertRaisesRegex(PackError, "expected exactly"):
             check_pack(pack)
+
+    def test_the_icon_must_be_a_square_png(self) -> None:
+        def png(width: int, height: int) -> bytes:
+            return (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\r" + b"IHDR"
+                    + width.to_bytes(4, "big") + height.to_bytes(4, "big") + b"\x08\x06\x00\x00\x00" + b"\x00" * 4)
+
+        pack = self.copy_pack()
+        (pack / "pack_icon.png").write_bytes(png(64, 64))
+        with self.assertRaisesRegex(PackError, "64x64, expected 128x128"):
+            check_pack(pack)
+        (pack / "pack_icon.png").write_bytes(b"not a png")
+        with self.assertRaisesRegex(PackError, "not a PNG"):
+            check_pack(pack)
+        (pack / "pack_icon.png").unlink()
+        with self.assertRaisesRegex(PackError, "^pack_icon.png: "):
+            check_icon(pack)
 
     def test_vanilla_check_reads_commented_files_and_reports_missing_elements(self) -> None:
         self.assertEqual(json.loads(strip_comments('/* c */ {"a": "x // y", // z\n "b": 1}')), {"a": "x // y", "b": 1})

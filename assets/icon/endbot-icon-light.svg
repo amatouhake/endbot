@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Endbot UI (light)</title>
+  <rect width="1024" height="1024" fill="#DBD7A0"/>
+  <g transform="translate(27 0)" fill="#241E33">
+    <rect x="196" y="196" width="560" height="146" rx="52"/>
+    <rect x="196" y="440" width="430" height="146" rx="52"/>
+    <rect x="196" y="684" width="560" height="146" rx="52"/>
+    <rect x="196" y="196" width="156" height="634" rx="70"/>
+  </g>
+  <rect x="640" y="440" width="150" height="146" rx="46" transform="translate(27 0)" fill="#7C5BD6"/>
+</svg>

@@ -26,7 +26,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACK_DIR = ROOT / "ui-pack"
-PACK_FILES = ("manifest.json", "ui/server_form.json")
+PACK_FILES = ("LICENSE", "NOTICE", "manifest.json", "pack_icon.png", "ui/server_form.json")
+# The pack icon is a client requirement: a square PNG named pack_icon.png at the pack root.
+ICON = "pack_icon.png"
+ICON_SIZE = 128
 # The latest vanilla version the overrides were verified against (bedrock-samples tag/date).
 VANILLA_VERSION = "1.26.60.5"
 # Vanilla elements the pack inherits from or names. A new client version may rename one;
@@ -189,12 +192,27 @@ def check_vanilla(vanilla: Path) -> int:
     return len(VANILLA_ELEMENTS)
 
 
+def check_icon(pack: Path) -> None:
+    """The client shows ``pack_icon.png``; it must be a square PNG of the documented size."""
+    try:
+        data = (pack / ICON).read_bytes()
+    except OSError as error:
+        raise PackError(f"{ICON}: {error}") from error
+    if not data.startswith(b"\x89PNG\r\n\x1a\n") or data[12:16] != b"IHDR":
+        raise PackError(f"{ICON}: not a PNG")
+    width = int.from_bytes(data[16:20], "big")
+    height = int.from_bytes(data[20:24], "big")
+    if (width, height) != (ICON_SIZE, ICON_SIZE):
+        raise PackError(f"{ICON}: {width}x{height}, expected {ICON_SIZE}x{ICON_SIZE}")
+
+
 def check_pack(pack: Path = PACK_DIR) -> dict[str, bytes]:
     files = sorted(str(path.relative_to(pack).as_posix()) for path in pack.rglob("*") if path.is_file())
     if files != sorted(PACK_FILES):
         raise PackError(f"ui-pack holds {files}; expected exactly {sorted(PACK_FILES)}")
     check_manifest(load(pack / "manifest.json"))
     check_server_form(load(pack / "ui" / "server_form.json"))
+    check_icon(pack)
     return {name: (pack / name).read_bytes() for name in PACK_FILES}
 
 

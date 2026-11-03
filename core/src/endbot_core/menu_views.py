@@ -37,7 +37,8 @@ def _list(data: dict, lang: str):
                         visibility=row["visibility"], file=row["file"], own=row["own"])
         for row in data.get("scripts", ())
     )
-    return script_forms.list_screen(scripts, lang, own=lambda script: script.own, author=data.get("author", True))
+    return script_forms.list_screen(scripts, lang, own=lambda script: script.own, author=data.get("author", True),
+                                    whole_editor=data.get("whole_editor", False))
 
 
 def _screen(data: dict, lang: str):

@@ -111,23 +111,24 @@ def _capped_view(source, lang, name=None):
     return source_view(source)
 
 
-def list_screen(scripts, lang="en", own=lambda script: False, author=True):
+def list_screen(scripts, lang="en", own=lambda script: False, author=True, whole_editor=False):
     """``author`` False (a controller, S10) leaves out creating scripts; the server refuses it as well."""
     items = [f.Button(label(s, own(s), lang), run("menu", s.name, guard=ScriptGuard(s.revision, s.name)))
              for s in scripts]
     if author:
-        items.append(_new_script_button(lang))
+        items.append(_new_script_button(lang, whole_editor))
     items.append(f.Button(tr(lang, "Reload script files"), run("reload")))
     items.append(f.Button(tr(lang, "Back to Bot list"), f.run(f.menu_argv())))
     return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
 
 
-def _new_script_button(lang):
+def _new_script_button(lang, whole_editor=False):
     templates = [
-        f.Button(tr(lang, title), f.Show(new_screen(source, "", lang))) for title, source in TEMPLATES.items()
+        f.Button(tr(lang, title), f.Show(new_screen(source, "", lang, whole_editor)))
+        for title, source in TEMPLATES.items()
     ]
     templates += [
-        f.Button(tr(lang, "Blank script"), f.Show(new_screen("params {}\n", "", lang))),
+        f.Button(tr(lang, "Blank script"), f.Show(new_screen("params {}\n", "", lang, whole_editor))),
         f.Button(tr(lang, "From held book..."), f.Show(import_screen(lang))),
     ]
     return f.Button(
@@ -142,17 +143,32 @@ def _new_script_button(lang):
     )
 
 
-def new_screen(source, name="", lang="en"):
-    """Name a new script starting from ``source`` (a template or a copy); its lines are edited after saving."""
+def new_screen(source, name="", lang="en", whole_editor=False):
+    """Name a new script starting from ``source`` (a template or a copy); with ``whole_editor`` the whole source is
+    edited here, in the same field the line editor offers for existing scripts."""
+
+    lines = source.splitlines()
 
     def build(values):
-        return (("save", f._text(values[-1]), source),)
+        if not whole_editor:
+            return (("save", f._text(values[-1]), source),)
+        typed = _typed_lines(values[-3])
+        while typed and not typed[-1]:
+            typed.pop()
+        if len(lines) > 1 and len(typed) <= 1:
+            raise f.FormResponseError("The line breaks were lost, so nothing was saved. This needs the Endbot UI "
+                                      "resource pack; use a template, then edit lines one at a time.")
+        return (("save", f._text(values[-1]), "\n".join(typed) + "\n" if typed else ""),)
 
+    controls = [
+        f.TextInput(tr(lang, "Script source"), default_value=source.removesuffix("\n"), multiline=True)
+        if whole_editor else f.Label(_capped_view(source, lang)),
+        f.Label(tr(lang, "Edit the whole script, name it, then save it.")
+                if whole_editor else tr(lang, "Name it and save; then change lines with Edit lines.")),
+        f.TextInput(tr(lang, "Script name"), default_value=name),
+    ]
     return f.ModalScreen(
-        tr(lang, "New script"),
-        (f.Label(_capped_view(source, lang)),
-         f.Label(tr(lang, "Name it and save; then change lines with Edit lines.")),
-         f.TextInput(tr(lang, "Script name"), default_value=name)),
+        tr(lang, "New script"), tuple(controls),
         build, submit=tr(lang, "Save"), command="botscript", guard=ScriptGuard(edit=True),
     )
 

@@ -73,7 +73,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.assertEqual(
             self.screen(result),
             script_forms.list_screen(self.store.list(), "en",
-                                     own=lambda script: script.owner == self.host.owner_key(self.alice)))
+                                     own=lambda script: script.owner == self.host.owner_key(self.alice),
+                                     whole_editor=self.config.ui_pack_editor))
 
         result = self.host.execute(["menu", "mine"], self.alice)
         self.assertEqual(result.data["menu"], "script")
@@ -228,7 +229,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         result = self.host.execute(["menu"], source)
         self.assertEqual(result.data["lang"], "ja")
         expected = script_forms.list_screen(
-            self.store.list(), "ja", own=lambda script: script.owner == self.host.owner_key(source))
+            self.store.list(), "ja", own=lambda script: script.owner == self.host.owner_key(source),
+            whole_editor=self.config.ui_pack_editor)
         self.assertEqual(self.screen(result, source), expected)
         self.assertNotEqual(expected.title, "Endbot: scripts")
 
@@ -240,7 +242,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.store.set_visibility("legacy", "shared", legacy.revision)
         result = self.host.execute(["menu"], self.alice)
         expected = script_forms.list_screen(
-            self.store.list(), "en", own=lambda script: script.owner == self.host.owner_key(self.alice))
+            self.store.list(), "en", own=lambda script: script.owner == self.host.owner_key(self.alice),
+            whole_editor=self.config.ui_pack_editor)
         screen = self.screen(result)
         self.assertEqual(screen, expected)
         texts = [item.text for item in screen.items]

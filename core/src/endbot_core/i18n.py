@@ -896,6 +896,7 @@ JA.update({
     "Pick a template to start a new script, or read one from a held book.":
         "テンプレートを選んで新しいスクリプトを作るか、手に持った本から読み込みます。",
     "Name it and save; then change lines with Edit lines.": "名前を付けて保存し、行の編集で行を直します。",
+    "Edit the whole script, name it, then save it.": "スクリプト全体を編集し、名前を付けて保存します。",
     "... {count} more lines; see /botscript show {name}": "... ほか {count} 行。/botscript show {name} で表示できます",
     "Edit lines...": "行を編集...",
     "More...": "その他...",

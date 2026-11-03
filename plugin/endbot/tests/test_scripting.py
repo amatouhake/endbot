@@ -1593,6 +1593,34 @@ class ScriptFormTests(unittest.TestCase):
         self.assertEqual(field.default_value, self.script.source.removesuffix("\n"))
         self.assertEqual(whole.guard, script_forms.ScriptGuard("r1", "sample", edit=True, page=1))
 
+    def test_new_script_offers_the_same_whole_script_field(self):
+        plain = script_forms.new_screen("params {}\n", "row")
+        self.assertEqual([getattr(control, "multiline", None) for control in plain.controls], [None, None, False])
+        self.assertEqual(submit(plain, None, None, "row"), (("save", "row", "params {}\n"),))
+        whole = script_forms.new_screen("params {}\nlog(1)\n", "row", whole_editor=True)
+        field = whole.controls[0]
+        self.assertTrue(field.multiline)
+        self.assertEqual(field.default_value, "params {}\nlog(1)")
+        self.assertEqual(submit(whole, "params {}\nlog(2)", None, "row"),
+                         (("save", "row", "params {}\nlog(2)\n"),))
+        # A reply that lost its line breaks is refused, as in the line editor's whole-script field.
+        with self.assertRaisesRegex(forms.FormResponseError, "line breaks were lost"):
+            submit(whole, "params {} log(1)", None, "row")
+        # A one-line template may stay one line.
+        single = script_forms.new_screen("params {}\n", "", whole_editor=True)
+        self.assertEqual(submit(single, "params { log(1) }", None, ""),
+                         (("save", "", "params { log(1) }\n"),))
+
+    def test_new_script_button_passes_the_setting_to_its_screens(self):
+        def new_screens(screen):
+            button = [item for item in screen.items if item.text == "+ New script..."][0]
+            return [item.action.screen for item in button.action.screen.items]
+
+        plain = new_screens(script_forms.list_screen((self.script,), "en"))
+        self.assertFalse(any(getattr(control, "multiline", None) for control in plain[0].controls))
+        whole = new_screens(script_forms.list_screen((self.script,), "en", whole_editor=True))
+        self.assertTrue(whole[0].controls[0].multiline)
+
     def test_whole_script_field_saves_line_breaks_and_refuses_a_reply_without_them(self):
         whole = script_forms.source_screen(self.script, 2)
         # Unchanged text (even with trailing blank lines or CRLF) goes back to the editor page.

@@ -853,7 +853,8 @@ class ScriptService:
                     for script in self._visible(source)
                 ]
                 return CommandResult(True, data=self._menu_data("scripts", lang, scripts=scripts,
-                                                                author=self._author(source)))
+                                                                author=self._author(source),
+                                                                whole_editor=self.config.ui_pack_editor))
             if not tail:
                 raise LocalizedError("Use /botscript help")
             if operation == "import" and len(tail) == 1:

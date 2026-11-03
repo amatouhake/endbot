@@ -39,6 +39,9 @@ Marked inputs today:
   other save. A reply that lost its line breaks is **refused, never saved**: without the pack the client's field joins
   every line into one, so a multi-line script must still have more than one line when it comes back. An unchanged
   reply goes back to the editor without saving a revision.
+- **New script** (the template field): with `ui-pack-editor` the new-script screen offers the template as the same
+  marked field, so a script can be written as a whole before it exists. It uses the same refusal when a reply lost its
+  line breaks, and a one-line template may stay one line.
 - **Add a line below** (line editor) and **New line** (add at top/end). Without the pack they work as before; with it
   a pasted block keeps its lines (the plugin already splits a reply on line breaks).
 

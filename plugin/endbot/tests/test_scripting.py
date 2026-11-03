@@ -1613,7 +1613,7 @@ class ScriptFormTests(unittest.TestCase):
 
     def test_new_script_button_passes_the_setting_to_its_screens(self):
         def new_screens(screen):
-            button = [item for item in screen.items if item.text == "+ New script..."][0]
+            button = next(item for item in screen.items if item.text == "+ New script...")
             return [item.action.screen for item in button.action.screen.items]
 
         plain = new_screens(script_forms.list_screen((self.script,), "en"))

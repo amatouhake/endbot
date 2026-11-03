@@ -779,9 +779,11 @@ Worker (BOT-021) and saves through endbotd with the same compile/declaration/own
 
 ## BOT-018: Optional UI resource pack for forms and multi-line editing
 
-Status: **Prototype merged on `main` (#111); the 1.26.60.5 client check passed for the window, the buttons and the
-multi-line field, with focus limited to a frame click; without the pack that field cannot be edited at all; checks 4,
-6, 9 and 10 remain** (2026-11-03 JST; offline validation against bedrock-samples `v1.26.60.5` the same day).
+Status: **Prototype merged on `main` (#111); the 1.26.60.5 client check passed for the window, the buttons, the
+multi-line field and the long-line and paste checks, with focus limited to a frame click. Without the pack that field
+cannot be edited and its input stops at about 100 characters.** Remaining: the mobile field (the operator's phone
+cannot join multiplayer) and a fresh achievement unlock (the account has the simple ones) (2026-11-03 JST; offline
+validation against bedrock-samples `v1.26.60.5` the same day).
 
 Question: can an optional resource pack make the menus easier to read and let script source be written over several
 lines in a form, and how does that compare with the web editor (BOT-013)? Answer so far: yes, as a stopgap. A

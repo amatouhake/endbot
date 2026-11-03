@@ -123,8 +123,14 @@ default GUI scale, 1080p:
   vanilla uses for its own multi-line inputs (`npc_interact_screen.json`). The collection has no dedicated id, so
   the focus id is the label: two marked inputs on one form need distinct labels.
 
-Still open: checks 4 (paste a 3-line block), 6 (the client's 100-character limit), 8 (the refusal with the pack
-deactivated), 9 (mobile) and 10 (a world achievement unlock).
+- **Without the pack the whole-script entry is unusable, not merely refused.** With the pack deactivated the field
+  shows only the first lines of the script and typing or deleting does nothing, so the "line breaks were lost"
+  refusal (check 8) cannot be reached at all. The prefilled multi-line default is what a vanilla one-line box cannot
+  handle. The entry is therefore usable only by players who install the pack, and `ui-pack-editor` is a switch for an
+  operator whose players do.
+
+Still open: checks 4 (paste a 3-line block), 6 (the client's 100-character limit), 9 (mobile) and 10 (a world
+achievement unlock). Check 8 found the without-pack behaviour above instead of the refusal it expected.
 
 ## Manual client check
 

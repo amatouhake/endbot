@@ -11,6 +11,7 @@ from scripts.build_ui_pack import (
     PACK_DIR,
     PackError,
     build,
+    check_icon,
     check_pack,
     check_vanilla,
     strip_comments,
@@ -106,8 +107,8 @@ class UiPackTests(unittest.TestCase):
         with self.assertRaisesRegex(PackError, "not a PNG"):
             check_pack(pack)
         (pack / "pack_icon.png").unlink()
-        with self.assertRaisesRegex(PackError, "pack_icon.png"):
-            check_pack(pack)
+        with self.assertRaisesRegex(PackError, "^pack_icon.png: "):
+            check_icon(pack)
 
     def test_vanilla_check_reads_commented_files_and_reports_missing_elements(self) -> None:
         self.assertEqual(json.loads(strip_comments('/* c */ {"a": "x // y", // z\n "b": 1}')), {"a": "x // y", "b": 1})

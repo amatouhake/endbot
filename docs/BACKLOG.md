@@ -790,7 +790,7 @@ Identity: the pack is **Endbot UI**, ships a 128x128 icon drawn from a vector so
 only; a server operator who wants players to get it without visiting GitHub can set it as a server resource pack.
 
 Question: can an optional resource pack make the menus easier to read and let script source be written over several
-lines in a form, and how does that compare with the web editor (BOT-013)? Answer so far: yes, as a stopgap.
+lines in a form, and how does that compare with the web editor (BOT-013)? Answer so far: yes, as a stopgap. A
 client-side global pack can enlarge the form window, shrink buttons, and turn marked text inputs into the vanilla
 multi-line, scrolling edit box that the book editor uses. It cannot add highlighting, completion or diffs, depends
 on unofficial JSON UI internals, and does not reach consoles, so BOT-013 stays the long-term editor. Details,

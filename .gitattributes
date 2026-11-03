@@ -2,3 +2,7 @@
 # release-candidate Windows job applies these patches with `git am` on a
 # windows-2022 runner, where a CRLF checkout would no longer apply cleanly.
 patches/endstone/*.patch text eol=lf
+
+# The UI pack is zipped from working-tree bytes; keep them identical on every platform so builds stay reproducible.
+ui-pack/** text eol=lf
+ui-pack/**/*.png binary

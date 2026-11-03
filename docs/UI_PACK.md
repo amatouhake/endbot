@@ -71,11 +71,11 @@ effectively for PC and mobile players.
 
 ## Name, icon and licence
 
-The pack is called **Endbot UI**, and the manifest description says what it changes and that it is optional and
+The pack is called **Endbot UI**, and the manifest description says what it changes and that it is optional.
 `ui-pack/pack_icon.png` is the 128x128 icon the client shows; its source is `assets/icon/endbot-icon.svg`, which the
-README also uses. The light variant `assets/icon/endbot-icon-light.svg` is for light backgrounds. Both are rounded
-rectangles on a 1024 canvas, rendered by `scripts/render_icons.ps1` (headless Chrome, one rasterisation per size), so
-the PNGs are exports of the SVG rather than files to hand-edit.
+README also uses at 512x512. The light variant `assets/icon/endbot-icon-light.svg` is for light backgrounds and has
+no PNG export yet. Both are rounded rectangles on a 1024 canvas. `scripts/render_icons.ps1` rasterises the dark SVG
+once per size with headless Chrome, so the PNGs are exports of the SVG rather than files to hand-edit.
 
 The pack ships `LICENSE` (Apache-2.0) and a short `NOTICE` inside the zip: players can download it on its own, and the
 NOTICE names the copyright holder and states that the pack overrides vanilla element ids at runtime and bundles no

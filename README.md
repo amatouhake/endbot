@@ -1,6 +1,6 @@
 # Endbot
 
-<img src="assets/icon/endbot-icon-512.png" alt="Endbot UI" width="96" align="right">
+<img src="assets/icon/endbot-icon-512.png" alt="Endbot" width="96" align="right">
 
 Endbot is a practical Fake Player foundation for the official Minecraft Bedrock Dedicated Server (BDS), using
 [Endstone](https://github.com/EndstoneMC/endstone) as the extension platform. It preserves the normal Microsoft/Xbox

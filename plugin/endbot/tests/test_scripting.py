@@ -1369,6 +1369,24 @@ class OwnershipTests(unittest.TestCase):
         saved = host.execute(["save", "mine", "params {}\nlog('b')\n"], replace(self.alice, group_guard=guard))
         self.assertIn(label, [item.text for item in screen(saved, self.alice).items])
 
+    def test_new_script_menus_carry_the_whole_script_setting(self):
+        self.save(self.alice, "mine", "params {}\nlog('a')\n")
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled):
+                host = ScriptService(replace(self.config, ui_pack_editor=enabled), self.store, None, None,
+                                     self.path.parent, lambda source: True,
+                                     process_factory=lambda *args: FakeRunner([]), bootstrap="trusted")
+                self.assertIs(host.execute(["menu"], self.alice).data["whole_editor"], enabled)
+                self.assertIs(host.execute(["menu", "mine"], self.alice).data["whole_editor"], enabled)
+                # The new-script screen's reply saves through the service like any other save.
+                name = f"new{int(enabled)}"
+                new = script_forms.new_screen("params {}\nlog(1)\n", whole_editor=enabled)
+                (argv,) = submit(new, *(("params {}\nlog(2)", None, False) if enabled else (None, None)), name)
+                result = host.execute(list(argv), replace(self.alice, group_guard=script_forms.ScriptGuard(edit=True)))
+                self.assertTrue(result.accepted)
+                self.assertEqual(self.store.get(name).source,
+                                 "params {}\nlog(2)\n" if enabled else "params {}\nlog(1)\n")
+
     def test_saves_from_menus_come_back_to_the_editor_or_the_new_script(self):
         result = self.save(self.alice, "mine", "params {}\nlog('a')\n")
         self.assertEqual(screen(result, self.alice).title, "mine")
@@ -1601,15 +1619,25 @@ class ScriptFormTests(unittest.TestCase):
         field = whole.controls[0]
         self.assertTrue(field.multiline)
         self.assertEqual(field.default_value, "params {}\nlog(1)")
-        self.assertEqual(submit(whole, "params {}\nlog(2)", None, "row"),
+        self.assertEqual(submit(whole, "params {}\nlog(2)", None, False, "row"),
                          (("save", "row", "params {}\nlog(2)\n"),))
         # A reply that lost its line breaks is refused, as in the line editor's whole-script field.
-        with self.assertRaisesRegex(forms.FormResponseError, "line breaks were lost"):
-            submit(whole, "params {} log(1)", None, "row")
+        with self.assertRaisesRegex(forms.FormResponseError, "turn on Save as shown"):
+            submit(whole, "params {} log(1)", None, False, "row")
+        # Without the pack, Save as shown keeps the template whatever the collapsed field holds.
+        self.assertEqual(submit(whole, "params {} log(1)", None, True, "row"),
+                         (("save", "row", "params {}\nlog(1)\n"),))
+        with self.assertRaises(forms.FormResponseError):
+            submit(whole, "params {}\nlog(2)", None, "yes", "row")
         # A one-line template may stay one line.
         single = script_forms.new_screen("params {}\n", "", whole_editor=True)
-        self.assertEqual(submit(single, "params { log(1) }", None, ""),
+        self.assertEqual(submit(single, "params { log(1) }", None, False, ""),
                          (("save", "", "params { log(1) }\n"),))
+        # Copy and edit offers the same field.
+        more = next(item for item in script_forms.script_screen(self.script, whole_editor=True).items
+                    if item.text == "More...")
+        copy = next(item for item in more.action.screen.items if item.text == "Copy and edit...")
+        self.assertTrue(copy.action.screen.controls[0].multiline)
 
     def test_new_script_button_passes_the_setting_to_its_screens(self):
         def new_screens(screen):

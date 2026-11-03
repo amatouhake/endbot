@@ -841,7 +841,8 @@ class ScriptService:
                                             whole_editor=self.config.ui_pack_editor)
                             if guard.page is not None
                             else self._menu_data("script", lang, script=self._script_data(saved), editable=True,
-                                                 book_export=self.config.book_export, author=self._author(source)))
+                                                 book_export=self.config.book_export, author=self._author(source),
+                                                 whole_editor=self.config.ui_pack_editor))
                 return CommandResult(True, (reply(tr(lang, "Script {name} saved", name=tail[0])),), log_level="info",
                                      log_messages=(f"Script {tail[0]} saved by {self._who(source)}",), data=data)
             if operation == "menu" and not tail:
@@ -896,7 +897,7 @@ class ScriptService:
                 lines = len(text.splitlines())
                 data = (self._menu_data("script", lang, script=self._script_data(self.store.get(name)),
                                         editable=True, book_export=self.config.book_export,
-                                        author=self._author(source))
+                                        author=self._author(source), whole_editor=self.config.ui_pack_editor)
                         if isinstance(guard, script_forms.ScriptGuard) else None)
                 return CommandResult(
                     True, (reply(tr(lang, "Script {name} imported from the book ({lines} lines)", name=name,
@@ -1058,7 +1059,7 @@ class ScriptService:
                     data = self._menu_data(
                         "script", lang, script=self._script_data(script),
                         editable=self.can_edit(script, source), book_export=self.config.book_export,
-                        author=self._author(source))
+                        author=self._author(source), whole_editor=self.config.ui_pack_editor)
                 return CommandResult(True, data=data)
             raise LocalizedError("Use /botscript help")
         except (ValueError, RuntimeError, OSError) as error:

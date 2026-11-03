@@ -41,7 +41,9 @@ Marked inputs today:
   reply goes back to the editor without saving a revision.
 - **New script** (the template field): with `ui-pack-editor` the new-script screen offers the template as the same
   marked field, so a script can be written as a whole before it exists. It uses the same refusal when a reply lost its
-  line breaks, and a one-line template may stay one line.
+  line breaks, and a one-line template may stay one line. Its **Save as shown (without the UI pack)** toggle saves the
+  template unchanged, ignoring the field, so a player without the pack can still create the script and edit its
+  lines afterwards (the client's field cannot be cleared).
 - **Add a line below** (line editor) and **New line** (add at top/end). Without the pack they work as before; with it
   a pasted block keeps its lines (the plugin already splits a reply on line breaks).
 
@@ -59,7 +61,8 @@ stays empty: no `world_resource_packs.json` and no `texturepacks-required`. Noth
 3. **Settings → Global Resources**: activate *Endbot UI (optional)*.
 4. The operator sets `ui-pack-editor = true` under `[scripting]` (plugin `config.toml`, or `endbot.toml` for managed
    instances) and restarts. Players without the pack still see the button; they are told to use the line buttons or a
-   book if they try it.
+   book if they try it. On the new-script screen they are told to turn on **Save as shown** and edit lines after
+   saving.
 
 Mobile clients can import `.mcpack` files the same way. Consoles cannot add arbitrary global packs, so this pack is
 effectively for PC and mobile players.

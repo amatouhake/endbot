@@ -43,7 +43,7 @@ def _list(data: dict, lang: str):
 
 def _screen(data: dict, lang: str):
     return script_forms.script_screen(_script(data["script"]), lang, data["editable"], data["book_export"],
-                                      author=data.get("author", True))
+                                      author=data.get("author", True), whole_editor=data.get("whole_editor", False))
 
 
 def _lines(data: dict, lang: str):

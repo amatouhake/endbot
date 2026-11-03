@@ -245,8 +245,9 @@ Players who add the optional [Endbot UI resource pack](UI_PACK.md) as a global r
 buttons and a multi-line field. With `[scripting] ui-pack-editor = true` (default false), the line editor also offers
 **Edit all at once (UI pack)...**: the whole source in one field, saved like any other edit, and the new-script screen
 offers the template in the same field so a script can be written as a whole before it exists. Without the pack the
-client drops the line breaks, and that reply is refused rather than saved. The pack's window, buttons and field were
-checked on a 1.26.60.5 client ([UI pack](UI_PACK.md)); books remain the verified multi-line path for other clients.
+client drops the line breaks, and that reply is refused rather than saved; the new-script screen's **Save as shown**
+toggle saves the template unchanged instead. The pack is a prototype awaiting its manual client check; books remain
+the verified multi-line path.
 
 ### Script files
 

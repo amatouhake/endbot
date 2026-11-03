@@ -896,7 +896,15 @@ JA.update({
     "Pick a template to start a new script, or read one from a held book.":
         "テンプレートを選んで新しいスクリプトを作るか、手に持った本から読み込みます。",
     "Name it and save; then change lines with Edit lines.": "名前を付けて保存し、行の編集で行を直します。",
-    "Edit the whole script, name it, then save it.": "スクリプト全体を編集し、名前を付けて保存します。",
+    "Edit the whole script, name it, then save it. This field needs the optional Endbot UI resource pack; without "
+    "it, turn on Save as shown and change lines after saving.":
+        "スクリプト全体を編集し、名前を付けて保存します。この欄には任意導入の Endbot UI リソースパックが必要です。"
+        "パックがない場合は表示どおりに保存をオンにし、保存後に行を直してください。",
+    "Save as shown (without the UI pack)": "表示どおりに保存 (UI パックなし)",
+    "The line breaks were lost, so nothing was saved. This needs the Endbot UI resource pack; turn on Save as "
+    "shown, then edit lines one at a time.":
+        "改行が失われたため、保存しませんでした。この欄には Endbot UI リソースパックが必要です。"
+        "表示どおりに保存をオンにしてから、行を 1 行ずつ編集してください。",
     "... {count} more lines; see /botscript show {name}": "... ほか {count} 行。/botscript show {name} で表示できます",
     "Edit lines...": "行を編集...",
     "More...": "その他...",

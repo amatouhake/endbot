@@ -80,7 +80,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.assertEqual(result.data["menu"], "script")
         self.assertEqual(
             self.screen(result),
-            script_forms.script_screen(self.script(), "en", True, self.config.book_export))
+            script_forms.script_screen(self.script(), "en", True, self.config.book_export,
+                                       whole_editor=self.config.ui_pack_editor))
 
         # A shared script shows the non-owner screen.
         revision = self.script().revision
@@ -89,7 +90,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.assertEqual(result.data["menu"], "script")
         self.assertEqual(
             self.screen(result, self.bob),
-            script_forms.script_screen(self.script(), "en", False, self.config.book_export))
+            script_forms.script_screen(self.script(), "en", False, self.config.book_export,
+                                       whole_editor=self.config.ui_pack_editor))
 
     def test_edit_and_save_outcomes_build_the_old_screens(self):
         result = self.host.execute(["edit", "mine"], self.alice)
@@ -104,7 +106,8 @@ class ScriptMenuViewTests(unittest.TestCase):
         self.assertEqual(result.data["menu"], "script")
         self.assertEqual(
             self.screen(result),
-            script_forms.script_screen(self.script("new"), "en", True, self.config.book_export))
+            script_forms.script_screen(self.script("new"), "en", True, self.config.book_export,
+                                       whole_editor=self.config.ui_pack_editor))
 
         result = self.host.execute(["save", "mine", "params {}\n-- v3\n"],
                                    replace(self.alice, group_guard=self.guard(edit=True, page=1)))

@@ -1133,6 +1133,42 @@ Live run (Windows, patched Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, `scrip
 logged the throttle notice once and reported all 80 results; a 2000-line log flood stopped at the 81st message
 inside a second and ended the run with `Script operation rate limit reached` plus input cleanup.
 
+## BOT-032: A script save occasionally fails with "Broken pipe"
+
+Status: **Unresolved; not reproducible on demand** (2026-11-03 JST).
+
+While checking the optional UI pack on a 1.26.60.5 Windows client, saving from the script menus failed
+intermittently with `[Errno 32] Broken pipe` — several edits and saves in a row succeeded, then one failed, and a
+later retry worked. Both the line editor's whole-script field and the new-script screen were involved; no other
+operation showed it.
+
+What the evidence says:
+
+- The message comes from `endbotd` (or its plugin-side caller) failing a **Luau runner** write:
+  `core/src/endbot_core/script_process.py::send` catches `OSError` from the runner's stdin, waits briefly for the
+  exit, and raises `Script runner failed: {error}`; the command layer turns that into `{operation} failed: ...`.
+  A save runs a declaration check, so it spawns that runner.
+- The plugin↔endbotd link was not the cause: `endbotd.log` shows one `linked` line and no reconnect or warning for
+  the session, and the failing operation did not appear in the log at all.
+- Nothing is logged when it happens, so the runner's exit code and the write that failed are unknown. A throwaway
+  instance carried a local patch that logs pid, exit code, `host_terminated` and the event; repeated saves did not
+  reproduce the failure afterwards.
+- An earlier symptom may be related: the first script run after a fresh server start once ended with
+  `Script declaration failed: execution budget exceeded` and the retry completed in 46 ms, which points at runner
+  start-up latency (a first-execution scan) rather than at the script.
+
+Candidates, in order:
+
+1. Log the failed write (runner pid, exit code, whether the host terminated it, event type) in
+   `script_process.send`. This is the missing observation, not a fix.
+2. Retry the declaration check once when the runner process fails before returning its `params`; a save has no
+   side effects yet, so a retry is safe. Only after (1) says the runner really exits early.
+3. If the runner is being killed by an outside actor (antivirus, an OS limit), the confinement exit reason or a
+   runner log line should name it.
+
+Acceptance: a save that hits the failure leaves a log line naming the runner's fate, and if a retry is added, the
+save completes; the BACKLOG entry is closed only when the cause is named, not when retries hide it.
+
 ## Deferred priorities
 
 - Container/UI operations — crafting, villager trading, enchanting — use `item_stack_request` on current Bedrock, which

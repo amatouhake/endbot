@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACK_DIR = ROOT / "ui-pack"
 PACK_FILES = ("manifest.json", "ui/server_form.json")
 # The vanilla version the overrides were written against (bedrock-samples tag/date).
-VANILLA_VERSION = "1.26.50.4"
+VANILLA_VERSION = "1.26.60.5"
 # Vanilla elements the pack inherits from or names. A new client version may rename one;
 # `--vanilla` confirms them against that version's bedrock-samples resource pack.
 VANILLA_ELEMENTS = {
@@ -219,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="validate only; write nothing")
     parser.add_argument("--vanilla", type=Path,
                         help=f"bedrock-samples resource_pack directory to confirm vanilla elements "
-                             f"(written against {VANILLA_VERSION})")
+                             f"(verified against {VANILLA_VERSION})")
     args = parser.parse_args(argv)
     try:
         if args.vanilla:

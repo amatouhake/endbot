@@ -7,8 +7,9 @@ This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cl
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
 concrete pairing scheme, protocol, account store, supervisor change and step plan. The stack is fixed by
 [web technology](DIRECTION.md#web-technology); permissions are [PERMISSIONS.md](PERMISSIONS.md) (BOT-024); the web
-link terminates in endbotd ([ENDBOTD.md](ENDBOTD.md)). BOT-020, BOT-021, BOT-022 and BOT-024 ship in one release with
-one validation pass.
+link terminates in endbotd ([ENDBOTD.md](ENDBOTD.md)). BOT-020 and BOT-024 shipped in 0.5.0 and 0.6.0 carried the
+script-facing work, so BOT-021 is the next release, together with BOT-022, with one validation pass for both
+([Delivery](DIRECTION.md#delivery)).
 
 ## Where we start
 
@@ -352,7 +353,8 @@ Decided 2026-10-29 JST.
 
 Each step is split into PRs that keep main releasable. **Claude** marks the security boundary and protocol core,
 written by Claude; **delegable** marks well-specified pieces a cheaper implementer can take, with Claude reviewing.
-Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024 web principal checks.
+Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024 web principal checks; both shipped in
+0.5.0, so no step waits on another work item.
 
 1. **Supervisor policy (P10).** `start`/`exit` console commands, `--exit-with-bds`, runtime stopped with BDS.
    Delegable.

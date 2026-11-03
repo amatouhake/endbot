@@ -894,8 +894,8 @@ cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-
 
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
-Status: **Design agreed in [WEB.md](WEB.md), not implemented; after BOT-020 and BOT-024, in the release after
-0.5.0 together with BOT-022, see [delivery](DIRECTION.md#delivery)** (2026-10-30 JST).
+Status: **Design agreed in [WEB.md](WEB.md), not implemented; the next release after 0.6.0, together with BOT-022,
+see [delivery](DIRECTION.md#delivery)** (design agreed 2026-10-30 JST; scope updated 2026-11-03 JST).
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
 [web technology](DIRECTION.md#web-technology)); endbotd connects outbound over WebSocket. Accounts are created only from
@@ -915,7 +915,8 @@ UI from endbotd without Cloudflare ([other hosts](DIRECTION.md#other-hosts)); ot
 ## BOT-022: Events, watches and triggers
 
 Status: **Planned; framework agreed in [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)**
-(2026-10-28 JST). Detailed design agreed in [EVENTS.md](EVENTS.md) (2026-10-29 JST).
+(2026-10-28 JST), detailed design in [EVENTS.md](EVENTS.md) (2026-10-29 JST); the next release after 0.6.0,
+together with BOT-021 (updated 2026-11-03 JST).
 
 Event kinds in the operation registry (`category.action`, filters, payload, source, guarantee, visibility); a generic
 `watch(kind, filter)` with `w:wait{timeout=}`; observation only, never cancel or modify; triggers as separate bindings

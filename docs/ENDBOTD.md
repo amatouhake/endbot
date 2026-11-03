@@ -1,7 +1,7 @@
 # endbotd design (BOT-020)
 
-Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals and the recommended answers to
-the former open points (see [settled points](#settled-points)). Nothing here is implemented yet.
+Status: **Implemented and released in 0.5.0** (2026-10-30 JST): design agreed 2026-10-29 JST, steps 1 to 6 done,
+and the live and human-client gates recorded in [ENDBOTD_VALIDATION.md](ENDBOTD_VALIDATION.md).
 
 This document turns [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-and-its-centre-moves-out-of-bds)
 into a concrete process split, protocol, migration and step plan. It changes nothing players can see, adds no web code

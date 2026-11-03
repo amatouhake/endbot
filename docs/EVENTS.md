@@ -5,9 +5,10 @@ the former open points (see [settled points](#settled-points)). Nothing here is 
 
 This document turns [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
 into a registry format, a delivery path, watch and trigger semantics, and a step plan. It builds on endbotd
-([ENDBOTD.md](ENDBOTD.md)), the permission model ([PERMISSIONS.md](PERMISSIONS.md)) and the web
-([WEB.md](WEB.md)). BOT-020, BOT-024, BOT-021 and BOT-022 ship in one release with one validation pass
-([Delivery](DIRECTION.md#delivery)); the web comes before BOT-022, so BOT-022 adds its messages to the web protocol.
+([ENDBOTD.md](ENDBOTD.md)) and the permission model ([PERMISSIONS.md](PERMISSIONS.md)), both released in 0.5.0, and
+on the web ([WEB.md](WEB.md)). BOT-022 ships in the next release after 0.6.0 together with BOT-021, with one
+validation pass for both ([Delivery](DIRECTION.md#delivery)); the web comes before BOT-022, so BOT-022 adds its
+messages to the web protocol.
 
 ## Where we start
 
@@ -269,7 +270,7 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
 
 Each step is split into PRs that keep main releasable. **Claude** marks protocol, threading, security boundaries and
 the measurement; **DeepSeek** marks pieces handed over with a precise spec and acceptance tests, reviewed by Claude.
-No release is cut from main until BOT-020, BOT-024, BOT-021 and BOT-022 are all in.
+BOT-021 and BOT-022 ship together in one release; no release is cut between them.
 
 1. **Spike: block change coverage on the locked pair.** Can start now. A probe plugin logs every Endstone block,
    piston, fluid, explosion, growth and decay event together with a per-tick read of a test area, while a scenario

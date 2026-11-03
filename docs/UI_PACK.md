@@ -1,9 +1,8 @@
 # Optional Endbot UI resource pack
 
-Status: **prototype merged on `main` (#111), not yet checked on a real client** (2026-11-03 JST). Everything below
-that depends on how the Bedrock client renders or submits a form is an expectation, not an observation, until the
-[manual check](#manual-client-check) passes. The server feature that relies on it, `[scripting] ui-pack-editor`, is
-off by default.
+Status: **prototype merged on `main` (#111); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
+the buttons and the multi-line field, with the focus limitation recorded below. Four [checks](#manual-client-check)
+remain. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off by default.
 
 ## Why
 
@@ -100,6 +99,30 @@ checks were done:
   unverified.
 - **Plugin**: unit tests cover the marker on labels, the refusal of a reply without line breaks, unchanged replies,
   trailing blank lines and CRLF, and the setting in the plugin and the CLI.
+
+## Client check (2026-11-03 JST, Windows 1.26.60.5)
+
+On the locked pair (Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, protocol 2225), pack active as a global resource,
+default GUI scale, 1080p:
+
+- The pack imports and activates with no content-log error. The settings screen still offers world achievements; a
+  real unlock is check 10 and has not been run.
+- `/bot` and `/botscript` open in the larger window; buttons are compact and no label is clipped.
+- A marked input shows the tall field. Typing, backspace and Enter work, and saving keeps the line breaks: a 12-line
+  script with Japanese text, `§` codes, a tab and trailing spaces round-trips unchanged.
+- **The field takes focus only when its frame is clicked.** The tall field is the scrolling variant
+  (`common.scrollable_multiline_text_edit_box`), and its inner scroll panel consumes pointer input, so a click inside
+  the text never reaches the edit box and no caret appears. Click the border once; then the whole field edits, scrolls
+  with the wheel and follows the caret. The non-scrolling variant takes focus from anywhere but cannot show a long
+  source, and a script is meant to be edited in one field rather than in pages, so the scrolling variant is kept.
+- The control recipe this settled on: `endbot_multiline_control` inherits `common.scrollable_multiline_text_edit_box`,
+  sets `size` 150 and `max_length` from `$max_text_edit_length` (32768), binds the form's own collection explicitly
+  (`#custom_input_text`, `#custom_input_enabled`, `custom_form`) instead of the undefined `$option_*` variables the
+  first prototype used, and binds `#focus_identifier` from `#custom_text`, the pattern vanilla uses for its own
+  multi-line inputs (`npc_interact_screen.json`).
+
+Still open: checks 4 (paste a 3-line block), 6 (the client's 100-character limit), 8 (the refusal with the pack
+deactivated), 9 (mobile) and 10 (a world achievement unlock).
 
 ## Manual client check
 

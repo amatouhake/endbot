@@ -75,8 +75,9 @@ The release also carries `endbot-ui-<pack version>.mcpack`, an optional client-s
 forms and turns Endbot's marked inputs into a multi-line field (see [UI_PACK.md](UI_PACK.md)). It is not needed to run a
 server. A player who wants it imports the file on their own device and activates it under **Settings → Global
 Resources**; the server's pack stack stays empty. The pack has its own version, so its number differs from the Endbot
-version and only moves when the pack itself changes. A server operator who would rather players did not fetch the file
-from GitHub can serve it as a world resource pack instead, which applies only while a player is on that server.
+version and only moves when the pack itself changes. Its mobile field and a world achievement unlock with the pack
+active are unverified, so it is not claimed to be achievement-safe; serving it as a world resource pack is unverified
+too.
 
 ## Developer install
 

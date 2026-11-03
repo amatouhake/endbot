@@ -632,6 +632,18 @@ class BundleContractTests(unittest.TestCase):
         self.assertIn("staging/bundle-windows/*", blocks["assemble"])
         self.assertIn("sha256sum ./* > SHA256SUMS", blocks["assemble"])
 
+    def test_candidate_carries_the_ui_pack_under_its_checksums(self) -> None:
+        blocks = _release_job_blocks()
+        assemble = blocks["assemble"]
+        build = assemble.index("python scripts/build_ui_pack.py --out dist")
+        # Built into dist/ before SHA256SUMS, so the checksums and the
+        # provenance attestation cover it.
+        self.assertLess(build, assemble.index("sha256sum ./* > SHA256SUMS"))
+        # A release-asset only: the operator bundles never carry it.
+        for job in ("linux", "windows"):
+            with self.subTest(job=job):
+                self.assertNotIn("build_ui_pack.py", blocks[job])
+
     def test_bundle_self_test_covers_the_operator_path(self) -> None:
         builder = (ROOT / "scripts/build_bundle.py").read_text(encoding="utf-8")
         self.assertIn("test_bundle.py", builder)

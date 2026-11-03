@@ -296,7 +296,9 @@ jobs:
       # arrive install-tested from the platform jobs; the Linux wheel is
       # re-verified here against the published plugin wheel. Both operator
       # bundles arrive self-tested from their platform jobs and join dist/
-      # so SHA256SUMS covers them.
+      # so SHA256SUMS covers them. The optional UI pack is built here too,
+      # named by its own manifest version (it only moves when the pack
+      # changes), so SHA256SUMS and the attestation cover it.
       - name: Assemble candidate artifacts
         env:
           CANDIDATE_VERSION: ${{ inputs.version }}
@@ -316,10 +318,7 @@ jobs:
             -C runtime package.json package-lock.json README.md endbot-runtime.example.json scripts src
           tar -czf "dist/endbot-config-${CANDIDATE_VERSION}.tar.gz" config LICENSE THIRD_PARTY_NOTICES.md
           python scripts/generate_compatibility_manifest.py dist/compatibility-manifest.json --endbot-version "$CANDIDATE_VERSION"
-          # The optional UI pack ships beside the candidate, so SHA256SUMS and the provenance attestation cover it. It
-          # carries its own manifest version, which only moves when the pack changes, hence the separate file name.
           python scripts/build_ui_pack.py --out dist
-          ls dist/endbot-ui-*.mcpack
           cd dist
           sha256sum ./* > SHA256SUMS
 

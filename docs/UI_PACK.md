@@ -58,9 +58,10 @@ window, smaller buttons). The tall field appears only for Endbot's marked inputs
 The pack is client-side only. Add it as a **global resource pack** on the player's device. The server's pack stack
 stays empty: no `world_resource_packs.json` and no `texturepacks-required`. Nothing in `server.properties` changes.
 
-1. Download `endbot-ui-<version>.mcpack` from the GitHub release. It ships as a release asset only, with no external
-   site; a server operator who would rather players did not visit GitHub can offer the same file as a server resource
-   pack instead.
+1. Download `endbot-ui-<pack version>.mcpack` from the GitHub release. The release workflow builds it beside the
+   candidate and `SHA256SUMS` covers it; it ships as a release asset only, with no external site. Its version is the
+   pack's own, so it differs from the Endbot version and only moves when the pack changes. A server operator who would
+   rather players did not visit GitHub can offer the same file as a server resource pack instead.
 2. On Windows, open the `.mcpack` file. Minecraft imports it.
 3. **Settings → Global Resources**: activate *Endbot UI*.
 4. The operator sets `ui-pack-editor = true` under `[scripting]` (plugin `config.toml`, or `endbot.toml` for managed

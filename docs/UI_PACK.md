@@ -2,9 +2,10 @@
 
 Status: **merged on `main` (#111, #197); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
 the buttons and the multi-line field, with the focus limitation recorded below; without the pack that field cannot be
-edited at all, and its input field also stops at about 100 characters. The pack is named *Endbot UI* and its name,
-two-line description and icon are checked at 0.3.0. The [mobile field](#manual-client-check) and a fresh achievement
-unlock remain unverified. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off by default.
+edited at all, and its input field also stops at about 100 characters. The pack is *Endbot UI*; its name, two-line
+description and icon are checked on the client at 0.3.0. The [mobile field](#manual-client-check) and a fresh
+achievement unlock remain unverified. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off
+by default.
 
 ## Why
 

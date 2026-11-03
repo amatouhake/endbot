@@ -785,8 +785,12 @@ cannot be edited and its input stops at about 100 characters.** Remaining: the m
 cannot join multiplayer) and a fresh achievement unlock (the account has the simple ones) (2026-11-03 JST; offline
 validation against bedrock-samples `v1.26.60.5` the same day).
 
+Identity: the pack is **Endbot UI**, ships a 128x128 icon drawn from a vector source, and carries Apache-2.0
+`LICENSE` plus `NOTICE` inside the zip because players download it on its own. It is distributed as a release asset
+only; a server operator who wants players to get it without visiting GitHub can set it as a server resource pack.
+
 Question: can an optional resource pack make the menus easier to read and let script source be written over several
-lines in a form, and how does that compare with the web editor (BOT-013)? Answer so far: yes, as a stopgap. A
+lines in a form, and how does that compare with the web editor (BOT-013)? Answer so far: yes, as a stopgap.
 client-side global pack can enlarge the form window, shrink buttons, and turn marked text inputs into the vanilla
 multi-line, scrolling edit box that the book editor uses. It cannot add highlighting, completion or diffs, depends
 on unofficial JSON UI internals, and does not reach consoles, so BOT-013 stays the long-term editor. Details,

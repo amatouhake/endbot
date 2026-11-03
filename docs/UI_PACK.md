@@ -60,7 +60,7 @@ stays empty: no `world_resource_packs.json` and no `texturepacks-required`. Noth
 1. Build it from a checkout: `python scripts/build_ui_pack.py` writes `dist/ui-pack/endbot-ui-<version>.mcpack`
    (reproducible: same input, same bytes).
 2. On Windows, open the `.mcpack` file. Minecraft imports it.
-3. **Settings → Global Resources**: activate *Endbot UI (optional)*.
+3. **Settings → Global Resources**: activate *Endbot UI*.
 4. The operator sets `ui-pack-editor = true` under `[scripting]` (plugin `config.toml`, or `endbot.toml` for managed
    instances) and restarts. Players without the pack still see the button; they are told to use the line buttons or a
    book if they try it. On the new-script screen they are told to turn on **Save as shown** and edit lines after
@@ -68,6 +68,18 @@ stays empty: no `world_resource_packs.json` and no `texturepacks-required`. Noth
 
 Mobile clients can import `.mcpack` files the same way. Consoles cannot add arbitrary global packs, so this pack is
 effectively for PC and mobile players.
+
+## Name, icon and licence
+
+The pack is called **Endbot UI**, and the manifest description says what it changes and that it is optional and
+`ui-pack/pack_icon.png` is the 128x128 icon the client shows; its source is `assets/icon/endbot-icon.svg`, which the
+README also uses. The light variant `assets/icon/endbot-icon-light.svg` is for light backgrounds. Both are rounded
+rectangles on a 1024 canvas, rendered by `scripts/render_icons.ps1` (headless Chrome, one rasterisation per size), so
+the PNGs are exports of the SVG rather than files to hand-edit.
+
+The pack ships `LICENSE` (Apache-2.0) and a short `NOTICE` inside the zip: players can download it on its own, and the
+NOTICE names the copyright holder and states that the pack overrides vanilla element ids at runtime and bundles no
+Mojang assets.
 
 To remove it, deactivate it under Global Resources. No server change is needed. Leave `ui-pack-editor` off when no
 controller uses the pack.

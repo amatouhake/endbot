@@ -779,11 +779,12 @@ Worker (BOT-021) and saves through endbotd with the same compile/declaration/own
 
 ## BOT-018: Optional UI resource pack for forms and multi-line editing
 
-Status: **Prototype merged on `main` (#111); the 1.26.60.5 client check passed for the window, the buttons, the
-multi-line field and the long-line and paste checks, with focus limited to a frame click. Without the pack that field
-cannot be edited and its input stops at about 100 characters.** Remaining: the mobile field (the operator's phone
-cannot join multiplayer) and a fresh achievement unlock (the account has the simple ones) (2026-11-03 JST; offline
-validation against bedrock-samples `v1.26.60.5` the same day).
+Status: **Merged on `main` (#111, #197); the 1.26.60.5 client check passed for the window, the buttons, the
+multi-line field, the long-line and paste checks, and the 0.3.0 identity check (name, two-line description, icon),
+with focus limited to a frame click. Without the pack that field cannot be edited and its input stops at about 100
+characters.** Remaining: the mobile field (the operator's phone cannot join multiplayer) and a fresh achievement
+unlock (the account has the simple ones) (2026-11-03 JST; offline validation against bedrock-samples
+`v1.26.60.5` the same day).
 
 Identity: the pack is **Endbot UI**, ships a 128x128 icon drawn from a vector source, and carries Apache-2.0
 `LICENSE` plus `NOTICE` inside the zip because players download it on its own. It is distributed as a release asset

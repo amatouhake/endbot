@@ -1,10 +1,10 @@
 # Optional Endbot UI resource pack
 
-Status: **prototype merged on `main` (#111); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
+Status: **merged on `main` (#111, #197); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
 the buttons and the multi-line field, with the focus limitation recorded below; without the pack that field cannot be
-edited at all, and its input field also stops at about 100 characters. The [mobile field](#manual-client-check) and a
-fresh achievement unlock remain unverified. The server feature that relies on it, `[scripting] ui-pack-editor`, stays
-off by default.
+edited at all, and its input field also stops at about 100 characters. The pack is named *Endbot UI* and its name,
+two-line description and icon are checked at 0.3.0. The [mobile field](#manual-client-check) and a fresh achievement
+unlock remain unverified. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off by default.
 
 ## Why
 
@@ -164,6 +164,9 @@ default GUI scale, 1080p:
 - **Check 9 was not run.** The operator's phone cannot join multiplayer at all (other servers included), so the
   mobile field stays unverified.
 - Check 8 found the without-pack behaviour above instead of the refusal it expected.
+- **Identity passed at 0.3.0.** In **Settings → Global Resources** the list shows *Endbot UI*, the two-line
+  description fits without being clipped, and the 128x128 icon reads as the abstract E. The pack's effect is
+  unchanged (larger window, compact buttons, editable tall field) and the achievements screen still shows no notice.
 
 Remaining: check 9 (mobile, not testable on the operator's device) and a fresh achievement unlock (check 10; the
 operator's account has the simple ones already).
@@ -190,6 +193,8 @@ client (1.26.60.5) at default GUI scale, 1080p, with the pack active as a global
    script is unchanged.
 9. Mobile client (optional): steps 3 and 5.
 10. Achievement gate with the pack active: as in [ACHIEVEMENTS.md](ACHIEVEMENTS.md).
+11. **Settings → Global Resources** lists *Endbot UI*: the name, a two-line description that is not clipped, and the
+    abstract-E icon. The list truncates descriptions, so a longer one would show an ellipsis.
 
 Record results in [BACKLOG.md](BACKLOG.md#bot-018-optional-ui-resource-pack-for-forms-and-multi-line-editing). If 3–5
 fail because the client does not use the pack's input element, keep the window and button changes and leave

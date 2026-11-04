@@ -34,6 +34,7 @@ from endbot_cli.config import load_config
 from endbot_cli.configgen import generate_endbotd_config
 from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import InstancePaths
+from endbot_cli.processes import _app_dir
 from endbot_cli.runstate import RUNNING, inspect_supervisor
 
 API = "https://api.cloudflare.com/client/v4"
@@ -216,14 +217,11 @@ def link_key_secret(key: Ed25519PrivateKey) -> str:
 
 
 def locate_bundle(paths: InstancePaths, override: Path | None) -> Path:
-    candidates = [override] if override is not None else []
-    if override is None:
-        try:
-            current = paths.app_current.read_text(encoding="utf-8").strip()
-            candidates.append(paths.root / "app" / current / "web")
-        except OSError:
-            pass
-        candidates.append(paths.app_current / "web")
+    if override is not None:
+        candidates = [override]
+    else:
+        app_dir = _app_dir(paths)
+        candidates = [app_dir / "web"] if app_dir is not None else []
     for candidate in candidates:
         if (candidate / "manifest.json").is_file() and (candidate / "worker" / "index.js").is_file():
             return candidate

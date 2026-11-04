@@ -3,7 +3,8 @@
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
 the answers to the former open points (see [settled points](#settled-points)). Steps 1 (the supervisor policy, P10), 2a
 (accounts and link codes) 2b (WebAuthn and sessions in endbotd), 2c (the trusted site), 3a (the protocol), 3b (endbotd's link), 3c (the Worker and
-Durable Object) and 4 (`endbot web deploy`, checked against a fake API only) are implemented; there is no UI yet.
+Durable Object) 4 (`endbot web deploy`, checked against a fake API only) and the first screens of 5 are implemented. Nothing has run on
+Cloudflare or with a real authenticator yet (step 10).
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -393,7 +394,8 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
    path, so no wrangler fallback is planned unless step 10's real deploy shows otherwise. The key id is derived from
    the public key, so `[web]` keeps no key id.
 5. **UI: sign-in, link, devices, status and logs** (P11). Svelte 5 + Vite, SimpleWebAuthn, message catalog.
-   Delegable. Playwright with a virtual authenticator against the local Workers runtime.
+   Delegable. Playwright with a virtual authenticator against the local Workers runtime. Done, awaiting the operator's review
+   of the real screens (S7).
 6. **Script editing** (BOT-013 goals): `script.*` messages over existing endbotd script operations, CodeMirror 6,
    in-house Luau highlighting, completion from the registry and `api.luau`, line-numbered compile errors, revision
    diffs. The endbotd side is delegable (it calls existing authorized operations); so is the editor.

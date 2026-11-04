@@ -71,7 +71,11 @@ jobs:
           npm ci --prefix web
           npm run check --prefix web
           npm test --prefix web
-          npm run build:worker --prefix web
+
+      - name: Test the web end to end
+        run: |
+          npx --prefix web playwright install --with-deps chromium
+          npm run e2e --prefix web
 
       - name: Test runtime
         run: |

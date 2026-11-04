@@ -615,6 +615,7 @@ class BundleContractTests(unittest.TestCase):
                 self.assertIn("--cli-wheel", blocks[job])
                 self.assertIn("--endstone-license", blocks[job])
                 self.assertIn("--runner-dir build/runner-stage", blocks[job])
+                self.assertIn("--web-dir web/dist/bundle", blocks[job])
         # Each platform job uploads its self-tested bundle as an
         # intermediate artifact; assemble is the only job that publishes.
         self.assertIn("bundle-linux", workflow)

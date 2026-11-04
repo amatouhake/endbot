@@ -68,6 +68,9 @@ the page reloads. Every request is authorized again at execution time with the `
 | `op` | `operation`: one registry operation (step 7) | `{id, type: "result", code, data}` |
 | `script.*` | list, get, save, compile, declaration (step 6) | `{id, type: "result", code, data}` |
 
+endbotd also pushes `{type: "event", topic: "account", data: {kind: "passkey_added"}}` to every open page of an account
+that subscribed to anything, so a passkey added elsewhere is seen at once.
+
 `code` is `ok` or an Outcome code. Unknown types answer `unsupported`. A refused session answers `signed_out`, and endbotd
 closes the connection.
 

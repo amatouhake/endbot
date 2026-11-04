@@ -68,6 +68,12 @@ class OperationTests(WebActionCase):
                 self.assertEqual(self.ask(type="op", operation=operation)["code"], "invalid_argument")
         self.assertEqual(self.control.calls, before)
 
+    def test_a_reserved_word_as_a_target_is_not_read_as_a_root_command(self):
+        for target in ("help", "list", "menu"):
+            with self.subTest(target=target):
+                answer = self.ask(type="op", operation={"op": "status", "target": target, "params": {}})
+                self.assertEqual(answer["code"], "invalid_argument")
+
     def test_a_revoke_refuses_the_next_operation(self):
         self.service.web.auth.authority = None
         self.service._cli_controllers({"operation": "remove", "target": "Alice"})
@@ -133,10 +139,13 @@ class ScriptTests(WebActionCase):
 
     def test_someone_elses_shared_script_can_be_read_and_not_saved(self):
         store = self.service.scripts.store
-        store.save("theirs", GOOD, None, "xuid:2535400000000002", "Bob")
+        store.save("theirs", "params {} -- secret removed later\n", None, "xuid:2535400000000002", "Bob")
+        store.save("theirs", GOOD, store.get("theirs").revision, "xuid:2535400000000002", "Bob")
         store.set_visibility("theirs", "shared", store.get("theirs").revision)
         read = self.ask(type="script.get", name="theirs")["data"]
         self.assertFalse(read["canEdit"])
+        # What it was before stays the owner's, as in the in-game menu.
+        self.assertEqual(read["history"], [])
         with self.declared():
             answer = self.ask(type="script.save", name="theirs", source="params {}\n", revision=read["revision"])
         self.assertNotEqual(answer["code"], "ok")
@@ -175,11 +184,21 @@ class ScriptTests(WebActionCase):
         self.assertNotEqual(self.ask(type="script.delete", name="line", revision=first["revision"])["code"], "ok")
         self.assertEqual(self.ask(type="script.get", name="line")["code"], "ok")
 
+    def test_a_private_script_and_a_missing_one_answer_alike(self):
+        store = self.service.scripts.store
+        store.save("theirs", GOOD, None, "xuid:2535400000000002", "Bob")
+        store.set_visibility("theirs", "private", store.get("theirs").revision)
+        hidden = self.ask(type="script.get", name="theirs")
+        missing = self.ask(type="script.get", name="missing")
+        self.assertEqual(hidden["code"], missing["code"])
+        self.assertEqual(hidden["messages"][0].replace("theirs", "X"), missing["messages"][0].replace("missing", "X"))
+
     def test_junk_in_the_other_fields_is_refused(self):
         with self.declared():
             self.ask(type="script.save", name="line", source=GOOD, revision=None)
         for message in ({"type": "script.rename", "name": "line", "new": "a b"},
                         {"type": "script.visibility", "name": "line", "visibility": "everyone"},
+                        {"type": "script.visibility", "name": "line", "visibility": ["shared"]},
                         {"type": "script.restore", "name": "line", "index": "1; delete"},
                         {"type": "script.nonsense", "name": "line"}):
             with self.subTest(message=message):
@@ -209,7 +228,46 @@ class ScriptTests(WebActionCase):
         self.assertEqual(answer["line"], 2)
         self.assertEqual(self.ask(type="script.get", name="line")["data"]["source"], GOOD)
 
-    def test_a_run_is_held_to_the_declaration_the_form_read(self):
+    def test_a_controller_can_run_a_shared_script(self):
+        store = self.service.scripts.store
+        store.save("theirs", GOOD, None, "xuid:2535400000000002", "Bob")
+        store.set_visibility("theirs", "shared", store.get("theirs").revision)
+        self.service.authority.roles.set(OWNER, "controller")
+        with patch.object(self.service.scripts, "start", return_value="run1"):
+            answer = self.ask(type="script.run", name="theirs", values={}, requires=[],
+                              revision=store.get("theirs").revision)
+        self.assertEqual(answer["code"], "ok", answer)
+
+    def test_a_form_pins_the_targets_it_chose(self):
+        with self.declared():
+            first = self.ask(type="script.save", name="line", source=GOOD, revision=None)["data"]
+        targets = {"who": {"value": "Steve", "identity": "b1"},
+                   "crew": {"value": "#miners", "identity": "g1", "members": ["a", "b"]}}
+        with patch.object(self.service.scripts, "start", return_value="run1") as start:
+            answer = self.ask(type="script.run", name="line", values={"who": "Steve", "crew": "#miners"}, requires=[],
+                              revision=first["revision"], targets=targets)
+        self.assertEqual(answer["code"], "ok", answer)
+        self.assertEqual(start.call_args.args[3], {"who": ("bot", "Steve", "b1"),
+                                                   "crew": ("group", "#miners", "g1", ("a", "b"))})
+
+    def test_a_pin_that_does_not_match_its_value_is_refused(self):
+        for targets in ({"who": {"value": "Alex", "identity": "b1"}}, {"who": "Steve"}, ["who"],
+                        {"who": {"value": "Steve", "identity": 5}},
+                        {"who": {"value": "Steve", "identity": "b1", "members": "all"}}):
+            with self.subTest(targets=targets):
+                answer = self.ask(type="script.run", name="line", values={"who": "Steve"}, requires=[], revision="r",
+                                  targets=targets)
+                self.assertEqual(answer["code"], "invalid_argument")
+
+    def test_a_copy_form_copies_what_it_showed(self):
+        with self.declared():
+            first = self.ask(type="script.save", name="line", source=GOOD, revision=None)["data"]
+            self.ask(type="script.save", name="line", source=GOOD + "-- two\n", revision=first["revision"])
+        stale = self.ask(type="script.copy", name="line", new="old", revision=first["revision"])
+        self.assertNotEqual(stale["code"], "ok")
+        self.assertNotEqual(self.ask(type="script.get", name="old")["code"], "ok")
+
+    def test_a_run_carries_the_declaration_the_form_read(self):
         with self.declared():
             first = self.ask(type="script.save", name="line", source=GOOD, revision=None)["data"]
         with patch.object(self.service.scripts, "start", return_value="run1") as start:

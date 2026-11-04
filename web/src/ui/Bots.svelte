@@ -10,19 +10,25 @@
   type Variant = { positional: [string, Spec][]; options: Record<string, Spec>; prefix: string[] };
   const OPERATIONS = (registry as unknown as { operations: Record<string, Variant[]> }).operations;
 
-  const CATEGORIES = [
+  type CategoryKey = "catMove" | "catLook" | "catAct" | "catInventory" | "catInfo" | "catBot" | "catOther";
+  const CATEGORIES: { key: CategoryKey; operations: string[] }[] = [
     { key: "catMove", operations: ["move", "jump", "sprint", "sneak", "stop"] },
     { key: "catLook", operations: ["look", "tp"] },
     { key: "catAct", operations: ["attack", "destroy", "use", "interact", "dismount"] },
     { key: "catInventory", operations: ["inventory", "hotbar", "hold", "swap", "drop"] },
     { key: "catInfo", operations: ["status", "target", "block", "blocks", "entities", "entity"] },
-    { key: "catBot", operations: ["resume", "reconnect", "despawn", "radius", "rename", "visibility", "forget"] },
-  ] as const;
+    { key: "catBot", operations: ["spawn", "resume", "reconnect", "despawn", "radius", "rename", "visibility", "forget"] },
+  ];
+  // Whatever the registry gains appears here until someone gives it a better home.
+  const PLACED = new Set(CATEGORIES.flatMap((item) => item.operations));
+  const OFF_THE_WEB = new Set(["menu", "help", "owner", "list", "ping"]);
+  const OTHERS = Object.keys(OPERATIONS).filter((name) => !PLACED.has(name) && !OFF_THE_WEB.has(name));
+  if (OTHERS.length) CATEGORIES.push({ key: "catOther", operations: OTHERS });
   // Asked again before running: they cannot be taken back from here.
   const CONFIRM = new Set(["forget"]);
 
   let target = $state("");
-  let category = $state<(typeof CATEGORIES)[number]["key"]>("catMove");
+  let category = $state<CategoryKey>("catMove");
   let operation = $state("move");
   let variant = $state(0);
   let fields = $state<Record<string, any>>({});
@@ -44,9 +50,9 @@
     fields = {};
   }
 
-  function pickCategory(key: (typeof CATEGORIES)[number]["key"]): void {
+  function pickCategory(key: CategoryKey): void {
     category = key;
-    choose(CATEGORIES.find((item) => item.key === key)!.operations[0]);
+    choose(CATEGORIES.find((item) => item.key === key)!.operations[0]!);
   }
 
   function variantLabel(item: Variant): string {

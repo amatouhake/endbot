@@ -60,7 +60,8 @@ def main() -> None:
             scripts_folder=root / "scripts", authorization={"controller-policy-file": "policy.json"},
             ui={"language": "en"}, web={"enabled": True, "origin": origin, "display-name": "E2E server"},
             web_link_key_file=key_path,
-            scripting={"enabled": bool(runner), **({"runner": runner} if runner else {})},
+            # Enabled with or without a runner: the editor and its checks of the page need no running script.
+            scripting={"enabled": True, **({"runner": runner} if runner else {})},
         )
         service = EndbotService(config, control=control, log=lambda level, message: print(
             f"[{level}] {message}", file=sys.stderr, flush=True))

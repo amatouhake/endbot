@@ -21,7 +21,7 @@ from endbot_core.commands import error_code, strip_colors
 from endbot_core.control import RuntimeControlError, bot_profiles
 from endbot_core.events import Event, render
 from endbot_core.i18n import localize_error, tr
-from endbot_core.operations import OPERATIONS, Operation
+from endbot_core.operations import OPERATIONS, RESERVED_BOT_NAMES, Operation
 from endbot_core.principal import Principal
 from endbot_core.script_forms import TEMPLATES, ScriptGuard
 
@@ -98,6 +98,9 @@ class WebApi:
             return {"type": "result", "code": "invalid_argument"}
         name, target, params = operation["op"], operation.get("target"), operation.get("params", {})
         if name in WEB_REFUSED_OPERATIONS or name not in OPERATIONS or not isinstance(params, dict):
+            return {"type": "result", "code": "invalid_argument"}
+        # A reserved word as the target would be read as that root command instead ("help status").
+        if isinstance(target, str) and target in RESERVED_BOT_NAMES:
             return {"type": "result", "code": "invalid_argument"}
         try:
             argv = Operation(name, target if isinstance(target, str) else None, params).argv()
@@ -180,7 +183,7 @@ class WebApi:
             return [action, name, new] if isinstance(new, str) and SCRIPT_NAME.fullmatch(new) else None
         if action == "visibility":
             value = message.get("visibility")
-            return ["visibility", name, value] if value in {"shared", "private"} else None
+            return ["visibility", name, value] if isinstance(value, str) and value in {"shared", "private"} else None
         if action == "restore":
             index = message.get("index")
             return ["restore", name, str(index)] if type(index) is int and 1 <= index <= 999 else None
@@ -215,9 +218,32 @@ class WebApi:
                 or not all(isinstance(key, str) and type(value) in (str, int, float, bool)
                            for key, value in values.items())):
             return {"type": "result", "code": "invalid_argument"}
-        # The run is held to the declaration the form showed (P11), and to the revision it came from.
-        guard = ScriptGuard(revision, name, values=values, requires=tuple(requires))
+        targets = self._run_targets(message.get("targets", {}), values)
+        if targets is None:
+            return {"type": "result", "code": "invalid_argument"}
+        # The run is held to the declaration the form showed (P11), the revision it came from and the targets it chose.
+        guard = ScriptGuard(revision, name, values=values, targets=targets, requires=tuple(requires))
         return self._command(replace(principal, group_guard=guard), ["run", name], "botscript")
+
+    @staticmethod
+    def _run_targets(targets: object, values: dict) -> dict | None:
+        """The targets a form chose, as the in-game form pins them; None when they do not make sense."""
+        if not isinstance(targets, dict):
+            return None
+        pinned = {}
+        for parameter, target in targets.items():
+            if not isinstance(target, dict) or values.get(parameter) != target.get("value"):
+                return None
+            value, identity, members = target.get("value"), target.get("identity"), target.get("members")
+            if not isinstance(value, str) or not isinstance(identity, str):
+                return None
+            if members is None:
+                pinned[parameter] = ("bot", value, identity)
+            elif isinstance(members, list) and all(isinstance(member, str) for member in members):
+                pinned[parameter] = ("group", value, identity, tuple(members))
+            else:
+                return None
+        return pinned
 
     def _query(self, principal, what: object) -> dict:
         readers = {"status": self._status, "bots": self._bots, "groups": self._groups, "runs": self._runs,

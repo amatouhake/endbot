@@ -299,11 +299,13 @@ class ScriptService:
         self._enabled()
         self._check(source)
         script = self._script(name, source)
+        editable = self.can_edit(script, source) and self._author(source)
         return {"name": script.name, "source": script.source, "revision": script.revision,
                 "ownerName": script.owner_name, "visibility": script.visibility, "file": script.file,
-                "savedAt": script.saved_at, "canEdit": self.can_edit(script, source) and self._author(source),
+                "savedAt": script.saved_at, "canEdit": editable,
+                # Earlier sources are the owner's, as in the menu: a shared script shares only what it is now.
                 "history": [{"revision": row.revision, "source": row.source, "savedAt": row.saved_at}
-                            for row in script.history]}
+                            for row in script.history] if editable else []}
 
     def declaration(self, name, source):
         """What a run form asks for, and the targets its parameters can choose from."""
@@ -313,8 +315,10 @@ class ScriptService:
         found = self.inspect(script, source)
         groups = self.service.visible_groups(source) if self.service.groups else ()
         return {"revision": script.revision, "schema": found.schema, "requires": list(found.requires),
-                "groups": [group.name for group in groups],
-                "bots": [bot["name"] for bot in bot_profiles(self.inputs)]}
+                # With their identities: the run refuses a target that changed while the form was open, as in game.
+                "groups": [{"name": group.name, "identity": group.identity, "members": list(group.members)}
+                           for group in groups],
+                "bots": [{"name": bot["name"], "identity": bot["identityId"]} for bot in bot_profiles(self.inputs)]}
 
     def compile(self, name, text, source):
         """Check a draft as saving would, without saving it: scripts run only as far as their declaration."""
@@ -950,6 +954,9 @@ class ScriptService:
             if operation == "copy" and len(tail) == 2:
                 # Copies start private and belong to the copier; the original is untouched.
                 original = self._script(tail[0], source)
+                # A form copies what it showed: a newer source is not what the person chose.
+                if isinstance(guard, script_forms.ScriptGuard) and guard.revision not in {None, original.revision}:
+                    raise LocalizedError("Script changed; reopen the menu")
                 self._new_name(tail[1])
                 self._check(source)
                 self.store.save(tail[1], original.source, None, self.owner_key(source), self._who(source))

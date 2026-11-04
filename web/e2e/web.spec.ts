@@ -330,10 +330,8 @@ test("the page keeps to its Content-Security-Policy", async ({ page, context }) 
     await page.getByRole("navigation").getByRole("button", { name }).click();
   }
   await page.getByRole("navigation").getByRole("button", { name: "Scripts" }).click();
-  if (process.env.E2E_RUNNER) {
-    await page.getByRole("button", { name: "New", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Script source" })).toBeVisible();
-  }
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Script source" })).toBeVisible();
   expect(violations).toEqual([]);
 });
 

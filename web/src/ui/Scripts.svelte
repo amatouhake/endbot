@@ -200,13 +200,29 @@
     return value;
   }
 
+  /** What the form chose, so that the run can refuse a target that changed while it was open. */
+  function pins(given: Record<string, any>): Record<string, unknown> {
+    const chosen: Record<string, unknown> = {};
+    for (const field of runForm.schema as any[]) {
+      const value = given[field.name];
+      if (field.type === "group") {
+        const group = runForm.groups.find((item: any) => `#${item.name}` === value);
+        if (group) chosen[field.name] = { value, identity: group.identity, members: group.members };
+      } else if (field.type === "bot") {
+        const bot = runForm.bots.find((item: any) => item.name === value);
+        if (bot) chosen[field.name] = { value, identity: bot.identity };
+      }
+    }
+    return chosen;
+  }
+
   async function run(): Promise<void> {
     busy = true;
     const given = Object.fromEntries((runForm.schema as any[])
       .filter((field) => values[field.name] !== undefined && values[field.name] !== "")
       .map((field) => [field.name, typed(field, values[field.name])]));
     const answer = await connection.request("script.run", {
-      name: open.name, revision: runForm.revision, requires: runForm.requires, values: given,
+      name: open.name, revision: runForm.revision, requires: runForm.requires, values: given, targets: pins(given),
     });
     busy = false;
     if (answer.code === "ok") {
@@ -354,12 +370,12 @@
                   {#if field.type === "group"}
                     <select bind:value={values[field.name]}>
                       <option value={undefined}>—</option>
-                      {#each runForm.groups as group}<option value={`#${group}`}>#{group}</option>{/each}
+                      {#each runForm.groups as group}<option value={`#${group.name}`}>#{group.name}</option>{/each}
                     </select>
                   {:else if field.type === "bot"}
                     <select bind:value={values[field.name]}>
                       <option value={undefined}>—</option>
-                      {#each runForm.bots as bot}<option value={bot}>{bot}</option>{/each}
+                      {#each runForm.bots as bot}<option value={bot.name}>{bot.name}</option>{/each}
                     </select>
                   {:else if field.type === "choice"}
                     <select bind:value={values[field.name]}>

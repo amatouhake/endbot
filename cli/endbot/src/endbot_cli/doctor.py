@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -383,6 +384,9 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"enabled, {public_path} is a P-384 key matching {paths.owner_private_key}")
 
 
+_WEB_ORIGIN = re.compile(r"(https://[a-z0-9.-]+(:(?!443$)[0-9]{1,5})?|http://localhost(:(?!80$)[0-9]{1,5})?)")
+
+
 def check_web(context: DoctorContext, config: EndbotConfig, paths: InstancePaths) -> CheckResult:
     """Origin configured, link key present and, with --live, whether endbotd reports the link up (docs/WEB.md)."""
     name = "web"
@@ -390,6 +394,10 @@ def check_web(context: DoctorContext, config: EndbotConfig, paths: InstancePaths
         return CheckResult(SKIP, name, "the web is off")
     if not config.web.origin:
         return CheckResult(WARN, name, "[web] enabled but no origin; run `endbot web deploy`")
+    if not _WEB_ORIGIN.fullmatch(config.web.origin):
+        # The rule endbotd applies: it keeps the web off otherwise.
+        return CheckResult(FAIL, name, f"[web] origin {config.web.origin!r} must be exactly https://host, lowercase; "
+                                       "run `endbot web deploy`")
     key = paths.state_secrets / "web-link.key"
     if not key.is_file() or key.is_symlink():
         return CheckResult(FAIL, name, f"{key} is missing or not a regular file; run `endbot web deploy`")

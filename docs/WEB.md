@@ -59,7 +59,8 @@ browser ──HTTPS──▶ Worker (Hono: static UI, cookie, Origin check, rate
    rejected, like the other secrets);
 2. uploads the prebuilt Worker bundle, its static assets and Durable Object migrations through the Cloudflare API;
 3. sets the Worker secret `ENDBOTD_LINK_KEY` (public key + key id) and the plain variable `ENDBOT_ORIGIN`;
-4. writes `[web]` (origin, account id, worker name, key id) into `endbot.toml`, regenerates `endbotd.toml`;
+4. writes `[web]` (origin, account id, worker name) into `endbot.toml`, regenerates `endbotd.toml`; the key id is derived
+   from the public key;
 5. waits until endbotd reports the link up, or says why not.
 
 This refines Decision 3's "pairing secret": because deploy runs next to endbotd, it can install the public key

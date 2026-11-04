@@ -236,8 +236,7 @@ class EndbotService:
             self.web_link.stop()
             self.web_link = None
         self.config = config
-        self.web = WebService(config.web, config.stores_directory, self.authority, base=config.base, log=self._log)
-        self.web.on_passkey_added = self._passkey_added
+        self.web.configure(config.web, config.base)
         self._start_web_link()
         return self._web_status()
 

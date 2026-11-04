@@ -342,11 +342,14 @@ class BotWebCommandTests(ServiceHarness):
         self.assertEqual(len(removed), 1)
         self.assertIsNotNone(web.store.account_for_xuid(OWNER))
 
-    def test_reload_reads_the_generated_settings_again(self):
+    def test_reload_reads_the_generated_settings_again_and_keeps_the_one_store(self):
+        store = self.service.web.store
         (self.root / "endbotd.toml").write_text(
             '[web]\nenabled = true\norigin = "https://new.example"\n', encoding="utf-8")
         self.service._cli_web({"operation": "reload"})
         self.assertEqual(self.service.web.origin, "https://new.example")
+        self.assertIs(self.service.web.store, store)
+        self.assertEqual(self.service.web.auth.rp_id, "new.example")
 
     def test_reload_without_the_file_says_so_and_keeps_the_web(self):
         before = self.service.web

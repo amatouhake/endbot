@@ -71,6 +71,8 @@ class _Ceremony:
     expires: float
     # The player a registration is for. A login proves who it is by its credential.
     identity: LinkIdentity | None = None
+    # What proved them: a link code ("passkey", the default) or a site assertion ("site").
+    via: str = "passkey"
 
 
 def _token_hash(token: str) -> str:
@@ -138,13 +140,14 @@ class WebAuth:
 
     # -- ceremonies --------------------------------------------------------------
 
-    def _begin(self, kind: str, challenge: bytes, identity: LinkIdentity | None = None) -> str:
+    def _begin(self, kind: str, challenge: bytes, identity: LinkIdentity | None = None,
+               via: str = "passkey") -> str:
         now = self._clock()
         self._ceremonies = {key: entry for key, entry in self._ceremonies.items() if entry.expires > now}
         if len(self._ceremonies) >= MAX_CEREMONIES:
             raise AuthError(429, "busy")
         ceremony = secrets.token_urlsafe(16)
-        self._ceremonies[ceremony] = _Ceremony(kind, challenge, now + CEREMONY_SECONDS, identity)
+        self._ceremonies[ceremony] = _Ceremony(kind, challenge, now + CEREMONY_SECONDS, identity, via)
         return ceremony
 
     def _finish(self, body: dict, kind: str) -> _Ceremony:
@@ -173,7 +176,7 @@ class WebAuth:
             raise AuthError(403, "no_access")
         return self.registration_options(identity)
 
-    def registration_options(self, identity: LinkIdentity) -> dict:
+    def registration_options(self, identity: LinkIdentity, *, via: str = "passkey") -> dict:
         """Passkey registration for a proven identity: a link code, or a site assertion (P12)."""
         account = self.store.ensure_account(identity.xuid, identity.player_id, identity.gamertag)
         options = generate_registration_options(
@@ -187,7 +190,7 @@ class WebAuth:
                                  for entry in self.store.passkeys(account["id"])],
             supported_pub_key_algs=ALGORITHMS,
         )
-        ceremony = self._begin("register", options.challenge, identity)
+        ceremony = self._begin("register", options.challenge, identity, via)
         return {"status": 200, "body": {"ceremony": ceremony, "options": json.loads(options_to_json(options))}}
 
     def _link_verify(self, body: dict, token: str | None) -> dict:
@@ -224,10 +227,12 @@ class WebAuth:
             "label": _label(body),
             "created": self._clock(),
             "lastUsed": None,
+            # A suspected site key exposure must reach what an assertion created (P12).
+            "via": ceremony.via,
         })
         self._log("info", f"Web passkey added for {identity.gamertag}")
         self._on_passkey_added(account)
-        return self._signed_in(account, "passkey", body)
+        return self._signed_in(account, ceremony.via, body)
 
     def _login_options(self, body: dict, token: str | None) -> dict:
         options = generate_authentication_options(

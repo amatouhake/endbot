@@ -191,7 +191,8 @@ class TrustedSiteTests(DoctorTestCase):
         section.update(changes)
         lines = "".join(f"{key} = {value}\n" for key, value in section.items())
         with open(self.paths.endbot_toml, "a", encoding="utf-8") as stream:
-            stream.write(f"\n[web]\nenabled = true\n[web.trusted-site]\nenabled = true\n{lines}")
+            stream.write(f"\n[web]\nenabled = true\norigin = 'https://web.example'\n"
+                         f"[web.trusted-site]\nenabled = true\n{lines}")
 
     def write_key(self, curve=None, name: str = "a.pem") -> None:
         from cryptography.hazmat.primitives import serialization
@@ -224,7 +225,8 @@ class TrustedSiteTests(DoctorTestCase):
 
     def test_invalid_settings_fail(self) -> None:
         self.write_key()
-        for changes in ({"issuer": "'http://a.example'"}, {"start-url": "'http://a.example/s'"}, {"mode": "'both'"},
+        for changes in ({"issuer": "'http://a.example'"}, {"issuer": "'https://['"}, {"start-url": "'https://'"},
+                        {"start-url": "'http://a.example/s'"}, {"mode": "'both'"},
                         {"name": "''"}, {"keys": "[]"},
                         {"keys": "[{kid='a', public-key-file='site/a.pem'}, {kid='a', public-key-file='site/a.pem'}]"},
                         {"keys": "[{kid='a', public-key-file='x'}, {kid='b', public-key-file='x'}, "

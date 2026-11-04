@@ -215,6 +215,15 @@ class WebStore:
             self._sessions = [entry for entry in self._sessions if entry["hash"] != token_hash]
             _save(self._path(SESSIONS), SESSIONS, self._sessions)
 
+    def delete_sessions_via(self, via: str) -> list[str]:
+        """End every session issued a certain way (P12); return the removed hashes."""
+        with self._lock:
+            removed = [entry["hash"] for entry in self._sessions if entry["via"] == via]
+            if removed:
+                self._sessions = [entry for entry in self._sessions if entry["via"] != via]
+                _save(self._path(SESSIONS), SESSIONS, self._sessions)
+            return removed
+
     def delete_sessions(self, xuid: str) -> list[str]:
         """End every session of the XUID's account; the account and its passkeys stay (P6)."""
         with self._lock:

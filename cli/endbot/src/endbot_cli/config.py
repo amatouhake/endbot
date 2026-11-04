@@ -100,6 +100,8 @@ class PermissionsConfig:
 class WebConfig:
     enabled: bool = False
     origin: str = ""
+    # [web.trusted-site] as written (docs/WEB.md P12): endbotd and `endbot doctor` validate it.
+    trusted_site: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,14 +375,21 @@ def _load_web(path: Path, document: dict[str, Any]) -> WebConfig:
     table = document.get("web", {})
     if not isinstance(table, dict):
         raise _fail(path, "web", "must be a table", "write it as a [web] section")
-    _reject_unknown_keys(path, table, "web", ("enabled", "origin"))
+    _reject_unknown_keys(path, table, "web", ("enabled", "origin", "trusted-site"))
     enabled = table.get("enabled", False)
     if type(enabled) is not bool:
         raise _fail(path, "web.enabled", "must be a boolean", "use enabled = false or true")
     origin = table.get("origin", "")
     if not isinstance(origin, str):
         raise _fail(path, "web.origin", "must be a string", 'use origin = "https://your-host"')
-    return WebConfig(enabled=enabled, origin=origin)
+    site = table.get("trusted-site")
+    if site is not None:
+        if not isinstance(site, dict):
+            raise _fail(path, "web.trusted-site", "must be a table", "write it as a [web.trusted-site] section")
+        _reject_unknown_keys(path, site, "web.trusted-site", ("enabled", "name", "mode", "issuer", "start-url", "keys"))
+        if type(site.get("enabled", False)) is not bool:
+            raise _fail(path, "web.trusted-site.enabled", "must be a boolean", "use enabled = false or true")
+    return WebConfig(enabled=enabled, origin=origin, trusted_site=site)
 
 
 def load_config(path: Path) -> EndbotConfig:

@@ -261,7 +261,7 @@ class WebAuth:
         # Signing in again refreshes a recent assertion; the session it replaces ends.
         previous = self.session(token) if token else None
         if previous is not None and previous["account"] == account["id"]:
-            self._end_session(previous)
+            self.end_session(previous)
         return self._signed_in(account, "passkey", body)
 
     # -- sessions ----------------------------------------------------------------
@@ -298,7 +298,7 @@ class WebAuth:
         account = self.store.account(session["account"])
         if (account is None or now - session["lastSeen"] >= SESSION_IDLE_SECONDS
                 or now - session["created"] >= SESSION_ABSOLUTE_SECONDS):
-            self._end_session(session)
+            self.end_session(session)
             return None
         if now - session["lastSeen"] >= LAST_SEEN_SECONDS:
             self.store.update_session(session["hash"], lastSeen=now)
@@ -320,7 +320,7 @@ class WebAuth:
             )
             return principal if self._authority.authorize(principal) else None
 
-    def _end_session(self, session: dict) -> None:
+    def end_session(self, session: dict) -> None:
         self.store.delete_session(session["hash"])
         self._on_sessions_removed([session["hash"]])
 
@@ -339,7 +339,7 @@ class WebAuth:
     def _logout(self, body: dict, token: str | None) -> dict:
         session = self.session(token)
         if session is not None:
-            self._end_session(session)
+            self.end_session(session)
         return {"status": 200, "body": {}, "clearSession": True}
 
     # -- devices -----------------------------------------------------------------
@@ -368,7 +368,7 @@ class WebAuth:
                        if entry["id"] == body.get("id")), None)
         if target is None:
             raise AuthError(404, "not_found")
-        self._end_session(target)
+        self.end_session(target)
         current = target["hash"] == session["hash"]
         return {"status": 200, "body": {}, **({"clearSession": True} if current else {})}
 

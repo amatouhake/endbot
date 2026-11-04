@@ -121,7 +121,7 @@ class EndbotService:
         self.authority = Authority.from_config(self.link.presence, config.authorization, config.base, log=self._log)
         for gamertag in self.authority.controllers.pending():
             self._log("info", f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
-        self.web = WebService(config.web, config.stores_directory, self.authority, log=self._log)
+        self.web = WebService(config.web, config.stores_directory, self.authority, base=config.base, log=self._log)
         self.web.on_passkey_added = self._passkey_added
         self._delivery = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbotd-delivery")
         self._closed = threading.Event()
@@ -369,8 +369,10 @@ class EndbotService:
     def _cli_web(self, body: dict) -> dict:
         """``endbot web revoke``: run as the console, answered on the CLI connection."""
         operation, target = body.get("operation"), body.get("target")
+        if operation == "revoke-site-sessions":
+            return self.web.revoke_site_sessions()
         if operation != "revoke":
-            raise ValueError("expected revoke")
+            raise ValueError("expected revoke or revoke-site-sessions")
         if not isinstance(target, str) or not target.strip() or not target.isprintable() or len(target) > 256:
             raise ValueError("a non-empty printable target of at most 256 characters is required")
         return self.web.revoke(target)

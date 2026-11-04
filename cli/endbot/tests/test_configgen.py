@@ -48,6 +48,21 @@ class RuntimeConfigTests(ConfigGenTestCase):
         self.assertEqual(plugin["hotbar-sync-resend-ticks"], 40)
         self.assertEqual(warnings, [])
 
+    def test_web_settings_reach_endbotd_with_absolute_key_files(self):
+        import tomllib
+
+        self.write_web("[web]\nenabled = true\norigin = 'https://a.example'\n[web.trusted-site]\nenabled = true\n"
+                       "keys = [{kid = 'a', public-key-file = 'site/a.pem'}]\n")
+        target, _ = generate_endbotd_config(self.server, self.paths, self.config())
+        web = tomllib.loads(target.read_text(encoding="utf-8"))["web"]
+        self.assertEqual((web["enabled"], web["origin"]), (True, "https://a.example"))
+        key_file = Path(web["trusted-site"]["keys"][0]["public-key-file"])
+        self.assertEqual(key_file, (self.paths.root / "site" / "a.pem").resolve())
+
+    def write_web(self, text):
+        with open(self.paths.endbot_toml, "a", encoding="utf-8") as stream:
+            stream.write("\n" + text)
+
     def test_ui_language_reaches_generated_plugin_config(self):
         target, _ = generate_endbotd_config(self.server, self.paths, self.config())
         self.assertEqual(tomllib.loads(target.read_text(encoding="utf-8"))["ui"], {"language": "auto"})

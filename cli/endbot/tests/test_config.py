@@ -45,6 +45,21 @@ class ConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(ConfigError, key):
                     load_config(self.path)
 
+    def test_web_origin_and_trusted_site_are_carried_as_written(self):
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base + "[web]\nenabled=true\norigin='https://a.example'\n[web.trusted-site]\nenabled=true\n"
+                          "name='A'\nkeys=[{kid='a', public-key-file='a.pem'}]\n")
+        web = load_config(self.path).web
+        self.assertEqual(web.origin, "https://a.example")
+        self.assertEqual(web.trusted_site["keys"][0]["kid"], "a")
+        for setting, key in (("origin=5", "web.origin"), ("trusted-site=5", "web.trusted-site"),
+                             ("[web.trusted-site]\nnam='A'", "web.trusted-site.nam"),
+                             ("[web.trusted-site]\nenabled=1", "web.trusted-site.enabled")):
+            with self.subTest(setting=setting):
+                self.write(base + f"[web]\n{setting}\n")
+                with self.assertRaisesRegex(ConfigError, key):
+                    load_config(self.path)
+
     def test_permissions_defaults_and_visibility_values(self):
         base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
         self.write(base)

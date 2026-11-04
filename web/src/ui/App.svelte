@@ -1,32 +1,43 @@
 <script lang="ts">
   import { ApiError, Connection, linkWithCode, post, registerWith, signIn } from "./api";
   import Bots from "./Bots.svelte";
-  import { errorText, formatDate, t } from "./i18n";
+  import Devices from "./Devices.svelte";
+  import Dialog from "./Dialog.svelte";
+  import Groups from "./Groups.svelte";
+  import History from "./History.svelte";
+  import { errorText, t } from "./i18n";
+  import { href, navigate, route, type Section } from "./route.svelte";
   import Scripts from "./Scripts.svelte";
+  import SignIn from "./SignIn.svelte";
 
-  type Tab = "status" | "bots" | "scripts" | "log" | "devices";
+  const TABS: [Section, "tabBots" | "tabScripts" | "tabGroups" | "tabHistory"][] = [
+    ["bots", "tabBots"], ["scripts", "tabScripts"], ["groups", "tabGroups"], ["history", "tabHistory"],
+  ];
+  const RETRY_FIRST_MS = 3000;
+  const RETRY_LONGEST_MS = 30_000;
 
   let view = $state<"loading" | "signedOut" | "signedIn">("loading");
-  let tab = $state<Tab>("status");
   let display = $state<{ displayName?: string; bds?: string }>({});
   let site = $state<{ name: string; mode: string } | null>(null);
-  let code = $state("");
   let busy = $state(false);
   let error = $state("");
   let notice = $state("");
-  let reauthNeeded = $state(false);
-  let status = $state<any>(null);
-  let log = $state<any[]>([]);
-  let devices = $state<any>(null);
-  let connection = $state<Connection | null>(null);
+  let offline = $state(false);
+  let status = $state.raw<any>(null);
+  let log = $state.raw<any[]>([]);
+  let devicesRevision = $state(0);
+  let connection = $state.raw<Connection | null>(null);
+  let accountMenu = $state<HTMLDetailsElement>();
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let retryDelay = RETRY_FIRST_MS;
 
-  /** The hyphen is ours to place: letters and digits are all anyone has to type or paste. */
-  function formatCode(event: Event): void {
-    const field = event.currentTarget as HTMLInputElement;
-    const symbols = field.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 6);
-    code = symbols.length > 3 ? `${symbols.slice(0, 3)}-${symbols.slice(3)}` : symbols;
-    field.value = code;
-  }
+  // A tab reopens on what was chosen there, and stays built, so a draft or a search survives looking elsewhere.
+  let chosen = $state<Record<string, string | null>>({});
+  let visited = $state<Record<string, boolean>>({});
+  $effect(() => {
+    chosen[route.section] = route.item;
+    visited[route.section] = true;
+  });
 
   function explain(failure: unknown): string {
     if (failure instanceof ApiError) return errorText(failure.code);
@@ -48,39 +59,65 @@
 
   function onEvent(event: { topic: string; data: any }): void {
     if (event.topic === "log") log = [event.data, ...log].slice(0, 200);
-    else if (event.topic === "status" && status) {
-      status.bds = event.data.bds;
-      void refreshStatus();
-    } else if (event.topic === "account" && event.data.kind === "passkey_added") {
+    else if (event.topic === "status") status = event.data;
+    else if (event.topic === "account" && event.data.kind === "passkey_added") {
       notice = t("passkeyAdded");
-      if (tab === "devices") void loadDevices();
+      devicesRevision += 1;
     }
   }
 
   /** Everything that belongs to the account: the next person on this page must not see it. */
   function forgetAccount(): void {
+    clearTimeout(retry);
+    retryDelay = RETRY_FIRST_MS;
     status = null;
     log = [];
-    devices = null;
     notice = "";
-    reauthNeeded = false;
-    tab = "status";
+    offline = false;
+    chosen = {};
+    visited = {};
+    navigate("bots", null, true);
   }
 
-  function onClose(signedOut: boolean): void {
+  async function showSignIn(): Promise<void> {
     connection = null;
-    status = null;
-    if (signedOut) {
-      forgetAccount();
-      view = "signedOut";
-      void loadSignInPage();
-    } else if (view === "signedIn") {
-      error = t("webOffline");
+    forgetAccount();
+    view = "signedOut";
+    display = await fetch("/api/display").then((response) => response.json()).catch(() => ({}));
+    site = await post("/auth/info").then((info) => info.site).catch(() => null);
+  }
+
+  function retryLater(): void {
+    clearTimeout(retry);
+    retry = setTimeout(() => void reconnect(), retryDelay);
+    retryDelay = Math.min(retryDelay * 2, RETRY_LONGEST_MS);
+  }
+
+  /** Back by itself once the server is. A session that ended meanwhile cannot open the socket, so ask plainly. */
+  async function reconnect(): Promise<void> {
+    if (view !== "signedIn" || await connect()) return;
+    try {
+      await post("/auth/devices");
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.status === 401) {
+        await showSignIn();
+        return;
+      }
     }
+    retryLater();
   }
 
   async function connect(): Promise<boolean> {
-    const next = new Connection(onEvent, onClose);
+    const next: Connection = new Connection(onEvent, (signedOut) => {
+      if (connection !== next) return;
+      if (signedOut) {
+        void showSignIn();
+      } else if (view === "signedIn") {
+        // The old connection stays with the screens, answering "unavailable", so that drafts and selections stay too.
+        offline = true;
+        retryLater();
+      }
+    });
     try {
       await next.open();
     } catch {
@@ -95,6 +132,9 @@
     status = answer.data;
     view = "signedIn";
     error = "";
+    offline = false;
+    retryDelay = RETRY_FIRST_MS;
+    clearTimeout(retry);
     await next.request("subscribe", { topic: "status" });
     await next.request("subscribe", { topic: "log" });
     const history = await next.request("query", { what: "log" });
@@ -107,47 +147,15 @@
     if (answer?.code === "ok") status = answer.data;
   }
 
-  async function loadSignInPage(): Promise<void> {
-    display = await fetch("/api/display").then((response) => response.json()).catch(() => ({}));
-    site = await post("/auth/info").then((info) => info.site).catch(() => null);
-  }
-
   async function afterSignIn(): Promise<void> {
-    code = "";
-    forgetAccount();
     connection?.close();
     connection = null;
-    if (!(await connect())) error = errorText("unavailable");
-  }
-
-  async function loadDevices(): Promise<void> {
-    devices = await post("/auth/devices");
-  }
-
-  function show(next: Tab): void {
-    tab = next;
-    if (next === "devices") void act(loadDevices);
-    if (next !== "devices" && next !== "log") void refreshStatus();
-  }
-
-  function needsReauth(failure: unknown): boolean {
-    return failure instanceof ApiError && failure.code === "reauthenticate";
-  }
-
-  async function reauthGuard(action: () => Promise<void>): Promise<void> {
-    busy = true;
-    error = "";
-    try {
-      await action();
-    } catch (failure) {
-      if (needsReauth(failure)) reauthNeeded = true;
-      else error = explain(failure);
-    } finally {
-      busy = false;
-    }
+    forgetAccount();
+    if (!(await connect())) throw new ApiError("unavailable", 0);
   }
 
   async function signOut(): Promise<void> {
+    closeMenu();
     try {
       await post("/auth/logout");
     } catch (failure) {
@@ -156,10 +164,23 @@
       return;
     }
     connection?.close();
-    connection = null;
-    forgetAccount();
-    view = "signedOut";
-    await loadSignInPage();
+    await showSignIn();
+  }
+
+  function closeMenu(): void {
+    if (accountMenu) accountMenu.open = false;
+  }
+
+  function closeMenuOutside(event: MouseEvent): void {
+    if (accountMenu?.open && !accountMenu.contains(event.target as Node)) closeMenu();
+  }
+
+  function follow(event: MouseEvent, section: Section, item: string | null): void {
+    // Opening in a new tab stays the browser's.
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    closeMenu();
+    navigate(section, item);
   }
 
   async function start(): Promise<void> {
@@ -167,10 +188,9 @@
     const siteError = params.get("site_error");
     const ceremony = params.get("site_ceremony");
     if (siteError || ceremony) history.replaceState(null, "", "/");
-    if (siteError) error = errorText(siteError);
     if (await connect()) return;
-    view = "signedOut";
-    await loadSignInPage();
+    await showSignIn();
+    if (siteError) error = errorText(siteError);
     if (ceremony) {
       await act(async () => {
         await registerWith(await post("/auth/site/options", { ceremony }));
@@ -182,190 +202,72 @@
   void start();
 </script>
 
-<main class:wide={view === "signedIn"}>
-  {#if view === "loading"}
-    <p class="quiet" aria-busy="true">…</p>
-  {:else if view === "signedOut"}
-    <h1>{display.displayName || t("title")}</h1>
-    <p class="server">
-      <span class="dot" class:up={display.bds === "up"}></span>
-      {display.bds === "up" ? t("serverUp") : t("serverDown")}
-    </p>
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
+<svelte:window onclick={closeMenuOutside} />
 
-    <section class="card">
-      <button class="primary" disabled={busy} onclick={() => act(async () => { await signIn(); await afterSignIn(); })}>
-        {t("signIn")}
-      </button>
-      {#if site}
-        <a class="button" href="/auth/site/start">{t("signInSite", { name: site.name })}</a>
-      {/if}
-    </section>
-
-    <section class="card">
-      <h2>{t("linkTitle")}</h2>
-      <p class="quiet">{t("linkHelp")}</p>
-      <form onsubmit={(event) => { event.preventDefault(); void act(async () => { await linkWithCode(code); await afterSignIn(); }); }}>
-        <label for="code">{t("linkCode")}</label>
-        <div class="row">
-          <input id="code" class="code-field" value={code} oninput={formatCode} autocomplete="one-time-code"
-                 autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="K7Q-4M2" />
-          <button disabled={busy || code.replace("-", "").length < 6}>{t("linkButton")}</button>
-        </div>
-      </form>
-    </section>
-  {:else}
-    <header>
-      <div>
+{#if view === "loading"}
+  <div class="center" role="status"><div class="spinner"></div>{t("loading")}</div>
+{:else if view === "signedOut"}
+  <SignIn {display} {site} {error} {busy}
+          onsignin={() => act(async () => { await signIn(); await afterSignIn(); })}
+          onlink={(code) => act(async () => { await linkWithCode(code); await afterSignIn(); })} />
+{:else if connection}
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot" class:up={status?.bds === "up"}></span>
         <h1>{status?.displayName || t("title")}</h1>
-        {#if status}
-          <p class="server">
-            <span class="dot" class:up={status.bds === "up"}></span>
-            {status.bds === "up" ? t("serverUp") : t("serverDown")}
-          </p>
-        {/if}
+        <small class="quiet">{status?.bds === "up" ? t("serverUp") : t("serverDown")}</small>
       </div>
-      <button class="link" onclick={signOut}>{t("signOut")}</button>
+      <nav class="tabs">
+        {#each TABS as [section, label]}
+          <a href={href(section, chosen[section] ?? null)} aria-current={route.section === section ? "page" : undefined}
+             onclick={(event) => follow(event, section, chosen[section] ?? null)}>
+            <span data-text={t(label)}>{t(label)}</span>
+          </a>
+        {/each}
+      </nav>
+      <details class="account" bind:this={accountMenu}>
+        <summary aria-label={t("accountMenu")}><span class="who">{status?.gamertag ?? ""}</span> ▾</summary>
+        <div class="menu">
+          <div class="label">{status?.role === "controller" ? t("roleController") : t("roleScripter")}</div>
+          <a href={href("devices")} onclick={(event) => follow(event, "devices", null)}>{t("tabDevices")}</a>
+          <button onclick={signOut}>{t("signOut")}</button>
+        </div>
+      </details>
     </header>
 
-    <nav>
-      {#each [["status", t("tabStatus")], ["bots", t("tabBots")], ["scripts", t("tabScripts")], ["log", t("tabLog")],
-              ["devices", t("tabDevices")]] as [key, label]}
-        <button class:current={tab === key} aria-current={tab === key ? "page" : undefined}
-                onclick={() => show(key as Tab)}><span data-text={label}>{label}</span></button>
-      {/each}
-    </nav>
-
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
-    {#if notice}<p class="warning" role="alert">{notice}</p>{/if}
-
-    {#if tab === "status"}
-      {#if status}
-        <p class="quiet">
-          {t("signedInAs", { name: status.gamertag })} ·
-          {status.role === "controller" ? t("roleController") : t("roleScripter")}
+    <div class="content">
+      {#if offline}<p class="offline" role="status">{t("reconnecting")}</p>{/if}
+      {#if error}<p class="error flush" role="alert">{error}</p>{/if}
+      {#if notice}
+        <p class="warning flush spread" role="alert">
+          <span>{notice}</span>
+          <button class="link" onclick={() => { notice = ""; }}>{t("close")}</button>
         </p>
-        <div class="grid">
-          <section class="card">
-            <h2>{t("bots")}</h2>
-            {#if status.bots === null}
-              <p class="quiet">{t("botsUnknown")}</p>
-            {:else if status.bots.length === 0}
-              <p class="quiet">{t("noBots")}</p>
-            {:else}
-              <ul>
-                {#each status.bots as bot}
-                  <li><span>{bot.name}</span><span class="tag" class:good={bot.state === "online"}>{bot.state}</span></li>
-                {/each}
-              </ul>
-            {/if}
-          </section>
-          <section class="card">
-            <h2>{t("groups")}</h2>
-            {#if status.groups.length === 0}
-              <p class="quiet">{t("noGroups")}</p>
-            {:else}
-              <ul>
-                {#each status.groups as group}
-                  <li><span>#{group.name}</span><span class="quiet">{t("members", { count: group.members })}</span></li>
-                {/each}
-              </ul>
-            {/if}
-          </section>
-          <section class="card">
-            <h2>{t("runs")}</h2>
-            {#if status.runs.length === 0}
-              <p class="quiet">{t("noRuns")}</p>
-            {:else}
-              <ul>
-                {#each status.runs as run}
-                  <li><span>{run.name}</span><code>{run.id}</code></li>
-                {/each}
-              </ul>
-            {/if}
-          </section>
+      {/if}
+      {#if visited.bots}
+        <div class="view" hidden={route.section !== "bots"}>
+          <Bots {connection} {status} selected={chosen.bots ?? null} active={route.section === "bots"} onchanged={refreshStatus} />
         </div>
-      {:else}
-        <button onclick={() => act(async () => { if (!(await connect())) throw new ApiError("unavailable", 0); })}>
-          {t("retry")}
-        </button>
       {/if}
-    {:else if tab === "bots" && connection}
-      <Bots {connection} {status} onchanged={refreshStatus} />
-    {:else if tab === "scripts" && connection}
-      <Scripts {connection} runs={status?.runs ?? []} onchanged={refreshStatus} />
-    {:else if tab === "log"}
-      <section class="card">
-        <p class="quiet">{t("logNote")}</p>
-        {#if log.length === 0}
-          <p class="quiet">{t("logEmpty")}</p>
-        {:else}
-          <ol class="log">
-            {#each log as entry}
-              <li class:warn={entry.level !== "info"}>
-                <time>{formatDate(entry.time)}</time>
-                {#each entry.lines as line}<span>{line}</span>{/each}
-              </li>
-            {/each}
-          </ol>
-        {/if}
-      </section>
-    {:else}
-      {#if reauthNeeded}
-        <section class="card">
-          <p>{t("reauth")}</p>
-          <button class="primary" disabled={busy} onclick={() => act(async () => { await signIn(); await afterSignIn(); await loadDevices(); })}>
-            {t("signIn")}
-          </button>
-        </section>
+      {#if visited.scripts}
+        <div class="view" hidden={route.section !== "scripts"}>
+          <Scripts {connection} {log} runs={status?.runs ?? []} selected={chosen.scripts ?? null}
+                   active={route.section === "scripts"} onchanged={refreshStatus} />
+        </div>
       {/if}
-      <section class="card">
-        <h2>{t("addDevice")}</h2>
-        <p class="quiet">{t("addDeviceHelp")}</p>
-      </section>
-      {#if devices}
-        <section class="card">
-          <h2>{t("passkeys")}</h2>
-          <ul>
-            {#each devices.passkeys as passkey}
-              <li>
-                <span>
-                  {passkey.label || t("unnamed")}
-                  <small class="quiet">
-                    {t("created", { date: formatDate(passkey.created) })} ·
-                    {passkey.lastUsed ? t("lastUsed", { date: formatDate(passkey.lastUsed) }) : t("neverUsed")}
-                  </small>
-                </span>
-                <button class="danger" disabled={busy}
-                        onclick={() => reauthGuard(async () => { await post("/auth/passkey/remove", { id: passkey.id }); await loadDevices(); })}>
-                  {t("remove")}
-                </button>
-              </li>
-            {/each}
-          </ul>
-        </section>
-        <section class="card">
-          <h2>{t("sessions")}</h2>
-          <ul>
-            {#each devices.sessions as session}
-              <li>
-                <span>
-                  {session.label || t("unnamed")}
-                  {#if session.current}<span class="tag good">{t("thisDevice")}</span>{/if}
-                  {#if session.via === "site"}<span class="tag">{t("viaSite")}</span>{/if}
-                  <small class="quiet">{t("lastSeen", { date: formatDate(session.lastSeen) })}</small>
-                </span>
-                {#if !session.current}
-                  <button class="danger" disabled={busy}
-                          onclick={() => act(async () => { await post("/auth/session/remove", { id: session.id }); await loadDevices(); })}>
-                    {t("remove")}
-                  </button>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        </section>
+      {#if visited.groups}
+        <div class="view" hidden={route.section !== "groups"}>
+          <Groups {connection} {status} selected={chosen.groups ?? null} onchanged={refreshStatus} />
+        </div>
       {/if}
-    {/if}
-  {/if}
-</main>
+      {#if route.section === "history"}
+        <div class="view"><History {log} /></div>
+      {/if}
+      {#if route.section === "devices"}
+        <div class="view"><Devices revision={devicesRevision} signedIn={afterSignIn} /></div>
+      {/if}
+    </div>
+  </div>
+{/if}
+<Dialog />

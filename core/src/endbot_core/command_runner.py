@@ -37,6 +37,7 @@ class AsyncCommandRunner:
         show_view: Callable[[object, object], None] | None = None,
         scripts=None,
         on_event: Callable[[Event], None] | None = None,
+        on_result: Callable[[Principal, list[str], str, CommandResult], None] | None = None,
     ) -> None:
         self._service = service
         self._bridge = bridge
@@ -49,6 +50,8 @@ class AsyncCommandRunner:
         self._scripts = scripts
         # One more sink: the web keeps a player's own events for their log page.
         self._on_event = on_event
+        # And what each command answered, for that player's history on the web.
+        self._on_result = on_result
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
@@ -99,9 +102,19 @@ class AsyncCommandRunner:
 
         self._bridge.post(deliver)
 
-    def call(self, arguments: list[str], principal: Principal, *, command: str = "bot",
-             timeout: float = 30.0) -> CommandResult:
-        """Run one command on the same ordered worker and return its result instead of delivering it (the web)."""
+    def _report(self, source: Principal, arguments: list[str], command: str, result: CommandResult) -> None:
+        if self._on_result is not None:
+            try:
+                self._on_result(source, arguments, command, result)
+            except Exception:  # noqa: BLE001 - a history line must never cost a command its reply
+                pass
+
+    def call(self, arguments: list[str], principal: Principal, *, command: str = "bot", timeout: float = 30.0,
+             record: bool = True) -> CommandResult:
+        """Run one command on the same ordered worker and return its result instead of delivering it (the web).
+
+        ``record`` is off for what the page reads for itself, which the person did not ask for by name.
+        """
         if command not in {"bot", "botgroup", "botscript"}:
             raise ValueError("Unknown Endbot command root")
 
@@ -111,7 +124,10 @@ class AsyncCommandRunner:
                 return CommandResult(True, (reply(revoked, color=WARNING),), accepted=False, code="unauthorized")
             execute = (self._scripts.execute if command == "botscript" and self._scripts is not None else
                        self._service.execute_group if command == "botgroup" else self._service.execute)
-            return execute(arguments, principal)
+            result = execute(arguments, principal)
+            if record:
+                self._report(principal, arguments, command, result)
+            return result
 
         with self._lock:
             if not self._open:
@@ -172,6 +188,7 @@ class AsyncCommandRunner:
             result = CommandResult(True, (reply(tr(source.language, "internal command failure"), color=ERROR),),
                                    accepted=False, code="unavailable")
 
+        self._report(source, arguments, command, result)
         self._deliver(source, result)
 
     def _deliver(self, source, result, chat: bool = True) -> None:

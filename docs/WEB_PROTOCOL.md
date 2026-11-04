@@ -63,9 +63,12 @@ the page reloads. Every request is authorized again at execution time with the `
 | `type` | Request | Answer |
 |---|---|---|
 | `query` | `what`: `status`, `bots`, `groups`, `runs`, `log` | `{id, type: "result", code, data}` |
+| `query` | `what`: `bot`, `name` | the Bot's status as fields in `data`; it stays out of the history |
 | `subscribe` | `topic`: `status`, `log` | `{id, type: "result", code}`, then `{type: "event", topic, data}` |
 | `unsubscribe` | `topic` | `{id, type: "result", code}` |
 | `op` | `operation`: `{op, target, params}`, one registry operation | `{id, type: "result", code, messages, data}` |
+| `group.create`, `group.delete` | `name`, without `#` | `code`, `messages` |
+| `group.add`, `group.remove` | `name`, `bot` | `code`, `messages` |
 | `script.list`, `script.templates` | none | `{id, type: "result", code, data}` |
 | `script.get`, `script.declaration`, `script.delete` | `name` (`revision` on delete) | as above |
 | `script.compile` | `name`, `source` | `code`, and `line` when an error names one |
@@ -78,6 +81,10 @@ the page reloads. Every request is authorized again at execution time with the `
 
 endbotd also pushes `{type: "event", topic: "account", data: {kind: "passkey_added"}}` to every open page of an account
 that subscribed to anything, so a passkey added elsewhere is seen at once.
+
+A `status` event carries the same `data` as `query status` and is sent when that data changes, wherever the change came
+from. A `log` event carries one entry: `{time, kind, level, lines}`, with `run` and `script` for a script, or `command` and
+`code` for one of the player's own commands (`kind` is `command`). A saved script's source is not repeated in `command`.
 
 `code` is `ok` or an Outcome code. Unknown types answer `unsupported`. A refused session answers `signed_out`, and endbotd
 closes the connection.

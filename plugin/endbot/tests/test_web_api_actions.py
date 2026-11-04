@@ -24,6 +24,8 @@ class WebActionCase(ServiceHarness):
         self.api = WebApi(self.service.web.auth, runner=self.service.runner, commands=self.service.commands,
                           scripts=self.service.scripts, control=self.control, bds_up=lambda: True,
                           display_name=lambda: "Test")
+        # This suite's own WebApi hears the runner, as the service's would.
+        self.service.runner._on_result = self.api.record_result
 
     def setUp(self):
         super().setUp()
@@ -84,6 +86,25 @@ class OperationTests(WebActionCase):
         principal = self.service.web.auth.principal(self.token)
         self.assertEqual(principal.kind, "web")
         self.assertFalse(principal.console)
+
+
+class GroupTests(WebActionCase):
+    def test_a_group_is_created_and_deleted_through_the_in_game_commands(self):
+        self.assertEqual(self.ask(type="group.create", name="miners")["code"], "ok")
+        self.assertEqual(self.ask(type="query", what="groups")["data"], [{"name": "miners", "members": []}])
+        self.assertEqual(self.ask(type="group.delete", name="miners")["code"], "ok")
+        self.assertEqual(self.ask(type="query", what="groups")["data"], [])
+
+
+class BotQueryTests(WebActionCase):
+    def test_one_bot_is_read_as_fields_and_stays_out_of_the_history(self):
+        self.assertEqual(self.ask(type="op", operation={"op": "spawn", "target": "Steve", "params": {}})["code"], "ok")
+        before = self.ask(type="query", what="log")["data"]
+        with patch.object(self.service.commands.world, "observe", return_value=None):
+            answer = self.ask(type="query", what="bot", name="Steve")
+        self.assertEqual(answer["code"], "ok", answer)
+        self.assertEqual(answer["data"]["name"], "Steve")
+        self.assertEqual(self.ask(type="query", what="log")["data"], before)
 
 
 class ScriptTests(WebActionCase):

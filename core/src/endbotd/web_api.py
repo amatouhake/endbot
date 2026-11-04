@@ -26,6 +26,8 @@ from endbot_core.principal import Principal
 from endbot_core.script_forms import TEMPLATES, ScriptGuard
 
 LOG_LINES = 200
+POLL_SECONDS = 2.0
+TARGET_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}")
 SCRIPT_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 # Not for the web: an in-game screen, chat help, and what stays with the console.
 WEB_REFUSED_OPERATIONS = frozenset({"menu", "help", "owner"})
@@ -45,6 +47,8 @@ class _Subscriber:
     push: Callable[[object], None]
     language: str
     token: str
+    # The status it last heard, so that it hears only of changes.
+    last: str = ""
 
 
 class WebApi:
@@ -62,6 +66,8 @@ class WebApi:
         self._logs: dict[str, deque] = {}
         # conn -> what a push needs: dropped when the connection closes, or when its session has ended.
         self._subscribers: dict[str, _Subscriber] = {}
+        self._stopped = threading.Event()
+        self._poller: threading.Thread | None = None
 
     # -- requests --------------------------------------------------------------
 
@@ -75,7 +81,7 @@ class WebApi:
             return {"type": "result", "code": "invalid_request"}
         kind = message.get("type")
         if kind == "query":
-            return self._query(principal, message.get("what"))
+            return self._query(principal, message.get("what"), message)
         if kind == "subscribe" and message.get("topic") in {"status", "log"}:
             return self._subscribe(principal, token, conn, message["topic"], push)
         if kind == "unsubscribe" and message.get("topic") in {"status", "log"}:
@@ -88,6 +94,8 @@ class WebApi:
             return self._operation(principal, message.get("operation"))
         if isinstance(kind, str) and kind.startswith("script."):
             return self._script(principal, kind[len("script."):], message)
+        if isinstance(kind, str) and kind.startswith("group."):
+            return self._group(principal, kind[len("group."):], message)
         return {"type": "result", "code": "unsupported"}
 
     # -- operations (docs/WEB.md P11) -------------------------------------------
@@ -245,7 +253,36 @@ class WebApi:
                 return None
         return pinned
 
-    def _query(self, principal, what: object) -> dict:
+    def _group(self, principal: Principal, action: str, message: dict) -> dict:
+        """Group management through /botgroup: the same rules, wording and history as in game."""
+        name, bot = message.get("name"), message.get("bot")
+        if not isinstance(name, str) or not TARGET_NAME.fullmatch(name):
+            return {"type": "result", "code": "invalid_argument"}
+        if action in {"create", "delete"}:
+            return self._command(principal, [action, f"#{name}"], "botgroup")
+        if action in {"add", "remove"}:
+            if not isinstance(bot, str) or not TARGET_NAME.fullmatch(bot):
+                return {"type": "result", "code": "invalid_argument"}
+            return self._command(principal, [action, f"#{name}", bot], "botgroup")
+        return {"type": "result", "code": "unsupported"}
+
+    def _bot(self, principal: Principal, message: dict) -> dict:
+        """One Bot's status as fields, for the page to lay out; it reads this itself, so history stays quiet."""
+        name = message.get("name")
+        if not isinstance(name, str) or not TARGET_NAME.fullmatch(name) or name in RESERVED_BOT_NAMES:
+            return {"type": "result", "code": "invalid_argument"}
+        try:
+            result = self._runner.call([name, "status"], principal, record=False)
+        except TimeoutError:
+            return {"type": "result", "code": "timeout"}
+        answer = {"type": "result", "code": result.code, "messages": [_plain(line) for line in result.messages]}
+        if result.code == "ok":
+            answer["data"] = result.data
+        return answer
+
+    def _query(self, principal, what: object, message: dict) -> dict:
+        if what == "bot":
+            return self._bot(principal, message)
         readers = {"status": self._status, "bots": self._bots, "groups": self._groups, "runs": self._runs,
                    "log": self._log}
         reader = readers.get(what) if isinstance(what, str) else None
@@ -253,30 +290,40 @@ class WebApi:
             return {"type": "result", "code": "unsupported"}
         return {"type": "result", "code": "ok", "data": reader(principal)}
 
-    def _status(self, principal) -> dict:
+    def _profiles(self) -> list[dict] | None:
+        """Every Bot; None while the runtime is down (it stops with BDS)."""
+        try:
+            return bot_profiles(self._control)
+        except (RuntimeControlError, OSError):
+            return None
+
+    def _status(self, principal, profiles: object = ...) -> dict:
+        profiles = self._profiles() if profiles is ... else profiles
         return {
             "displayName": self._display_name(),
             "bds": "up" if self._bds_up() else "down",
             "gamertag": principal.name,
             "role": principal.role or "scripter",
-            "bots": self._bots(principal),
-            "groups": self._groups(principal),
+            "bots": self._bots(principal, profiles),
+            "groups": self._groups(principal, profiles),
             "runs": self._runs(principal),
         }
 
-    def _bots(self, principal) -> list[dict] | None:
-        """The Bots this principal may see; None while the runtime is down (it stops with BDS)."""
-        try:
-            profiles = bot_profiles(self._control)
-        except (RuntimeControlError, OSError):
+    def _bots(self, principal, profiles: object = ...) -> list[dict] | None:
+        """The Bots this principal may see, unknown while the runtime is down."""
+        profiles = self._profiles() if profiles is ... else profiles
+        if profiles is None:
             return None
         ownership = self._commands.ownership
         return [{"name": bot["name"], "state": bot["connectionState"]}
                 for bot in profiles
                 if ownership is None or ownership.visible_to("bots", bot["identityId"], principal)]
 
-    def _groups(self, principal) -> list[dict]:
-        return [{"name": group.name, "members": len(group.members)}
+    def _groups(self, principal, profiles: object = ...) -> list[dict]:
+        profiles = self._profiles() if profiles is ... else profiles
+        names = {bot.get("identityId"): bot["name"] for bot in profiles or ()}
+        # A member that is gone keeps its place: in-game indexes count it too.
+        return [{"name": group.name, "members": [names.get(member) for member in group.members]}
                 for group in self._commands.visible_groups(principal)]
 
     def _runs(self, principal) -> list[dict]:
@@ -285,14 +332,15 @@ class WebApi:
     def _log(self, principal) -> list[dict]:
         with self._lock:
             events = list(self._logs.get(principal.xuid, ()))
-        return [self._entry(moment, event, principal.language) for moment, event in events]
+        return [entry if isinstance(entry, dict) else self._entry(moment, entry, principal.language)
+                for moment, entry in events]
 
     @staticmethod
     def _entry(moment: float, event: Event, language: str) -> dict:
         # A line chat holds back (its rate limit, `chat-logs = false`) still belongs in this player's own log.
         lines = render(event, "chat", language) or render(event, "log")
-        return {"time": moment, "kind": event.kind, "level": event.level,
-                "lines": [_plain(line) for line in lines]}
+        return {"time": moment, "kind": event.kind, "level": event.level, "run": event.data.get("run"),
+                "script": event.data.get("name"), "lines": [_plain(line) for line in lines]}
 
     def _subscribe(self, principal, token: str, conn: str, topic: str, push: Callable[[object], None]) -> dict:
         with self._lock:
@@ -331,11 +379,56 @@ class WebApi:
         for entry in self._live(lambda entry: entry.xuid == xuid and "log" in entry.topics):
             entry.push({"type": "event", "topic": "log", "data": self._entry(moment, event, entry.language)})
 
+    def record_result(self, source, arguments: list[str], root: str, result) -> None:
+        """What one of this player's commands answered, from chat or the web, for their history."""
+        xuid = getattr(source, "xuid", None)
+        lines = [_plain(line) for line in result.messages]
+        if not xuid or not lines:
+            return
+        # A save's second word is the whole source, and a form's menu steps say nothing a person typed.
+        words = arguments[:2] if root == "botscript" and arguments[:1] == ["save"] else arguments
+        moment = self._clock()
+        entry = {"time": moment, "kind": "command", "level": "info" if result.code == "ok" else "warning",
+                 "command": f"/{root} {' '.join(words)}"[:200], "code": result.code, "lines": lines}
+        with self._lock:
+            self._logs.setdefault(xuid, deque(maxlen=LOG_LINES)).append((moment, entry))
+        for target in self._live(lambda item: item.xuid == xuid and "log" in item.topics):
+            target.push({"type": "event", "topic": "log", "data": entry})
+
     def notify_account(self, xuid: str, kind: str) -> None:
         """A security notice for this account's open pages, such as a passkey just added (P4)."""
         for entry in self._live(lambda entry: entry.xuid == xuid):
             entry.push({"type": "event", "topic": "account", "data": {"kind": kind}})
 
     def status_changed(self) -> None:
-        for entry in self._live(lambda entry: "status" in entry.topics):
-            entry.push({"type": "event", "topic": "status", "data": {"bds": "up" if self._bds_up() else "down"}})
+        self.poll()
+
+    def poll(self) -> None:
+        """Tell each open page what changed, wherever the change came from: another page, chat or the runtime."""
+        targets = self._live(lambda entry: "status" in entry.topics)
+        if not targets:
+            return
+        profiles = self._profiles()
+        for entry in targets:
+            principal = self._auth.principal(entry.token, entry.language)
+            if principal is None:
+                continue
+            status = self._status(principal, profiles)
+            text = json.dumps(status, sort_keys=True)
+            if text != entry.last:
+                entry.last = text
+                entry.push({"type": "event", "topic": "status", "data": status})
+
+    def start(self) -> None:
+        self._poller = threading.Thread(target=self._poll_loop, name="endbotd-web-status", daemon=True)
+        self._poller.start()
+
+    def stop(self) -> None:
+        self._stopped.set()
+
+    def _poll_loop(self) -> None:
+        while not self._stopped.wait(POLL_SECONDS):
+            try:
+                self.poll()
+            except Exception:  # noqa: BLE001, S110 - an update missed now is sent at the next pass
+                pass

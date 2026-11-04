@@ -35,9 +35,9 @@
   ]);
 
   const theme = EditorView.theme({
-    "&": { color: "var(--text)", backgroundColor: "var(--surface)", maxHeight: "60vh", fontSize: ".9rem" },
+    "&": { color: "var(--text)", backgroundColor: "var(--surface)", height: "100%", fontSize: ".9rem" },
     "&.cm-focused": { outline: "none" },
-    ".cm-scroller": { fontFamily: "ui-monospace, Consolas, monospace", overflow: "auto", minHeight: "16rem" },
+    ".cm-scroller": { fontFamily: "ui-monospace, Consolas, monospace", overflow: "auto" },
     ".cm-content": { caretColor: "var(--text)" },
     ".cm-cursor": { borderLeftColor: "var(--text)" },
     ".cm-gutters": { backgroundColor: "var(--bg)", color: "var(--quiet)", borderRight: "1px solid var(--line)" },
@@ -71,7 +71,13 @@
         ],
       }),
     });
-    return () => view?.destroy();
+    // Hidden on another tab, it measured nothing; on coming back it must look again.
+    const watcher = new ResizeObserver(() => view?.requestMeasure());
+    watcher.observe(host);
+    return () => {
+      watcher.disconnect();
+      view?.destroy();
+    };
   });
 
   // A new revision or another script arrives from outside: replace the text, but never while it already matches.
@@ -97,7 +103,3 @@
 </script>
 
 <div class="editor" bind:this={host}></div>
-
-<style>
-  .editor { border: 1px solid var(--line); border-radius: .45rem; overflow: hidden; background: var(--surface); }
-</style>

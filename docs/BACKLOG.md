@@ -1201,9 +1201,11 @@ no extra load from Bots retrying against a stopped server. Multi-Bot start-up sh
 
 ## BOT-034: Web usability after the operator's first full try
 
-Status: **Open; the layout proposal awaits the operator's decision** (2026-11-04 JST). Steps 1 to 7 of BOT-021 are merged and
-work; the operator found nothing that stops them merging and no reason yet to call the web finished: the parts work, but
-the page lacks polish, some features, and a design that thinks about scrolling and how a person moves through it.
+Status: **Rebuilt; the operator's next look is pending** (2026-11-04 JST). The operator chose the proposed layout, recorded
+as [S9](WEB.md#settled-points); every point below is addressed by that rebuild and checked by the end-to-end test and on a
+real BDS. The first try found nothing that stopped steps 1 to 7 merging and no reason to call the web finished: the parts
+worked, but the page lacked polish, some features, and a design that thinks about scrolling and how a person moves through
+it. What the operator finds on the rebuilt page comes next.
 
 Small, clear fixes:
 

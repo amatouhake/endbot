@@ -29,11 +29,12 @@ BOT_B = "00000000-0000-4000-8000-00000000000b"
 class FakeControl:
     def __init__(self):
         self.down = False
+        self.states = {}
 
     def request(self, method, **_):
         if self.down:
             raise RuntimeControlError("unavailable", "the runtime is down")
-        return [{"name": "Shared", "identityId": BOT_A, "connectionState": "online"},
+        return [{"name": "Shared", "identityId": BOT_A, "connectionState": self.states.get("Shared", "online")},
                 {"name": "Private", "identityId": BOT_B, "connectionState": "offline"}]
 
 
@@ -59,7 +60,7 @@ class WebApiTests(unittest.TestCase):
         self.control = FakeControl()
         self.groups_seen = []
         self.runs_for = []
-        group = SimpleNamespace(name="miners", members=("a", "b"))
+        group = SimpleNamespace(name="miners", members=(BOT_A, "gone"))
         commands = SimpleNamespace(ownership=self.ownership,
                                    visible_groups=lambda principal: self.groups_seen.append(principal) or (group,))
         run = SimpleNamespace(identity="r1", name="line")
@@ -83,7 +84,7 @@ class WebApiTests(unittest.TestCase):
         data = answer["data"]
         self.assertEqual((data["displayName"], data["bds"], data["gamertag"], data["role"]),
                          ("Mine", "up", "Alice", "controller"))
-        self.assertEqual(data["groups"], [{"name": "miners", "members": 2}])
+        self.assertEqual(data["groups"], [{"name": "miners", "members": ["Shared", None]}])
         self.assertEqual(data["runs"], [{"id": "r1", "name": "line"}])
 
     def test_someone_elses_private_bot_is_not_listed(self):
@@ -179,11 +180,59 @@ class WebApiTests(unittest.TestCase):
         self.log_event()
         self.assertEqual(self.pushed, [])
 
-    def test_a_status_subscriber_hears_when_bds_changes(self):
+    def test_a_status_subscriber_hears_when_anything_changes_and_only_then(self):
         self.ask(type="subscribe", topic="status")
+        self.api.poll()
+        self.assertEqual(len(self.pushed), 1)
+        self.api.poll()
+        self.assertEqual(len(self.pushed), 1)
         self.bds = False
         self.api.status_changed()
-        self.assertEqual(self.pushed, [{"type": "event", "topic": "status", "data": {"bds": "down"}}])
+        self.assertEqual(self.pushed[-1]["data"]["bds"], "down")
+        self.control.states["Shared"] = "offline"
+        self.api.poll()
+        self.assertEqual(self.pushed[-1]["data"]["bds"], "down")
+        self.assertEqual(len(self.pushed), 3)
+        self.assertEqual([bot["state"] for bot in self.pushed[-1]["data"]["bots"]], ["offline"])
+
+    def test_a_subscriber_hears_only_what_it_may_see(self):
+        self.ask(type="subscribe", topic="status")
+        self.api.poll()
+        self.assertEqual([bot["name"] for bot in self.pushed[0]["data"]["bots"]], ["Shared"])
+
+    def test_a_command_result_joins_this_players_history_and_reaches_the_page(self):
+        self.ask(type="subscribe", topic="log")
+        to = Principal("player", xuid=XUID, player_id=PLAYER)
+        self.api.record_result(to, ["Miner", "jump"], "bot", SimpleNamespace(messages=("Endbot: done",), code="ok"))
+        self.assertEqual(self.pushed[0]["data"]["command"], "/bot Miner jump")
+        self.assertEqual(self.pushed[0]["data"]["lines"], ["done"])
+        entries = self.ask(type="query", what="log")["data"]
+        self.assertEqual(entries[0]["kind"], "command")
+
+    def test_a_saved_scripts_source_stays_out_of_the_history(self):
+        to = Principal("player", xuid=XUID, player_id=PLAYER)
+        self.api.record_result(to, ["save", "line", "secret source"], "botscript",
+                               SimpleNamespace(messages=("saved",), code="ok"))
+        self.assertEqual(self.ask(type="query", what="log")["data"][0]["command"], "/botscript save line")
+
+    def test_someone_elses_results_stay_out_of_the_history(self):
+        other = Principal("player", xuid=OTHER_XUID, player_id=PLAYER)
+        self.api.record_result(other, ["x", "jump"], "bot", SimpleNamespace(messages=("done",), code="ok"))
+        console = Principal("console")
+        self.api.record_result(console, ["x", "jump"], "bot", SimpleNamespace(messages=("done",), code="ok"))
+        self.assertEqual(self.ask(type="query", what="log")["data"], [])
+
+    def test_a_group_request_is_checked_before_it_becomes_a_command(self):
+        for message in ({"type": "group.create", "name": "a b"}, {"type": "group.add", "name": "miners", "bot": "a b"},
+                        {"type": "group.create", "name": 5}, {"type": "group.add", "name": "miners"}):
+            with self.subTest(message=message):
+                self.assertEqual(self.api.handle(self.token, "c1", message, print)["code"], "invalid_argument")
+        self.assertEqual(self.ask(type="group.nope", name="miners")["code"], "unsupported")
+
+    def test_one_bot_is_read_by_a_checked_name(self):
+        for name in ("a b", "help", 5, None):
+            with self.subTest(name=name):
+                self.assertEqual(self.ask(type="query", what="bot", name=name)["code"], "invalid_argument")
 
 
 if __name__ == "__main__":

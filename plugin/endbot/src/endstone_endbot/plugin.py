@@ -190,7 +190,7 @@ class EndbotPlugin(Plugin):
         },
         "botweb": {
             "description": "Link this player to the Endbot web.",
-            "usages": ["/botweb", "/botweb (link|unlink|status)<action: EndbotWebAction>"],
+            "usages": ["/botweb", "/botweb (link|unlink|status|help)<action: EndbotWebAction>"],
             "permissions": ["endbot.command.control"],
         },
         "botcontrollers": {

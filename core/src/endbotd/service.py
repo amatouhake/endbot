@@ -177,7 +177,7 @@ class EndbotService:
         self.runner = AsyncCommandRunner(
             self.commands, _LocalBridge(self.authority.lock, self._delivery), self._resolve_sender,
             authorize=self.authority.authorize, log_sink=LoggerSink(LOGGER), show_view=self._show_view,
-            scripts=self.scripts, on_event=self._web_event,
+            scripts=self.scripts, on_event=self._web_event, on_result=self._web_result,
         )
 
     # -- lifecycle -----------------------------------------------------------
@@ -220,6 +220,7 @@ class EndbotService:
         self.web_api = WebApi(self.web.auth, runner=self.runner, commands=self.commands, scripts=self.scripts,
                               control=self._runtime_control,
                               bds_up=lambda: self.link.connected, display_name=lambda: self.web.display_name)
+        self.web_api.start()
         self.web_link = WebLink(self.web, self.web.origin, key, __version__, ws_handler=self.web_api.handle,
                                 on_connection_closed=self.web_api.connection_closed, cache=self._web_cache,
                                 log=self._log)
@@ -229,6 +230,10 @@ class EndbotService:
     def _web_event(self, event) -> None:
         if self.web_api is not None:
             self.web_api.record(event)
+
+    def _web_result(self, source, arguments, root, result) -> None:
+        if self.web_api is not None:
+            self.web_api.record_result(source, arguments, root, result)
 
     def _web_status(self) -> dict:
         link = self.web_link
@@ -245,6 +250,8 @@ class EndbotService:
             config = EndbotdConfig.load(self.config.base / "endbotd.toml")
         except (OSError, ValueError) as error:
             return {"ok": False, "messages": [f"endbotd.toml cannot be read: {error}"]}
+        if self.web_api is not None:
+            self.web_api.stop()
         if self.web_link is not None:
             self.web_link.stop()
             self.web_link = None

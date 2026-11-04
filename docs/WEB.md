@@ -223,9 +223,11 @@ The supervisor policy change ENDBOTD S2 deferred to BOT-021:
 
 ### P11. What the web shows
 
-- **Status:** server and BDS state, the Bot list and Groups the principal may see, the principal's own runs and jobs.
-- **Logs:** the principal's own run logs and the Outcomes of their own operations, as in chat. The full server or
-  endbotd log is not on the web; that is console material.
+- **Status:** server and BDS state in the header at all times; the Bots and Groups the principal may see, and their own
+  runs and jobs, on the screens that act on them. Changes reach an open page by themselves, wherever they came from.
+- **History:** the principal's own run logs, job ends and the Outcomes of their own commands, from chat or the web, as in
+  chat. The full server or endbotd log is not on the web; that is console material.
+- **Groups:** creating, deleting and changing members through `/botgroup`, and operating a whole Group.
 - **Scripts:** the scripts the role may read or edit (BOT-024), saved through the in-game save path with compile,
   declaration, ownership and revision checks; a stale revision is a conflict with the current source shown.
   Diagnostics come from endbotd's compile.
@@ -361,6 +363,11 @@ Decided 2026-10-29 JST.
   page). The in-game code ties an account to the player who joined with Xbox authentication. A signed-in browser that
   could mint more would let anyone at an unattended PC plant a lasting passkey, and a notice does not prevent that. The
   cost is small: a code from the game can be entered on any device.
+- **S9. The page is one screen** (2026-11-04 JST, after the operator's first full try, BOT-034). On a PC the page itself
+  never scrolls: a fixed header (server and its state, tabs, account menu) over a list and a detail pane that scroll
+  alone. A phone shows the list and the detail as two screens with a way back. What is chosen lives in the address, so a
+  reload and Back keep it, and a tab keeps its draft while another is open. Results have their own place, so nothing
+  moves when one arrives. Questions use the page's own dialogs, never the browser's.
 
 ## Steps
 

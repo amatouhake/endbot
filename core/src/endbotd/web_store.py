@@ -227,7 +227,7 @@ class WebStore:
         with self._lock:
             self._commit_sessions([entry for entry in self._sessions if entry["hash"] != token_hash])
 
-   def delete_sessions_via(self, via: str) -> list[str]:
+    def delete_sessions_via(self, via: str) -> list[str]:
         """End every session issued a certain way (P12); return the removed hashes."""
         with self._lock:
             removed = [entry["hash"] for entry in self._sessions if entry["via"] == via]

@@ -71,6 +71,8 @@ class _Ceremony:
     expires: float
     # The player a registration is for. A login proves who it is by its credential.
     identity: LinkIdentity | None = None
+    # What proved them: a link code ("passkey", the default) or a site assertion ("site").
+    via: str = "passkey"
 
 
 def _token_hash(token: str) -> str:
@@ -138,13 +140,14 @@ class WebAuth:
 
     # -- ceremonies --------------------------------------------------------------
 
-    def _begin(self, kind: str, challenge: bytes, identity: LinkIdentity | None = None) -> str:
+    def _begin(self, kind: str, challenge: bytes, identity: LinkIdentity | None = None,
+               via: str = "passkey") -> str:
         now = self._clock()
         self._ceremonies = {key: entry for key, entry in self._ceremonies.items() if entry.expires > now}
         if len(self._ceremonies) >= MAX_CEREMONIES:
             raise AuthError(429, "busy")
         ceremony = secrets.token_urlsafe(16)
-        self._ceremonies[ceremony] = _Ceremony(kind, challenge, now + CEREMONY_SECONDS, identity)
+        self._ceremonies[ceremony] = _Ceremony(kind, challenge, now + CEREMONY_SECONDS, identity, via)
         return ceremony
 
     def _finish(self, body: dict, kind: str) -> _Ceremony:
@@ -173,7 +176,7 @@ class WebAuth:
             raise AuthError(403, "no_access")
         return self.registration_options(identity)
 
-    def registration_options(self, identity: LinkIdentity) -> dict:
+    def registration_options(self, identity: LinkIdentity, *, via: str = "passkey") -> dict:
         """Passkey registration for a proven identity: a link code, or a site assertion (P12)."""
         account = self.store.ensure_account(identity.xuid, identity.player_id, identity.gamertag)
         options = generate_registration_options(
@@ -187,7 +190,7 @@ class WebAuth:
                                  for entry in self.store.passkeys(account["id"])],
             supported_pub_key_algs=ALGORITHMS,
         )
-        ceremony = self._begin("register", options.challenge, identity)
+        ceremony = self._begin("register", options.challenge, identity, via)
         return {"status": 200, "body": {"ceremony": ceremony, "options": json.loads(options_to_json(options))}}
 
     def _link_verify(self, body: dict, token: str | None) -> dict:
@@ -224,10 +227,12 @@ class WebAuth:
             "label": _label(body),
             "created": self._clock(),
             "lastUsed": None,
+            # A suspected site key exposure must reach what an assertion created (P12).
+            "via": ceremony.via,
         })
         self._log("info", f"Web passkey added for {identity.gamertag}")
         self._on_passkey_added(account)
-        return self._signed_in(account, "passkey", body)
+        return self._signed_in(account, ceremony.via, body)
 
     def _login_options(self, body: dict, token: str | None) -> dict:
         options = generate_authentication_options(
@@ -262,7 +267,7 @@ class WebAuth:
         # Signing in again refreshes a recent assertion; the session it replaces ends.
         previous = self.session(token) if token else None
         if previous is not None and previous["account"] == account["id"]:
-            self._end_session(previous)
+            self.end_session(previous)
         return self._signed_in(account, "passkey", body)
 
     # -- sessions ----------------------------------------------------------------
@@ -300,7 +305,7 @@ class WebAuth:
         if (account is None or now - session["lastSeen"] >= SESSION_IDLE_SECONDS
                 or now - session["created"] >= SESSION_ABSOLUTE_SECONDS
                 or session["created"] < account.get("sessionsFrom", 0)):
-            self._end_session(session)
+            self.end_session(session)
             return None
         if now - session["lastSeen"] >= LAST_SEEN_SECONDS:
             self.store.update_session(session["hash"], lastSeen=now)
@@ -322,7 +327,7 @@ class WebAuth:
             )
             return principal if self._authority.authorize(principal) else None
 
-    def _end_session(self, session: dict) -> None:
+    def end_session(self, session: dict) -> None:
         self.store.delete_session(session["hash"])
         self._on_sessions_removed([session["hash"]])
 
@@ -342,7 +347,7 @@ class WebAuth:
         session = self.session(token)
         try:
             if session is not None:
-                self._end_session(session)
+                self.end_session(session)
         except OSError as error:
             # This browser still forgets it, and the page must say the session may stay valid elsewhere.
             self._log("error", f"Web store write failed: {error}")
@@ -375,7 +380,7 @@ class WebAuth:
                        if entry["id"] == body.get("id")), None)
         if target is None:
             raise AuthError(404, "not_found")
-        self._end_session(target)
+        self.end_session(target)
         current = target["hash"] == session["hash"]
         return {"status": 200, "body": {}, **({"clearSession": True} if current else {})}
 

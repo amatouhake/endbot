@@ -42,7 +42,7 @@ def web_origin(value: object) -> str | None:
 
 
 class WebService:
-    def __init__(self, section: dict, stores_directory: Path, authority: Authority, *,
+    def __init__(self, section: dict, stores_directory: Path, authority: Authority, *, base: Path | None = None,
                  log: Callable[[str, str], None] | None = None) -> None:
         self._log = log or (lambda level, message: None)
         self._authority = authority
@@ -65,6 +65,7 @@ class WebService:
         # Told when a passkey is added, so the player hears about it in chat (P4).
         self.on_passkey_added: Callable[[dict], None] = lambda account: None
         self.auth = None
+        self.site = None
         if self.enabled and self.origin is not None and self.store is not None:
             # Imported here: an instance without the web never loads the WebAuthn library.
             try:
@@ -75,10 +76,46 @@ class WebService:
                 self.auth = WebAuth(self.store, self.codes, self.origin, authority, log=self._log,
                                     on_sessions_removed=lambda hashes: self.on_sessions_removed(hashes),
                                     on_passkey_added=lambda account: self.on_passkey_added(account))
+                self.site = self._load_site(section, base, authority)
+
+    def _load_site(self, section: dict, base: Path | None, authority: Authority):
+        from endbotd.web_site import SiteConfig, SiteConfigError, TrustedSite
+
+        try:
+            config = SiteConfig.load(section.get("trusted-site") or {}, base or Path("."))
+        except (SiteConfigError, ValueError, TypeError, AttributeError) as error:
+            # P12: no site button, /auth/site/* is 404; passkeys and /botweb link keep working.
+            self._log("error", f"Trusted site disabled: {error}")
+            return None
+        if config is None:
+            return None
+        return TrustedSite(config, self.auth, self.store, authority, log=self._log)
 
     @property
     def available(self) -> bool:
         return self.auth is not None
+
+    # -- what the relay forwards -------------------------------------------------
+
+    def http(self, path: str, body: object, token: str | None = None, *, request_origin: str | None = None,
+             site_cookie: str | None = None) -> dict:
+        """One HTTP request from the relay. Nothing in it is trusted until checked here."""
+        if self.auth is None:
+            return {"status": 503, "body": {"code": "unavailable"}}
+        if path == "/auth/info":
+            return {"status": 200, "body": {"site": self.site.info if self.site is not None else None}}
+        if path.startswith("/auth/site/"):
+            if self.site is None:
+                return {"status": 404, "body": {"code": "not_found"}}
+            if path == "/auth/site/start":
+                return self.site.start()
+            if path == "/auth/site/return":
+                assertion = body.get("assertion") if isinstance(body, dict) else None
+                return self.site.finish(assertion, site_cookie, request_origin, token)
+            if path == "/auth/site/options":
+                return self.site.registration(body)
+            return {"status": 404, "body": {"code": "not_found"}}
+        return self.auth.handle(path, body, token)
 
     # -- /botweb --------------------------------------------------------------
 
@@ -139,9 +176,25 @@ class WebService:
         except OSError as error:
             return {"ok": False, "messages": self._failed_write(error)}
         self._log("info", f"Web account of {account['gamertag']} revoked")
+        note = ("The trusted site can vouch again at the next sign-in; to keep this player out, remove the "
+                "controller grant or have the site stop vouching." if self.site is not None else None)
         message = (f"Web account of {account['gamertag']} removed; its passkeys and sessions no longer work. "
                    "The controller grant is unchanged.")
-        return {"ok": True, "messages": [message]}
+        return {"ok": True, "messages": [message, note] if note else [message]}
+
+    def revoke_site_sessions(self) -> dict:
+        """``endbot web revoke --site-sessions``: for a suspected key exposure (P12)."""
+        if self.store is None:
+            return {"ok": False, "messages": ["Web store is unavailable; see the endbotd log"]}
+        try:
+            removed = self.store.delete_sessions_via("site")
+            passkeys = self.store.delete_passkeys_via("site")
+        except OSError as error:
+            return {"ok": False, "messages": self._failed_write(error)}
+        self.on_sessions_removed(removed)
+        self._log("info", f"Web sign-ins through the trusted site ended: {len(removed)} sessions, {passkeys} passkeys")
+        return {"ok": True, "messages": [f"Ended {len(removed)} web sessions and removed {passkeys} passkeys "
+                                         "that came through the trusted site"]}
 
     def _find_account(self, target: str) -> dict | None:
         if target.startswith("xuid:"):

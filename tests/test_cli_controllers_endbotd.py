@@ -108,6 +108,11 @@ class EndbotdCliTests(unittest.TestCase):
         with self.assertRaises(EndbotdError):
             web_request(self.run_dir, self.token, self.port, "revoke", "bad\nname", timeout=5)
 
+    def test_web_revoke_site_sessions_takes_no_target(self) -> None:
+        result = web_request(self.run_dir, self.token, self.port, "revoke-site-sessions", timeout=5)
+        self.assertTrue(result["ok"], result)
+        self.assertIn("Ended 0 web sessions", result["messages"][0])
+
     def test_endbotd_down_says_so(self) -> None:
         self.service.close()
         with self.assertRaises(EndbotdError) as raised:

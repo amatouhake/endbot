@@ -74,7 +74,10 @@ def build_parser() -> argparse.ArgumentParser:
     revoke = web_subcommands.add_parser(
         "revoke", help="delete one player's web account, passkeys and sessions; the controller grant stays"
     )
-    revoke.add_argument("target", help="GamerTag or xuid:<id>")
+    revoke.add_argument("target", nargs="?", help="GamerTag or xuid:<id>")
+    revoke.add_argument(
+        "--site-sessions", action="store_true", help="instead, end every session issued through the trusted site"
+    )
     setup = subcommands.add_parser("setup", help="create or adopt an instance; prints the full plan first (section 6)")
     mode = setup.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fresh", action="store_true", help="create <instance>/server and download the locked BDS")
@@ -162,7 +165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "console":
         return run_console(paths, " ".join(args.line))
     if args.command == "web":
-        return run_web_revoke(paths, args.target)
+        return run_web_revoke(paths, args.target, site_sessions=args.site_sessions)
     if args.command == "controllers" and args.controllers_command == "reset":
         return run_controllers_reset(paths, args.gamertag)
     if args.command == "controllers":

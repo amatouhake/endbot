@@ -165,6 +165,60 @@ class HealthyInstanceTests(DoctorTestCase):
         self.assertEqual(self.status_of(self.doctor(), "endbotd-token"), FAIL)
 
 
+class TrustedSiteTests(DoctorTestCase):
+    def enable(self, **changes) -> None:
+        section = {"name": "'A'", "mode": "'link'", "issuer": "'https://a.example'",
+                   "start-url": "'https://a.example/start'", "keys": "[{kid='a', public-key-file='site/a.pem'}]"}
+        section.update(changes)
+        lines = "".join(f"{key} = {value}\n" for key, value in section.items())
+        with open(self.paths.endbot_toml, "a", encoding="utf-8") as stream:
+            stream.write(f"\n[web]\nenabled = true\norigin = 'https://web.example'\n"
+                         f"[web.trusted-site]\nenabled = true\n{lines}")
+
+    def write_key(self, curve=None, name: str = "a.pem") -> None:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        folder = self.paths.root / "site"
+        folder.mkdir(exist_ok=True)
+        key = ec.generate_private_key(curve or ec.SECP384R1()).public_key()
+        (folder / name).write_bytes(key.public_bytes(serialization.Encoding.PEM,
+                                                     serialization.PublicFormat.SubjectPublicKeyInfo))
+
+    def test_skipped_when_off(self) -> None:
+        self.assertEqual(self.status_of(self.doctor(), "web-trusted-site"), SKIP)
+
+    def test_a_valid_site_passes(self) -> None:
+        self.write_key()
+        self.enable()
+        self.assertEqual(self.status_of(self.doctor(), "web-trusted-site"), PASS)
+
+    def test_a_key_on_another_curve_fails(self) -> None:
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        self.write_key(ec.SECP256R1())
+        self.enable()
+        self.assertEqual(self.status_of(self.doctor(), "web-trusted-site"), FAIL)
+
+    def test_a_missing_key_file_fails(self) -> None:
+        self.enable()
+        self.assertEqual(self.status_of(self.doctor(), "web-trusted-site"), FAIL)
+
+    def test_invalid_settings_fail(self) -> None:
+        self.write_key()
+        for changes in ({"issuer": "'http://a.example'"}, {"issuer": "'https://['"}, {"start-url": "'https://'"},
+                        {"start-url": "'http://a.example/s'"}, {"mode": "'both'"},
+                        {"name": "''"}, {"keys": "[]"},
+                        {"keys": "[{kid='a', public-key-file='site/a.pem'}, {kid='a', public-key-file='site/a.pem'}]"},
+                        {"keys": "[{kid='a', public-key-file='x'}, {kid='b', public-key-file='x'}, "
+                                 "{kid='c', public-key-file='x'}]"}):
+            with self.subTest(changes=changes):
+                original = self.paths.endbot_toml.read_text(encoding="utf-8")
+                self.enable(**changes)
+                self.assertEqual(self.status_of(self.doctor(), "web-trusted-site"), FAIL)
+                self.paths.endbot_toml.write_text(original, encoding="utf-8")
+
+
 class FreshInstanceTests(DoctorTestCase):
     def test_fresh_instance_fails_gracefully(self) -> None:
         empty = self.root / "empty"

@@ -331,6 +331,12 @@ class WebDisabledTests(BotWebCommandTests):
         self.botweb(link, "link")
         self.message(alice, "The web is not available on this server")
 
+    def test_revoking_the_grant_voids_a_code_when_there_is_no_account_yet(self):
+        self.skipTest("a disabled web issues no code")
+
+    def test_unlink_and_revoke_void_a_code_when_there_is_no_account_yet(self):
+        self.skipTest("a disabled web issues no code")
+
     def test_revoking_the_grant_ends_sessions_and_codes_but_keeps_the_account(self):
         """A disabled web still has a store to clean, but issues no code to void."""
         link, _alice = self.joined_alice()

@@ -12,7 +12,19 @@ from fakeinstance import build_instance
 
 from endbot_cli.__main__ import main
 from endbot_cli.doctor import detect_endstone_version
+from endbot_cli.instance import InstancePaths
 from endbot_cli.lock import load_lock
+
+
+class WebRevokeArgumentTests(unittest.TestCase):
+    def test_exactly_one_of_a_target_or_site_sessions(self) -> None:
+        from endbot_cli.commands import run_web_revoke
+
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()) as stderr:
+            paths = InstancePaths.for_root(Path(directory))
+            self.assertEqual(run_web_revoke(paths, None), 1)
+            self.assertEqual(run_web_revoke(paths, "Alice", site_sessions=True), 1)
+        self.assertIn("either", stderr.getvalue())
 
 
 class MainTests(unittest.TestCase):

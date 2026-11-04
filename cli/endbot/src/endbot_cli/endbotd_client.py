@@ -122,10 +122,10 @@ def controllers_request(
     return _request(run_dir, token_file, port, "controllers", body, UNKNOWN if operation != "list" else None, timeout)
 
 
-def web_request(run_dir: Path, token_file: Path, port: int, operation: str, target: str, *,
+def web_request(run_dir: Path, token_file: Path, port: int, operation: str, target: str | None = None, *,
                 timeout: float = 15.0) -> dict:
     """Run one web administration operation in endbotd and return its result ``{ok, messages}``."""
-    if not target.strip() or not target.isprintable() or len(target) > 256:
+    if target is not None and (not target.strip() or not target.isprintable() or len(target) > 256):
         raise EndbotdError("invalid", "a non-empty printable target of at most 256 characters is required")
     unknown = "the result is unknown; run the command again"
     return _request(run_dir, token_file, port, "web", {"operation": operation, "target": target}, unknown, timeout)

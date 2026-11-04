@@ -263,6 +263,21 @@ def _bundled_runner(paths: InstancePaths, config: EndbotConfig) -> str:
     return ""
 
 
+def _trusted_site_section(tomlkit, site: dict, paths: InstancePaths) -> dict:
+    """[web.trusted-site] with key files absolute: they live under the instance, endbotd.toml does not."""
+    section = dict(site)
+    keys = []
+    for entry in site.get("keys") or []:
+        key = dict(entry) if isinstance(entry, dict) else {}
+        file = key.get("public-key-file")
+        if isinstance(file, str) and file and not Path(file).is_absolute():
+            key["public-key-file"] = str((paths.root / file).resolve())
+        keys.append(key)
+    if "keys" in site:
+        section["keys"] = keys
+    return section
+
+
 def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotConfig) -> tuple[Path, list[str]]:
     """Write ``state/generated/endbotd.toml`` (docs/ENDBOTD.md P7); return it plus warnings."""
 
@@ -348,6 +363,8 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
     web["enabled"] = config.web.enabled
     if config.web.origin:
         web["origin"] = config.web.origin
+    if config.web.trusted_site is not None:
+        web["trusted-site"] = _trusted_site_section(tomlkit, config.web.trusted_site, paths)
     document.add("web", web)
 
     atomic_write_text(target, tomlkit.dumps(document))

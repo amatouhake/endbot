@@ -382,6 +382,45 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"enabled, {public_path} is a P-384 key matching {paths.owner_private_key}")
 
 
+def check_trusted_site(config: EndbotConfig, paths: InstancePaths) -> CheckResult:
+    """[web.trusted-site] (docs/WEB.md P12): a broken section keeps the site off, so the operator should know."""
+    name = "web-trusted-site"
+    site = config.web.trusted_site
+    if not site or site.get("enabled") is not True:
+        return CheckResult(SKIP, name, "the trusted site is off")
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
+    if site.get("mode") not in ("link", "sign-in"):
+        return CheckResult(FAIL, name, f"mode must be link or sign-in, found {site.get('mode')!r}")
+    if not isinstance(site.get("name"), str) or not site["name"]:
+        return CheckResult(FAIL, name, "name is missing; it is shown on the sign-in button")
+    for key in ("issuer", "start-url"):
+        if not isinstance(site.get(key), str) or not site[key].startswith("https://"):
+            return CheckResult(FAIL, name, f"{key} must be an https:// URL")
+    entries = site.get("keys")
+    if not isinstance(entries, list) or not 1 <= len(entries) <= 2:
+        return CheckResult(FAIL, name, "keys must list 1 or 2 keys")
+    kids = set()
+    for entry in entries:
+        kid, file = (entry.get("kid"), entry.get("public-key-file")) if isinstance(entry, dict) else (None, None)
+        if not isinstance(kid, str) or not kid or not isinstance(file, str) or not file:
+            return CheckResult(FAIL, name, "each key needs kid and public-key-file")
+        if kid in kids:
+            return CheckResult(FAIL, name, f"kid {kid} is listed twice")
+        kids.add(kid)
+        path = Path(file) if Path(file).is_absolute() else paths.root / file
+        try:
+            key = load_pem_public_key(path.read_bytes())
+        except (OSError, ValueError, TypeError) as error:
+            return CheckResult(FAIL, name, f"key {kid} cannot be read from {path}: {error}")
+        if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(key.curve, ec.SECP384R1):
+            return CheckResult(FAIL, name, f"key {kid} in {path} must be a P-384 public key")
+    return CheckResult(WARN if not config.web.enabled else PASS, name,
+                       f"trusted site {site['name']!r}, mode {site['mode']}, {len(kids)} keys"
+                       + ("; [web] enabled is false, so it stays off" if not config.web.enabled else ""))
+
+
 def check_control_token(paths: InstancePaths) -> CheckResult:
     name = "control-token"
     try:
@@ -955,6 +994,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
         results.append(CheckResult(SKIP, "endbotd-config", "endbot.toml is invalid"))
     else:
         results.append(check_endbotd_config(config, paths))
+        results.append(check_trusted_site(config, paths))
     results.append(check_endbotd_link(paths))
 
     state: ControllerState | None = None

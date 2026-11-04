@@ -315,13 +315,16 @@ def run_controllers_reset(paths: InstancePaths, gamertag: str) -> int:
     return 0
 
 
-def run_web_revoke(paths: InstancePaths, target: str) -> int:
-    """`endbot web revoke`: only endbotd writes the web store (docs/WEB.md P6)."""
+def run_web_revoke(paths: InstancePaths, target: str | None, *, site_sessions: bool = False) -> int:
+    """`endbot web revoke`: only endbotd writes the web store (docs/WEB.md P6, P12)."""
     from endbot_cli.endbotd_client import web_request
 
+    if (target is None) == (not site_sessions):
+        return _fail("FAIL web revoke: give either a GamerTag or xuid:<id>, or --site-sessions")
+    operation = "revoke-site-sessions" if site_sessions else "revoke"
     try:
         config = load_config(paths.endbot_toml)
-        result = web_request(paths.state_run, paths.endbotd_token, config.endbotd.link_port, "revoke", target)
+        result = web_request(paths.state_run, paths.endbotd_token, config.endbotd.link_port, operation, target)
     except ConfigError as error:
         return _fail(f"FAIL web revoke: {error}")
     except KeyboardInterrupt:

@@ -2,7 +2,7 @@
 
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
 the answers to the former open points (see [settled points](#settled-points)). Steps 1 (the supervisor policy, P10), 2a
-(accounts and link codes) and 2b (WebAuthn and sessions in endbotd) are implemented; no browser can reach them yet.
+(accounts and link codes) 2b (WebAuthn and sessions in endbotd) and 2c (the trusted site) are implemented; no browser can reach them yet.
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -269,6 +269,8 @@ session issued through the site (P5 marks each session with how it was created).
             POST <origin>/auth/site/return   assertion=<compact JWS>
 3. Worker   accepts this POST only with Origin == issuer and the site cookie; relays both to endbotd
 4. endbotd  verifies (below), consumes the nonce, then links, registers a passkey, or issues a session (mode)
+            ◀── 303 to /?site_ceremony=<id> (link: the page fetches the options with POST /auth/site/options),
+                 / with the session cookie (sign-in), or /?site_error=<code>
 ```
 
 A link started on the operator's site ("open the Endbot web") sends the user to `/auth/site/start` first; the site
@@ -371,7 +373,7 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
    - **2c. Trusted external site** (P12): `[web.trusted-site]` config and doctor checks, nonces, ES384 JWS
      verification (the existing local-bot-auth verifier's rules where they apply), both modes,
      `endbot web revoke --site-sessions`, failure codes. Claude only (security boundary). Negative tests for every
-     row of the claim table and the failure table.
+     row of the claim table and the failure table. Done.
 3. **Link and relay.**
    - **3a. Protocol schema** (P2): `docs/WEB_PROTOCOL.md`, a JSON Schema, TypeScript generation in CI. Claude.
    - **3b. endbotd link client**: `websockets`, handshake and signing, reconnect with backoff, multiplexing, version

@@ -235,6 +235,15 @@ class WebStore:
                 self._commit_sessions([entry for entry in self._sessions if entry["via"] != via])
             return removed
 
+    def delete_passkeys_via(self, via: str) -> int:
+        """Remove every passkey registered a certain way (P12); return how many."""
+        with self._lock:
+            kept = [entry for entry in self._passkeys if entry.get("via") != via]
+            count = len(self._passkeys) - len(kept)
+            if count:
+                self._commit_passkeys(kept)
+            return count
+
     def end_sessions_for_revoke(self, xuid: str) -> list[str]:
         """A revoked grant (P6): ``sessionsFrom`` also refuses any older session that somehow survives,
         independently of the grant revision file, which is documented as safe to reset."""

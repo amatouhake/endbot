@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -381,6 +382,35 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
             f"{public_path} does not match {paths.owner_private_key}; restore the pair or regenerate both keys",
         )
     return CheckResult(PASS, name, f"enabled, {public_path} is a P-384 key matching {paths.owner_private_key}")
+
+
+_WEB_ORIGIN = re.compile(r"(https://[a-z0-9.-]+(:(?!443$)[0-9]{1,5})?|http://localhost(:(?!80$)[0-9]{1,5})?)")
+
+
+def check_web(context: DoctorContext, config: EndbotConfig, paths: InstancePaths) -> CheckResult:
+    """Origin configured, link key present and, with --live, whether endbotd reports the link up (docs/WEB.md)."""
+    name = "web"
+    if not config.web.enabled:
+        return CheckResult(SKIP, name, "the web is off")
+    if not config.web.origin:
+        return CheckResult(WARN, name, "[web] enabled but no origin; run `endbot web deploy`")
+    if not _WEB_ORIGIN.fullmatch(config.web.origin):
+        # The rule endbotd applies: it keeps the web off otherwise.
+        return CheckResult(FAIL, name, f"[web] origin {config.web.origin!r} must be exactly https://host, lowercase; "
+                                       "run `endbot web deploy`")
+    key = paths.state_secrets / "web-link.key"
+    if not key.is_file() or key.is_symlink():
+        return CheckResult(FAIL, name, f"{key} is missing or not a regular file; run `endbot web deploy`")
+    if not context.live:
+        return CheckResult(PASS, name, f"origin {config.web.origin}; `endbot doctor --live` checks the link")
+    from endbot_cli.endbotd_client import EndbotdError, web_request
+
+    try:
+        result = web_request(paths.state_run, paths.endbotd_token, config.endbotd.link_port, "status", timeout=5)
+    except (OSError, EndbotdError) as error:
+        return CheckResult(WARN, name, f"cannot ask endbotd about the link: {error}")
+    # The message names a protocol mismatch and its fix.
+    return CheckResult(PASS if result.get("linked") else FAIL, name, result["messages"][0])
 
 
 def check_trusted_site(config: EndbotConfig, paths: InstancePaths) -> CheckResult:
@@ -999,6 +1029,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
         results.append(CheckResult(SKIP, "endbotd-config", "endbot.toml is invalid"))
     else:
         results.append(check_endbotd_config(config, paths))
+        results.append(check_web(context, config, paths))
         results.append(check_trusted_site(config, paths))
     results.append(check_endbotd_link(paths))
 

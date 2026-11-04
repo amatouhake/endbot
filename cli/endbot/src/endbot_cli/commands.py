@@ -67,6 +67,9 @@ def _fail(message: str) -> int:
     return 1
 
 
+WEB_CHECKS = frozenset({"web", "web-trusted-site"})
+
+
 def run_start(
     paths: InstancePaths,
     *,
@@ -129,6 +132,10 @@ def run_start(
     for result in results:
         if result.status == FAIL and first_start_tolerable(result.name, paths):
             _print(f"WARN {result.name}: {result.message} (first start: the runtime creates this during start)")
+            continue
+        if result.status == FAIL and result.name in WEB_CHECKS:
+            # endbotd keeps the broken part of the web off; players should not lose the server over it.
+            _print(f"WARN {result.name}: {result.message} (the web stays off; the server starts anyway)")
             continue
         _print(result.line())
         if result.status == FAIL:
@@ -313,6 +320,42 @@ def run_controllers_reset(paths: InstancePaths, gamertag: str) -> int:
         "Runtime controller policy overrides are unchanged; use controllers add/remove while running to change access."
     )
     return 0
+
+
+def _web_operator_request(paths: InstancePaths) -> Callable[[str], dict]:
+    from endbot_cli.endbotd_client import web_request
+
+    def request(operation: str) -> dict:
+        config = load_config(paths.endbot_toml)
+        return web_request(paths.state_run, paths.endbotd_token, config.endbotd.link_port, operation, timeout=30)
+
+    return request
+
+
+def run_web_deploy(paths: InstancePaths, *, environ: Mapping[str, str] | None = None, **options) -> int:
+    """`endbot web deploy` (docs/WEB.md P1, P9)."""
+    from endbot_cli.webdeploy import deploy, read_token
+
+    try:
+        token = read_token(os.environ if environ is None else environ)
+        return 0 if deploy(paths, token=token, report=_print, request=_web_operator_request(paths), **options) else 1
+    except KeyboardInterrupt:
+        return _fail("FAIL web deploy: interrupted; run it again")
+    except (OSError, ValueError) as error:
+        return _fail(f"FAIL web deploy: {error}")
+
+
+def run_web_rotate_key(paths: InstancePaths, *, environ: Mapping[str, str] | None = None) -> int:
+    """`endbot web rotate-key` (docs/WEB.md P1)."""
+    from endbot_cli.webdeploy import read_token, rotate_key
+
+    try:
+        token = read_token(os.environ if environ is None else environ)
+        return 0 if rotate_key(paths, token=token, report=_print, request=_web_operator_request(paths)) else 1
+    except KeyboardInterrupt:
+        return _fail("FAIL web rotate-key: interrupted; run it again")
+    except (OSError, ValueError) as error:
+        return _fail(f"FAIL web rotate-key: {error}")
 
 
 def run_web_revoke(paths: InstancePaths, target: str | None, *, site_sessions: bool = False) -> int:

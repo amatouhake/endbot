@@ -14,7 +14,9 @@ from endbot_cli.commands import (
     run_controllers_reset,
     run_start,
     run_stop,
+    run_web_deploy,
     run_web_revoke,
+    run_web_rotate_key,
 )
 from endbot_cli.config import TRANSPORTS
 from endbot_cli.doctor import FAIL, WARN, CheckResult, DoctorContext, exit_code, run_doctor
@@ -78,6 +80,20 @@ def build_parser() -> argparse.ArgumentParser:
     revoke.add_argument(
         "--site-sessions", action="store_true", help="instead, end every session issued through the trusted site"
     )
+    deploy = web_subcommands.add_parser(
+        "deploy", help="upload the Worker to your Cloudflare account; the token is prompted, never an argument"
+    )
+    deploy.add_argument("--account-id", help="Cloudflare account id; kept in endbot.toml after the first deploy")
+    deploy.add_argument("--worker-name", help="Worker name (default: endbot)")
+    deploy.add_argument("--domain", help="custom domain instead of the workers.dev subdomain")
+    deploy.add_argument("--zone-id", help="the Cloudflare zone of --domain")
+    deploy.add_argument(
+        "--confirm-domain-change",
+        action="store_true",
+        help="accept that a new origin deletes every passkey and session",
+    )
+    deploy.add_argument("--bundle", type=Path, help="a prebuilt web bundle (default: the installed one)")
+    web_subcommands.add_parser("rotate-key", help="replace the link key; the token is prompted, never an argument")
     setup = subcommands.add_parser("setup", help="create or adopt an instance; prints the full plan first (section 6)")
     mode = setup.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fresh", action="store_true", help="create <instance>/server and download the locked BDS")
@@ -164,6 +180,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_stop(paths, timeout=args.timeout)
     if args.command == "console":
         return run_console(paths, " ".join(args.line))
+    if args.command == "web" and args.web_command == "deploy":
+        return run_web_deploy(paths, account_id=args.account_id, worker_name=args.worker_name, domain=args.domain,
+                              zone_id=args.zone_id, confirm_domain_change=args.confirm_domain_change,
+                              bundle=args.bundle)
+    if args.command == "web" and args.web_command == "rotate-key":
+        return run_web_rotate_key(paths)
     if args.command == "web":
         return run_web_revoke(paths, args.target, site_sessions=args.site_sessions)
     if args.command == "controllers" and args.controllers_command == "reset":

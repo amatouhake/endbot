@@ -46,14 +46,6 @@ class WebService:
                  log: Callable[[str, str], None] | None = None) -> None:
         self._log = log or (lambda level, message: None)
         self._authority = authority
-        self.enabled = section.get("enabled", False) is True
-        name = section.get("display-name", "")
-        self.display_name = name[:64] if isinstance(name, str) and name.isprintable() else ""
-        try:
-            self.origin = web_origin(section.get("origin"))
-        except ValueError as error:
-            self.origin = None
-            self._log("error", f"Web disabled: {error}")
         self.store: WebStore | None = None
         try:
             self.store = WebStore(Path(stores_directory) / STORE_DIRECTORY)
@@ -66,6 +58,18 @@ class WebService:
         self.on_sessions_removed: Callable[[list[str]], None] = lambda hashes: None
         # Told when a passkey is added, so the player hears about it in chat (P4).
         self.on_passkey_added: Callable[[dict], None] = lambda account: None
+        self.configure(section, base)
+
+    def configure(self, section: dict, base: Path | None) -> None:
+        """Apply the settings: at start and after a deploy. The one store stays, so it keeps a single writer."""
+        self.enabled = section.get("enabled", False) is True
+        name = section.get("display-name", "")
+        self.display_name = name[:64] if isinstance(name, str) and name.isprintable() else ""
+        try:
+            self.origin = web_origin(section.get("origin"))
+        except ValueError as error:
+            self.origin = None
+            self._log("error", f"Web disabled: {error}")
         self.auth = None
         self.site = None
         if self.enabled and self.origin is not None and self.store is not None:
@@ -75,10 +79,10 @@ class WebService:
             except ImportError as error:
                 self._log("error", f"Web disabled: the WebAuthn library is missing ({error}); reinstall Endbot")
             else:
-                self.auth = WebAuth(self.store, self.codes, self.origin, authority, log=self._log,
+                self.auth = WebAuth(self.store, self.codes, self.origin, self._authority, log=self._log,
                                     on_sessions_removed=lambda hashes: self.on_sessions_removed(hashes),
                                     on_passkey_added=lambda account: self.on_passkey_added(account))
-                self.site = self._load_site(section, base, authority)
+                self.site = self._load_site(section, base, self._authority)
 
     def _load_site(self, section: dict, base: Path | None, authority: Authority):
         from endbotd.web_site import SiteConfig, SiteConfigError, TrustedSite
@@ -187,6 +191,13 @@ class WebService:
         message = (f"Web account of {account['gamertag']} removed; its passkeys and sessions no longer work. "
                    "The controller grant is unchanged.")
         return {"ok": True, "messages": [message, note] if note else [message]}
+
+    def domain_changed(self) -> dict:
+        if self.store is None:
+            return {"ok": False, "messages": ["Web store is unavailable; see the endbotd log"]}
+        self.on_sessions_removed(self.store.delete_credentials())
+        self._log("info", "Web passkeys and sessions deleted: the domain changed")
+        return {"ok": True, "messages": ["Every web passkey and session was deleted"]}
 
     def revoke_site_sessions(self) -> dict:
         """``endbot web revoke --site-sessions``: for a suspected key exposure (P12)."""

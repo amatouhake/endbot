@@ -217,6 +217,29 @@ class EndbotService:
         self.web.on_sessions_removed = self.web_link.sessions_removed
         self.web_link.start()
 
+    def _web_status(self) -> dict:
+        link = self.web_link
+        if link is not None and link.connected.is_set():
+            return {"ok": True, "linked": True, "messages": [f"Web link is up to {link.origin}"]}
+        if link is not None:
+            detail = link.problem or "connecting"
+            return {"ok": True, "linked": False, "messages": [f"Web link to {link.origin} is down: {detail}"]}
+        return {"ok": True, "linked": False, "messages": ["Web link is off; see the endbotd log"]}
+
+    def _reload_web(self) -> dict:
+        """After a deploy or rotation: read the generated settings and the key again, without a restart."""
+        try:
+            config = EndbotdConfig.load(self.config.base / "endbotd.toml")
+        except (OSError, ValueError) as error:
+            return {"ok": False, "messages": [f"endbotd.toml cannot be read: {error}"]}
+        if self.web_link is not None:
+            self.web_link.stop()
+            self.web_link = None
+        self.config = config
+        self.web.configure(config.web, config.base)
+        self._start_web_link()
+        return self._web_status()
+
     def _web_cache(self) -> dict:
         """All that Cloudflare keeps: what the sign-in page shows (P8)."""
         return {"displayName": self.web.display_name, "bds": "up" if self.link.connected else "down"}
@@ -405,8 +428,14 @@ class EndbotService:
         operation, target = body.get("operation"), body.get("target")
         if operation == "revoke-site-sessions":
             return self.web.revoke_site_sessions()
+        if operation == "domain-change":
+            return self.web.domain_changed()
+        if operation == "status":
+            return self._web_status()
+        if operation == "reload":
+            return self._reload_web()
         if operation != "revoke":
-            raise ValueError("expected revoke or revoke-site-sessions")
+            raise ValueError("expected revoke, revoke-site-sessions, domain-change, status or reload")
         if not isinstance(target, str) or not target.strip() or not target.isprintable() or len(target) > 256:
             raise ValueError("a non-empty printable target of at most 256 characters is required")
         return self.web.revoke(target)

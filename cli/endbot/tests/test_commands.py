@@ -161,6 +161,19 @@ class StartRefusalTests(CommandTestCase):
         self.assertIn("refusing to start", stderr)
         self.assertFalse(marker.exists())
 
+    def test_a_broken_web_setting_does_not_stop_the_server_starting(self) -> None:
+        with open(self.paths.endbot_toml, "a", encoding="utf-8") as stream:
+            stream.write("\n[web]\nenabled = true\norigin = 'https://a.example'\n")
+        self.start_in_thread()
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not any("fake BDS ready" in line for line in self.echo_lines):
+            time.sleep(0.05)
+        self.assertTrue(any("fake BDS ready" in line for line in self.echo_lines), self.echo_lines[-10:])
+        request_stop(self.run_dir)
+        self.assertEqual(self.join(), 0)
+        self.assertIn("WARN web:", self.start_stdout.getvalue())
+        self.assertIn("the server starts anyway", self.start_stdout.getvalue())
+
     def test_start_refuses_on_version_mismatch_and_points_at_update(self) -> None:
         (self.root / "server" / "version.txt").write_text("99.99", encoding="utf-8")
         command, marker = self.marker_command()

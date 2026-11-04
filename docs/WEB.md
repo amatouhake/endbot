@@ -2,8 +2,8 @@
 
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
 the answers to the former open points (see [settled points](#settled-points)). Steps 1 (the supervisor policy, P10), 2a
-(accounts and link codes) 2b (WebAuthn and sessions in endbotd), 2c (the trusted site), 3a (the protocol), 3b (endbotd's link) and 3c (the
-Worker and Durable Object) are implemented; there is no deploy or UI yet.
+(accounts and link codes) 2b (WebAuthn and sessions in endbotd), 2c (the trusted site), 3a (the protocol), 3b (endbotd's link), 3c (the Worker and
+Durable Object) and 4 (`endbot web deploy`, checked against a fake API only) are implemented; there is no UI yet.
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -59,7 +59,8 @@ browser ──HTTPS──▶ Worker (Hono: static UI, cookie, Origin check, rate
    rejected, like the other secrets);
 2. uploads the prebuilt Worker bundle, its static assets and Durable Object migrations through the Cloudflare API;
 3. sets the Worker secret `ENDBOTD_LINK_KEY` (public key + key id) and the plain variable `ENDBOT_ORIGIN`;
-4. writes `[web]` (origin, account id, worker name, key id) into `endbot.toml`, regenerates `endbotd.toml`;
+4. writes `[web]` (origin, account id, worker name) into `endbot.toml`, regenerates `endbotd.toml`; the key id is derived
+   from the public key;
 5. waits until endbotd reports the link up, or says why not.
 
 This refines Decision 3's "pairing secret": because deploy runs next to endbotd, it can install the public key
@@ -389,7 +390,9 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
 4. **Deploy.** `endbot web deploy|rotate-key` through the Cloudflare API, token handling (P9), domain-change
    confirmation (P4), doctor checks (link up, protocol match, origin configured). Delegable against this document,
    Claude reviewing the token handling. First confirm that static assets upload through the API alone; fall back to a
-   pinned wrangler if not (Decision 3).
+   pinned wrangler if not (Decision 3). Done against a fake API. Cloudflare's direct-upload guide documents the API-only
+   path, so no wrangler fallback is planned unless step 10's real deploy shows otherwise. The key id is derived from
+   the public key, so `[web]` keeps no key id.
 5. **UI: sign-in, link, devices, status and logs** (P11). Svelte 5 + Vite, SimpleWebAuthn, message catalog.
    Delegable. Playwright with a virtual authenticator against the local Workers runtime.
 6. **Script editing** (BOT-013 goals): `script.*` messages over existing endbotd script operations, CodeMirror 6,

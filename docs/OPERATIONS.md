@@ -215,6 +215,16 @@ ends that player's web sessions at once and keeps the account and passkeys for a
 `endbot web revoke --site-sessions` ends every session and removes every passkey that came through the optional trusted
 site, for a suspected key exposure ([P12](WEB.md#p12-trusted-external-site-optional-off-by-default)); `endbot doctor` checks that site's configuration.
 
+### Deploying the web
+
+`endbot web deploy --account-id <id>` uploads the prebuilt Worker to your own Cloudflare account through its API; no Node
+or Wrangler is needed. It creates the link key once, in `state/secrets/web-link.key`, and installs only its public half.
+It writes `[web]` into `endbot.toml` and waits for the link. The API token comes from a hidden prompt or
+`CLOUDFLARE_API_TOKEN`, is never an argument and is never stored. `--domain <host> --zone-id <id>` uses a custom domain.
+Moving to another origin makes every passkey unusable, so it needs `--confirm-domain-change` and then deletes all
+passkeys and sessions. `endbot web rotate-key` replaces the link key. `endbot doctor --live` reports the link. A web
+problem is a FAIL in `endbot doctor` but only a warning for `endbot start`: the broken part stays off, and the server runs.
+
 ### Runtime grants and revocations
 
 While `endbot start` is running, use another terminal:

@@ -37,6 +37,8 @@
   let runForm = $state<any>(null);
   let values = $state<Record<string, any>>({});
   let moreMenu = $state<HTMLDetailsElement>();
+  // Only the answer to the latest choice may fill the editor.
+  let latest = 0;
 
   const dirty = $derived(open !== null && draft !== open.source);
   const shown = $derived(scripts
@@ -87,7 +89,9 @@
   }
 
   async function load(script: string): Promise<void> {
+    const ticket = ++latest;
     const answer = await connection.request("script.get", { name: script });
+    if (ticket !== latest) return;
     clear();
     creating = false;
     if (answer.code !== "ok") {
@@ -111,6 +115,7 @@
       return;
     }
     if (wanted === null) {
+      latest += 1;
       clear();
       creating = false;
       open = null;
@@ -127,6 +132,7 @@
 
   async function startNew(source = "params {}\n\n"): Promise<void> {
     if (!(await leaveOk())) return;
+    latest += 1;
     clear();
     creating = true;
     name = "";
@@ -137,6 +143,7 @@
 
   async function goBack(): Promise<void> {
     if (!(await leaveOk())) return;
+    latest += 1;
     clear();
     creating = false;
     open = null;

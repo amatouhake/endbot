@@ -465,10 +465,22 @@ test("the page keeps to its Content-Security-Policy", async ({ page, context }) 
   expect(violations).toEqual([]);
 });
 
-test("revoking the grant ends an open page at once", async ({ page, context }) => {
+test("a broken address still opens the page", async ({ page, context }) => {
+  await withAuthenticator(context, page);
+  await page.goto("/bots/%E0%A4%A");
+  await expect(page.getByRole("heading", { name: "E2E server" })).toBeVisible();
+});
+
+test("revoking the grant ends an open page at once, and takes an open question with it", async ({ page, context }) => {
   await start(page, context);
+  await tab(page, "Groups");
+  await page.getByLabel("New Group name").fill("secret_group");
+  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Delete Group" }).click();
+  await expect(page.getByRole("dialog")).toContainText("secret_group");
   await ask("revoke");
   await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("secret_group")).toHaveCount(0);
   await page.getByRole("button", { name: "Sign in with a passkey" }).click();
   await expect(page.getByRole("alert")).toBeVisible();
 });

@@ -10,6 +10,13 @@ export interface Request {
 
 export const dialogs = $state<{ current: Request | null }>({ current: null });
 
+/** The person asked is gone: what was on show must go too. */
+export function cancelDialog(): void {
+  const request = dialogs.current;
+  dialogs.current = null;
+  request?.resolve(null);
+}
+
 export function confirmDialog(title: string, confirm: string, options: { message?: string; danger?: boolean } = {}):
 Promise<boolean> {
   return new Promise((resolve) => {

@@ -27,6 +27,9 @@ from endbot_core.script_forms import TEMPLATES, ScriptGuard
 
 LOG_LINES = 200
 POLL_SECONDS = 2.0
+# Script commands worth a history line. The others answer with what a script holds, which belongs on its own screen.
+SCRIPT_HISTORY = frozenset({"copy", "delete", "private", "reload", "rename", "restore", "run", "save", "share", "stop",
+                            "visibility"})
 TARGET_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}")
 SCRIPT_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 # Not for the web: an in-game screen, chat help, and what stays with the console.
@@ -74,7 +77,9 @@ class WebApi:
     def handle(self, token: str, conn: str, message: object, push: Callable[[object], None]) -> dict | None:
         language = message.get("lang") if isinstance(message, dict) else None
         language = language if language in LANGUAGES else "en"
-        principal = self._auth.principal(token, language)
+        # A page reads the Bot on show by itself, for as long as it stays open: that is no sign of anyone there.
+        by_itself = isinstance(message, dict) and message.get("type") == "query" and message.get("what") == "bot"
+        principal = self._auth.principal(token, language, active=not by_itself)
         if principal is None:
             return {"type": "result", "code": "signed_out"}
         if not isinstance(message, dict):
@@ -356,7 +361,7 @@ class WebApi:
             targets = {conn: entry for conn, entry in self._subscribers.items() if wanted(entry)}
         live = []
         for conn, entry in targets.items():
-            if self._auth.principal(entry.token) is not None:
+            if self._auth.principal(entry.token, active=False) is not None:
                 live.append(entry)
             else:
                 self.connection_closed(conn)
@@ -383,10 +388,11 @@ class WebApi:
         """What one of this player's commands answered, from chat or the web, for their history."""
         xuid = getattr(source, "xuid", None)
         lines = [_plain(line) for line in result.messages]
-        if not xuid or not lines:
+        scripted = root == "botscript"
+        if not xuid or not lines or (scripted and (arguments[:1] or [""])[0].lower() not in SCRIPT_HISTORY):
             return
-        # A save's second word is the whole source, and a form's menu steps say nothing a person typed.
-        words = arguments[:2] if root == "botscript" and arguments[:1] == ["save"] else arguments
+        # Past a script's name come its whole source or the values it is run with, which may be anything.
+        words = arguments[:2] if scripted else arguments
         moment = self._clock()
         entry = {"time": moment, "kind": "command", "level": "info" if result.code == "ok" else "warning",
                  "command": f"/{root} {' '.join(words)}"[:200], "code": result.code, "lines": lines}
@@ -410,7 +416,7 @@ class WebApi:
             return
         profiles = self._profiles()
         for entry in targets:
-            principal = self._auth.principal(entry.token, entry.language)
+            principal = self._auth.principal(entry.token, entry.language, active=False)
             if principal is None:
                 continue
             status = self._status(principal, profiles)

@@ -5,7 +5,15 @@ const SECTIONS: Section[] = ["bots", "scripts", "groups", "history", "devices"];
 function read(): { section: Section; item: string | null } {
   const [first, second] = location.pathname.split("/").filter(Boolean);
   const section = SECTIONS.includes(first as Section) ? (first as Section) : "bots";
-  return { section, item: second ? decodeURIComponent(second) : null };
+  return { section, item: second ? decoded(second) : null };
+}
+
+function decoded(text: string): string | null {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return null;
+  }
 }
 
 export const route = $state(read());

@@ -109,7 +109,9 @@
       </section>
       <section class="card">
         <h2>{t("groupMembers")}</h2>
-        {#if !current || current.members.length === 0}
+        {#if status?.bots === null}
+          <p class="quiet">{t("botsUnknown")}</p>
+        {:else if !current || current.members.length === 0}
           <p class="quiet">{t("noMembers")}</p>
         {:else}
           <ul class="members">

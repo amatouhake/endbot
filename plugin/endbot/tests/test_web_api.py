@@ -215,6 +215,15 @@ class WebApiTests(unittest.TestCase):
                                SimpleNamespace(messages=("saved",), code="ok"))
         self.assertEqual(self.ask(type="query", what="log")["data"][0]["command"], "/botscript save line")
 
+    def test_a_scripts_values_and_contents_stay_out_of_the_history(self):
+        to = Principal("player", xuid=XUID, player_id=PLAYER)
+        self.api.record_result(to, ["run", "deploy", "key=secret"], "botscript",
+                               SimpleNamespace(messages=("started",), code="ok"))
+        self.api.record_result(to, ["show", "deploy"], "botscript", SimpleNamespace(messages=("secret source",), code="ok"))
+        entries = [entry for entry in self.ask(type="query", what="log")["data"] if entry["kind"] == "command"]
+        self.assertEqual([entry["command"] for entry in entries], ["/botscript run deploy"])
+        self.assertNotIn("secret", str(entries))
+
     def test_someone_elses_results_stay_out_of_the_history(self):
         other = Principal("player", xuid=OTHER_XUID, player_id=PLAYER)
         self.api.record_result(other, ["x", "jump"], "bot", SimpleNamespace(messages=("done",), code="ok"))

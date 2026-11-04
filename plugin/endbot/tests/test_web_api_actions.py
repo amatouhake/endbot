@@ -107,6 +107,30 @@ class BotQueryTests(WebActionCase):
         self.assertEqual(self.ask(type="query", what="log")["data"], before)
 
 
+class IdleSessionTests(WebActionCase):
+    def seen(self):
+        return self.service.web.auth.session(self.token, active=False)["lastSeen"]
+
+    def age_the_session(self):
+        web = self.service.web
+        session = web.auth.session(self.token, active=False)
+        web.store.update_session(session["hash"], lastSeen=session["lastSeen"] - 7200)
+        return self.seen()
+
+    def test_a_page_left_open_is_idle(self):
+        self.ask(type="subscribe", topic="status")
+        before = self.age_the_session()
+        self.api.poll()
+        with patch.object(self.service.commands.world, "observe", return_value=None):
+            self.ask(type="query", what="bot", name="Steve")
+        self.assertEqual(self.seen(), before)
+
+    def test_what_a_person_does_is_not(self):
+        before = self.age_the_session()
+        self.ask(type="query", what="status")
+        self.assertGreater(self.seen(), before)
+
+
 class ScriptTests(WebActionCase):
     def declared(self):
         """No runner in this suite: the declaration check is the part the runner answers."""

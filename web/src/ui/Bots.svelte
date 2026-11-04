@@ -48,7 +48,9 @@
     detailProblem = "";
     if (!name || !active || !isOnline) return;
     void read(name);
-    const timer = setInterval(() => void read(name), READ_EVERY_MS);
+    const timer = setInterval(() => {
+      if (!document.hidden) void read(name);
+    }, READ_EVERY_MS);
     return () => clearInterval(timer);
   });
 

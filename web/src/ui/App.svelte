@@ -3,6 +3,7 @@
   import Bots from "./Bots.svelte";
   import Devices from "./Devices.svelte";
   import Dialog from "./Dialog.svelte";
+  import { cancelDialog } from "./dialogs.svelte";
   import Groups from "./Groups.svelte";
   import History from "./History.svelte";
   import { errorText, t } from "./i18n";
@@ -70,6 +71,7 @@
   function forgetAccount(): void {
     clearTimeout(retry);
     retryDelay = RETRY_FIRST_MS;
+    cancelDialog();
     status = null;
     log = [];
     notice = "";
@@ -151,7 +153,21 @@
     connection?.close();
     connection = null;
     forgetAccount();
-    if (!(await connect())) throw new ApiError("unavailable", 0);
+    if (await connect()) return;
+    await showSignIn();
+    throw new ApiError("unavailable", 0);
+  }
+
+  /** The same person, confirmed again on another session: the screens and what is typed in them stay. */
+  async function reauthenticated(): Promise<void> {
+    const previous = connection;
+    if (await connect()) {
+      previous?.close();
+      return;
+    }
+    previous?.close();
+    await showSignIn();
+    error = errorText("unavailable");
   }
 
   async function signOut(): Promise<void> {
@@ -265,7 +281,7 @@
         <div class="view"><History {log} /></div>
       {/if}
       {#if route.section === "devices"}
-        <div class="view"><Devices revision={devicesRevision} signedIn={afterSignIn} /></div>
+        <div class="view"><Devices revision={devicesRevision} signedIn={reauthenticated} /></div>
       {/if}
     </div>
   </div>

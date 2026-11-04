@@ -7,7 +7,11 @@
 
   $effect(() => {
     const request = dialogs.current;
-    if (!element || !request) return;
+    if (!element) return;
+    if (!request) {
+      if (element.open) element.close();
+      return;
+    }
     text = request.input?.value ?? "";
     if (!element.open) element.showModal();
   });

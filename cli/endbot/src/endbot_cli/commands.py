@@ -70,6 +70,7 @@ def _fail(message: str) -> int:
 def run_start(
     paths: InstancePaths,
     *,
+    exit_with_bds: bool = False,
     environ: Mapping[str, str] | None = None,
     stdin: Iterable[str] | None | object = _STDIN_DEFAULT,
     echo: Callable[[str], None] | None = None,
@@ -178,6 +179,13 @@ def run_start(
         result = check_local_bot_auth(server, paths)
         return None if result.status != FAIL else f"{result.name}: {result.message}"
 
+    def recheck_ports() -> str | None:
+        # The checks a first start runs before the runtime, for `start` after BDS exited (docs/WEB.md P10).
+        problem = lan_port_check() if uses_lan_discovery(config) and lan_port_check is not None else None
+        if problem is None and server_port_check is not None:
+            problem = server_port_check(read_server_port(server)[0])
+        return problem
+
     options = SupervisorOptions(
         run_dir=paths.state_run,
         runtime_command=tuple(runtime_command),
@@ -194,9 +202,13 @@ def run_start(
         restart_max_backoff=restart_max_backoff,
         restart_max_failures=restart_max_failures,
         restart_failure_window=restart_failure_window,
+        keep_endbotd_after_bds=config.web.enabled and not exit_with_bds,
     )
     stdin_stream = sys.stdin if stdin is _STDIN_DEFAULT else stdin
-    supervisor = Supervisor(options, stdin=stdin_stream, echo=echo, pre_server_check=recheck_local_bot_auth)
+    supervisor = Supervisor(
+        options, stdin=stdin_stream, echo=echo, pre_server_check=recheck_local_bot_auth,
+        pre_restart_check=recheck_ports,
+    )
     if install_signal_handlers:
         _install_signal_handlers(supervisor)
     return supervisor.run()

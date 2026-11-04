@@ -24,7 +24,7 @@ TRANSPORTS = ("nethernet",)
 # direct dials server-port over HTTP; lan needs UDP 7551, which one program per machine can own.
 DEFAULT_NETHERNET_SIGNALLING = "direct"
 NETHERNET_SIGNALLINGS = ("direct", "lan")
-SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting", "permissions")
+SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting", "permissions", "web")
 LANGUAGES = ("auto", "en", "ja")
 DEFAULT_LANGUAGE = "auto"
 VISIBILITIES = ("shared", "private")
@@ -97,6 +97,11 @@ class PermissionsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class WebConfig:
+    enabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class EndbotConfig:
     server: ServerConfig
     controllers: ControllersConfig
@@ -106,6 +111,7 @@ class EndbotConfig:
     ui: UiConfig = UiConfig()
     scripting: ScriptingConfig = ScriptingConfig()
     permissions: PermissionsConfig = PermissionsConfig()
+    web: WebConfig = WebConfig()
 
 
 def _fail(path: Path, key: str, problem: str, fix: str) -> ConfigError:
@@ -362,6 +368,17 @@ def _load_permissions(path: Path, document: dict[str, Any]) -> PermissionsConfig
     return PermissionsConfig(bots_default=values["bots-default"], groups_default=values["groups-default"])
 
 
+def _load_web(path: Path, document: dict[str, Any]) -> WebConfig:
+    table = document.get("web", {})
+    if not isinstance(table, dict):
+        raise _fail(path, "web", "must be a table", "write it as a [web] section")
+    _reject_unknown_keys(path, table, "web", ("enabled",))
+    enabled = table.get("enabled", False)
+    if type(enabled) is not bool:
+        raise _fail(path, "web.enabled", "must be a boolean", "use enabled = false or true")
+    return WebConfig(enabled=enabled)
+
+
 def load_config(path: Path) -> EndbotConfig:
     """Load and validate ``endbot.toml``; raise :class:`ConfigError` on any violation."""
 
@@ -394,4 +411,5 @@ def load_config(path: Path) -> EndbotConfig:
         ui=_load_ui(path, document),
         scripting=_load_scripting(path, document),
         permissions=_load_permissions(path, document),
+        web=_load_web(path, document),
     )

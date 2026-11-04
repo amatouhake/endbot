@@ -165,7 +165,8 @@ tells them in chat. Runs are never resumed: a Luau VM's state is not persisted, 
 twice.
 
 BDS exit keeps today's whole-instance stop in BOT-020. Keeping endbotd alive while BDS is stopped (for the web's
-status and script editing) is a supervisor policy change for BOT-021; P2, P4 and P6 already make endbotd survive a
+status and script editing) is a supervisor policy change for BOT-021, opt-in through `[web] enabled`
+([WEB.md P10](WEB.md#p10-endbotd-keeps-running-while-bds-is-stopped)); P2, P4 and P6 already make endbotd survive a
 missing plugin, so that change is small.
 
 ### P7. Stores move into `state/`, and both update directions carry them

@@ -165,6 +165,25 @@ class HealthyInstanceTests(DoctorTestCase):
         self.assertEqual(self.status_of(self.doctor(), "endbotd-token"), FAIL)
 
 
+class WebTests(DoctorTestCase):
+    def enable(self, text: str) -> None:
+        with open(self.paths.endbot_toml, "a", encoding="utf-8") as stream:
+            stream.write(f"\n[web]\n{text}\n")
+
+    def test_skipped_when_off(self) -> None:
+        self.assertEqual(self.status_of(self.doctor(), "web"), SKIP)
+
+    def test_enabled_without_an_origin_says_to_deploy(self) -> None:
+        self.enable("enabled = true")
+        self.assertEqual(self.status_of(self.doctor(), "web"), WARN)
+
+    def test_an_origin_needs_the_link_key(self) -> None:
+        self.enable("enabled = true\norigin = 'https://a.example'")
+        self.assertEqual(self.status_of(self.doctor(), "web"), FAIL)
+        (self.paths.state_secrets / "web-link.key").write_text("x", encoding="utf-8")
+        self.assertEqual(self.status_of(self.doctor(), "web"), PASS)
+
+
 class TrustedSiteTests(DoctorTestCase):
     def enable(self, **changes) -> None:
         section = {"name": "'A'", "mode": "'link'", "issuer": "'https://a.example'",

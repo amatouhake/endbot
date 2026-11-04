@@ -382,6 +382,28 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"enabled, {public_path} is a P-384 key matching {paths.owner_private_key}")
 
 
+def check_web(context: DoctorContext, config: EndbotConfig, paths: InstancePaths) -> CheckResult:
+    """Origin configured, link key present and, with --live, whether endbotd reports the link up (docs/WEB.md)."""
+    name = "web"
+    if not config.web.enabled:
+        return CheckResult(SKIP, name, "the web is off")
+    if not config.web.origin:
+        return CheckResult(WARN, name, "[web] enabled but no origin; run `endbot web deploy`")
+    key = paths.state_secrets / "web-link.key"
+    if not key.is_file() or key.is_symlink():
+        return CheckResult(FAIL, name, f"{key} is missing or not a regular file; run `endbot web deploy`")
+    if not context.live:
+        return CheckResult(PASS, name, f"origin {config.web.origin}; `endbot doctor --live` checks the link")
+    from endbot_cli.endbotd_client import EndbotdError, web_request
+
+    try:
+        result = web_request(paths.state_run, paths.endbotd_token, config.endbotd.link_port, "status", timeout=5)
+    except (OSError, EndbotdError) as error:
+        return CheckResult(WARN, name, f"cannot ask endbotd about the link: {error}")
+    # The message names a protocol mismatch and its fix.
+    return CheckResult(PASS if result.get("linked") else FAIL, name, result["messages"][0])
+
+
 def check_trusted_site(config: EndbotConfig, paths: InstancePaths) -> CheckResult:
     """[web.trusted-site] (docs/WEB.md P12): a broken section keeps the site off, so the operator should know."""
     name = "web-trusted-site"
@@ -994,6 +1016,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
         results.append(CheckResult(SKIP, "endbotd-config", "endbot.toml is invalid"))
     else:
         results.append(check_endbotd_config(config, paths))
+        results.append(check_web(context, config, paths))
         results.append(check_trusted_site(config, paths))
     results.append(check_endbotd_link(paths))
 

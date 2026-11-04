@@ -188,6 +188,13 @@ class WebService:
                    "The controller grant is unchanged.")
         return {"ok": True, "messages": [message, note] if note else [message]}
 
+    def domain_changed(self) -> dict:
+        if self.store is None:
+            return {"ok": False, "messages": ["Web store is unavailable; see the endbotd log"]}
+        self.on_sessions_removed(self.store.delete_credentials())
+        self._log("info", "Web passkeys and sessions deleted: the domain changed")
+        return {"ok": True, "messages": ["Every web passkey and session was deleted"]}
+
     def revoke_site_sessions(self) -> dict:
         """``endbot web revoke --site-sessions``: for a suspected key exposure (P12)."""
         if self.store is None:

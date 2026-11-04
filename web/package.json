@@ -1,0 +1,26 @@
+{
+  "name": "endbot-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Endbot web: a Cloudflare Worker relay, a Durable Object and a Svelte UI. See docs/WEB.md.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "generate": "node scripts/generate-protocol.mjs",
+    "check": "npm run generate && tsc --noEmit",
+    "test": "npm run generate && vitest run",
+    "build:worker": "npm run generate && esbuild src/worker/index.ts --bundle --format=esm --target=es2022 --external:cloudflare:workers --outfile=dist/worker/index.js"
+  },
+  "dependencies": {
+    "hono": "4.13.16"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.5.1",
+    "@cloudflare/workers-types": "5.20261019.1",
+    "ajv": "8.20.0",
+    "esbuild": "0.28.2",
+    "json-schema-to-typescript": "16.0.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}

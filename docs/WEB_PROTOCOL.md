@@ -31,6 +31,7 @@ endbotd opens `wss://<origin>/link`. Every frame is one JSON text message of at 
 - `conn` is a string chosen by the Durable Object, unique for the life of the link.
 - `session` is the token from the `__Host-endbot_session` cookie, or null; `siteCookie` the value of `__Host-endbot_site`,
   or null. `ipBucket` is a hash for coarse limits, never an address.
+- Frames from an unproven link are never relayed, and an unproven link that sends anything but a valid proof is closed.
 
 ### An HTTP request
 

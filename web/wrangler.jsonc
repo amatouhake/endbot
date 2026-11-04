@@ -1,0 +1,10 @@
+// For local tests only. `endbot web deploy` uploads the prebuilt bundle through the Cloudflare API with
+// these same bindings and migrations; operators need no Wrangler or Node.
+{
+  "name": "endbot-web",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-08-01",
+  "durable_objects": { "bindings": [{ "name": "RELAY", "class_name": "Relay" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Relay"] }],
+  "observability": { "enabled": false }
+}

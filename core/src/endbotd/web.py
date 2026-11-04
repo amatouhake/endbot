@@ -62,10 +62,23 @@ class WebService:
             "warning", "Web link code entry closed for 10 minutes after too many wrong codes"))
         # The relay closes these sessions' connections (P6); set once the link exists.
         self.on_sessions_removed: Callable[[list[str]], None] = lambda hashes: None
+        # Told when a passkey is added, so the player hears about it in chat (P4).
+        self.on_passkey_added: Callable[[dict], None] = lambda account: None
+        self.auth = None
+        if self.enabled and self.origin is not None and self.store is not None:
+            # Imported here: an instance without the web never loads the WebAuthn library.
+            try:
+                from endbotd.web_auth import WebAuth
+            except ImportError as error:
+                self._log("error", f"Web disabled: the WebAuthn library is missing ({error}); reinstall Endbot")
+            else:
+                self.auth = WebAuth(self.store, self.codes, self.origin, authority, log=self._log,
+                                    on_sessions_removed=lambda hashes: self.on_sessions_removed(hashes),
+                                    on_passkey_added=lambda account: self.on_passkey_added(account))
 
     @property
     def available(self) -> bool:
-        return self.enabled and self.origin is not None and self.store is not None
+        return self.auth is not None
 
     # -- /botweb --------------------------------------------------------------
 
@@ -83,7 +96,11 @@ class WebService:
             self.codes.void([xuid])
             if self.store.account_for_xuid(xuid) is None:
                 return [tr(language, "This player has no web account")]
-            self._remove_account(xuid)
+            try:
+                self._remove_account(xuid)
+            except OSError as error:
+                self._failed_write(error)
+                return [tr(language, "The web account could not be removed; try again")]
             return [tr(language, "Web account removed; its passkeys and sessions no longer work")]
         if not self.available:
             return [tr(language, "The web is not available on this server")]
@@ -102,6 +119,10 @@ class WebService:
         self.codes.void([xuid])
         self.on_sessions_removed(self.store.delete_account(xuid))
 
+    def _failed_write(self, error: OSError) -> list[str]:
+        self._log("error", f"Web store write failed: {error}")
+        return [f"Web store write failed: {error}"]
+
     # -- the console and the endbot CLI ----------------------------------------
 
     def revoke(self, target: str) -> dict:
@@ -113,10 +134,14 @@ class WebService:
         account = self._find_account(target)
         if account is None:
             return {"ok": False, "messages": [f"No web account for {target}"]}
-        self._remove_account(account["xuid"])
+        try:
+            self._remove_account(account["xuid"])
+        except OSError as error:
+            return {"ok": False, "messages": self._failed_write(error)}
         self._log("info", f"Web account of {account['gamertag']} revoked")
-        return {"ok": True, "messages": [f"Web account of {account['gamertag']} removed; its passkeys and "
-                                         "sessions no longer work. The controller grant is unchanged."]}
+        message = (f"Web account of {account['gamertag']} removed; its passkeys and sessions no longer work. "
+                   "The controller grant is unchanged.")
+        return {"ok": True, "messages": [message]}
 
     def _find_account(self, target: str) -> dict | None:
         if target.startswith("xuid:"):
@@ -149,7 +174,12 @@ class WebService:
                 allowed = self._authority.control_decision(account["gamertag"], account["xuid"], account["uuid"])[0]
             if not allowed:
                 self.codes.void([account["xuid"]])
-                removed = self.store.delete_sessions(account["xuid"])
+                try:
+                    removed = self.store.end_sessions_for_revoke(account["xuid"])
+                except OSError as error:
+                    # The grant revision check still refuses these sessions on every request.
+                    self._failed_write(error)
+                    continue
                 if removed:
                     self._log("info", f"Web sessions of {account['gamertag']} ended: controller grant revoked")
                     self.on_sessions_removed(removed)

@@ -12,6 +12,8 @@ license = "Apache-2.0"
 authors = [{ name = "amatouhake and Endbot contributors" }]
 dependencies = [
   "cryptography>=41",
+  # endbotd's web, which the bundle runs next to this CLI. A manual plugin install has no use for it.
+  "webauthn==3.0.1",
   "tomlkit>=0.12",
   "tomli>=2; python_version < \"3.11\"",
 ]

@@ -104,10 +104,10 @@ def check_python_imports(python: Path, allow_missing_endstone: bool) -> None:
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     expected = lock["endstone"]["package_version"]
     if allow_missing_endstone:
-        script = "import endbot_cli, cryptography, tomlkit; print('cli-ok')"
+        script = "import endbot_cli, cryptography, tomlkit, webauthn; print('cli-ok')"
     else:
         script = (
-            "import endstone, endstone_endbot, endbot_cli, cryptography, tomlkit; "
+            "import endstone, endstone_endbot, endbot_cli, cryptography, tomlkit, webauthn; "
             "import importlib.metadata; "
             f"assert importlib.metadata.version('endstone') == {expected!r}, importlib.metadata.version('endstone'); "
             "print('imports-ok')"

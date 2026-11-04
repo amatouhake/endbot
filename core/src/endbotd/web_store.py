@@ -1,9 +1,10 @@
 """Web accounts, passkeys and sessions in ``state/web/``, and in-memory link codes (docs/WEB.md P3, P4, P7).
 
 endbotd is the only reader and writer. A session token is never stored, only its
-SHA-256. A change is made in memory first, so a failed write cannot leave a
-revoked session usable; the error reaches the caller. Link codes live in memory
-only: an endbotd restart voids them, which costs a retry.
+SHA-256. Every change reaches the disk first and memory second, so memory and disk
+never disagree: a failed write changes nothing and the error reaches the caller,
+and a restart cannot bring back something that was reported as removed. Link codes
+live in memory only: an endbotd restart voids them, which costs a retry.
 """
 
 from __future__ import annotations
@@ -88,15 +89,44 @@ class WebStore:
                 raise WebStoreError("accounts.json has an incomplete account")
         if len({account["xuid"] for account in self._accounts}) != len(self._accounts):
             raise WebStoreError("accounts.json has two accounts for one XUID")
+        for entry in self._passkeys:
+            if not (all(isinstance(entry.get(field), str) and entry[field]
+                        for field in ("id", "account", "publicKey", "rpId"))
+                    and type(entry.get("signCount")) is int and entry["signCount"] >= 0):
+                raise WebStoreError("passkeys.json has an incomplete passkey")
+        for entry in self._sessions:
+            if not (all(isinstance(entry.get(field), str) and entry[field]
+                        for field in ("id", "hash", "account", "via"))
+                    and all(isinstance(entry.get(field), (int, float)) and not isinstance(entry[field], bool)
+                            for field in ("created", "lastSeen", "assertedAt"))
+                    and type(entry.get("grantRevision")) is int):
+                raise WebStoreError("sessions.json has an incomplete session")
 
     def _path(self, key: str) -> Path:
         return self.directory / f"{key}.json"
+
+    def _commit_accounts(self, entries: list[dict]) -> None:
+        _save(self._path(ACCOUNTS), ACCOUNTS, entries)
+        self._accounts = entries
+
+    def _commit_passkeys(self, entries: list[dict]) -> None:
+        _save(self._path(PASSKEYS), PASSKEYS, entries)
+        self._passkeys = entries
+
+    def _commit_sessions(self, entries: list[dict]) -> None:
+        _save(self._path(SESSIONS), SESSIONS, entries)
+        self._sessions = entries
 
     # -- accounts -------------------------------------------------------------
 
     def accounts(self) -> list[dict]:
         with self._lock:
             return [dict(account) for account in self._accounts]
+
+    def account(self, account_id: str) -> dict | None:
+        with self._lock:
+            account = next((entry for entry in self._accounts if entry["id"] == account_id), None)
+            return dict(account) if account is not None else None
 
     def account_for_xuid(self, xuid: str) -> dict | None:
         with self._lock:
@@ -112,7 +142,7 @@ class WebStore:
     def ensure_account(self, xuid: str, player_id: str, gamertag: str) -> dict:
         """The XUID's account, created if missing; the GamerTag and player id follow the latest proof."""
         with self._lock:
-            account = next((entry for entry in self._accounts if entry["xuid"] == xuid), None)
+            account = self.account_for_xuid(xuid)
             if account is None:
                 account = {
                     "id": secrets.token_urlsafe(16),
@@ -123,25 +153,32 @@ class WebStore:
                     "userHandle": base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode("ascii"),
                     "created": self._clock(),
                 }
-                self._accounts.append(account)
-            elif account["uuid"] == player_id and account["gamertag"] == gamertag:
+                self._commit_accounts([*self._accounts, account])
                 return dict(account)
-            else:
-                account.update(uuid=player_id, gamertag=gamertag)
-            _save(self._path(ACCOUNTS), ACCOUNTS, self._accounts)
+            if account["uuid"] == player_id and account["gamertag"] == gamertag:
+                return account
+            account.update(uuid=player_id, gamertag=gamertag)
+            self._commit_accounts([account if entry["xuid"] == xuid else entry for entry in self._accounts])
             return dict(account)
 
     def delete_account(self, xuid: str) -> list[str]:
         """Remove the account with its passkeys and sessions; return the removed session hashes."""
         with self._lock:
-            account = next((entry for entry in self._accounts if entry["xuid"] == xuid), None)
+            account = self.account_for_xuid(xuid)
             if account is None:
                 return []
+            # Sessions first: if a later write fails, nobody stays signed in on what is left.
             removed = self.delete_sessions(xuid)
-            self._passkeys = [entry for entry in self._passkeys if entry.get("account") != account["id"]]
-            self._accounts = [entry for entry in self._accounts if entry is not account]
-            _save(self._path(PASSKEYS), PASSKEYS, self._passkeys)
-            _save(self._path(ACCOUNTS), ACCOUNTS, self._accounts)
+            self._commit_passkeys([entry for entry in self._passkeys if entry.get("account") != account["id"]])
+            self._commit_accounts([entry for entry in self._accounts if entry["xuid"] != xuid])
+            return removed
+
+    def delete_credentials(self) -> list[str]:
+        """A new domain: every passkey and session goes, accounts stay (P4). Returns the removed hashes."""
+        with self._lock:
+            removed = [entry["hash"] for entry in self._sessions]
+            self._commit_sessions([])
+            self._commit_passkeys([])
             return removed
 
     # -- passkeys and sessions ------------------------------------------------
@@ -154,16 +191,74 @@ class WebStore:
         with self._lock:
             return [dict(entry) for entry in self._sessions if entry.get("account") == account_id]
 
+    def find_passkey(self, credential_id: str) -> dict | None:
+        with self._lock:
+            entry = next((entry for entry in self._passkeys if entry["id"] == credential_id), None)
+            return dict(entry) if entry is not None else None
+
+    def add_passkey(self, passkey: dict) -> None:
+        with self._lock:
+            self._commit_passkeys([*self._passkeys, passkey])
+
+    def update_passkey(self, credential_id: str, **fields: object) -> None:
+        with self._lock:
+            self._commit_passkeys([{**entry, **fields} if entry["id"] == credential_id else entry
+                                   for entry in self._passkeys])
+
+    def delete_passkey(self, credential_id: str) -> None:
+        with self._lock:
+            self._commit_passkeys([entry for entry in self._passkeys if entry["id"] != credential_id])
+
+    def find_session(self, token_hash: str) -> dict | None:
+        with self._lock:
+            entry = next((entry for entry in self._sessions if entry["hash"] == token_hash), None)
+            return dict(entry) if entry is not None else None
+
+    def add_session(self, session: dict) -> None:
+        with self._lock:
+            self._commit_sessions([*self._sessions, session])
+
+    def update_session(self, token_hash: str, **fields: object) -> None:
+        with self._lock:
+            self._commit_sessions([{**entry, **fields} if entry["hash"] == token_hash else entry
+                                   for entry in self._sessions])
+
+    def delete_session(self, token_hash: str) -> None:
+        with self._lock:
+            self._commit_sessions([entry for entry in self._sessions if entry["hash"] != token_hash])
+
+    def delete_sessions_via(self, via: str) -> list[str]:
+        """End every session issued a certain way (P12); return the removed hashes."""
+        with self._lock:
+            removed = [entry["hash"] for entry in self._sessions if entry["via"] == via]
+            if removed:
+                self._commit_sessions([entry for entry in self._sessions if entry["via"] != via])
+            return removed
+
+    def end_sessions_for_revoke(self, xuid: str) -> list[str]:
+        """A revoked grant (P6): ``sessionsFrom`` also refuses any older session that somehow survives,
+        independently of the grant revision file, which is documented as safe to reset."""
+        with self._lock:
+            account = self.account_for_xuid(xuid)
+            if account is None:
+                return []
+            removed = [entry["hash"] for entry in self._sessions if entry.get("account") == account["id"]]
+            if not removed:
+                return []
+            account["sessionsFrom"] = self._clock()
+            self._commit_accounts([account if entry["xuid"] == xuid else entry for entry in self._accounts])
+            self.delete_sessions(xuid)
+            return removed
+
     def delete_sessions(self, xuid: str) -> list[str]:
         """End every session of the XUID's account; the account and its passkeys stay (P6)."""
         with self._lock:
-            account = next((entry for entry in self._accounts if entry["xuid"] == xuid), None)
+            account = self.account_for_xuid(xuid)
             if account is None:
                 return []
             removed = [entry.get("hash", "") for entry in self._sessions if entry.get("account") == account["id"]]
             if removed:
-                self._sessions = [entry for entry in self._sessions if entry.get("account") != account["id"]]
-                _save(self._path(SESSIONS), SESSIONS, self._sessions)
+                self._commit_sessions([entry for entry in self._sessions if entry.get("account") != account["id"]])
             return removed
 
 

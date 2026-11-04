@@ -1,5 +1,6 @@
 """Web accounts, link codes and how revocation reaches them (docs/WEB.md P3, P4, P6, P7)."""
 
+import importlib.util
 import json
 import os
 import tempfile
@@ -15,6 +16,7 @@ from test_link import ALICE, FakePlayer, wait_for
 
 ORIGIN = "https://endbot.example"
 IDENTITY = LinkIdentity(OWNER, ALICE, "Alice")
+HAS_WEBAUTHN = importlib.util.find_spec("webauthn") is not None
 
 
 class Clock:
@@ -33,8 +35,10 @@ class WebStoreTests(unittest.TestCase):
 
     def seed(self, store, account):
         """Passkeys and sessions arrive with the ceremonies; deleting them is what is tested here."""
-        store._passkeys.append({"account": account["id"], "id": "credential"})
-        store._sessions.append({"account": account["id"], "hash": "abc"})
+        store._passkeys.append({"account": account["id"], "id": "credential", "publicKey": "key", "rpId": "a.example",
+                                "signCount": 0})
+        store._sessions.append({"account": account["id"], "hash": "abc", "id": "s1", "via": "passkey", "created": 1.0,
+                                "lastSeen": 1.0, "assertedAt": 1.0, "grantRevision": 0})
         (self.directory / "passkeys.json").write_text(
             json.dumps({"version": 1, "passkeys": store._passkeys}), encoding="utf-8")
         (self.directory / "sessions.json").write_text(
@@ -189,6 +193,7 @@ class OriginTests(unittest.TestCase):
                 web_origin(value)
 
 
+@unittest.skipUnless(HAS_WEBAUTHN, "the WebAuthn library is not installed")
 class BotWebCommandTests(ServiceHarness):
     def start_service(self, permissions=None, web=None):
         super().start_service(permissions, web={"enabled": True, "origin": ORIGIN} if web is None else web)
@@ -314,6 +319,12 @@ class BotWebCommandTests(ServiceHarness):
                 self.assertEqual(web.store.accounts(), [])
         self.assertFalse(self.service._cli_web({"operation": "revoke", "target": "Alice"})["ok"])
         self.assertTrue(self.service.authority.control_decision("Alice", OWNER, ALICE)[0])
+
+    def test_a_passkey_added_tells_the_player_in_chat(self):
+        _link, alice = self.joined_alice()
+        self.service._passkey_added({"xuid": OWNER})
+        self.message(alice, "A passkey was added to your web account")
+        self.service._passkey_added({"xuid": "2535400000000002"})
 
     def test_cli_requests_are_validated(self):
         for body in ({"operation": "delete", "target": "Alice"}, {"operation": "revoke"},

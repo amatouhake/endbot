@@ -387,6 +387,7 @@ class KeyFileTests(unittest.TestCase):
     def test_a_valid_key_loads(self):
         key = Ed25519PrivateKey.generate()
         self.path.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
+        os.chmod(self.path, 0o600)
         self.assertIsInstance(load_link_key(self.path), Ed25519PrivateKey)
 
     @unittest.skipIf(os.name == "nt", "POSIX modes")

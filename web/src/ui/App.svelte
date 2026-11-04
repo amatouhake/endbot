@@ -48,10 +48,22 @@
     }
   }
 
+  /** Everything that belongs to the account: the next person on this page must not see it. */
+  function forgetAccount(): void {
+    status = null;
+    log = [];
+    devices = null;
+    deviceCode = "";
+    notice = "";
+    reauthNeeded = false;
+    tab = "status";
+  }
+
   function onClose(signedOut: boolean): void {
     connection = null;
     status = null;
     if (signedOut) {
+      forgetAccount();
       view = "signedOut";
       void loadSignInPage();
     } else if (view === "signedIn") {
@@ -94,7 +106,7 @@
 
   async function afterSignIn(): Promise<void> {
     code = "";
-    reauthNeeded = false;
+    forgetAccount();
     connection?.close();
     connection = null;
     if (!(await connect())) error = errorText("unavailable");
@@ -128,15 +140,16 @@
   }
 
   async function signOut(): Promise<void> {
-    await post("/auth/logout").catch(() => undefined);
+    try {
+      await post("/auth/logout");
+    } catch (failure) {
+      // The session may still be valid: saying "signed out" here would be untrue.
+      error = explain(failure);
+      return;
+    }
     connection?.close();
     connection = null;
-    status = null;
-    log = [];
-    devices = null;
-    deviceCode = "";
-    notice = "";
-    tab = "status";
+    forgetAccount();
     view = "signedOut";
     await loadSignInPage();
   }

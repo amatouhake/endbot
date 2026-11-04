@@ -41,6 +41,7 @@ def main() -> None:
     origin, key_path = sys.argv[1], Path(sys.argv[2])
     key_path.write_bytes(Ed25519PrivateKey.from_private_bytes(bytes(range(32))).private_bytes(
         Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
+    key_path.chmod(0o600)
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         (root / "endbotd.token").write_text("t" * 40, encoding="utf-8")

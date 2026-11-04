@@ -12,6 +12,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from endbot_core.commands import strip_colors
 from endbot_core.control import RuntimeControlError, bot_profiles
@@ -19,6 +20,15 @@ from endbot_core.events import Event, render
 
 LOG_LINES = 200
 LANGUAGES = {"en", "ja"}
+
+
+@dataclass
+class _Subscriber:
+    xuid: str
+    topics: set[str]
+    push: Callable[[object], None]
+    language: str
+    token: str
 
 
 class WebApi:
@@ -33,8 +43,8 @@ class WebApi:
         self._clock = clock
         self._lock = threading.Lock()
         self._logs: dict[str, deque] = {}
-        # conn -> (xuid, topics, push): dropped when the connection closes.
-        self._subscribers: dict[str, tuple[str, set[str], Callable[[object], None], str]] = {}
+        # conn -> what a push needs: dropped when the connection closes, or when its session has ended.
+        self._subscribers: dict[str, _Subscriber] = {}
 
     # -- requests --------------------------------------------------------------
 
@@ -50,12 +60,12 @@ class WebApi:
         if kind == "query":
             return self._query(principal, message.get("what"))
         if kind == "subscribe" and message.get("topic") in {"status", "log"}:
-            return self._subscribe(principal, conn, message["topic"], push)
+            return self._subscribe(principal, token, conn, message["topic"], push)
         if kind == "unsubscribe" and message.get("topic") in {"status", "log"}:
             with self._lock:
                 entry = self._subscribers.get(conn)
                 if entry is not None:
-                    entry[1].discard(message["topic"])
+                    entry.topics.discard(message["topic"])
             return {"type": "result", "code": "ok"}
         return {"type": "result", "code": "unsupported"}
 
@@ -108,13 +118,25 @@ class WebApi:
         return {"time": moment, "kind": event.kind, "level": event.level,
                 "lines": [strip_colors(line) for line in lines]}
 
-    def _subscribe(self, principal, conn: str, topic: str, push: Callable[[object], None]) -> dict:
+    def _subscribe(self, principal, token: str, conn: str, topic: str, push: Callable[[object], None]) -> dict:
         with self._lock:
             entry = self._subscribers.get(conn)
-            topics = entry[1] if entry is not None else set()
+            topics = entry.topics if entry is not None else set()
             topics.add(topic)
-            self._subscribers[conn] = (principal.xuid, topics, push, principal.language)
+            self._subscribers[conn] = _Subscriber(principal.xuid, topics, push, principal.language, token)
         return {"type": "result", "code": "ok"}
+
+    def _live(self, wanted: Callable[[_Subscriber], bool]) -> list[_Subscriber]:
+        """Who to push to. A page may send nothing for days, so its session is checked here too (P5)."""
+        with self._lock:
+            targets = {conn: entry for conn, entry in self._subscribers.items() if wanted(entry)}
+        live = []
+        for conn, entry in targets.items():
+            if self._auth.principal(entry.token) is not None:
+                live.append(entry)
+            else:
+                self.connection_closed(conn)
+        return live
 
     def connection_closed(self, conn: str) -> None:
         with self._lock:
@@ -130,19 +152,14 @@ class WebApi:
         moment = self._clock()
         with self._lock:
             self._logs.setdefault(xuid, deque(maxlen=LOG_LINES)).append((moment, event))
-            targets = [entry for entry in self._subscribers.values() if entry[0] == xuid and "log" in entry[1]]
-        for _xuid, _topics, push, language in targets:
-            push({"type": "event", "topic": "log", "data": self._entry(moment, event, language)})
+        for entry in self._live(lambda entry: entry.xuid == xuid and "log" in entry.topics):
+            entry.push({"type": "event", "topic": "log", "data": self._entry(moment, event, entry.language)})
 
     def notify_account(self, xuid: str, kind: str) -> None:
         """A security notice for this account's open pages, such as a passkey just added (P4)."""
-        with self._lock:
-            targets = [entry for entry in self._subscribers.values() if entry[0] == xuid]
-        for _xuid, _topics, push, _language in targets:
-            push({"type": "event", "topic": "account", "data": {"kind": kind}})
+        for entry in self._live(lambda entry: entry.xuid == xuid):
+            entry.push({"type": "event", "topic": "account", "data": {"kind": kind}})
 
     def status_changed(self) -> None:
-        with self._lock:
-            targets = [entry for entry in self._subscribers.values() if "status" in entry[1]]
-        for _xuid, _topics, push, _language in targets:
-            push({"type": "event", "topic": "status", "data": {"bds": "up" if self._bds_up() else "down"}})
+        for entry in self._live(lambda entry: "status" in entry.topics):
+            entry.push({"type": "event", "topic": "status", "data": {"bds": "up" if self._bds_up() else "down"}})

@@ -47,7 +47,10 @@ class WebApiTests(unittest.TestCase):
         self.authority.policy.add("Alice", xuid=XUID, player_uuid=PLAYER)
         self.authority.roles.set(XUID, "controller")
         self.store = WebStore(root / "web")
-        self.auth = WebAuth(self.store, LinkCodes(), "https://endbot.example", self.authority)
+        self.clock = [1_000_000.0]
+        self.store = WebStore(root / "web", clock=lambda: self.clock[0])
+        self.auth = WebAuth(self.store, LinkCodes(), "https://endbot.example", self.authority,
+                            clock=lambda: self.clock[0])
         self.account = self.store.ensure_account(XUID, PLAYER, "Alice")
         self.token = self.auth.issue_session(self.account, "passkey")
         self.ownership = OwnershipStore(root / "ownership.json")
@@ -157,6 +160,18 @@ class WebApiTests(unittest.TestCase):
         self.ask(type="unsubscribe", topic="log")
         self.log_event(text="after")
         self.assertEqual(len(self.pushed), 1)
+
+    def test_a_page_that_only_listens_stops_hearing_when_its_session_expires(self):
+        self.ask(type="subscribe", topic="log")
+        self.ask(type="subscribe", topic="status")
+        self.log_event(text="while valid")
+        self.assertEqual(len(self.pushed), 1)
+        self.clock[0] += 8 * 86400
+        self.log_event(text="after expiry")
+        self.api.status_changed()
+        self.api.notify_account(XUID, "passkey_added")
+        self.assertEqual(len(self.pushed), 1)
+        self.assertEqual(self.api._subscribers, {})
 
     def test_a_closed_connection_drops_its_subscription(self):
         self.ask(type="subscribe", topic="log")

@@ -133,6 +133,52 @@ test("a code links a passkey, the session survives a reload, and a passkey signs
   await expect(page.getByText("Signed in as Alice")).toBeVisible();
 });
 
+test("a second device joins with a code, and the first page hears about it", async ({ browser, page, context }) => {
+  await withAuthenticator(context, page);
+  await page.goto("/");
+  await link(page);
+  await page.getByRole("button", { name: "Devices" }).click();
+  await page.getByRole("button", { name: "Add another device" }).click();
+  const shown = await page.getByText(/Code for the other device/).textContent();
+  const code = shown!.split(": ")[1]!.trim();
+
+  const other = await browser.newContext({ baseURL: ORIGIN, locale: "en-US" });
+  const second = await other.newPage();
+  await withAuthenticator(other, second);
+  await second.goto("/");
+  await second.getByLabel("Link code").fill(code);
+  await second.getByRole("button", { name: "Continue" }).click();
+  await expect(second.getByText("Signed in as Alice")).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("passkey was just added");
+  await other.close();
+});
+
+test("a session ended elsewhere leaves nothing of the account on the page", async ({ browser, page, context }) => {
+  await withAuthenticator(context, page);
+  await page.goto("/");
+  await link(page);
+  await page.getByRole("button", { name: "Devices" }).click();
+  await page.getByRole("button", { name: "Add another device" }).click();
+  await expect(page.getByText(/Code for the other device/)).toBeVisible();
+
+  const other = await browser.newContext({ baseURL: ORIGIN, locale: "en-US" });
+  const second = await other.newPage();
+  await withAuthenticator(other, second);
+  await second.goto("/");
+  await link(second);
+  await second.getByRole("button", { name: "Devices" }).click();
+  const row = second.getByRole("listitem").filter({ has: second.getByRole("button", { name: "Remove" }) }).last();
+  await row.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toBeVisible({ timeout: 15_000 });
+  await other.close();
+
+  await page.getByRole("button", { name: "Sign in with a passkey" }).click();
+  await expect(page.getByText("Signed in as Alice")).toBeVisible();
+  await page.getByRole("button", { name: "Devices" }).click();
+  await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
+  await expect(page.getByText(/Code for the other device/)).toHaveCount(0);
+});
+
 test("a wrong code says so", async ({ page, context }) => {
   await withAuthenticator(context, page);
   await page.goto("/");
@@ -180,6 +226,8 @@ test("the page keeps to its Content-Security-Policy", async ({ page, context }) 
   const response = await page.goto("/");
   expect(response!.headers()["content-security-policy"]).toContain("default-src 'self'");
   await expect(page.getByRole("heading", { name: "E2E server" })).toBeVisible();
+  await link(page);
+  for (const name of ["Log", "Devices", "Status"]) await page.getByRole("button", { name }).click();
   expect(violations).toEqual([]);
 });
 

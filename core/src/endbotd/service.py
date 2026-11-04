@@ -130,6 +130,8 @@ class EndbotService:
         if control is None:
             control = RuntimeControlClient(config.runtime_host, config.runtime_port, config.runtime_token_file,
                                            timeout=config.runtime_timeout)
+        # Read-only web queries use this one: OwnedInputs records the run journal on every request it carries.
+        self._runtime_control = control
         control = OwnedInputs(control)
         self._inputs = control
         journal_file = config.journal_file if config.journal_file.is_absolute() else config.base / config.journal_file
@@ -215,7 +217,7 @@ class EndbotService:
             return
         from endbotd.web_api import WebApi
 
-        self.web_api = WebApi(self.web.auth, commands=self.commands, scripts=self.scripts, control=self._inputs,
+        self.web_api = WebApi(self.web.auth, commands=self.commands, scripts=self.scripts, control=self._runtime_control,
                               bds_up=lambda: self.link.connected, display_name=lambda: self.web.display_name)
         self.web_link = WebLink(self.web, self.web.origin, key, __version__, ws_handler=self.web_api.handle,
                                 on_connection_closed=self.web_api.connection_closed, cache=self._web_cache,

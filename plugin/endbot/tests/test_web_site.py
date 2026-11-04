@@ -11,7 +11,7 @@ from unittest.mock import patch
 from endbot_core.link import Presence
 from endbotd.authority import Authority
 from endbotd.web import WebService
-from endbotd.web_store import LinkCodes, WebStore
+from endbotd.web_store import LinkCodes, LinkIdentity, WebStore
 
 HAS_LIBRARIES = importlib.util.find_spec("webauthn") is not None and importlib.util.find_spec("cbor2") is not None
 if HAS_LIBRARIES:
@@ -237,6 +237,12 @@ class SignatureTests(SiteCase):
                 good = self.sign(self.claims(nonce))
                 self.refused(self.finish(build(good), cookie))
 
+    def test_deeply_nested_json_is_refused_not_a_crash(self):
+        deep = b64(b"[" * 3000 + b"]" * 3000)
+        for assertion in (f"{deep}.e30.AAAA", f"{b64(b'{}')}.{deep}.AAAA"):
+            cookie, _nonce = self.begin()
+            self.refused(self.finish(assertion, cookie))
+
     def test_a_post_from_any_other_origin_is_refused(self):
         for origin in ("https://evil.example", ORIGIN, None, f"{ISSUER}/"):
             with self.subTest(origin=origin):
@@ -328,7 +334,7 @@ class LinkModeTests(SiteCase):
         verified = self.auth.handle("/auth/link/verify", {"ceremony": ceremony,
                                                           "credential": device.register(started["options"])})
         self.assertEqual(verified["status"], 200)
-        self.assertEqual(self.store.sessions(account["id"])[0]["via"], "passkey")
+        self.assertEqual(self.store.sessions(account["id"])[0]["via"], "site")
 
     def test_unknown_ceremonies_get_no_options(self):
         for body in ({"ceremony": "nope"}, {"ceremony": 5}, {}, []):
@@ -360,6 +366,8 @@ class ConfigTests(SiteCase):
     def test_invalid_sections_are_refused(self):
         for name, changes in (
             ("no name", {"name": ""}),
+            ("a malformed issuer", {"issuer": "https://["}),
+            ("a malformed start URL", {"start-url": "https://["}),
             ("wrong mode", {"mode": "both"}),
             ("http issuer", {"issuer": "http://alice.example"}),
             ("http start", {"start-url": "http://alice.example/start"}),
@@ -372,6 +380,10 @@ class ConfigTests(SiteCase):
         ):
             with self.subTest(name), self.assertRaises(SiteConfigError):
                 SiteConfig.load(self.section(**changes), self.root)
+
+    def test_a_section_that_is_not_a_table_is_refused(self):
+        with self.assertRaises(SiteConfigError):
+            SiteConfig.load("enabled", self.root)
 
     def test_a_key_on_another_curve_is_refused(self):
         name = self.write_key("p256.pem", ec.SECP256R1())
@@ -394,6 +406,9 @@ class ServiceRoutingTests(ConfigTests):
             self.assertEqual(web.http(path, {})["status"], 404)
 
     def test_a_broken_section_keeps_the_site_off_and_passkeys_on(self):
+        for section in (self.section(issuer="https://["), "not a table"):
+            with self.subTest(section=section):
+                self.assertIsNone(self.service(section).site)
         web = self.service(self.section(mode="both"))
         self.assertIsNone(web.site)
         self.assertTrue(web.available)
@@ -417,6 +432,20 @@ class ServiceRoutingTests(ConfigTests):
         result = web.revoke(f"xuid:{XUID}")
         self.assertEqual(len(result["messages"]), 2)
         self.assertIn("can vouch again", result["messages"][1])
+
+    def test_revoke_site_sessions_reaches_what_link_mode_created(self):
+        web = self.service(self.section())
+        self.authority.policy.add("Alice", xuid=XUID, player_uuid=PLAYER)
+        started = web.auth.registration_options(LinkIdentity(XUID, PLAYER, "Alice"), via="site")["body"]
+        device = SoftAuthenticator(ORIGIN, "endbot.example")
+        reply = web.auth.handle("/auth/link/verify", {"ceremony": started["ceremony"],
+                                                      "credential": device.register(started["options"])})
+        account = web.store.account_for_xuid(XUID)
+        self.assertEqual(web.store.sessions(account["id"])[0]["via"], "site")
+        self.assertEqual(web.store.passkeys(account["id"])[0]["via"], "site")
+        self.assertIn("1 passkeys", web.revoke_site_sessions()["messages"][0])
+        self.assertIsNone(web.auth.session(reply["session"]))
+        self.assertEqual(web.store.passkeys(account["id"]), [])
 
     def test_revoke_site_sessions_ends_only_site_sessions(self):
         web = self.service(self.section())

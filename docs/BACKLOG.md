@@ -1144,7 +1144,8 @@ inside a second and ended the run with `Script operation rate limit reached` plu
 
 ## BOT-032: A script save occasionally fails with "Broken pipe"
 
-Status: **Unresolved; not reproducible on demand** (2026-11-03 JST).
+Status: **Unresolved; not reproducible on demand** (2026-11-03 JST). Candidate 1 below is done (2026-11-04 JST): a failed
+runner write now logs its pid, exit code, `host_terminated` and event type to `endbotd.log`; the cause is still unknown.
 
 While checking the optional UI pack on a 1.26.60.5 Windows client, saving from the script menus failed
 intermittently with `[Errno 32] Broken pipe` — several edits and saves in a row succeeded, then one failed, and a

@@ -400,6 +400,8 @@ class EndbotService:
 
     def _passkey_added(self, account: dict) -> None:
         """Someone added a passkey to this account: if that was not its owner, they should hear (P4)."""
+        if self.web_api is not None:
+            self.web_api.notify_account(account["xuid"], "passkey_added")
         record = next((record for record in self.link.presence.online() if record.get("xuid") == account["xuid"]),
                       None)
         if record is not None:

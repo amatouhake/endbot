@@ -87,7 +87,7 @@ class WebApi:
         ownership = self._commands.ownership
         return [{"name": bot["name"], "state": bot["connectionState"]}
                 for bot in profiles
-                if ownership is None or ownership.visible_to("bot", bot.get("identityId"), principal)]
+                if ownership is None or ownership.visible_to("bots", bot["identityId"], principal)]
 
     def _groups(self, principal) -> list[dict]:
         return [{"name": group.name, "members": len(group.members)}
@@ -103,8 +103,10 @@ class WebApi:
 
     @staticmethod
     def _entry(moment: float, event: Event, language: str) -> dict:
+        # A line chat holds back (its rate limit, `chat-logs = false`) still belongs in this player's own log.
+        lines = render(event, "chat", language) or render(event, "log")
         return {"time": moment, "kind": event.kind, "level": event.level,
-                "lines": [strip_colors(line) for line in render(event, "chat", language)]}
+                "lines": [strip_colors(line) for line in lines]}
 
     def _subscribe(self, principal, conn: str, topic: str, push: Callable[[object], None]) -> dict:
         with self._lock:
@@ -131,6 +133,13 @@ class WebApi:
             targets = [entry for entry in self._subscribers.values() if entry[0] == xuid and "log" in entry[1]]
         for _xuid, _topics, push, language in targets:
             push({"type": "event", "topic": "log", "data": self._entry(moment, event, language)})
+
+    def notify_account(self, xuid: str, kind: str) -> None:
+        """A security notice for this account's open pages, such as a passkey just added (P4)."""
+        with self._lock:
+            targets = [entry for entry in self._subscribers.values() if entry[0] == xuid]
+        for _xuid, _topics, push, _language in targets:
+            push({"type": "event", "topic": "account", "data": {"kind": kind}})
 
     def status_changed(self) -> None:
         with self._lock:

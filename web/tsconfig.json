@@ -12,5 +12,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/worker", "src/generated", "test", "vitest.config.ts"]
+  "include": ["src/worker", "src/generated", "test", "vitest.config.ts"],
+  "exclude": ["src/ui", "e2e"]
 }

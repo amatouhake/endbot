@@ -36,6 +36,7 @@ class AsyncCommandRunner:
         log_sink: EventLogSink | None = None,
         show_view: Callable[[object, object], None] | None = None,
         scripts=None,
+        on_event: Callable[[Event], None] | None = None,
     ) -> None:
         self._service = service
         self._bridge = bridge
@@ -46,6 +47,8 @@ class AsyncCommandRunner:
         # Presents a result's form view to its player on the server thread.
         self._show_view = show_view
         self._scripts = scripts
+        # One more sink: the web keeps a player's own events for their log page.
+        self._on_event = on_event
         # One worker preserves the command ordering previously provided by the
         # BDS command thread while moving all blocking socket waits off it.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbot-control")
@@ -82,6 +85,8 @@ class AsyncCommandRunner:
 
         def deliver() -> None:
             source = event.to
+            if self._on_event is not None:
+                self._on_event(event)
             if self._log_sink is not None:
                 for line in render(event, "log"):
                     self._log_sink.write(event.level, strip_colors(line))

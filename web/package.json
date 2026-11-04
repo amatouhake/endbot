@@ -7,20 +7,27 @@
   "license": "Apache-2.0",
   "scripts": {
     "generate": "node scripts/generate-protocol.mjs",
-    "check": "npm run generate && tsc --noEmit",
+    "check": "npm run generate && tsc --noEmit && svelte-check --tsconfig ./tsconfig.ui.json",
     "test": "npm run generate && vitest run",
-    "build:worker": "npm run generate && esbuild src/worker/index.ts --bundle --format=esm --target=es2022 --external:cloudflare:workers --outfile=dist/worker/index.js"
+    "build": "npm run generate && node scripts/build-bundle.mjs",
+    "e2e": "npm run build && playwright test"
   },
-  "dependencies": {
-    "hono": "4.13.16"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.5.1",
-    "@cloudflare/workers-types": "5.20261019.1",
+    "@cloudflare/workers-types": "5.20261103.1",
+    "@playwright/test": "1.64.1",
+    "@simplewebauthn/browser": "14.0.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
     "ajv": "8.20.0",
     "esbuild": "0.28.2",
+    "hono": "4.13.16",
     "json-schema-to-typescript": "16.0.0",
+    "svelte": "5.57.3",
+    "svelte-check": "4.7.8",
     "typescript": "5.9.3",
-    "vitest": "4.1.12"
+    "vite": "8.3.5",
+    "vitest": "4.1.12",
+    "wrangler": "4.157.0"
   }
 }

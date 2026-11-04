@@ -51,7 +51,8 @@ class WebApiTests(unittest.TestCase):
         self.account = self.store.ensure_account(XUID, PLAYER, "Alice")
         self.token = self.auth.issue_session(self.account, "passkey")
         self.ownership = OwnershipStore(root / "ownership.json")
-        self.ownership.set("bot", BOT_B, f"xuid:{OTHER_XUID}", "private")
+        self.ownership.set_owner("bots", BOT_B, f"xuid:{OTHER_XUID}", "Bob")
+        self.ownership.set_visibility("bots", BOT_B, "private")
         self.control = FakeControl()
         self.groups_seen = []
         self.runs_for = []
@@ -68,9 +69,10 @@ class WebApiTests(unittest.TestCase):
     def ask(self, **message):
         return self.api.handle(self.token, "c1", message, self.pushed.append)
 
-    def log_event(self, xuid=XUID, text="hello"):
+    def log_event(self, xuid=XUID, text="hello", chat=True):
         to = Principal("player", xuid=xuid, player_id=PLAYER, name="Alice")
-        self.api.record(Event(to, "run.log", {"script": "line", "run": "r1", "text": text, "held": 0, "chat": True}))
+        self.api.record(Event(to, "run.log", {"run": "r1", "name": "line", "text": text, "limited": False,
+                                              "chat": chat, "skipped": 0}))
 
     def test_status_shows_this_players_view(self):
         answer = self.ask(type="query", what="status")
@@ -129,9 +131,21 @@ class WebApiTests(unittest.TestCase):
     def test_the_log_is_bounded_and_console_events_are_not_kept(self):
         for index in range(LOG_LINES + 5):
             self.log_event(text=str(index))
-        self.api.record(Event(Principal("console"), "run.log", {"script": "s", "run": "r", "text": "c", "held": 0}))
+        self.api.record(Event(Principal("console"), "run.log", {"run": "r", "name": "s", "text": "c", "limited": False,
+                                                                "chat": False, "skipped": 0}))
         self.assertEqual(len(self.ask(type="query", what="log")["data"]), LOG_LINES)
         self.assertEqual(list(self.api._logs), [XUID])
+
+    def test_a_line_chat_held_back_still_reaches_the_players_log(self):
+        self.log_event(text="not in chat", chat=False)
+        self.assertIn("not in chat", " ".join(self.ask(type="query", what="log")["data"][0]["lines"]))
+
+    def test_an_account_notice_reaches_only_that_accounts_pages(self):
+        self.ask(type="subscribe", topic="status")
+        self.api.notify_account(OTHER_XUID, "passkey_added")
+        self.assertEqual(self.pushed, [])
+        self.api.notify_account(XUID, "passkey_added")
+        self.assertEqual(self.pushed, [{"type": "event", "topic": "account", "data": {"kind": "passkey_added"}}])
 
     def test_a_log_subscriber_gets_its_own_events_until_it_leaves(self):
         self.assertEqual(self.ask(type="subscribe", topic="log")["code"], "ok")

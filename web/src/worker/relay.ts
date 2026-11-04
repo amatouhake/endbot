@@ -67,6 +67,12 @@ export class Relay extends DurableObject<Env> {
     return url.pathname === "/ws" ? this.acceptBrowser(request, bucket) : this.relayHttp(request, url, bucket);
   }
 
+  private bucketLimit(): number {
+    // Only the end-to-end test sets this, so that many sign-ins fit in a minute; a deploy never does.
+    const configured = Number((this.env as { AUTH_BUCKET_PER_MINUTE?: string }).AUTH_BUCKET_PER_MINUTE);
+    return configured > 0 ? configured : BUCKET_PER_MINUTE;
+  }
+
   private allow(bucket: string): boolean {
     const minute = Math.floor(Date.now() / 60_000);
     const entry = this.buckets.get(bucket);
@@ -76,7 +82,7 @@ export class Relay extends DurableObject<Env> {
       return true;
     }
     entry.count += 1;
-    return entry.count <= BUCKET_PER_MINUTE;
+    return entry.count <= this.bucketLimit();
   }
 
   // -- endbotd's link ---------------------------------------------------------------

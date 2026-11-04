@@ -363,6 +363,9 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
     web["enabled"] = config.web.enabled
     if config.web.origin:
         web["origin"] = config.web.origin
+    if config.web.display_name:
+        web["display-name"] = config.web.display_name
+    web["link-key-file"] = _path_value(tomlkit, str((paths.state_secrets / "web-link.key").resolve()))
     if config.web.trusted_site is not None:
         web["trusted-site"] = _trusted_site_section(tomlkit, config.web.trusted_site, paths)
     document.add("web", web)

@@ -79,11 +79,12 @@ class SupervisorTestCase(unittest.TestCase):
         values.update(overrides)
         return SupervisorOptions(**values)
 
-    def start_supervisor(self, options: SupervisorOptions | None = None, stdin=None) -> Supervisor:
+    def start_supervisor(self, options: SupervisorOptions | None = None, stdin=None, **checks) -> Supervisor:
         self.supervisor = Supervisor(
             options or self.options(),
             stdin=stdin,
             echo=self.echo_lines.append,
+            **checks,
         )
 
         def target() -> None:
@@ -207,6 +208,105 @@ class SupervisionPolicyTests(SupervisorTestCase):
         self.start_supervisor(self.options(ready_timeout=2.0))
         self.assertEqual(self.join(), 1)
         self.assertTrue(any("did not report endbot_runtime_ready" in line for line in self.echo_lines))
+
+
+class KeepEndbotdAfterBdsTests(SupervisorTestCase):
+    """docs/WEB.md P10: with the web enabled, BDS exiting stops only the runtime."""
+
+    def start_until_bds_stopped(self, **arguments) -> None:
+        self.set_env(FAKE_BDS_EXIT_AFTER="0.3", FAKE_BDS_EXIT_CODE="7")
+        self.start_supervisor(self.options(keep_endbotd_after_bds=True), **arguments)
+        self.wait_for("BDS is stopped")
+        # A BDS started again from here must not exit on its own.
+        os.environ.pop("FAKE_BDS_EXIT_AFTER")
+
+    def wait_for_second_bds(self) -> None:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline and sum("fake BDS ready" in line for line in self.echo_lines) < 2:
+            time.sleep(0.05)
+        self.assertEqual(sum("fake BDS ready" in line for line in self.echo_lines), 2)
+
+    def test_exit_stops_endbotd_and_keeps_the_bds_code(self) -> None:
+        self.start_until_bds_stopped()
+        self.assertTrue(any("graceful shutdown" in line for line in self.echo_lines))
+        self.assertFalse(any("stopping endbotd" in line for line in self.echo_lines))
+        self.assertTrue(process_alive(self.supervisor._endbotd.process.pid))
+        self.assertIsNotNone(self.supervisor._runtime.process.poll())
+        self.assertFalse((self.run_dir / "server.pid").exists())
+        self.assertFalse((self.run_dir / "runtime.pid").exists())
+        self.assertTrue((self.run_dir / "endbotd.pid").exists())
+        append_console_line(self.run_dir, "exit")
+        self.assertEqual(self.join(), 7)
+        self.assertEqual(self.last_exit()["serverExit"], 7)
+        self.assertEqual(self.last_exit()["endbotdExit"], 0)
+        self.assertFalse(self.last_exit()["unclean"])
+
+    def test_start_runs_the_runtime_then_bds_with_the_same_endbotd(self) -> None:
+        self.start_until_bds_stopped()
+        endbotd = self.supervisor._endbotd.process.pid
+        append_console_line(self.run_dir, "start")
+        self.wait_for_second_bds()
+        self.assertEqual(self.starts(), 2)
+        self.assertEqual(self.supervisor._endbotd.process.pid, endbotd)
+        # BDS is back: console lines reach it again, and a stop stops all three.
+        append_console_line(self.run_dir, "say back")
+        self.wait_for("[console] say back")
+        log = self.supervisor._log_dir / "server.log"
+        self.assertEqual(log.read_text(encoding="utf-8").count("fake BDS ready"), 2)
+        request_stop(self.run_dir)
+        self.assertEqual(self.join(), 0)
+        self.assertEqual(self.last_exit()["serverExit"], 0)
+
+    def test_a_stop_request_while_bds_is_stopped_stops_endbotd(self) -> None:
+        self.start_until_bds_stopped()
+        request_stop(self.run_dir)
+        self.assertEqual(self.join(), 0)
+        self.assertEqual(self.last_exit()["serverExit"], 7)
+        self.assertEqual(self.starts(), 1)
+        self.assertTrue(any("stopping endbotd" in line for line in self.echo_lines))
+
+    def test_stdin_takes_start_and_other_lines_are_refused(self) -> None:
+        feed = LineFeed()
+        self.start_until_bds_stopped(stdin=feed)
+        feed.feed("say hello")
+        self.wait_for("this line was not sent: say hello")
+        feed.feed("exit")
+        self.assertEqual(self.join(), 7)
+
+    def test_a_refused_restart_stays_stopped_and_a_later_start_works(self) -> None:
+        answers = ["port is busy", None]
+        self.start_until_bds_stopped(pre_restart_check=lambda: answers.pop(0))
+        append_console_line(self.run_dir, "start")
+        self.wait_for("refusing to start BDS: port is busy")
+        self.assertEqual(self.starts(), 1)
+        append_console_line(self.run_dir, "start")
+        self.wait_for_second_bds()
+        request_stop(self.run_dir)
+        self.assertEqual(self.join(), 0)
+        self.assertEqual(self.starts(), 2)
+
+    def test_a_failed_auth_recheck_stops_the_runtime_again(self) -> None:
+        answers = [None, "local-bot-auth: broken"]
+        self.start_until_bds_stopped(pre_server_check=lambda: answers.pop(0))
+        append_console_line(self.run_dir, "start")
+        self.wait_for("refusing to start BDS: local-bot-auth: broken")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and self.supervisor._runtime.process.poll() is None:
+            time.sleep(0.05)
+        self.assertIsNotNone(self.supervisor._runtime.process.poll())
+        append_console_line(self.run_dir, "exit")
+        self.assertEqual(self.join(), 7)
+
+    def test_endbotd_is_restarted_while_bds_is_stopped_but_the_runtime_is_not(self) -> None:
+        starts = self.root / "endbotd-starts.log"
+        self.set_env(FAKE_ENDBOTD_STARTS_FILE=str(starts))
+        self.start_until_bds_stopped()
+        self.supervisor._endbotd.process.kill()
+        self.wait_for("endbotd is back")
+        self.assertEqual(len(starts.read_text(encoding="utf-8").splitlines()), 2)
+        self.assertEqual(self.starts(), 1)
+        append_console_line(self.run_dir, "exit")
+        self.assertEqual(self.join(), 7)
 
 
 class StopEscalationTests(SupervisorTestCase):

@@ -33,6 +33,18 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "scripting"):
             load_config(self.path)
 
+    def test_web_defaults_off_and_takes_a_boolean(self):
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base)
+        self.assertFalse(load_config(self.path).web.enabled)
+        self.write(base + "[web]\nenabled=true\n")
+        self.assertTrue(load_config(self.path).web.enabled)
+        for setting, key in (('enabled="true"', "web.enabled"), ("enabld=true", "web.enabld")):
+            with self.subTest(setting=setting):
+                self.write(base + f"[web]\n{setting}\n")
+                with self.assertRaisesRegex(ConfigError, key):
+                    load_config(self.path)
+
     def test_permissions_defaults_and_visibility_values(self):
         base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
         self.write(base)

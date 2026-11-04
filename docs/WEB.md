@@ -1,7 +1,8 @@
 # Web design (BOT-021)
 
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
-the answers to the former open points (see [settled points](#settled-points)). Nothing here is implemented.
+the answers to the former open points (see [settled points](#settled-points)). Only step 1 (the supervisor policy, P10)
+is implemented; `[web] enabled` turns on nothing else yet.
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -357,7 +358,10 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
 0.5.0, so no step waits on another work item.
 
 1. **Supervisor policy (P10).** `start`/`exit` console commands, `--exit-with-bds`, runtime stopped with BDS.
-   Delegable.
+   Delegable. Done. Live check (2026-11-04 JST, Windows, 0.6.0 bundle with this CLI, real BDS and no human client):
+   console `stop` and a killed BDS both kept the same endbotd process; `endbot controllers list` worked while BDS was
+   stopped; `start` brought the runtime and BDS back and the plugin relinked to that endbotd; `exit` ended the
+   supervisor. A desired-online Bot rejoined about 65 s after `Server started`, the same as on a plain `endbot start`.
 2. **endbotd web core, no network.**
    - **2a. Account store and link codes** (P3): `state/web/`, `/botweb link|unlink|status`, `endbot web revoke`,
      revocation hooks (P6). Claude.

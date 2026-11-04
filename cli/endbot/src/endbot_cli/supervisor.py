@@ -15,6 +15,10 @@ supervisor owns. From then on:
   escalating the same way);
 - if BDS exits on its own, endbotd and the runtime are stopped and the
   supervisor exits with BDS's exit code (no auto-restart);
+- with ``[web] enabled`` (docs/WEB.md P10), BDS exiting stops only the runtime:
+  endbotd keeps running, and the console accepts ``start`` (runtime, then BDS)
+  and ``exit`` (stop endbotd and exit with BDS's last code) until one of them
+  or a stop request arrives. A failed ``start`` returns to this state;
 - if the runtime or endbotd exits unexpectedly while BDS runs, it is restarted
   with exponential backoff (1 s, 2 s, 4 s ... capped at 30 s); after 5
   failures of one child inside a 5-minute window the supervisor stops BDS and
@@ -76,6 +80,7 @@ class SupervisorOptions:
     restart_failure_window: float = 300.0
     keep_log_starts: int = KEEP_LOG_STARTS
     runtime_control_timeout: float = 5.0
+    keep_endbotd_after_bds: bool = False
 
 
 class _OutputReader(threading.Thread):
@@ -146,11 +151,16 @@ class Supervisor:
         stdin: Iterable[str] | None = None,
         echo: Callable[[str], None] | None = None,
         pre_server_check: Callable[[], str | None] | None = None,
+        pre_restart_check: Callable[[], str | None] | None = None,
     ) -> None:
         self.options = options
         self._stdin = stdin
         self._echo = echo or _default_echo
         self._pre_server_check = pre_server_check or (lambda: None)
+        self._pre_restart_check = pre_restart_check or (lambda: None)
+        self._bds_stopped = False
+        self._bds_request: str | None = None
+        self._last_server_code = 0
         self._stop_flag = threading.Event()
         self._stdin_lines: queue.Queue[str] = queue.Queue()
         self._server_lines: queue.Queue = queue.Queue()
@@ -248,14 +258,30 @@ class Supervisor:
             if self._stop_wanted():
                 return self._stop_sequence()
             server = self._server_proc
-            if server is not None and server.poll() is not None:
+            if self._bds_stopped:
+                request, self._bds_request = self._bds_request, None
+                if request == "exit":
+                    self._echo(f"[supervisor] exiting with BDS's last exit code {self._last_server_code}")
+                    self._stop_children()
+                    return self._last_server_code
+                if request == "start":
+                    outcome = self._restart_bds()
+                    if outcome is not None:
+                        return outcome
+                    continue
+            elif server is not None and server.poll() is not None:
                 code = server.poll()
                 self._exit_record["serverExit"] = code
+                if options.keep_endbotd_after_bds:
+                    self._enter_bds_stopped(code)
+                    continue
                 self._echo(f"[supervisor] BDS exited with code {code}; stopping endbotd and the runtime")
                 self._stop_children()
                 self._echo("[supervisor] stopped (BDS exit code kept)")
                 return code
-            down = next((child for child in (self._runtime, self._endbotd)
+            # While BDS is stopped the runtime is meant to be down too.
+            watched = (self._endbotd,) if self._bds_stopped else (self._runtime, self._endbotd)
+            down = next((child for child in watched
                          if child.process is None or child.process.poll() is not None), None)
             if down is None:
                 time.sleep(options.poll_interval)
@@ -263,6 +289,65 @@ class Supervisor:
             outcome = self._restart(down)
             if outcome is not None:
                 return outcome
+
+    def _enter_bds_stopped(self, code: int) -> None:
+        self._echo(f"[supervisor] BDS exited with code {code}; stopping the runtime, endbotd keeps running")
+        self._last_server_code = code
+        self._stop_stopped_bds_runtime()
+        self._bds_stopped = True
+        self._echo("[supervisor] BDS is stopped: type 'start' to start it again or 'exit' to stop Endbot")
+
+    def _stop_stopped_bds_runtime(self) -> None:
+        self._stop_runtime()
+        self._remove_pid_files(RUNTIME_PID, SERVER_PID)
+
+    def _remove_pid_files(self, *names: str) -> None:
+        for name in names:
+            try:
+                (self.options.run_dir / name).unlink()
+            except OSError:
+                pass
+
+    def _restart_bds(self) -> int | None:
+        """Runtime, then BDS, as a first start does. A failure stays stopped; only a stop request ends supervision."""
+
+        options = self.options
+        problem = self._pre_restart_check()
+        if problem is not None:
+            self._echo(f"[supervisor] FAIL: refusing to start BDS: {problem}")
+            return None
+        self._runtime.failures.clear()
+        self._echo(f"[supervisor] starting {self._runtime.label}: {options.runtime_command[0]}")
+        process = self._start(self._runtime, options.runtime_command)
+        if process is None:
+            self._echo(f"[supervisor] FAIL: {self._runtime.label} could not be started; BDS stays stopped")
+            return None
+        if not self._await_ready(self._runtime, process, options.ready_timeout):
+            if self._stop_wanted():
+                return self._stop_sequence()
+            self._echo(
+                f"[supervisor] FAIL: {self._runtime.label} did not report {self._runtime.ready_name} "
+                f"within {options.ready_timeout:g}s; BDS stays stopped"
+            )
+            kill_process_tree(process)
+            self._remove_pid_files(RUNTIME_PID)
+            return None
+        self._echo(f"[supervisor] {self._runtime.label} is ready")
+        if self._stop_wanted():
+            return self._stop_sequence()
+        problem = self._pre_server_check()
+        if problem is not None:
+            self._echo(f"[supervisor] FAIL: refusing to start BDS: {problem}")
+            self._stop_stopped_bds_runtime()
+            return None
+        self._echo(f"[supervisor] starting BDS: {options.server_command[0]}")
+        if self._start_server() is None:
+            self._echo("[supervisor] FAIL: BDS could not be started; it stays stopped")
+            self._stop_stopped_bds_runtime()
+            return None
+        self._exit_record["serverExit"] = None
+        self._bds_stopped = False
+        return None
 
     def _restart(self, child: _Child) -> int | None:
         """Restart one child after a failure; a return value ends supervision."""
@@ -380,13 +465,22 @@ class Supervisor:
 
     def _pump_console(self) -> None:
         for line in consume_console_lines(self.options.run_dir):
-            self._send_console_line(line)
+            self._console_line(line)
         while True:
             try:
                 line = self._stdin_lines.get_nowait()
             except queue.Empty:
                 return
-            self._send_console_line(line.rstrip("\r\n"))
+            self._console_line(line.rstrip("\r\n"))
+
+    def _console_line(self, line: str) -> None:
+        if not self._bds_stopped:
+            self._send_console_line(line)
+        elif line.strip() in ("start", "exit"):
+            self._bds_request = line.strip()
+        elif line.strip():
+            self._echo(f"[supervisor] BDS is stopped, so this line was not sent: {line.strip()}; "
+                       "type 'start' or 'exit'")
 
     def _send_console_line(self, line: str) -> bool:
         server = self._server_proc

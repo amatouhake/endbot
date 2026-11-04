@@ -38,7 +38,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also probe runtime reachability on the control port (only while the runtime is expected to be up)",
     )
-    subcommands.add_parser("start", help="start the runtime and BDS and supervise them (section 5a)")
+    start = subcommands.add_parser("start", help="start the runtime and BDS and supervise them (section 5a)")
+    start.add_argument(
+        "--exit-with-bds",
+        action="store_true",
+        help="with [web] enabled, stop everything when BDS exits instead of keeping endbotd running",
+    )
     stop = subcommands.add_parser("stop", help="stop BDS and the runtime (section 5a)")
     stop.add_argument(
         "--timeout",
@@ -144,7 +149,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(result.line())
         return exit_code(results)
     if args.command == "start":
-        return run_start(paths)
+        return run_start(paths, exit_with_bds=args.exit_with_bds)
     if args.command == "stop":
         return run_stop(paths, timeout=args.timeout)
     if args.command == "console":

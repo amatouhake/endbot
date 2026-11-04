@@ -108,6 +108,9 @@ items only and takes effect on the next start. Someone else's private Bot or Gro
 resolves as not found), and `forget`, `rename` and `visibility` on someone else's Bot stay with its owner and the
 console even when it is shared (see [PERMISSIONS.md](PERMISSIONS.md)).
 
+`[web] enabled` is a boolean and defaults to false. The web itself is not implemented yet ([WEB.md](WEB.md)); for now
+the setting only keeps endbotd running when BDS exits (see the supervision policy in section 5a).
+
 `[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
 (default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value
 caps online-or-connecting Bots. `max-bots-per-controller = 0` adds no per-controller cap; a positive value refuses a
@@ -348,6 +351,14 @@ runs, the supervisor restarts it with exponential backoff (1 s, 2 s, 4 s ... cap
 does not become ready counts as another failure, and after 5 failures of one child within a 5-minute window it stops
 BDS and exits non-zero. While endbotd restarts, the plugin keeps the control permissions it last applied and
 reconnects on its own; endbotd's script runs and mining loops end with it (mining stops at the runtime lease).
+
+With `[web] enabled = true`, BDS exiting (console `stop` or a crash) stops only the runtime: endbotd keeps running and
+the supervisor logs BDS's exit code. Two console lines then apply, typed at the supervisor or sent with
+`endbot console`: `start` starts the runtime and then BDS, with the checks a first start runs, and stays stopped if one
+fails; `exit` stops endbotd and exits with BDS's last exit code. Other lines are refused. `endbot stop` stops
+everything, as always. `endbot start --exit-with-bds` restores the whole-instance stop, for a service manager that
+restarts on exit. A `start` keeps the configuration of the running supervisor: after editing `endbot.toml`, use
+`endbot stop` and `endbot start`.
 
 ## 6. Setup
 

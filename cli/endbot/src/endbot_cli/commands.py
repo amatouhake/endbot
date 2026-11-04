@@ -67,6 +67,9 @@ def _fail(message: str) -> int:
     return 1
 
 
+WEB_CHECKS = frozenset({"web", "web-trusted-site"})
+
+
 def run_start(
     paths: InstancePaths,
     *,
@@ -129,6 +132,10 @@ def run_start(
     for result in results:
         if result.status == FAIL and first_start_tolerable(result.name, paths):
             _print(f"WARN {result.name}: {result.message} (first start: the runtime creates this during start)")
+            continue
+        if result.status == FAIL and result.name in WEB_CHECKS:
+            # endbotd keeps the broken part of the web off; players should not lose the server over it.
+            _print(f"WARN {result.name}: {result.message} (the web stays off; the server starts anyway)")
             continue
         _print(result.line())
         if result.status == FAIL:

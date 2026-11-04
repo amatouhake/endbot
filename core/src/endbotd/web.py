@@ -119,10 +119,6 @@ class WebService:
             return {"status": 404, "body": {"code": "not_found"}}
         return self.auth.handle(path, body, token)
 
-    def ws(self, token: str, message: object, push: Callable[[object], None]) -> dict | None:
-        """One browser message; the link has already checked the session. Queries arrive with the UI."""
-        return {"type": "result", "code": "unsupported"}
-
     # -- /botweb --------------------------------------------------------------
 
     def command(self, record: dict, language: str, argv: list[str]) -> list[str]:

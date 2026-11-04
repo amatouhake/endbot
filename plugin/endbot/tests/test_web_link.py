@@ -120,8 +120,9 @@ class LinkCase(unittest.TestCase):
         self.web = FakeWeb()
         self.logs = []
         self.handled = []
+        self.closed_conns = []
 
-    def handler(self, token, message, push):
+    def handler(self, token, conn, message, push):
         self.handled.append((token, message))
         if isinstance(message, dict) and message.get("type") == "push":
             push({"type": "event", "topic": "status"})
@@ -133,6 +134,7 @@ class LinkCase(unittest.TestCase):
         origin = f"http://localhost:{self.relay.port}"
         self.link = WebLink(self.web, origin, self.key, "0.7.0", ws_handler=self.handler,
                             cache=lambda: {"displayName": "Mine", "bds": "up"},
+                            on_connection_closed=self.closed_conns.append,
                             log=lambda level, message: self.logs.append((level, message)), retry=(0.05, 0.2))
         self.link.start()
         self.addCleanup(self.link.stop)
@@ -279,6 +281,14 @@ class WebSocketTests(LinkCase):
         now[0] = 101.0
         self.message(type="query")
         self.assertEqual(self.relay.next("msg")["body"]["code"], "ok")
+
+    def test_a_closed_browser_is_reported_so_its_subscriptions_end(self):
+        self.up()
+        self.relay.ws("w1")
+        self.message(type="query")
+        self.relay.next("msg")
+        self.relay.send({"t": "close", "conn": "w1", "reason": "browser"})
+        self.assertTrue(wait(lambda: self.closed_conns == ["w1"]))
 
     def test_an_ended_session_has_its_connections_closed(self):
         self.up()

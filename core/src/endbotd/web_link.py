@@ -101,7 +101,8 @@ class WebLink:
     """One background thread holding the link, reconnecting with a capped backoff."""
 
     def __init__(self, web, origin: str, key: Ed25519PrivateKey, version: str, *,
-                 ws_handler: Callable[[str, object, Callable[[object], None]], object | None] | None = None,
+                 ws_handler: Callable[[str, str, object, Callable[[object], None]], object | None] | None = None,
+                 on_connection_closed: Callable[[str], None] | None = None,
                  cache: Callable[[], dict] | None = None,
                  log: Callable[[str, str], None] | None = None,
                  connect: Callable | None = None, clock: Callable[[], float] = time.monotonic,
@@ -111,7 +112,8 @@ class WebLink:
         self._key = key
         self.key_id = key_id(key)
         self._version = version
-        self._ws_handler = ws_handler or (lambda token, message, push: {"type": "result", "code": "unsupported"})
+        self._ws_handler = ws_handler or (lambda token, conn, message, push: {"type": "result", "code": "unsupported"})
+        self._on_connection_closed = on_connection_closed or (lambda conn: None)
         self._cache = cache or (lambda: {"displayName": "", "bds": "down"})
         self._log = log or (lambda level, message: None)
         self._connect = connect or websocket_connect
@@ -192,8 +194,11 @@ class WebLink:
                 self._socket = None
                 self.connected.clear()
                 with self._lock:
+                    conns = [entry.conn for entry in self._connections.values() if entry.kind == "ws"]
                     self._connections.clear()
                     self._rates.clear()
+                for conn in conns:
+                    self._on_connection_closed(conn)
 
     def _prove(self, socket) -> None:
         challenge = json.loads(socket.recv(timeout=CHALLENGE_SECONDS))
@@ -311,7 +316,7 @@ class WebLink:
             self.send(connection.conn, identifier, {"type": "reload"})
             return
         try:
-            result = self._ws_handler(connection.session, body, push)
+            result = self._ws_handler(connection.session, connection.conn, body, push)
         except Exception as error:  # noqa: BLE001 - one request must not end the link
             self._log("error", f"Web message failed: {type(error).__name__}: {error}")
             result = {"type": "result", "code": "unavailable"}
@@ -327,6 +332,8 @@ class WebLink:
                     window.connections.discard(conn)
                     if not window.connections:
                         del self._rates[connection.hash]
+        if connection is not None and connection.kind == "ws":
+            self._on_connection_closed(connection.conn)
 
     # -- toward the relay --------------------------------------------------------
 

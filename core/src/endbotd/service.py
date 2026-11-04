@@ -124,6 +124,7 @@ class EndbotService:
         self.web = WebService(config.web, config.stores_directory, self.authority, base=config.base, log=self._log)
         self.web.on_passkey_added = self._passkey_added
         self.web_link = None
+        self.web_api = None
         self._delivery = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbotd-delivery")
         self._closed = threading.Event()
         if control is None:
@@ -174,7 +175,7 @@ class EndbotService:
         self.runner = AsyncCommandRunner(
             self.commands, _LocalBridge(self.authority.lock, self._delivery), self._resolve_sender,
             authorize=self.authority.authorize, log_sink=LoggerSink(LOGGER), show_view=self._show_view,
-            scripts=self.scripts,
+            scripts=self.scripts, on_event=self._web_event,
         )
 
     # -- lifecycle -----------------------------------------------------------
@@ -208,10 +209,19 @@ class EndbotService:
         except LinkKeyError as error:
             self._log("warning", f"Web link is off: {error}")
             return
-        self.web_link = WebLink(self.web, self.web.origin, key, __version__, ws_handler=self.web.ws,
-                                cache=self._web_cache, log=self._log)
+        from endbotd.web_api import WebApi
+
+        self.web_api = WebApi(self.web.auth, commands=self.commands, scripts=self.scripts, control=self._inputs,
+                              bds_up=lambda: self.link.connected, display_name=lambda: self.web.display_name)
+        self.web_link = WebLink(self.web, self.web.origin, key, __version__, ws_handler=self.web_api.handle,
+                                on_connection_closed=self.web_api.connection_closed, cache=self._web_cache,
+                                log=self._log)
         self.web.on_sessions_removed = self.web_link.sessions_removed
         self.web_link.start()
+
+    def _web_event(self, event) -> None:
+        if self.web_api is not None:
+            self.web_api.record(event)
 
     def _web_status(self) -> dict:
         link = self.web_link
@@ -231,6 +241,7 @@ class EndbotService:
         if self.web_link is not None:
             self.web_link.stop()
             self.web_link = None
+        # The log keeps its lines only for the WebApi it belongs to; a new key or origin starts it again.
         self.config = config
         self.web = WebService(config.web, config.stores_directory, self.authority, base=config.base, log=self._log)
         self.web.on_passkey_added = self._passkey_added
@@ -305,6 +316,8 @@ class EndbotService:
                 bds = self.link.connected
                 if bds != published:
                     self.web_link.publish_cache()
+                    if published is not None:
+                        self.web_api.status_changed()
                     published = bds
 
     # -- link callbacks (the link's ordered thread) -------------------------

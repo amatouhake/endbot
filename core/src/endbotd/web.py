@@ -32,6 +32,9 @@ def web_origin(value: object) -> str | None:
     except ValueError as error:
         raise ValueError(f"web.origin has an invalid port: {value}") from error
     secure = parts.scheme == "https" or (parts.scheme == "http" and hostname == "localhost")
+    # A browser leaves out the default port, so an origin spelled with it could never match clientDataJSON.origin.
+    if port == {"https": 443, "http": 80}.get(parts.scheme):
+        raise ValueError(f"web.origin must leave out the default port, found {value}")
     host = f"{hostname}:{port}" if port is not None else hostname
     if not secure or not hostname or parts.netloc != host or value != f"{parts.scheme}://{host}":
         raise ValueError(f"web.origin must be https://host with no path, found {value}")
@@ -77,6 +80,7 @@ class WebService:
         if action == "status":
             return [self._status(xuid, language)]
         if action == "unlink":
+            self.codes.void([xuid])
             if self.store.account_for_xuid(xuid) is None:
                 return [tr(language, "This player has no web account")]
             self._remove_account(xuid)
@@ -104,6 +108,8 @@ class WebService:
         """``endbot web revoke <GamerTag|xuid:id>``: the account, passkeys and sessions go; the grant stays."""
         if self.store is None:
             return {"ok": False, "messages": ["Web store is unavailable; see the endbotd log"]}
+        if target.startswith("xuid:"):
+            self.codes.void([target[len("xuid:"):]])
         account = self._find_account(target)
         if account is None:
             return {"ok": False, "messages": [f"No web account for {target}"]}
@@ -131,6 +137,11 @@ class WebService:
         Every later request rechecks the grant revision anyway, so this is what closes connections promptly,
         not what makes the revoke effective.
         """
+        for identity in self.codes.live():
+            with self._authority.lock:
+                allowed = self._authority.control_decision(identity.gamertag, identity.xuid, identity.player_id)[0]
+            if not allowed:
+                self.codes.void([identity.xuid])
         if self.store is None:
             return
         for account in self.store.accounts():

@@ -184,7 +184,7 @@ class OriginTests(unittest.TestCase):
         self.assertIsNone(web_origin(None))
         for value in ("http://a.example", "https://a.example/", "https://a.example/x", "https://u@a.example",
                       "ftp://a.example", "a.example", "https://", "https://a.example:99999", "https://a.example?x=1",
-                      "https://A.example", 5):
+                      "https://A.example", "https://a.example:443", "http://localhost:80", 5):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 web_origin(value)
 
@@ -266,6 +266,26 @@ class BotWebCommandTests(ServiceHarness):
         self.assertEqual(web.store.sessions(account["id"]), [])
         self.assertIsNotNone(web.store.account_for_xuid(OWNER))
         self.assertIsNone(web.codes.redeem(code))
+
+    def test_revoking_the_grant_voids_a_code_when_there_is_no_account_yet(self):
+        link, alice = self.joined_alice()
+        self.botweb(link, "link")
+        code = self.message(alice, "Web link code:").split("code: ")[1].split(" ")[0]
+        self.assertEqual(self.service.web.store.accounts(), [])
+        self.console(link, "remove", "Alice")
+        self.assertTrue(wait_for(lambda: self.service.web.codes.live() == []))
+        self.assertIsNone(self.service.web.codes.redeem(code))
+
+    def test_unlink_and_revoke_void_a_code_when_there_is_no_account_yet(self):
+        link, alice = self.joined_alice()
+        self.botweb(link, "link")
+        code = self.message(alice, "Web link code:").split("code: ")[1].split(" ")[0]
+        self.botweb(link, "unlink")
+        self.message(alice, "This player has no web account")
+        self.assertIsNone(self.service.web.codes.redeem(code))
+        self.service.web.codes.issue(LinkIdentity(OWNER, ALICE, "Alice"))
+        self.assertFalse(self.service._cli_web({"operation": "revoke", "target": f"xuid:{OWNER}"})["ok"])
+        self.assertEqual(self.service.web.codes.live(), [])
 
     def test_grant_changes_through_the_cli_reach_the_web_too(self):
         _link, _alice = self.joined_alice()

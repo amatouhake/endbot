@@ -230,6 +230,12 @@ class LinkCodes:
             self._on_closed()
         return None
 
+    def live(self) -> list[LinkIdentity]:
+        """Who holds a live code; a grant change checks them, with or without an account."""
+        with self._lock:
+            self._purge(self._clock())
+            return [entry[0] for entry in self._codes.values()]
+
     def void(self, xuids: Iterable[str]) -> None:
         voided = set(xuids)
         with self._lock:

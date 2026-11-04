@@ -51,7 +51,9 @@ RECENT_ASSERTION_SECONDS = 300.0
 SESSION_IDLE_SECONDS = 7 * 86400.0
 SESSION_ABSOLUTE_SECONDS = 30 * 86400.0
 LAST_SEEN_SECONDS = 3600.0
-ALGORITHMS = [COSEAlgorithmIdentifier.ECDSA_SHA_256, COSEAlgorithmIdentifier.EDDSA]
+# RS256 is for Windows Hello: without it, a PC whose TPM offers only RSA is left out of the passkey prompt.
+ALGORITHMS = [COSEAlgorithmIdentifier.ECDSA_SHA_256, COSEAlgorithmIdentifier.EDDSA,
+              COSEAlgorithmIdentifier.RSASSA_PKCS1_v1_5_SHA_256]
 LABEL_CHARACTERS = 64
 
 

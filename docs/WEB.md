@@ -127,7 +127,8 @@ browser ↔ endbotd        JSON with {v, id, type, ...}:
   origin, `rpIdHash`, the UP and UV flags, the signature and the sign counter (a decrease is logged and refused for
   that credential). These values are signed by the authenticator, so a modified Worker cannot make an assertion for
   another origin or account; it can only relay what a visiting browser signs (the risk Decision 3 accepts).
-- Options: discoverable credentials required, `userVerification: "required"`, attestation `none`, ES256 and EdDSA.
+- Options: discoverable credentials required, `userVerification: "required"`, attestation `none`, ES256, EdDSA and
+  RS256. RS256 is there for Windows Hello: a PC whose TPM offers only RSA would otherwise be left out of the prompt.
   Login is usernameless.
 - Challenges are single use, bound to the ceremony (register, login, add-device) and its account or link code, and
   expire after 2 minutes.

@@ -92,9 +92,15 @@ class RegistrationTests(WebAuthCase):
         self.assertEqual(options["authenticatorSelection"]["residentKey"], "required")
         self.assertEqual(options["authenticatorSelection"]["userVerification"], "required")
         self.assertEqual(options["attestation"], "none")
-        self.assertEqual([entry["alg"] for entry in options["pubKeyCredParams"]], [-7, -8])
+        self.assertEqual([entry["alg"] for entry in options["pubKeyCredParams"]], [-7, -8, -257])
         self.assertEqual(options["user"]["name"], "Alice")
         self.assertNotIn(XUID, str(options))
+
+    def test_an_rs256_passkey_registers_and_signs_in_as_windows_hello_may_need(self):
+        device = SoftAuthenticator(ORIGIN, RP_ID, rsa=True)
+        self.assertIsNotNone(self.auth.session(self.link(device)))
+        reply = self.login(device)
+        self.assertEqual(reply["status"], 200, reply)
 
     def test_only_the_session_token_hash_is_stored(self):
         token = self.link()

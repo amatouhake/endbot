@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EndbotWebProtocol",
+  "description": "docs/WEB_PROTOCOL.md. version is web-protocol, compiled into the Worker bundle and endbotd.",
+  "version": 1,
+  "oneOf": [
+    { "$ref": "#/$defs/Challenge" },
+    { "$ref": "#/$defs/Prove" },
+    { "$ref": "#/$defs/Ready" },
+    { "$ref": "#/$defs/Open" },
+    { "$ref": "#/$defs/Msg" },
+    { "$ref": "#/$defs/Close" },
+    { "$ref": "#/$defs/Cache" }
+  ],
+  "$defs": {
+    "Challenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "protocol", "nonce", "origin"],
+      "properties": {
+        "t": { "const": "challenge" },
+        "protocol": { "type": "integer" },
+        "nonce": { "type": "string", "minLength": 16, "maxLength": 128 },
+        "origin": { "type": "string" }
+      }
+    },
+    "Prove": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "protocol", "endbotdVersion", "keyId", "sig"],
+      "properties": {
+        "t": { "const": "prove" },
+        "protocol": { "type": "integer" },
+        "endbotdVersion": { "type": "string" },
+        "keyId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "sig": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "Ready": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t"],
+      "properties": { "t": { "const": "ready" } }
+    },
+    "Open": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "conn", "kind", "path", "origin", "session", "siteCookie", "ipBucket"],
+      "properties": {
+        "t": { "const": "open" },
+        "conn": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "kind": { "enum": ["http", "ws"] },
+        "path": { "type": "string", "maxLength": 256 },
+        "origin": { "type": ["string", "null"], "maxLength": 512 },
+        "session": { "type": ["string", "null"], "maxLength": 256 },
+        "siteCookie": { "type": ["string", "null"], "maxLength": 256 },
+        "ipBucket": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "Msg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "conn", "id", "body"],
+      "properties": {
+        "t": { "const": "msg" },
+        "conn": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "id": { "type": "integer" },
+        "body": {}
+      }
+    },
+    "Close": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "conn", "reason"],
+      "properties": {
+        "t": { "const": "close" },
+        "conn": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "reason": { "type": "string", "maxLength": 123 }
+      }
+    },
+    "Cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "displayName", "bds"],
+      "properties": {
+        "t": { "const": "cache" },
+        "displayName": { "type": "string", "maxLength": 64 },
+        "bds": { "enum": ["up", "down"] }
+      }
+    }
+  }
+}

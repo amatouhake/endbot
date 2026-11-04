@@ -100,6 +100,7 @@ class PermissionsConfig:
 class WebConfig:
     enabled: bool = False
     origin: str = ""
+    display_name: str = ""
     # [web.trusted-site] as written (docs/WEB.md P12): endbotd and `endbot doctor` validate it.
     trusted_site: dict[str, Any] | None = None
 
@@ -375,13 +376,17 @@ def _load_web(path: Path, document: dict[str, Any]) -> WebConfig:
     table = document.get("web", {})
     if not isinstance(table, dict):
         raise _fail(path, "web", "must be a table", "write it as a [web] section")
-    _reject_unknown_keys(path, table, "web", ("enabled", "origin", "trusted-site"))
+    _reject_unknown_keys(path, table, "web", ("enabled", "origin", "display-name", "trusted-site"))
     enabled = table.get("enabled", False)
     if type(enabled) is not bool:
         raise _fail(path, "web.enabled", "must be a boolean", "use enabled = false or true")
     origin = table.get("origin", "")
     if not isinstance(origin, str):
         raise _fail(path, "web.origin", "must be a string", 'use origin = "https://your-host"')
+    display_name = table.get("display-name", "")
+    if not isinstance(display_name, str) or len(display_name) > 64 or not display_name.isprintable():
+        raise _fail(path, "web.display-name", "must be printable text of at most 64 characters",
+                    "it is shown on the sign-in page and kept by Cloudflare; leave it empty to show nothing")
     site = table.get("trusted-site")
     if site is not None:
         if not isinstance(site, dict):
@@ -389,7 +394,7 @@ def _load_web(path: Path, document: dict[str, Any]) -> WebConfig:
         _reject_unknown_keys(path, site, "web.trusted-site", ("enabled", "name", "mode", "issuer", "start-url", "keys"))
         if type(site.get("enabled", False)) is not bool:
             raise _fail(path, "web.trusted-site.enabled", "must be a boolean", "use enabled = false or true")
-    return WebConfig(enabled=enabled, origin=origin, trusted_site=site)
+    return WebConfig(enabled=enabled, origin=origin, display_name=display_name, trusted_site=site)
 
 
 def load_config(path: Path) -> EndbotConfig:

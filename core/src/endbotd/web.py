@@ -47,6 +47,8 @@ class WebService:
         self._log = log or (lambda level, message: None)
         self._authority = authority
         self.enabled = section.get("enabled", False) is True
+        name = section.get("display-name", "")
+        self.display_name = name[:64] if isinstance(name, str) and name.isprintable() else ""
         try:
             self.origin = web_origin(section.get("origin"))
         except ValueError as error:
@@ -116,6 +118,10 @@ class WebService:
                 return self.site.registration(body)
             return {"status": 404, "body": {"code": "not_found"}}
         return self.auth.handle(path, body, token)
+
+    def ws(self, token: str, message: object, push: Callable[[object], None]) -> dict | None:
+        """One browser message; the link has already checked the session. Queries arrive with the UI."""
+        return {"type": "result", "code": "unsupported"}
 
     # -- /botweb --------------------------------------------------------------
 

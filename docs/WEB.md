@@ -2,7 +2,8 @@
 
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
 the answers to the former open points (see [settled points](#settled-points)). Steps 1 (the supervisor policy, P10), 2a
-(accounts and link codes) 2b (WebAuthn and sessions in endbotd) and 2c (the trusted site) are implemented; no browser can reach them yet.
+(accounts and link codes) 2b (WebAuthn and sessions in endbotd), 2c (the trusted site), 3a (the protocol) and 3b (endbotd's link) are
+implemented; no browser can reach them until the Worker lands.
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -369,15 +370,15 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
      revocation hooks (P6). Claude. Done.
    - **2b. WebAuthn and sessions** (P4, P5): the pinned Python WebAuthn library, ceremonies, session tokens, the `web`
      principal's channel condition, rate limits in endbotd (P7). Claude. Tests use a software authenticator. Done,
-     except the per-session connection and request limits, which arrive with the link in 3b.
+     with the per-session connection and request limits in the link (3b).
    - **2c. Trusted external site** (P12): `[web.trusted-site]` config and doctor checks, nonces, ES384 JWS
      verification (the existing local-bot-auth verifier's rules where they apply), both modes,
      `endbot web revoke --site-sessions`, failure codes. Claude only (security boundary). Negative tests for every
      row of the claim table and the failure table. Done.
 3. **Link and relay.**
-   - **3a. Protocol schema** (P2): `docs/WEB_PROTOCOL.md`, a JSON Schema, TypeScript generation in CI. Claude.
+   - **3a. Protocol schema** (P2): `docs/WEB_PROTOCOL.md`, a JSON Schema, TypeScript generation in CI. Claude. Done.
    - **3b. endbotd link client**: `websockets`, handshake and signing, reconnect with backoff, multiplexing, version
-     refusal, display cache. Claude.
+     refusal, display cache. Claude. Done.
    - **3c. Worker and Durable Object** (Hono, Hibernation API): routing, cookie, Origin checks, headers, coarse rate
      limits, relay, the `/auth/site/*` routes with their own cookie and Origin rule. Claude writes the auth, cookie,
      site and relay paths; the static-asset serving and Vitest

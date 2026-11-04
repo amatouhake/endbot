@@ -13,6 +13,7 @@ authors = [{ name = "amatouhake and Endbot contributors" }]
 dependencies = [
   "tomli>=2; python_version < \"3.11\"",
   "webauthn==3.0.1",
+  "websockets==17.4; python_version >= \"3.11\"",
 ]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",

@@ -8,18 +8,34 @@ language the page asks for.
 
 from __future__ import annotations
 
+import json
+import re
+import shlex
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from endbot_core.commands import strip_colors
+from endbot_core.commands import error_code, strip_colors
 from endbot_core.control import RuntimeControlError, bot_profiles
 from endbot_core.events import Event, render
+from endbot_core.i18n import localize_error, tr
+from endbot_core.operations import OPERATIONS, Operation
+from endbot_core.principal import Principal
+from endbot_core.script_forms import TEMPLATES, ScriptGuard
 
 LOG_LINES = 200
+SCRIPT_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
+# Not for the web: an in-game screen, chat help, and what stays with the console.
+WEB_REFUSED_OPERATIONS = frozenset({"menu", "help", "owner"})
+_LINE = re.compile(r"(?:^|\s)script:(\d+):")
 LANGUAGES = {"en", "ja"}
+
+
+def _plain(line: str) -> str:
+    """A reply as the page shows it: no chat colours, and no "Endbot:" in Endbot's own page."""
+    return strip_colors(line).removeprefix("Endbot: ")
 
 
 @dataclass
@@ -33,8 +49,9 @@ class _Subscriber:
 
 class WebApi:
     def __init__(self, auth, *, commands, scripts, control, bds_up: Callable[[], bool],
-                 display_name: Callable[[], str], clock: Callable[[], float] = time.time) -> None:
+                 display_name: Callable[[], str], clock: Callable[[], float] = time.time, runner=None) -> None:
         self._auth = auth
+        self._runner = runner
         self._commands = commands
         self._scripts = scripts
         self._control = control
@@ -67,7 +84,140 @@ class WebApi:
                 if entry is not None:
                     entry.topics.discard(message["topic"])
             return {"type": "result", "code": "ok"}
+        if kind == "op":
+            return self._operation(principal, message.get("operation"))
+        if isinstance(kind, str) and kind.startswith("script."):
+            return self._script(principal, kind[len("script."):], message)
         return {"type": "result", "code": "unsupported"}
+
+    # -- operations (docs/WEB.md P11) -------------------------------------------
+
+    def _operation(self, principal: Principal, operation: object) -> dict:
+        """One registry operation, through the same command path as chat: same checks, same wording."""
+        if not isinstance(operation, dict) or not isinstance(operation.get("op"), str):
+            return {"type": "result", "code": "invalid_argument"}
+        name, target, params = operation["op"], operation.get("target"), operation.get("params", {})
+        if name in WEB_REFUSED_OPERATIONS or name not in OPERATIONS or not isinstance(params, dict):
+            return {"type": "result", "code": "invalid_argument"}
+        try:
+            argv = Operation(name, target if isinstance(target, str) else None, params).argv()
+        except (ValueError, TypeError) as error:
+            return self._refused(error, principal, "invalid_argument")
+        return self._command(principal, argv, "bot")
+
+    def _command(self, principal: Principal, argv: list[str], root: str) -> dict:
+        try:
+            result = self._runner.call(argv, principal, command=root)
+        except TimeoutError:
+            return {"type": "result", "code": "timeout"}
+        answer = {"type": "result", "code": result.code, "messages": [_plain(line) for line in result.messages]}
+        try:
+            json.dumps(result.data)
+        except (TypeError, ValueError):
+            return answer  # A menu's data is for a form; the messages say what happened.
+        if result.data is not None:
+            answer["data"] = result.data
+        return answer
+
+    @staticmethod
+    def _refused(error: BaseException, principal: Principal, code: str | None = None) -> dict:
+        message = localize_error(error, principal.language)
+        answer = {"type": "result", "code": code or error_code(error), "messages": [message]}
+        # A declaration or compile error names its line, for the editor's margin.
+        line = _LINE.search(message)
+        if line:
+            answer["line"] = int(line[1])
+        return answer
+
+    # -- scripts ---------------------------------------------------------------------
+
+    def _script(self, principal: Principal, action: str, message: dict) -> dict:
+        name = message.get("name")
+        if action != "list" and action != "templates" and action != "stop" and (
+                not isinstance(name, str) or not SCRIPT_NAME.fullmatch(name)):
+            return {"type": "result", "code": "invalid_argument"}
+        try:
+            return self._script_action(principal, action, name, message)
+        except (ValueError, RuntimeError, OSError) as error:
+            return self._refused(error, principal)
+
+    def _script_action(self, principal: Principal, action: str, name: str | None, message: dict) -> dict:
+        scripts = self._scripts
+        if action == "list":
+            return {"type": "result", "code": "ok", "data": {"scripts": scripts.listing(principal),
+                                                             "canAuthor": principal.can_author}}
+        if action == "templates":
+            return {"type": "result", "code": "ok", "data": dict(TEMPLATES)}
+        if action == "get":
+            return {"type": "result", "code": "ok", "data": scripts.detail(name, principal)}
+        if action == "declaration":
+            return {"type": "result", "code": "ok", "data": scripts.declaration(name, principal)}
+        if action == "compile":
+            return {"type": "result", "code": "ok", "data": scripts.compile(name, message.get("source"), principal)}
+        if action == "save":
+            return self._script_save(principal, name, message)
+        if action == "run":
+            return self._script_run(principal, name, message)
+        if action == "stop":
+            run = message.get("run")
+            if not isinstance(run, str) or not SCRIPT_NAME.fullmatch(run):
+                return {"type": "result", "code": "invalid_argument"}
+            return self._command(principal, ["stop", shlex.quote(run)], "botscript")
+        words = self._script_words(action, name, message)
+        if words is None:
+            return {"type": "result", "code": "unsupported"}
+        revision = message.get("revision")
+        guard = ScriptGuard(revision if isinstance(revision, str) else None, name)
+        return self._command(replace(principal, group_guard=guard), words, "botscript")
+
+    @staticmethod
+    def _script_words(action: str, name: str, message: dict) -> list[str] | None:
+        """A guard without an edit is tokenized again, so everything here is one checked word."""
+        if action == "delete":
+            return ["delete", name]
+        if action in {"copy", "rename"}:
+            new = message.get("new")
+            return [action, name, new] if isinstance(new, str) and SCRIPT_NAME.fullmatch(new) else None
+        if action == "visibility":
+            value = message.get("visibility")
+            return ["visibility", name, value] if value in {"shared", "private"} else None
+        if action == "restore":
+            index = message.get("index")
+            return ["restore", name, str(index)] if type(index) is int and 1 <= index <= 999 else None
+        return None
+
+    def _script_save(self, principal: Principal, name: str, message: dict) -> dict:
+        source, revision = message.get("source"), message.get("revision")
+        if not isinstance(source, str) or (revision is not None and not isinstance(revision, str)):
+            return {"type": "result", "code": "invalid_argument"}
+        if revision is not None:
+            # Someone saved first: show them what is there now, rather than only refuse. The store checks this
+            # again under its own lock, so a save racing past here is still refused, just without the source.
+            current = self._scripts.detail(name, principal)
+            if current["revision"] != revision:
+                return {"type": "result", "code": "conflict", "current": current,
+                        "messages": [tr(principal.language, "Script changed; reopen the menu")]}
+        # The in-game whole-script save: ownership, role, declaration and revision are all checked there.
+        guard = ScriptGuard(revision, name if revision is not None else None, edit=True)
+        answer = self._command(replace(principal, group_guard=guard), ["save", name, source], "botscript")
+        line = next((_LINE.search(text) for text in answer.get("messages", ()) if _LINE.search(text)), None)
+        if line:
+            answer["line"] = int(line[1])
+        answer.pop("data", None)
+        if answer["code"] == "ok":
+            answer["data"] = self._scripts.detail(name, principal)
+        return answer
+
+    def _script_run(self, principal: Principal, name: str, message: dict) -> dict:
+        values, requires, revision = message.get("values", {}), message.get("requires"), message.get("revision")
+        if (not isinstance(values, dict) or not isinstance(revision, str) or not isinstance(requires, list)
+                or not all(isinstance(entry, str) for entry in requires)
+                or not all(isinstance(key, str) and type(value) in (str, int, float, bool)
+                           for key, value in values.items())):
+            return {"type": "result", "code": "invalid_argument"}
+        # The run is held to the declaration the form showed (P11), and to the revision it came from.
+        guard = ScriptGuard(revision, name, values=values, requires=tuple(requires))
+        return self._command(replace(principal, group_guard=guard), ["run", name], "botscript")
 
     def _query(self, principal, what: object) -> dict:
         readers = {"status": self._status, "bots": self._bots, "groups": self._groups, "runs": self._runs,
@@ -116,7 +266,7 @@ class WebApi:
         # A line chat holds back (its rate limit, `chat-logs = false`) still belongs in this player's own log.
         lines = render(event, "chat", language) or render(event, "log")
         return {"time": moment, "kind": event.kind, "level": event.level,
-                "lines": [strip_colors(line) for line in lines]}
+                "lines": [_plain(line) for line in lines]}
 
     def _subscribe(self, principal, token: str, conn: str, topic: str, push: Callable[[object], None]) -> dict:
         with self._lock:

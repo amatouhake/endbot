@@ -1,0 +1,72 @@
+/* Every screen shares these: Svelte scopes a component's own <style> to that component. */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f8; --surface: #fff; --text: #1c2024; --quiet: #5c6670; --line: #dde1e5;
+  --accent: #1f6feb; --accent-text: #fff; --good: #1a7f37; --bad: #b42318; --warn-bg: #fff4e5; --warn-text: #7a4a00;
+  --bad-bg: #fdecea;
+  --code-keyword: #8250df; --code-atom: #0550ae; --code-string: #116329; --code-api: #953800;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171a; --surface: #1d2125; --text: #e6e8ea; --quiet: #9aa4ae; --line: #30363c;
+    --accent: #4c8dff; --accent-text: #0b1016; --good: #4ac26b; --bad: #ff7b72; --warn-bg: #3a2a10; --warn-text: #f5c56b;
+    --bad-bg: #3a1a18;
+    --code-keyword: #d2a8ff; --code-atom: #79c0ff; --code-string: #7ee787; --code-api: #ffa657;
+  }
+}
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+}
+main { max-width: 26rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+main.wide { max-width: 72rem; }
+h1 { font-size: 1.4rem; margin: 0; }
+h2 { font-size: 1rem; margin: 0 0 .5rem; }
+p { margin: .25rem 0 .75rem; }
+.quiet { color: var(--quiet); }
+small { display: block; font-size: .85rem; }
+.server { display: flex; align-items: center; gap: .45rem; color: var(--quiet); margin: .25rem 0 1rem; }
+.dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--quiet); flex: none; }
+.dot.up { background: var(--good); }
+header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+nav { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; overflow-x: auto; }
+nav button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--quiet); padding: .55rem .9rem; }
+nav button.current { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+/* Holds the width of the bold label on every tab, so choosing one moves nothing. */
+nav button span::after { content: attr(data-text); display: block; height: 0; overflow: hidden; visibility: hidden; font-weight: 600; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: .6rem; padding: 1rem; margin-bottom: 1rem; }
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); align-items: start; }
+.grid .card { margin: 0; }
+ul, ol { list-style: none; margin: 0; padding: 0; }
+li { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .5rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+li:first-child { border-top: 0; }
+button, .button {
+  font: inherit; min-height: 2.75rem; padding: .5rem 1rem; border-radius: .45rem; border: 1px solid var(--line);
+  background: var(--surface); color: var(--text); cursor: pointer; text-decoration: none; display: inline-flex;
+  align-items: center; justify-content: center; box-sizing: border-box;
+}
+button:disabled { opacity: .6; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); width: 100%; font-weight: 600; }
+.card .button { width: 100%; margin-top: .6rem; }
+button.link { background: none; border: 0; color: var(--accent); padding: .5rem; flex: none; }
+button.danger { color: var(--bad); flex: none; }
+label { display: block; font-size: .9rem; margin-bottom: .25rem; }
+.row { display: flex; gap: .5rem; }
+input {
+  font: inherit; flex: 1; min-width: 0; min-height: 2.75rem; padding: .5rem .75rem; border-radius: .45rem;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); letter-spacing: .06em;
+}
+.code-field { font-family: ui-monospace, Consolas, monospace; font-size: 1.25rem; letter-spacing: .15em; text-align: center; }
+.error { background: var(--bad-bg); color: var(--bad); padding: .6rem .8rem; border-radius: .45rem; }
+.warning { background: var(--warn-bg); color: var(--warn-text); padding: .6rem .8rem; border-radius: .45rem; }
+.tag { font-size: .8rem; padding: .05rem .5rem; border: 1px solid var(--line); border-radius: 1rem; color: var(--quiet); white-space: nowrap; }
+.tag.good { color: var(--good); border-color: var(--good); }
+code { font-size: .85rem; color: var(--quiet); }
+.log li { display: block; }
+.log li.warn span { color: var(--bad); }
+.log time { display: block; font-size: .8rem; color: var(--quiet); }
+.log span { display: block; }
+
+.diff, .results { overflow-wrap: anywhere; }
+h2 { overflow-wrap: anywhere; }
+aside .card, .main .card { margin-bottom: 1rem; }

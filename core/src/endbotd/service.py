@@ -217,7 +217,8 @@ class EndbotService:
             return
         from endbotd.web_api import WebApi
 
-        self.web_api = WebApi(self.web.auth, commands=self.commands, scripts=self.scripts, control=self._runtime_control,
+        self.web_api = WebApi(self.web.auth, runner=self.runner, commands=self.commands, scripts=self.scripts,
+                              control=self._runtime_control,
                               bds_up=lambda: self.link.connected, display_name=lambda: self.web.display_name)
         self.web_link = WebLink(self.web, self.web.origin, key, __version__, ws_handler=self.web_api.handle,
                                 on_connection_closed=self.web_api.connection_closed, cache=self._web_cache,

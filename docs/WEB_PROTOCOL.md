@@ -65,8 +65,16 @@ the page reloads. Every request is authorized again at execution time with the `
 | `query` | `what`: `status`, `bots`, `groups`, `runs`, `log` | `{id, type: "result", code, data}` |
 | `subscribe` | `topic`: `status`, `log` | `{id, type: "result", code}`, then `{type: "event", topic, data}` |
 | `unsubscribe` | `topic` | `{id, type: "result", code}` |
-| `op` | `operation`: one registry operation (step 7) | `{id, type: "result", code, data}` |
-| `script.*` | list, get, save, compile, declaration (step 6) | `{id, type: "result", code, data}` |
+| `op` | `operation`: `{op, target, params}`, one registry operation | `{id, type: "result", code, messages, data}` |
+| `script.list`, `script.templates` | none | `{id, type: "result", code, data}` |
+| `script.get`, `script.declaration`, `script.delete` | `name` (`revision` on delete) | as above |
+| `script.compile` | `name`, `source` | `code`, and `line` when an error names one |
+| `script.save` | `name`, `source`, `revision` (null for new) | `code`, `data`; `conflict` carries `current` |
+| `script.run` | `name`, `revision`, `requires`, `values` | `code`, `messages` |
+| `script.stop` | `run` | `code`, `messages` |
+| `script.copy`, `script.rename` | `name`, `new`, `revision` | `code`, `messages` |
+| `script.visibility` | `name`, `visibility`, `revision` | `code`, `messages` |
+| `script.restore` | `name`, `index`, `revision` | `code`, `messages` |
 
 endbotd also pushes `{type: "event", topic: "account", data: {kind: "passkey_added"}}` to every open page of an account
 that subscribed to anything, so a passkey added elsewhere is seen at once.

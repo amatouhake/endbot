@@ -285,6 +285,49 @@ class ScriptService:
     def _visible(self, source):
         return tuple(script for script in self.store.list() if self.can_run(script, source))
 
+    def listing(self, source):
+        """What the web lists: the same scripts as the in-game menu, under the same rule."""
+        self._enabled()
+        self._check(source)
+        return [{"name": script.name, "revision": script.revision, "ownerName": script.owner_name,
+                 "visibility": script.visibility, "file": script.file, "own": script.owner == self.owner_key(source),
+                 "canEdit": self.can_edit(script, source) and self._author(source)}
+                for script in self._visible(source)]
+
+    def detail(self, name, source):
+        """One script for the web editor, or the same refusal as the in-game menu."""
+        self._enabled()
+        self._check(source)
+        script = self._script(name, source)
+        return {"name": script.name, "source": script.source, "revision": script.revision,
+                "ownerName": script.owner_name, "visibility": script.visibility, "file": script.file,
+                "savedAt": script.saved_at, "canEdit": self.can_edit(script, source) and self._author(source),
+                "history": [{"revision": row.revision, "source": row.source, "savedAt": row.saved_at}
+                            for row in script.history]}
+
+    def declaration(self, name, source):
+        """What a run form asks for, and the targets its parameters can choose from."""
+        self._enabled()
+        self._check(source)
+        script = self._script(name, source)
+        found = self.inspect(script, source)
+        groups = self.service.visible_groups(source) if self.service.groups else ()
+        return {"revision": script.revision, "schema": found.schema, "requires": list(found.requires),
+                "groups": [group.name for group in groups],
+                "bots": [bot["name"] for bot in bot_profiles(self.inputs)]}
+
+    def compile(self, name, text, source):
+        """Check a draft as saving would, without saving it: scripts run only as far as their declaration."""
+        self._enabled()
+        self._check(source)
+        if not self._author(source):
+            raise LocalizedError("Your role can run scripts but not create or change them; ask the operator for "
+                                 "the scripter role")
+        if not isinstance(text, str) or not text.strip() or len(text.encode("utf-8")) > self.config.max_script_bytes:
+            raise LocalizedError("Script source is empty or too large")
+        found = self.inspect(Script(name, text, "draft"), source)
+        return {"schema": found.schema, "requires": list(found.requires)}
+
     def _script(self, name, source, *, edit=False):
         script = self.store.get(name)
         if not self.can_run(script, source):

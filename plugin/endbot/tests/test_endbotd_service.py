@@ -55,6 +55,7 @@ class ServiceHarness(unittest.TestCase):
             authorization={"controller-policy-file": "controller-policy.json"},
             ui={"language": "en"}, hotbar={"hotbar-sync-interval-ticks": 2},
             permissions=permissions if permissions is not None else {}, web=web if web is not None else {},
+            scripting=getattr(self, "scripting", {}),
         )
         self.service = EndbotService(config, control=self.control,
                                      log=lambda level, message: self.logs.append((level, message))).start()

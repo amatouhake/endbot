@@ -6,6 +6,7 @@ Reads commands on stdin and answers on stdout, one JSON line each:
 """
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -27,14 +28,21 @@ BOT = "00000000-0000-4000-8000-00000000000b"
 
 
 class FakeControl:
-    """A runtime with two Bots; endbotd only reads the list here."""
+    """A runtime with two Bots that accepts what it is asked; ``calls`` is what the page's operations reached."""
 
-    def request(self, method, **_):
+    def __init__(self):
+        self.calls = []
+
+    def request(self, method, **params):
         if method in {"profiles", "list"}:
             return [{"name": "Miner_01", "identityId": BOT, "connectionState": "online"},
                     {"name": "Farmer", "identityId": "00000000-0000-4000-8000-00000000000c",
                      "connectionState": "offline"}]
-        return {}
+        self.calls.append([method, params])
+        if method == "status":
+            return {"name": params.get("name"), "identityId": BOT, "connectionState": "online", "desiredState": "online",
+                    "chunkRadius": 5}
+        return {"name": params.get("name"), "identityId": BOT, "connectionState": "online"}
 
 
 def main() -> None:
@@ -45,13 +53,16 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         (root / "endbotd.token").write_text("t" * 40, encoding="utf-8")
+        runner = os.environ.get("E2E_RUNNER")
+        control = FakeControl()
         config = EndbotdConfig(
             base=root, link_port=0, link_token_file=root / "endbotd.token", stores_directory=root,
             scripts_folder=root / "scripts", authorization={"controller-policy-file": "policy.json"},
             ui={"language": "en"}, web={"enabled": True, "origin": origin, "display-name": "E2E server"},
             web_link_key_file=key_path,
+            scripting={"enabled": bool(runner), **({"runner": runner} if runner else {})},
         )
-        service = EndbotService(config, control=FakeControl(), log=lambda level, message: print(
+        service = EndbotService(config, control=control, log=lambda level, message: print(
             f"[{level}] {message}", file=sys.stderr, flush=True))
         service.authority.policy.add("Alice", xuid=XUID, player_uuid=PLAYER)
         service.authority.roles.set(XUID, "scripter")
@@ -61,6 +72,8 @@ def main() -> None:
             command = line.strip()
             if command == "code":
                 print(json.dumps({"code": service.web.codes.issue(LinkIdentity(XUID, PLAYER, "Alice"))}), flush=True)
+            elif command == "calls":
+                print(json.dumps(control.calls), flush=True)
             elif command == "reset":
                 service.web.domain_changed()
                 print(json.dumps({"ok": True}), flush=True)

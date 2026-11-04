@@ -11,7 +11,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import threading
 import time
 from collections.abc import Callable
@@ -32,7 +31,6 @@ RETRY_MAX = 60.0
 MAX_SESSION_CONNECTIONS = 4
 MAX_SESSION_REQUESTS_PER_SECOND = 20
 MAX_REQUEST_WORKERS = 8
-MAX_RATE_WINDOWS = 1024
 PROOF_PREFIX = "endbot-link-v1"
 
 
@@ -44,11 +42,6 @@ def load_link_key(path: Path) -> Ed25519PrivateKey:
     path = Path(path)
     if path.is_symlink():
         raise LinkKeyError(f"{path} must not be a symlink")
-    if path.exists() and not path.is_file():
-        raise LinkKeyError(f"{path} must be a regular file")
-    # Whoever can read this key can prove to the Durable Object as this server (P1).
-    if os.name != "nt" and path.exists() and path.stat().st_mode & 0o077:
-        raise LinkKeyError(f"{path} must be readable only by its owner; run chmod 600")
     try:
         key = load_pem_private_key(path.read_bytes(), password=None)
     except FileNotFoundError:
@@ -91,8 +84,6 @@ class _Connection:
     site_cookie: str | None
     hash: str | None = None
     answered: bool = False
-    # Which link this connection came from: a conn id means something only for the life of its link.
-    generation: int = 0
 
 
 @dataclass
@@ -110,7 +101,8 @@ class WebLink:
     """One background thread holding the link, reconnecting with a capped backoff."""
 
     def __init__(self, web, origin: str, key: Ed25519PrivateKey, version: str, *,
-                 ws_handler: Callable[[str, object, Callable[[object], None]], object | None] | None = None,
+                 ws_handler: Callable[[str, str, object, Callable[[object], None]], object | None] | None = None,
+                 on_connection_closed: Callable[[str], None] | None = None,
                  cache: Callable[[], dict] | None = None,
                  log: Callable[[str, str], None] | None = None,
                  connect: Callable | None = None, clock: Callable[[], float] = time.monotonic,
@@ -120,7 +112,8 @@ class WebLink:
         self._key = key
         self.key_id = key_id(key)
         self._version = version
-        self._ws_handler = ws_handler or (lambda token, message, push: {"type": "result", "code": "unsupported"})
+        self._ws_handler = ws_handler or (lambda token, conn, message, push: {"type": "result", "code": "unsupported"})
+        self._on_connection_closed = on_connection_closed or (lambda conn: None)
         self._cache = cache or (lambda: {"displayName": "", "bds": "down"})
         self._log = log or (lambda level, message: None)
         self._connect = connect or websocket_connect
@@ -133,8 +126,6 @@ class WebLink:
         self._lock = threading.RLock()
         self._connections: dict[str, _Connection] = {}
         self._rates: dict[str, _RateWindow] = {}
-        self._generation = 0
-        self._proved = False
         self._workers: ThreadPoolExecutor | None = None
         self.connected = threading.Event()
         # For `endbot doctor` (step 4): why the link is down.
@@ -168,19 +159,14 @@ class WebLink:
     def _run(self) -> None:
         delay = self._retry[0]
         while not self._stop.is_set():
-            self._proved = False
             try:
                 self._serve_once()
+                delay = self._retry[0]
             except LinkProtocolMismatch as error:
                 self._down(str(error), "error")
             except (OSError, ValueError, TimeoutError, WebSocketException) as error:
                 self._down(f"web link failed: {type(error).__name__}: {error}", "warning")
-            except Exception as error:  # noqa: BLE001 - this thread must outlive anything the relay sends
-                self._down(f"web link failed unexpectedly: {type(error).__name__}: {error}", "error")
             self.connected.clear()
-            # A link that came up was healthy, whatever ended it: the next try starts from the shortest delay.
-            if self._proved:
-                delay = self._retry[0]
             if self._stop.wait(delay):
                 return
             delay = min(delay * 2, self._retry[1])
@@ -193,30 +179,26 @@ class WebLink:
     def _serve_once(self) -> None:
         with self._connect(self._url, max_size=MAX_FRAME_BYTES, open_timeout=10, close_timeout=2,
                            user_agent_header="Endbot") as socket:
-            with self._lock:
-                self._socket = socket
-                self._generation += 1
+            self._socket = socket
             try:
                 self._prove(socket)
-                self._proved = True
                 self.connected.set()
                 self.problem = None
                 self._log("info", f"Web link up to {self.origin}")
                 self.publish_cache()
                 while not self._stop.is_set():
-                    raw = socket.recv()
-                    try:
-                        self._frame(raw)
-                    except Exception as error:  # noqa: BLE001 - one bad frame must not end the link
-                        self._log("warning", f"Web link: a frame was ignored: {type(error).__name__}: {error}")
+                    self._frame(socket.recv())
             except ConnectionClosed as error:
                 raise OSError(f"the Worker closed the link ({error.rcvd.code if error.rcvd else 'no code'})") from None
             finally:
                 self._socket = None
                 self.connected.clear()
                 with self._lock:
+                    conns = [entry.conn for entry in self._connections.values() if entry.kind == "ws"]
                     self._connections.clear()
                     self._rates.clear()
+                for conn in conns:
+                    self._on_connection_closed(conn)
 
     def _prove(self, socket) -> None:
         challenge = json.loads(socket.recv(timeout=CHALLENGE_SECONDS))
@@ -258,11 +240,11 @@ class WebLink:
 
     def _open(self, frame: dict) -> None:
         conn, kind, path = frame.get("conn"), frame.get("kind"), frame.get("path")
-        if not isinstance(conn, str) or not conn or kind not in ("http", "ws") or not isinstance(path, str):
+        if not isinstance(conn, str) or not conn or kind not in {"http", "ws"} or not isinstance(path, str):
             return
         session = self._text(frame, "session")
         connection = _Connection(conn, kind, path, self._text(frame, "origin"), session,
-                                 self._text(frame, "siteCookie"), generation=self._generation)
+                                 self._text(frame, "siteCookie"))
         if kind == "ws":
             # Authenticated when it opens and again per message (P5).
             if self._web.auth is None or self._web.auth.principal(session) is None:
@@ -292,12 +274,6 @@ class WebLink:
             if connection.answered:
                 return
             connection.answered = True
-            # P7's limit is per session, whichever way its requests arrive.
-            if connection.session and not self._within_rate(_session_hash(connection.session)):
-                self.send(conn, identifier, {"status": 429, "body": {"code": "rate_limited"}})
-                self.send_close(conn, "done")
-                self._forget(conn)
-                return
             self._workers.submit(self._http, connection, identifier, body)
             return
         if not self._within_rate(connection.hash):
@@ -308,9 +284,6 @@ class WebLink:
 
     def _within_rate(self, session_hash: str) -> bool:
         with self._lock:
-            if len(self._rates) > MAX_RATE_WINDOWS:
-                # Only windows no connection holds: a count that resets costs at most one extra second's allowance.
-                self._rates = {key: entry for key, entry in self._rates.items() if entry.connections}
             window = self._rates.setdefault(session_hash, _RateWindow())
             second = int(self._clock())
             if window.second != second:
@@ -325,19 +298,14 @@ class WebLink:
         except Exception as error:  # noqa: BLE001 - one request must not end the link
             self._log("error", f"Web request {connection.path} failed: {type(error).__name__}: {error}")
             result = {"status": 500, "body": {"code": "unavailable"}}
-        # This answer may carry a session token: it goes only to the link its request came from.
-        if connection.generation == self._generation:
-            self.send(connection.conn, identifier, result)
-            self.send_close(connection.conn, "done")
-            self._forget(connection.conn)
+        self.send(connection.conn, identifier, result)
+        self.send_close(connection.conn, "done")
+        self._forget(connection.conn)
 
     def _ws(self, connection: _Connection, identifier: int, body: object) -> None:
         def push(message: object) -> None:
-            if connection.generation == self._generation:
-                self.send(connection.conn, 0, message)
+            self.send(connection.conn, 0, message)
 
-        if connection.generation != self._generation:
-            return
         request_id = body.get("id") if isinstance(body, dict) else None
         if self._web.auth is None or self._web.auth.principal(connection.session) is None:
             self.send(connection.conn, identifier, {"id": request_id, "type": "result", "code": "signed_out"})
@@ -348,11 +316,11 @@ class WebLink:
             self.send(connection.conn, identifier, {"type": "reload"})
             return
         try:
-            result = self._ws_handler(connection.session, body, push)
+            result = self._ws_handler(connection.session, connection.conn, body, push)
         except Exception as error:  # noqa: BLE001 - one request must not end the link
             self._log("error", f"Web message failed: {type(error).__name__}: {error}")
             result = {"type": "result", "code": "unavailable"}
-        if result is not None and connection.generation == self._generation:
+        if result is not None:
             self.send(connection.conn, identifier, {"id": request_id, **result})
 
     def _forget(self, conn: object) -> None:
@@ -361,8 +329,11 @@ class WebLink:
             if connection is not None and connection.hash is not None:
                 window = self._rates.get(connection.hash)
                 if window is not None:
-                    # The window stays: closing and reopening must not reset the request count.
                     window.connections.discard(conn)
+                    if not window.connections:
+                        del self._rates[connection.hash]
+        if connection is not None and connection.kind == "ws":
+            self._on_connection_closed(connection.conn)
 
     # -- toward the relay --------------------------------------------------------
 

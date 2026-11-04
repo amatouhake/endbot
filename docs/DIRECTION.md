@@ -167,10 +167,9 @@ More devices:
 
 - Synced passkeys (iCloud Keychain, Google Password Manager and similar) need nothing extra.
 - Standard cross-device sign-in (scanning the login page's QR code with a phone) works across ecosystems.
-- "Add this device" on a signed-in device shows a short one-time code to enter on the new device, which then
-  registers its own passkey. No game join is needed.
 - `/botweb link` for an XUID that already has an account adds a passkey to it instead of creating another account.
-  This is also the recovery path after losing every device.
+  This is how a new device joins, and the recovery path after losing every device. A signed-in browser cannot issue a
+  code ([WEB.md S8](WEB.md#settled-points)).
 - Adding a passkey notifies the account's other devices and, when online, the player in game.
 
 Removing access:

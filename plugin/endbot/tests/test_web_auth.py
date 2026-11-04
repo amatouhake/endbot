@@ -13,7 +13,7 @@ from endbotd.web_store import LinkCodes, LinkIdentity, WebStore
 HAS_WEBAUTHN = importlib.util.find_spec("webauthn") is not None and importlib.util.find_spec("cbor2") is not None
 if HAS_WEBAUTHN:
     from cryptography.hazmat.primitives.asymmetric import ec
-    from endbotd.web_auth import MAX_CEREMONIES, WebAuth
+    from endbotd.web_auth import MAX_CEREMONIES, MAX_PASSKEYS_PER_ACCOUNT, WebAuth
     from soft_authenticator import AT, UP, UV, SoftAuthenticator
 
 ORIGIN = "https://endbot.example"
@@ -92,9 +92,15 @@ class RegistrationTests(WebAuthCase):
         self.assertEqual(options["authenticatorSelection"]["residentKey"], "required")
         self.assertEqual(options["authenticatorSelection"]["userVerification"], "required")
         self.assertEqual(options["attestation"], "none")
-        self.assertEqual([entry["alg"] for entry in options["pubKeyCredParams"]], [-7, -8])
+        self.assertEqual([entry["alg"] for entry in options["pubKeyCredParams"]], [-7, -8, -257])
         self.assertEqual(options["user"]["name"], "Alice")
         self.assertNotIn(XUID, str(options))
+
+    def test_an_rs256_passkey_registers_and_signs_in_as_windows_hello_may_need(self):
+        device = SoftAuthenticator(ORIGIN, RP_ID, rsa=True)
+        self.assertIsNotNone(self.auth.session(self.link(device)))
+        reply = self.login(device)
+        self.assertEqual(reply["status"], 200, reply)
 
     def test_only_the_session_token_hash_is_stored(self):
         token = self.link()
@@ -266,10 +272,10 @@ class SignInTests(WebAuthCase):
     def test_signing_in_again_replaces_the_session_and_refreshes_the_assertion(self):
         old = self.link()
         self.clock.now += 400
-        self.assertEqual(self.post("/auth/device-code", token=old)["body"]["code"], "reauthenticate")
+        self.assertEqual(self.post("/auth/passkey/remove", {"id": "none"}, old)["body"]["code"], "reauthenticate")
         reply = self.login(token=old)
         self.assertIsNone(self.auth.session(old))
-        self.assertEqual(self.post("/auth/device-code", token=reply["session"])["status"], 200)
+        self.assertEqual(self.post("/auth/passkey/remove", {"id": "none"}, reply["session"])["status"], 404)
         self.assertEqual(len(self.removed), 1)
 
     def test_another_accounts_session_is_left_alone_when_signing_in(self):
@@ -415,18 +421,42 @@ class RevokeEpochTests(WebAuthCase):
 
 
 class DeviceTests(WebAuthCase):
-    def test_adding_a_device_needs_a_recent_assertion(self):
+    def test_a_signed_in_browser_cannot_mint_a_code(self):
+        """A new passkey starts in the game: a session, however fresh, cannot widen itself."""
         token = self.link()
-        code = self.post("/auth/device-code", token=token)["body"]["code"]
-        second = SoftAuthenticator(ORIGIN, RP_ID)
-        started = self.post("/auth/link/options", {"code": code})["body"]
-        reply = self.post("/auth/link/verify", {"ceremony": started["ceremony"],
-                                                "credential": second.register(started["options"])})
-        self.assertEqual(reply["status"], 200)
+        self.assertEqual(self.post("/auth/device-code", token=token)["status"], 404)
+
+    def test_a_second_code_from_the_game_adds_a_passkey_and_tells_the_owner(self):
+        self.link()
+        self.link(SoftAuthenticator(ORIGIN, RP_ID))
         self.assertEqual(len(self.store.passkeys(self.account()["id"])), 2)
         self.assertEqual(len(self.added), 2)
-        self.clock.now += 300
-        self.assertEqual(self.post("/auth/device-code", token=token)["body"]["code"], "reauthenticate")
+
+    def test_an_account_holds_at_most_ten_passkeys(self):
+        for _ in range(MAX_PASSKEYS_PER_ACCOUNT):
+            self.link(SoftAuthenticator(ORIGIN, RP_ID))
+        reply = self.post("/auth/link/options", {"code": self.codes.issue(ALICE)})
+        self.assertEqual((reply["status"], reply["body"]["code"]), (409, "passkey_limit"))
+        self.assertEqual(len(self.store.passkeys(self.account()["id"])), MAX_PASSKEYS_PER_ACCOUNT)
+
+    def test_a_ceremony_opened_before_the_limit_is_refused_at_the_limit(self):
+        for _ in range(MAX_PASSKEYS_PER_ACCOUNT - 1):
+            self.link(SoftAuthenticator(ORIGIN, RP_ID))
+        waiting = self.link_options()
+        self.link(SoftAuthenticator(ORIGIN, RP_ID))
+        device = SoftAuthenticator(ORIGIN, RP_ID)
+        reply = self.post("/auth/link/verify", {"ceremony": waiting["ceremony"],
+                                                "credential": device.register(waiting["options"])})
+        self.assertEqual(reply["body"]["code"], "passkey_limit")
+        self.assertEqual(len(self.store.passkeys(self.account()["id"])), MAX_PASSKEYS_PER_ACCOUNT)
+
+    def test_removing_a_passkey_makes_room_again(self):
+        for _ in range(MAX_PASSKEYS_PER_ACCOUNT - 1):
+            self.link(SoftAuthenticator(ORIGIN, RP_ID))
+        token = self.link(SoftAuthenticator(ORIGIN, RP_ID))
+        passkey = self.store.passkeys(self.account()["id"])[0]["id"]
+        self.assertEqual(self.post("/auth/passkey/remove", {"id": passkey}, token)["status"], 200)
+        self.assertEqual(self.post("/auth/link/options", {"code": self.codes.issue(ALICE)})["status"], 200)
 
     def test_the_list_shows_this_accounts_devices_without_secrets(self):
         token = self.link()

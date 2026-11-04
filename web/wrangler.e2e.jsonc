@@ -1,0 +1,14 @@
+// For the end-to-end test: the built bundle, as `endbot web deploy` configures it.
+{
+  "name": "endbot-web-e2e",
+  "main": "dist/bundle/worker/index.js",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "dist/bundle/assets",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "durable_objects": { "bindings": [{ "name": "RELAY", "class_name": "Relay" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Relay"] }]
+}

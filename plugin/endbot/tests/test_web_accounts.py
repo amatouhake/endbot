@@ -357,6 +357,16 @@ class BotWebCommandTests(ServiceHarness):
         self.assertFalse(result["ok"])
         self.assertIs(self.service.web, before)
 
+    def test_a_run_event_reaches_the_web_log_through_the_runner(self):
+        from endbot_core.events import Event
+
+        events = []
+        self.service.web_api = type("Api", (), {"record": staticmethod(events.append)})()
+        event = Event(Principal("console"), "run.log", {"run": "r", "name": "s", "text": "t", "limited": False,
+                                                        "chat": False, "skipped": 0})
+        self.service.runner.publish(event)
+        self.assertTrue(wait_for(lambda: events == [event]))
+
     def test_cli_requests_are_validated(self):
         for body in ({"operation": "delete", "target": "Alice"}, {"operation": "revoke"},
                      {"operation": "revoke", "target": "a\nb"}, {"operation": "revoke", "target": " "}):

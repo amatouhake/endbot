@@ -7,7 +7,8 @@ and without ever running pip/npm: it carries a private CPython 3.12 (from
 ``endstone-endbot`` plugin wheel, the ``endbot-core`` shared wheel and the
 ``endbot`` CLI wheel preinstalled, a private Node.js 24 runtime, and the runtime
 tree with production ``node_modules`` prebuilt. Release candidates also pass ``--runner-dir`` with
-the native Luau runner staged by ``node runner/build.mjs --out <dir>``.
+the native Luau runner staged by ``node runner/build.mjs --out <dir>``, and ``--web-dir`` with the
+prebuilt web (``npm run build`` in ``web/``), which ``endbot web deploy`` uploads.
 Local builds may omit that option (scripting then needs a separate runner).
 
 This script must run ON the target platform (it executes the bundled
@@ -631,6 +632,14 @@ def validate_runner(runner_dir: Path, platform: str) -> None:
         raise BundleError(f"--runner-dir binary is not executable: {runner_dir / binary}")
 
 
+def copy_web(web_dir: Path, app_version: Path) -> None:
+    for name in ("manifest.json", "worker/index.js", "assets/index.html"):
+        source = web_dir / name
+        if not source.is_file() or source.stat().st_size == 0:
+            raise BundleError(f"--web-dir requires a non-empty regular file: {source}")
+    shutil.copytree(web_dir, app_version / "web")
+
+
 def copy_runner(runner_dir: Path, app_version: Path, bundle_root: Path, platform: str) -> None:
     validate_runner(runner_dir, platform)
     target = app_version / "runner"
@@ -745,6 +754,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cli-wheel", type=Path, required=True, help="endbot CLI wheel (pure Python)")
     parser.add_argument("--endstone-license", type=Path, default=None, help="ENDSTONE_LICENSE file for licenses/")
     parser.add_argument(
+        "--web-dir", type=Path, help="the prebuilt web from `npm run build` in web/ (dist/bundle)",
+    )
+    parser.add_argument(
         "--runner-dir", type=Path,
         help="native runner staging directory from node runner/build.mjs --out (required for release candidates)",
     )
@@ -812,6 +824,8 @@ def main(argv: list[str] | None = None) -> int:
         copy_licenses(bundle_root, python_dir, node_dir, args.platform, args.endstone_license)
         if runner_dir is not None:
             copy_runner(runner_dir, app_version, bundle_root, args.platform)
+        if args.web_dir is not None:
+            copy_web(args.web_dir.resolve(), app_version)
 
         test_script = ROOT / "scripts" / "test_bundle.py"
         options = []

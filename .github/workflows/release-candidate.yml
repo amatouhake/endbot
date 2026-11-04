@@ -94,6 +94,11 @@ jobs:
           cd runner
           node --test
 
+      - name: Build the Linux web bundle
+        run: |
+          npm ci --prefix web
+          npm run build --prefix web
+
       - name: Build the Linux operator bundle
         env:
           CANDIDATE_VERSION: ${{ inputs.version }}
@@ -107,6 +112,7 @@ jobs:
             --cli-wheel dist/cli/endbot-*.whl \
             --endstone-license staging/linux/ENDSTONE_LICENSE \
             --runner-dir build/runner-stage \
+            --web-dir web/dist/bundle \
             --output-dir dist/bundle
 
       - name: Test candidate in a clean Linux consumer without LLVM
@@ -204,6 +210,11 @@ jobs:
           cd runner
           node --test
 
+      - name: Build the Windows web bundle
+        run: |
+          npm ci --prefix web
+          npm run build --prefix web
+
       - name: Build the Windows operator bundle
         env:
           CANDIDATE_VERSION: ${{ inputs.version }}
@@ -217,6 +228,7 @@ jobs:
             --cli-wheel dist/cli/endbot-*.whl \
             --endstone-license staging/windows/ENDSTONE_LICENSE \
             --runner-dir build/runner-stage \
+            --web-dir web/dist/bundle \
             --output-dir dist/bundle
 
       - name: Upload Windows wheel (intermediate, not the candidate)

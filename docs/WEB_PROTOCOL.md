@@ -68,6 +68,9 @@ the page reloads. Every request is authorized again at execution time with the `
 | `op` | `operation`: one registry operation (step 7) | `{id, type: "result", code, data}` |
 | `script.*` | list, get, save, compile, declaration (step 6) | `{id, type: "result", code, data}` |
 
+endbotd also pushes `{type: "event", topic: "account", data: {kind: "passkey_added"}}` to every open page of an account
+that subscribed to anything, so a passkey added elsewhere is seen at once.
+
 `code` is `ok` or an Outcome code. Unknown types answer `unsupported`. A refused session answers `signed_out`, and endbotd
 closes the connection.
 
@@ -83,7 +86,6 @@ All are `POST` with `Content-Type: application/json`, except `GET /auth/site/sta
 | `/auth/login/options` | none | `{ceremony, options}` |
 | `/auth/login/verify` | `{ceremony, credential, label}` | `{gamertag}`, with a session |
 | `/auth/logout` | none | `{}`, clears the session |
-| `/auth/device-code` | none | `{code}` |
 | `/auth/devices` | none | `{sessions, passkeys}` |
 | `/auth/session/remove` | `{id}` | `{}` |
 | `/auth/passkey/remove` | `{id}` | `{}` |
@@ -92,4 +94,5 @@ All are `POST` with `Content-Type: application/json`, except `GET /auth/site/sta
 | `/auth/site/options` | `{ceremony}` | `{ceremony, options}` |
 
 Refusals carry `{code}`: `invalid_request`, `invalid_code`, `link_closed`, `no_access`, `expired`, `passkey_refused`,
+`passkey_limit`,
 `signed_out`, `reauthenticate`, `not_found`, `busy`, `unavailable`, `site_expired`, `site_refused`.

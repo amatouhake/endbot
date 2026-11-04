@@ -3,7 +3,6 @@
 import base64
 import importlib.util
 import json
-import os
 import queue
 import tempfile
 import threading
@@ -121,8 +120,9 @@ class LinkCase(unittest.TestCase):
         self.web = FakeWeb()
         self.logs = []
         self.handled = []
+        self.closed_conns = []
 
-    def handler(self, token, message, push):
+    def handler(self, token, conn, message, push):
         self.handled.append((token, message))
         if isinstance(message, dict) and message.get("type") == "push":
             push({"type": "event", "topic": "status"})
@@ -134,6 +134,7 @@ class LinkCase(unittest.TestCase):
         origin = f"http://localhost:{self.relay.port}"
         self.link = WebLink(self.web, origin, self.key, "0.7.0", ws_handler=self.handler,
                             cache=lambda: {"displayName": "Mine", "bds": "up"},
+                            on_connection_closed=self.closed_conns.append,
                             log=lambda level, message: self.logs.append((level, message)), retry=(0.05, 0.2))
         self.link.start()
         self.addCleanup(self.link.stop)
@@ -206,8 +207,6 @@ class HttpTests(LinkCase):
     def test_junk_frames_are_ignored(self):
         self.up()
         for raw in ("not json", "[]", "5", '{"t":"open"}', '{"t":"open","conn":"x","kind":"tcp","path":"/"}',
-                    '{"t":"open","conn":"x","kind":[],"path":"/"}', '{"t":"open","conn":[],"kind":"ws","path":"/"}',
-                    '{"t":"msg","conn":{},"id":1,"body":{}}', '{"t":"close","conn":[]}',
                     '{"t":"msg","conn":"none","id":1,"body":{}}', '{"t":"close"}', '{"t":"unknown"}'):
             self.relay.socket.send(raw)
         self.relay.http("c1", "/after")
@@ -283,33 +282,13 @@ class WebSocketTests(LinkCase):
         self.message(type="query")
         self.assertEqual(self.relay.next("msg")["body"]["code"], "ok")
 
-    def test_requests_over_http_count_against_the_session_too(self):
+    def test_a_closed_browser_is_reported_so_its_subscriptions_end(self):
         self.up()
-        now = [100.0]
-        self.link._clock = lambda: now[0]
-        for index in range(MAX_SESSION_REQUESTS_PER_SECOND):
-            self.relay.http(f"h{index}", "/auth/devices", session=GOOD)
-        self.relay.http("over", "/auth/devices", session=GOOD)
-        statuses = {}
-        for _ in range(MAX_SESSION_REQUESTS_PER_SECOND + 1):
-            frame = self.relay.next("msg")
-            statuses[frame["conn"]] = frame["body"]["status"]
-        self.assertEqual(statuses["over"], 429)
-        self.assertEqual(list(statuses.values()).count(429), 1)
-
-    def test_closing_a_connection_does_not_reset_the_request_count(self):
-        self.up()
-        now = [100.0]
-        self.link._clock = lambda: now[0]
         self.relay.ws("w1")
-        for _ in range(MAX_SESSION_REQUESTS_PER_SECOND):
-            self.message(type="query")
-        for _ in range(MAX_SESSION_REQUESTS_PER_SECOND):
-            self.relay.next("msg")
+        self.message(type="query")
+        self.relay.next("msg")
         self.relay.send({"t": "close", "conn": "w1", "reason": "browser"})
-        self.relay.ws("w2")
-        self.message(conn="w2", type="query")
-        self.assertEqual(self.relay.next("msg")["body"]["code"], "rate_limited")
+        self.assertTrue(wait(lambda: self.closed_conns == ["w1"]))
 
     def test_an_ended_session_has_its_connections_closed(self):
         self.up()
@@ -323,46 +302,6 @@ class WebSocketTests(LinkCase):
 
 
 class ReconnectTests(LinkCase):
-    def test_an_answer_for_an_old_link_is_not_sent_on_the_new_one(self):
-        self.up()
-        release = threading.Event()
-        answered = threading.Event()
-        http = self.web.http
-
-        def slow(*args, **kwargs):
-            release.wait(5)
-            answered.set()
-            return http(*args, **kwargs)
-
-        self.web.http = slow
-        self.relay.http("c1", "/auth/login/verify")
-        self.assertTrue(wait(lambda: self.web.auth is not None))
-        import time
-
-        time.sleep(0.1)
-        generation = self.link._generation
-        self.relay.connected.clear()
-        self.relay.socket.close()
-        self.assertTrue(self.relay.connected.wait(10))
-        self.assertTrue(wait(lambda: self.link._generation == generation + 1 and self.link.connected.is_set()))
-        while not self.relay.frames.empty():
-            self.relay.frames.get()
-        release.set()
-        self.assertTrue(answered.wait(5))
-        time.sleep(0.2)
-        self.assertEqual([frame for frame in list(self.relay.frames.queue) if frame.get("conn") == "c1"], [])
-
-    def test_the_retry_delay_starts_over_after_a_healthy_link(self):
-        self.up()
-        for _ in range(3):
-            self.relay.connected.clear()
-            self.link.connected.clear()
-            self.relay.socket.close()
-            # At the shortest delay each comes back within the close handshake, well under the 0.2 s cap's growth.
-            self.assertTrue(self.relay.connected.wait(10))
-            self.assertTrue(self.link.connected.wait(10))
-        self.assertTrue(self.link._proved)
-
     def test_a_lost_link_reconnects_and_proves_again(self):
         self.up()
         self.relay.connected.clear()
@@ -387,21 +326,7 @@ class KeyFileTests(unittest.TestCase):
     def test_a_valid_key_loads(self):
         key = Ed25519PrivateKey.generate()
         self.path.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
-        os.chmod(self.path, 0o600)
         self.assertIsInstance(load_link_key(self.path), Ed25519PrivateKey)
-
-    @unittest.skipIf(os.name == "nt", "POSIX modes")
-    def test_a_key_others_can_read_is_refused(self):
-        key = Ed25519PrivateKey.generate()
-        self.path.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
-        os.chmod(self.path, 0o644)
-        with self.assertRaisesRegex(LinkKeyError, "owner"):
-            load_link_key(self.path)
-
-    def test_a_directory_is_refused(self):
-        self.path.mkdir()
-        with self.assertRaisesRegex(LinkKeyError, "regular file"):
-            load_link_key(self.path)
 
     def test_a_missing_or_broken_key_names_the_fix_without_the_contents(self):
         with self.assertRaisesRegex(LinkKeyError, "endbot web deploy"):

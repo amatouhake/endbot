@@ -160,6 +160,40 @@ describe("the link handshake", () => {
     expect(link.received).toEqual([]);
   });
 
+  it("refuses a link from a web page", async () => {
+    expect((await upgrade("/link", { Origin: "https://evil.example" })).status).toBe(403);
+    expect((await upgrade("/link", { Origin: ORIGIN })).status).toBe(403);
+  });
+
+  it("limits how often an address can open links, apart from its other requests", async () => {
+    const headers = { "CF-Connecting-IP": "203.0.113.20" };
+    for (let index = 0; index < 10; index += 1) expect((await upgrade("/link", headers)).status).toBe(101);
+    expect((await upgrade("/link", headers)).status).toBe(429);
+    expect((await post("/auth/info", {}, headers)).status).toBe(503);
+  });
+
+  it("lets a proof that was replaced while being checked decide nothing", async () => {
+    const proven = await provenLink();
+    const late = await openLink();
+    const challenge = await late.next();
+    const signature = await sign(challenge.nonce);
+    // Replaced by a newer unproven link before its proof arrives.
+    const newest = await openLink();
+    await newest.next();
+    expect((await late.whenClosed()).code).toBe(4001);
+    late.closed = null;
+    try {
+      late.send({ t: "prove", protocol: WEB_PROTOCOL, endbotdVersion: "x", keyId: "k1", sig: signature });
+    } catch {
+      // Already closed on this side, which proves the same thing.
+    }
+    proven.send({ t: "cache", displayName: "Still here", bds: "up" });
+    await expect.poll(async () => ((await (await SELF.fetch(`${ORIGIN}/api/display`)).json()) as any).displayName)
+      .toBe("Still here");
+    expect(proven.closed).toBeNull();
+    expect(newest.closed).toBeNull();
+  });
+
   it("holds one unproven link at a time", async () => {
     const first = await openLink();
     const second = await openLink();
@@ -168,10 +202,15 @@ describe("the link handshake", () => {
     expect(second.closed).toBeNull();
   });
 
-  it("lets a newly proven link replace the old one", async () => {
+  it("lets a newly proven link replace the old one, and its browsers go with it", async () => {
     const first = await provenLink();
+    const response = await upgrade("/ws", { Origin: ORIGIN, Cookie: "__Host-endbot_session=tok" });
+    const page = new Messages(response.webSocket!);
+    await first.next((message) => message.t === "open");
     await provenLink();
     expect((await first.whenClosed()).code).toBe(4004);
+    // The new endbotd never heard of this page, so it must reconnect rather than hang.
+    expect((await page.whenClosed()).code).toBe(1013);
   });
 
   it("closes a link that does not prove itself when the alarm fires", async () => {
@@ -252,6 +291,25 @@ describe("HTTP through the relay", () => {
     expect(response.status).toBe(400);
   });
 
+  it("refuses a large body before relaying it", async () => {
+    const link = await provenLink();
+    const big = JSON.stringify({ pad: "x".repeat(600 * 1024) });
+    expect((await post("/auth/info", JSON.parse(big))).status).toBe(413);
+    const claimed = await SELF.fetch(`${ORIGIN}/auth/info`, {
+      method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json", "Content-Length": "999999999" },
+      body: "{}",
+    });
+    expect([200, 413, 503]).toContain(claimed.status);
+    expect(link.received.filter((frame) => frame.t === "msg")).toEqual([]);
+    const form = await SELF.fetch(`${ORIGIN}/auth/site/return`, {
+      method: "POST", redirect: "manual",
+      headers: { Origin: "https://a.example", Cookie: "__Host-endbot_site=x",
+        "Content-Type": "application/x-www-form-urlencoded" },
+      body: `assertion=${"x".repeat(600 * 1024)}`,
+    });
+    expect(form.status).toBe(413);
+  });
+
   it("limits requests per client address", async () => {
     const link = await provenLink();
     const answering = (async () => {
@@ -261,6 +319,10 @@ describe("HTTP through the relay", () => {
     for (let index = 0; index < 10; index += 1) expect((await post("/auth/info", {}, headers)).status).toBe(200);
     await answering;
     expect((await post("/auth/info", {}, headers)).status).toBe(429);
+    // Only that address: another still gets through.
+    const other = post("/auth/info", {}, { "CF-Connecting-IP": "203.0.113.10" });
+    await answerNext(link, { status: 200, body: {} });
+    expect((await other).status).toBe(200);
   });
 });
 
@@ -310,8 +372,10 @@ describe("the trusted site routes", () => {
     expect(response.headers.get("Location")).toBe("https://alice.example/start?nonce=n");
     const cookie = response.headers.get("Set-Cookie")!;
     expect(cookie).toContain("__Host-endbot_site=pending");
-    expect(cookie).toContain("SameSite=None");
-    expect(cookie).toContain("Max-Age=120");
+    for (const attribute of ["SameSite=None", "Max-Age=120", "Path=/", "Secure", "HttpOnly"]) {
+      expect(cookie).toContain(attribute);
+    }
+    expect(cookie).not.toContain("Path=/auth");
   });
 
   function formPost(headers: Record<string, string>): Promise<Response> {
@@ -405,6 +469,7 @@ describe("browser WebSockets", () => {
     socket.send({ t: "prove", protocol: WEB_PROTOCOL, sig: "x" });
     const message = await link.next((frame) => frame.t === "msg");
     expect(message.body).toEqual({ t: "prove", protocol: WEB_PROTOCOL, sig: "x" });
+    expect(link.received.filter((frame) => frame.t === "prove")).toEqual([]);
   });
 });
 

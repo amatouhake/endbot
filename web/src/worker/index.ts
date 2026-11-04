@@ -27,9 +27,11 @@ function refuse(status: number, code: string): Response {
   return Response.json({ code }, { status });
 }
 
-// endbotd's outbound link. It has no browser Origin; it proves itself with its key in the Durable Object.
+// endbotd's outbound link proves itself with its key in the Durable Object. endbotd sends no Origin and a browser
+// always does, so a web page cannot take up the one unproven slot.
 app.get("/link", (c) => {
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket") return refuse(426, "upgrade_required");
+  if (c.req.header("Origin")) return refuse(403, "origin");
   return relay(c.env).fetch(c.req.raw);
 });
 

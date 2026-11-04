@@ -46,14 +46,6 @@ class WebService:
                  log: Callable[[str, str], None] | None = None) -> None:
         self._log = log or (lambda level, message: None)
         self._authority = authority
-        self.enabled = section.get("enabled", False) is True
-        name = section.get("display-name", "")
-        self.display_name = name[:64] if isinstance(name, str) and name.isprintable() else ""
-        try:
-            self.origin = web_origin(section.get("origin"))
-        except ValueError as error:
-            self.origin = None
-            self._log("error", f"Web disabled: {error}")
         self.store: WebStore | None = None
         try:
             self.store = WebStore(Path(stores_directory) / STORE_DIRECTORY)
@@ -66,6 +58,18 @@ class WebService:
         self.on_sessions_removed: Callable[[list[str]], None] = lambda hashes: None
         # Told when a passkey is added, so the player hears about it in chat (P4).
         self.on_passkey_added: Callable[[dict], None] = lambda account: None
+        self.configure(section, base)
+
+    def configure(self, section: dict, base: Path | None) -> None:
+        """Apply the settings: at start and after a deploy. The one store stays, so it keeps a single writer."""
+        self.enabled = section.get("enabled", False) is True
+        name = section.get("display-name", "")
+        self.display_name = name[:64] if isinstance(name, str) and name.isprintable() else ""
+        try:
+            self.origin = web_origin(section.get("origin"))
+        except ValueError as error:
+            self.origin = None
+            self._log("error", f"Web disabled: {error}")
         self.auth = None
         self.site = None
         if self.enabled and self.origin is not None and self.store is not None:
@@ -75,17 +79,17 @@ class WebService:
             except ImportError as error:
                 self._log("error", f"Web disabled: the WebAuthn library is missing ({error}); reinstall Endbot")
             else:
-                self.auth = WebAuth(self.store, self.codes, self.origin, authority, log=self._log,
+                self.auth = WebAuth(self.store, self.codes, self.origin, self._authority, log=self._log,
                                     on_sessions_removed=lambda hashes: self.on_sessions_removed(hashes),
                                     on_passkey_added=lambda account: self.on_passkey_added(account))
-                self.site = self._load_site(section, base, authority)
+                self.site = self._load_site(section, base, self._authority)
 
     def _load_site(self, section: dict, base: Path | None, authority: Authority):
         from endbotd.web_site import SiteConfig, SiteConfigError, TrustedSite
 
         try:
             config = SiteConfig.load(section.get("trusted-site") or {}, base or Path("."))
-        except SiteConfigError as error:
+        except (SiteConfigError, ValueError, TypeError, AttributeError) as error:
             # P12: no site button, /auth/site/* is 404; passkeys and /botweb link keep working.
             self._log("error", f"Trusted site disabled: {error}")
             return None
@@ -197,11 +201,13 @@ class WebService:
             return {"ok": False, "messages": ["Web store is unavailable; see the endbotd log"]}
         try:
             removed = self.store.delete_sessions_via("site")
+            passkeys = self.store.delete_passkeys_via("site")
         except OSError as error:
             return {"ok": False, "messages": self._failed_write(error)}
         self.on_sessions_removed(removed)
-        self._log("info", f"Web sessions issued through the trusted site ended: {len(removed)}")
-        return {"ok": True, "messages": [f"Ended {len(removed)} web sessions issued through the trusted site"]}
+        self._log("info", f"Web sign-ins through the trusted site ended: {len(removed)} sessions, {passkeys} passkeys")
+        return {"ok": True, "messages": [f"Ended {len(removed)} web sessions and removed {passkeys} passkeys "
+                                         "that came through the trusted site"]}
 
     def _find_account(self, target: str) -> dict | None:
         if target.startswith("xuid:"):

@@ -223,12 +223,44 @@ class DeployTests(DeployCase):
         with self.assertRaisesRegex(DeployError, "symlink"):
             ensure_link_key(self.paths)
 
+    def test_a_custom_domain_is_the_only_origin(self) -> None:
+        self.deploy(domain="endbot.example", zone_id="zone1")
+        routed = next(call for call in self.api.calls if call[1].endswith("/endbot/subdomain"))
+        self.assertEqual(json.loads(routed[2]), {"enabled": False, "previews_enabled": False})
+
+    def test_a_domain_a_browser_would_spell_differently_is_refused_before_any_call(self) -> None:
+        for domain in ("Endbot.Example", "endbot.example:443", "endbot.example/x", "bücher.example", "localhost"):
+            with self.subTest(domain=domain), self.assertRaisesRegex(DeployError, "lowercase host name"):
+                self.deploy(domain=domain, zone_id="zone1")
+        self.assertEqual(self.api.calls, [])
+
+    def test_a_refused_domain_leaves_a_serving_worker_and_the_settings_alone(self) -> None:
+        self.deploy()
+        self.api.migration = "v1"
+        self.api.calls.clear()
+        before = self.paths.endbot_toml.read_text(encoding="utf-8")
+        self.api.fail["/workers/domains"] = (403, "no zone permission")
+        with self.assertRaisesRegex(DeployError, "no zone permission"):
+            self.deploy(domain="endbot.example", zone_id="zone1", confirm_domain_change=True)
+        self.assertFalse(any(call[0] == "PUT" and call[1] == "/workers/scripts/endbot" for call in self.api.calls))
+        self.assertEqual(self.paths.endbot_toml.read_text(encoding="utf-8"), before)
+        self.assertEqual(self.requests, [])
+
+    def test_a_settings_failure_stops_before_anything_remote(self) -> None:
+        self.api.calls.clear()
+        from unittest.mock import patch
+
+        with patch("endbot_cli.webdeploy._regenerate", side_effect=[OSError("read-only"), None]), \
+             self.assertRaises(OSError):
+            self.deploy()
+        self.assertFalse(any(call[0] in {"PUT", "POST"} for call in self.api.calls))
+        self.assertEqual(load_config(self.paths.endbot_toml).web.origin, "")
+
     def test_a_custom_domain_is_attached(self) -> None:
         self.deploy(domain="endbot.example", zone_id="zone1")
         self.assertEqual(load_config(self.paths.endbot_toml).web.origin, "https://endbot.example")
         attached = json.loads(self.api.call("/workers/domains")[2])
         self.assertEqual((attached["hostname"], attached["zone_id"]), ("endbot.example", "zone1"))
-        self.assertFalse(any(path.endswith("/subdomain") and "scripts" in path for path in self.api.paths()))
 
     def test_a_domain_needs_its_zone_and_an_account_is_required_once(self) -> None:
         with self.assertRaisesRegex(DeployError, "zone-id"):

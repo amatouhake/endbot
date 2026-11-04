@@ -14,6 +14,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import secrets
 import time
 import urllib.error
@@ -42,6 +43,7 @@ KEY_FILE = "web-link.key"
 MIGRATION_TAG = "v1"
 LINK_WAIT_SECONDS = 30.0
 TOKEN_VARIABLE = "CLOUDFLARE_API_TOKEN"
+_HOSTNAME = re.compile(r"(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+")
 
 
 class DeployError(ValueError):
@@ -150,9 +152,9 @@ class CloudflareApi:
     def put_secret(self, worker: str, name: str, value: str) -> None:
         self._json("PUT", f"/workers/scripts/{worker}/secrets", {"name": name, "text": value, "type": "secret_text"})
 
-    def enable_subdomain(self, worker: str) -> None:
+    def set_subdomain(self, worker: str, *, enabled: bool) -> None:
         # Previews would serve the UI from a second origin (P8).
-        self._json("POST", f"/workers/scripts/{worker}/subdomain", {"enabled": True, "previews_enabled": False})
+        self._json("POST", f"/workers/scripts/{worker}/subdomain", {"enabled": enabled, "previews_enabled": False})
 
     def attach_domain(self, worker: str, hostname: str, zone_id: str) -> None:
         self._json("PUT", "/workers/domains", {"hostname": hostname, "service": worker, "zone_id": zone_id,
@@ -318,6 +320,15 @@ def _announce_link(paths: InstancePaths, request: Callable, report: Callable[[st
 # -- the commands ----------------------------------------------------------------
 
 
+def _route(api: CloudflareApi, worker: str, domain: str | None, zone_id: str | None) -> None:
+    """One origin only (P8): a custom domain also turns the workers.dev address and previews off."""
+    if domain:
+        api.attach_domain(worker, domain, zone_id)
+        api.set_subdomain(worker, enabled=False)
+    else:
+        api.set_subdomain(worker, enabled=True)
+
+
 def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_name: str | None, domain: str | None,
            zone_id: str | None, confirm_domain_change: bool, bundle: Path | None, report: Callable[[str], None],
            request: Callable, opener: Callable = urllib.request.urlopen, clock: Callable[[], float] = time.monotonic,
@@ -329,6 +340,9 @@ def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_n
         raise DeployError("--account-id is required the first time (it is not secret and is kept in endbot.toml)")
     if domain and not zone_id:
         raise DeployError("--domain also needs --zone-id")
+    if domain and not _HOSTNAME.fullmatch(domain):
+        # WebAuthn compares this exactly with what a browser reports: lowercase, no port, punycode for an IDN.
+        raise DeployError(f"--domain must be a lowercase host name with no port or path, found {domain!r}")
     source = locate_bundle(paths, bundle)
     manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
     files = read_assets(source)
@@ -342,18 +356,28 @@ def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_n
                           "to do that.")
     key = ensure_link_key(paths)
     secret = link_key_secret(key)
-    report(f"Uploading the Worker {worker} ({len(files)} assets) for {origin}")
-    assets_token = api.upload_assets(worker, files)
-    api.put_script(worker, worker_metadata(manifest, origin, secret, assets_token, api.migration_tag(worker)),
-                   (source / "worker" / "index.js").read_bytes())
-    if domain:
-        api.attach_domain(worker, domain, zone_id)
-    else:
-        api.enable_subdomain(worker)
+    # The settings first, because they are what can fail here without touching anything remote; undone below if
+    # Cloudflare refuses. The script is the last thing to change for a Worker already serving: until it does, the old
+    # origin keeps working, so a refused route or domain leaves the site as it was.
+    before = paths.endbot_toml.read_text(encoding="utf-8")
+    try:
+        _write_web_settings(paths, enabled=True, origin=origin, **{"account-id": account, "worker-name": worker})
+        _regenerate(paths)
+        report(f"Uploading the Worker {worker} ({len(files)} assets) for {origin}")
+        assets_token = api.upload_assets(worker, files)
+        applied = api.migration_tag(worker)
+        if applied is not None:
+            _route(api, worker, domain, zone_id)
+        api.put_script(worker, worker_metadata(manifest, origin, secret, assets_token, applied),
+                       (source / "worker" / "index.js").read_bytes())
+        if applied is None:
+            _route(api, worker, domain, zone_id)
+    except (OSError, ValueError):
+        atomic_write_text(paths.endbot_toml, before)
+        _regenerate(paths)
+        raise
     if changed:
         _clear_credentials(paths, report, request)
-    _write_web_settings(paths, enabled=True, origin=origin, **{"account-id": account, "worker-name": worker})
-    _regenerate(paths)
     report(f"Deployed {origin}")
     return _announce_link(paths, request, report, clock, sleep, wait)
 

@@ -60,7 +60,8 @@ browser ──HTTPS──▶ Worker (Hono: static UI, cookie, Origin check, rate
    rejected, like the other secrets);
 2. uploads the prebuilt Worker bundle, its static assets and Durable Object migrations through the Cloudflare API;
 3. sets the Worker secret `ENDBOTD_LINK_KEY` (public key + key id) and the plain variable `ENDBOT_ORIGIN`;
-4. writes `[web]` (origin, account id, worker name, key id) into `endbot.toml`, regenerates `endbotd.toml`;
+4. writes `[web]` (origin, account id, worker name) into `endbot.toml`, regenerates `endbotd.toml`; the key id is derived
+   from the public key;
 5. waits until endbotd reports the link up, or says why not.
 
 This refines Decision 3's "pairing secret": because deploy runs next to endbotd, it can install the public key
@@ -259,7 +260,7 @@ guide shows how to make one with OpenSSL and gives a short reference signer.
 **Rotation:** add the new key next to the old one and restart endbotd (config is read at start), switch the site to the
 new `kid`, then remove the old key and restart again. Removing a key refuses every assertion signed with it at once.
 On suspected exposure: remove the key, restart, and run `endbot web revoke --site-sessions`, which deletes every
-session issued through the site (P5 marks each session with how it was created).
+session issued through the site and every passkey registered through it (P5 marks each with how it was created).
 
 **Flow.** It always starts at the Endbot web, so endbotd can bind the assertion to one browser:
 

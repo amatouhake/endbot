@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from endbot_cli.allowlist import AllowlistError, entry_matches, read_allowlist
 from endbot_cli.compat import tomllib
@@ -382,6 +384,9 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"enabled, {public_path} is a P-384 key matching {paths.owner_private_key}")
 
 
+_WEB_ORIGIN = re.compile(r"(https://[a-z0-9.-]+(:(?!443$)[0-9]{1,5})?|http://localhost(:(?!80$)[0-9]{1,5})?)")
+
+
 def check_web(context: DoctorContext, config: EndbotConfig, paths: InstancePaths) -> CheckResult:
     """Origin configured, link key present and, with --live, whether endbotd reports the link up (docs/WEB.md)."""
     name = "web"
@@ -389,6 +394,10 @@ def check_web(context: DoctorContext, config: EndbotConfig, paths: InstancePaths
         return CheckResult(SKIP, name, "the web is off")
     if not config.web.origin:
         return CheckResult(WARN, name, "[web] enabled but no origin; run `endbot web deploy`")
+    if not _WEB_ORIGIN.fullmatch(config.web.origin):
+        # The rule endbotd applies: it keeps the web off otherwise.
+        return CheckResult(FAIL, name, f"[web] origin {config.web.origin!r} must be exactly https://host, lowercase; "
+                                       "run `endbot web deploy`")
     key = paths.state_secrets / "web-link.key"
     if not key.is_file() or key.is_symlink():
         return CheckResult(FAIL, name, f"{key} is missing or not a regular file; run `endbot web deploy`")
@@ -418,7 +427,11 @@ def check_trusted_site(config: EndbotConfig, paths: InstancePaths) -> CheckResul
     if not isinstance(site.get("name"), str) or not site["name"]:
         return CheckResult(FAIL, name, "name is missing; it is shown on the sign-in button")
     for key in ("issuer", "start-url"):
-        if not isinstance(site.get(key), str) or not site[key].startswith("https://"):
+        try:
+            parts = urlsplit(site[key]) if isinstance(site.get(key), str) else None
+        except ValueError:
+            parts = None
+        if parts is None or parts.scheme != "https" or not parts.hostname:
             return CheckResult(FAIL, name, f"{key} must be an https:// URL")
     entries = site.get("keys")
     if not isinstance(entries, list) or not 1 <= len(entries) <= 2:
@@ -438,9 +451,9 @@ def check_trusted_site(config: EndbotConfig, paths: InstancePaths) -> CheckResul
             return CheckResult(FAIL, name, f"key {kid} cannot be read from {path}: {error}")
         if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(key.curve, ec.SECP384R1):
             return CheckResult(FAIL, name, f"key {kid} in {path} must be a P-384 public key")
-    return CheckResult(WARN if not config.web.enabled else PASS, name,
-                       f"trusted site {site['name']!r}, mode {site['mode']}, {len(kids)} keys"
-                       + ("; [web] enabled is false, so it stays off" if not config.web.enabled else ""))
+    off = "" if config.web.enabled and config.web.origin else "; [web] is not enabled and deployed, so it stays off"
+    return CheckResult(WARN if off else PASS, name,
+                       f"trusted site {site['name']!r}, mode {site['mode']}, {len(kids)} keys{off}")
 
 
 def check_control_token(paths: InstancePaths) -> CheckResult:

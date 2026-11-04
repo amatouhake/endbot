@@ -202,7 +202,11 @@ class EndbotService:
         """The outbound link to the Worker (docs/WEB.md P1). Only endbotd opens it; nothing listens here."""
         if self.web.auth is None or self.config.web_link_key_file is None:
             return
-        from endbotd.web_link import LinkKeyError, WebLink, load_link_key
+        try:
+            from endbotd.web_link import LinkKeyError, WebLink, load_link_key
+        except ImportError as error:
+            self._log("error", f"Web link is off: a library is missing ({error}); reinstall Endbot")
+            return
 
         try:
             key = load_link_key(self.config.web_link_key_file)
@@ -243,8 +247,7 @@ class EndbotService:
             self.web_link = None
         # The log keeps its lines only for the WebApi it belongs to; a new key or origin starts it again.
         self.config = config
-        self.web = WebService(config.web, config.stores_directory, self.authority, base=config.base, log=self._log)
-        self.web.on_passkey_added = self._passkey_added
+        self.web.configure(config.web, config.base)
         self._start_web_link()
         return self._web_status()
 

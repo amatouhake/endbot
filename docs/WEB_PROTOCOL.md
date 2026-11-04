@@ -2,8 +2,8 @@
 
 The relay protocol between the browser, the Worker and endbotd (design: [WEB.md P1, P2](WEB.md)). The machine-readable
 form is [`core/src/endbotd/web_protocol.schema.json`](../core/src/endbotd/web_protocol.schema.json); TypeScript types are
-generated from it, and `web/test/protocol.test.ts` and `plugin/endbot/tests/test_web_protocol.py` run both sides
-against the same examples in `web/protocol-examples.json`.
+generated from it, and `web/test/relay.test.ts` checks the valid and invalid frames in `web/protocol-examples.json`
+against it. endbotd keeps no schema validator: its parser treats every field as untrusted.
 
 One integer, `web-protocol`, covers every layer. It is compiled into the Worker bundle and into endbotd. A mismatch is
 refused: endbotd logs `Worker speaks web protocol N, endbotd expects M: run "endbot web deploy"`.

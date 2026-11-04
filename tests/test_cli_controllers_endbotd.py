@@ -113,6 +113,14 @@ class EndbotdCliTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertIn("Ended 0 web sessions", result["messages"][0])
 
+    def test_deploy_and_endbotd_derive_the_same_key_id(self) -> None:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from endbot_cli.webdeploy import link_key_secret
+        from endbotd.web_link import key_id
+
+        key = Ed25519PrivateKey.generate()
+        self.assertEqual(json.loads(link_key_secret(key))["keyId"], key_id(key))
+
     def test_endbotd_down_says_so(self) -> None:
         self.service.close()
         with self.assertRaises(EndbotdError) as raised:

@@ -11,6 +11,9 @@ export const REQUEST_MS = 15_000;
 export const MAX_BROWSERS = 64;
 export const MAX_UNAUTHENTICATED = 16;
 export const BUCKET_PER_MINUTE = 10;
+const MAX_BODY_BYTES = MAX_FRAME_BYTES / 2;
+
+class BodyTooLarge extends Error {}
 
 const SESSION_COOKIE = "__Host-endbot_session";
 const SITE_COOKIE = "__Host-endbot_site";
@@ -60,9 +63,13 @@ export class Relay extends DurableObject<Env> {
 
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/link") return this.acceptLink();
     if (url.pathname === "/api/display") return Response.json((await this.ctx.storage.get("display")) ?? { bds: "down" });
     const bucket = await hashIp(request.headers.get("CF-Connecting-IP") ?? "unknown");
+    if (url.pathname === "/link") {
+      // A separate count: browsers behind the server's own address must not stop it reconnecting.
+      if (!this.allow(`link:${bucket}`)) return Response.json({ code: "rate_limited" }, { status: 429 });
+      return this.acceptLink();
+    }
     if (!this.allow(bucket)) return Response.json({ code: "rate_limited" }, { status: 429 });
     return url.pathname === "/ws" ? this.acceptBrowser(request, bucket) : this.relayHttp(request, url, bucket);
   }
@@ -147,15 +154,20 @@ export class Relay extends DurableObject<Env> {
     }
     if (typeof frame !== "object" || frame === null) return;
     if (!attachment.proven) {
-      if (!(await this.verifyProof(frame, attachment.nonce))) {
+      const proven = await this.verifyProof(frame, attachment.nonce);
+      // The check yields: this socket may have been replaced or timed out meanwhile, and then it decides nothing.
+      if (socket.readyState !== WebSocket.OPEN) return;
+      if (!proven) {
         socket.close(4003, "proof refused");
         return;
       }
-      // A newly proven link replaces the old one (P1).
-      for (const other of this.links()) {
-        if (other !== socket) other.close(4004, "replaced by a newer link");
-      }
+      // A newly proven link replaces the old one (P1). endbotd's table of browsers went with it, so they go too.
+      const previous = this.provenLink();
       socket.serializeAttachment({ ...attachment, proven: true });
+      if (previous) {
+        previous.close(4004, "replaced by a newer link");
+        this.linkLost();
+      }
       socket.send(JSON.stringify({ t: "ready" }));
       return;
     }
@@ -281,15 +293,31 @@ export class Relay extends DurableObject<Env> {
 
   // -- HTTP through the link ---------------------------------------------------------
 
+  /** The body as text, never holding more than the limit in memory, whatever Content-Length claims. */
+  private async boundedText(request: Request): Promise<string> {
+    if (Number(request.headers.get("Content-Length") ?? 0) > MAX_BODY_BYTES) throw new BodyTooLarge();
+    if (!request.body) return "";
+    const decoder = new TextDecoder();
+    const reader = request.body.getReader();
+    let text = "";
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      size += value.byteLength;
+      if (size > MAX_BODY_BYTES) {
+        await reader.cancel();
+        throw new BodyTooLarge();
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  }
+
   private async requestBody(request: Request, url: URL): Promise<unknown> {
     if (request.method === "GET") return {};
-    if (url.pathname === "/auth/site/return") {
-      const form = await request.formData();
-      const assertion = form.get("assertion");
-      return { assertion: typeof assertion === "string" ? assertion : null };
-    }
-    const text = await request.text();
-    if (new TextEncoder().encode(text).length > MAX_FRAME_BYTES / 2) throw new SyntaxError("too large");
+    const text = await this.boundedText(request);
+    // The site's form is urlencoded: multipart has no use here, and no bounded parser.
+    if (url.pathname === "/auth/site/return") return { assertion: new URLSearchParams(text).get("assertion") };
     return text ? JSON.parse(text) : {};
   }
 
@@ -298,7 +326,8 @@ export class Relay extends DurableObject<Env> {
     let body: unknown;
     try {
       body = await this.requestBody(request, url);
-    } catch {
+    } catch (error) {
+      if (error instanceof BodyTooLarge) return Response.json({ code: "too_large" }, { status: 413 });
       return Response.json({ code: "invalid_request" }, { status: 400 });
     }
     const conn = this.newConn("h");

@@ -1,8 +1,8 @@
 # Web design (BOT-021)
 
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
-the answers to the former open points (see [settled points](#settled-points)). Steps 1 (the supervisor policy, P10) and
-2a (accounts and link codes) are implemented; nobody can sign in yet.
+the answers to the former open points (see [settled points](#settled-points)). Steps 1 (the supervisor policy, P10), 2a
+(accounts and link codes) and 2b (WebAuthn and sessions in endbotd) are implemented; no browser can reach them yet.
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -366,7 +366,8 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
    - **2a. Account store and link codes** (P3): `state/web/`, `/botweb link|unlink|status`, `endbot web revoke`,
      revocation hooks (P6). Claude. Done.
    - **2b. WebAuthn and sessions** (P4, P5): the pinned Python WebAuthn library, ceremonies, session tokens, the `web`
-     principal's channel condition, rate limits in endbotd (P7). Claude. Tests use a software authenticator.
+     principal's channel condition, rate limits in endbotd (P7). Claude. Tests use a software authenticator. Done,
+     except the per-session connection and request limits, which arrive with the link in 3b.
    - **2c. Trusted external site** (P12): `[web.trusted-site]` config and doctor checks, nonces, ES384 JWS
      verification (the existing local-bot-auth verifier's rules where they apply), both modes,
      `endbot web revoke --site-sessions`, failure codes. Claude only (security boundary). Negative tests for every

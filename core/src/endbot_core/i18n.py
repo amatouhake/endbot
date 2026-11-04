@@ -1125,6 +1125,7 @@ JA.update({
     "Use /botweb link, /botweb unlink or /botweb status":
         "/botweb link、/botweb unlink、/botweb status のいずれかを使ってください",
     "The web is not available on this server": "このサーバーでは Web を利用できません",
+    "A passkey was added to your web account": "Web アカウントにパスキーが追加されました",
     "This player has no web account": "このプレイヤーの Web アカウントはありません",
     "This player has no web account; /botweb link creates one":
         "このプレイヤーの Web アカウントはありません。/botweb link で作成できます",

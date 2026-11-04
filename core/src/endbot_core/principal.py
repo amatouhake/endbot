@@ -13,8 +13,8 @@ from dataclasses import dataclass, replace
 
 # kind values: "player" (typed command or form), "console", "run" (a script
 # run), "job" (work a Bot continues after its command returned, such as a
-# continuous mining loop). "web" and "trigger" arrive with BOT-021 and BOT-022.
-KINDS = frozenset({"player", "console", "run", "job"})
+# continuous mining loop), "web" (a signed-in web session). "trigger" arrives with BOT-022.
+KINDS = frozenset({"player", "console", "run", "job", "web"})
 ROLES = frozenset({None, "scripter", "controller"})
 
 

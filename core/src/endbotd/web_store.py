@@ -88,6 +88,18 @@ class WebStore:
                 raise WebStoreError("accounts.json has an incomplete account")
         if len({account["xuid"] for account in self._accounts}) != len(self._accounts):
             raise WebStoreError("accounts.json has two accounts for one XUID")
+        for entry in self._passkeys:
+            if not (all(isinstance(entry.get(field), str) and entry[field]
+                        for field in ("id", "account", "publicKey", "rpId"))
+                    and type(entry.get("signCount")) is int and entry["signCount"] >= 0):
+                raise WebStoreError("passkeys.json has an incomplete passkey")
+        for entry in self._sessions:
+            if not (all(isinstance(entry.get(field), str) and entry[field]
+                        for field in ("id", "hash", "account", "via"))
+                    and all(isinstance(entry.get(field), (int, float)) and not isinstance(entry[field], bool)
+                            for field in ("created", "lastSeen", "assertedAt"))
+                    and type(entry.get("grantRevision")) is int):
+                raise WebStoreError("sessions.json has an incomplete session")
 
     def _path(self, key: str) -> Path:
         return self.directory / f"{key}.json"
@@ -97,6 +109,11 @@ class WebStore:
     def accounts(self) -> list[dict]:
         with self._lock:
             return [dict(account) for account in self._accounts]
+
+    def account(self, account_id: str) -> dict | None:
+        with self._lock:
+            account = next((entry for entry in self._accounts if entry["id"] == account_id), None)
+            return dict(account) if account is not None else None
 
     def account_for_xuid(self, xuid: str) -> dict | None:
         with self._lock:
@@ -153,6 +170,50 @@ class WebStore:
     def sessions(self, account_id: str) -> list[dict]:
         with self._lock:
             return [dict(entry) for entry in self._sessions if entry.get("account") == account_id]
+
+    def find_passkey(self, credential_id: str) -> dict | None:
+        with self._lock:
+            entry = next((entry for entry in self._passkeys if entry["id"] == credential_id), None)
+            return dict(entry) if entry is not None else None
+
+    def add_passkey(self, passkey: dict) -> None:
+        with self._lock:
+            self._passkeys.append(passkey)
+            _save(self._path(PASSKEYS), PASSKEYS, self._passkeys)
+
+    def update_passkey(self, credential_id: str, **fields: object) -> None:
+        with self._lock:
+            for entry in self._passkeys:
+                if entry["id"] == credential_id:
+                    entry.update(fields)
+            _save(self._path(PASSKEYS), PASSKEYS, self._passkeys)
+
+    def delete_passkey(self, credential_id: str) -> None:
+        with self._lock:
+            self._passkeys = [entry for entry in self._passkeys if entry["id"] != credential_id]
+            _save(self._path(PASSKEYS), PASSKEYS, self._passkeys)
+
+    def find_session(self, token_hash: str) -> dict | None:
+        with self._lock:
+            entry = next((entry for entry in self._sessions if entry["hash"] == token_hash), None)
+            return dict(entry) if entry is not None else None
+
+    def add_session(self, session: dict) -> None:
+        with self._lock:
+            self._sessions.append(session)
+            _save(self._path(SESSIONS), SESSIONS, self._sessions)
+
+    def update_session(self, token_hash: str, **fields: object) -> None:
+        with self._lock:
+            for entry in self._sessions:
+                if entry["hash"] == token_hash:
+                    entry.update(fields)
+            _save(self._path(SESSIONS), SESSIONS, self._sessions)
+
+    def delete_session(self, token_hash: str) -> None:
+        with self._lock:
+            self._sessions = [entry for entry in self._sessions if entry["hash"] != token_hash]
+            _save(self._path(SESSIONS), SESSIONS, self._sessions)
 
     def delete_sessions(self, xuid: str) -> list[str]:
         """End every session of the XUID's account; the account and its passkeys stay (P6)."""

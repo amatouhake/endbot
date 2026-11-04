@@ -122,6 +122,7 @@ class EndbotService:
         for gamertag in self.authority.controllers.pending():
             self._log("info", f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
         self.web = WebService(config.web, config.stores_directory, self.authority, log=self._log)
+        self.web.on_passkey_added = self._passkey_added
         self._delivery = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbotd-delivery")
         self._closed = threading.Event()
         if control is None:
@@ -329,6 +330,16 @@ class EndbotService:
         lines = self.web.command(record, principal.language, list(submission.argv)) if record is not None else []
         self.deliver(to, [f"Endbot: {line}" for line in lines])
         return {"accepted": True, "code": "ok"}
+
+    def _passkey_added(self, account: dict) -> None:
+        """Someone added a passkey to this account: if that was not its owner, they should hear (P4)."""
+        record = next((record for record in self.link.presence.online() if record.get("xuid") == account["xuid"]),
+                      None)
+        if record is not None:
+            # Presence carries no language; "auto" falls back to English here.
+            language = "en" if self._language_setting == DEFAULT_LANGUAGE_SETTING else self._language_setting
+            line = tr(language, "A passkey was added to your web account")
+            self.deliver(record["playerId"], [f"Endbot: {line}"])
 
     # -- the endbot CLI (its connection's ordered thread) ---------------------
 

@@ -15,6 +15,12 @@ Operator bundles include the executable and trusted `api.luau` in
 `runner/licenses/`). These notices must accompany redistributed runner builds.
 Scripting is disabled by default.
 
+## py_webauthn
+
+endbotd verifies web passkeys with [py_webauthn](https://github.com/duo-labs/py_webauthn) **3.0.1** (Duo Security;
+BSD 3-Clause), installed unmodified into the bundled Python with its dependencies. Their licenses travel with them in
+the installed packages' metadata.
+
 ## Endstone
 
 Endbot prepares a modified Endstone build from:

@@ -62,10 +62,23 @@ class WebService:
             "warning", "Web link code entry closed for 10 minutes after too many wrong codes"))
         # The relay closes these sessions' connections (P6); set once the link exists.
         self.on_sessions_removed: Callable[[list[str]], None] = lambda hashes: None
+        # Told when a passkey is added, so the player hears about it in chat (P4).
+        self.on_passkey_added: Callable[[dict], None] = lambda account: None
+        self.auth = None
+        if self.enabled and self.origin is not None and self.store is not None:
+            # Imported here: an instance without the web never loads the WebAuthn library.
+            try:
+                from endbotd.web_auth import WebAuth
+            except ImportError as error:
+                self._log("error", f"Web disabled: the WebAuthn library is missing ({error}); reinstall Endbot")
+            else:
+                self.auth = WebAuth(self.store, self.codes, self.origin, authority, log=self._log,
+                                    on_sessions_removed=lambda hashes: self.on_sessions_removed(hashes),
+                                    on_passkey_added=lambda account: self.on_passkey_added(account))
 
     @property
     def available(self) -> bool:
-        return self.enabled and self.origin is not None and self.store is not None
+        return self.auth is not None
 
     # -- /botweb --------------------------------------------------------------
 
@@ -115,8 +128,9 @@ class WebService:
             return {"ok": False, "messages": [f"No web account for {target}"]}
         self._remove_account(account["xuid"])
         self._log("info", f"Web account of {account['gamertag']} revoked")
-        return {"ok": True, "messages": [f"Web account of {account['gamertag']} removed; its passkeys and "
-                                         "sessions no longer work. The controller grant is unchanged."]}
+        message = (f"Web account of {account['gamertag']} removed; its passkeys and sessions no longer work. "
+                   "The controller grant is unchanged.")
+        return {"ok": True, "messages": [message]}
 
     def _find_account(self, target: str) -> dict | None:
         if target.startswith("xuid:"):

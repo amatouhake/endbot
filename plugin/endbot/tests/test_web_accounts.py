@@ -326,6 +326,34 @@ class BotWebCommandTests(ServiceHarness):
         self.message(alice, "A passkey was added to your web account")
         self.service._passkey_added({"xuid": "2535400000000002"})
 
+    def test_status_says_the_link_is_off_without_a_key(self):
+        result = self.service._cli_web({"operation": "status"})
+        self.assertEqual((result["ok"], result["linked"]), (True, False))
+        self.assertIn("off", result["messages"][0])
+
+    def test_a_domain_change_deletes_credentials_and_keeps_accounts(self):
+        web = self.service.web
+        account = web.store.ensure_account(OWNER, ALICE, "Alice")
+        token = web.auth.issue_session(account, "passkey")
+        removed = []
+        web.on_sessions_removed = removed.extend
+        self.assertTrue(self.service._cli_web({"operation": "domain-change"})["ok"])
+        self.assertIsNone(web.auth.session(token))
+        self.assertEqual(len(removed), 1)
+        self.assertIsNotNone(web.store.account_for_xuid(OWNER))
+
+    def test_reload_reads_the_generated_settings_again(self):
+        (self.root / "endbotd.toml").write_text(
+            '[web]\nenabled = true\norigin = "https://new.example"\n', encoding="utf-8")
+        self.service._cli_web({"operation": "reload"})
+        self.assertEqual(self.service.web.origin, "https://new.example")
+
+    def test_reload_without_the_file_says_so_and_keeps_the_web(self):
+        before = self.service.web
+        result = self.service._cli_web({"operation": "reload"})
+        self.assertFalse(result["ok"])
+        self.assertIs(self.service.web, before)
+
     def test_cli_requests_are_validated(self):
         for body in ({"operation": "delete", "target": "Alice"}, {"operation": "revoke"},
                      {"operation": "revoke", "target": "a\nb"}, {"operation": "revoke", "target": " "}):
@@ -341,6 +369,9 @@ class WebDisabledTests(BotWebCommandTests):
         link, alice = self.joined_alice()
         self.botweb(link, "link")
         self.message(alice, "The web is not available on this server")
+
+    def test_a_domain_change_deletes_credentials_and_keeps_accounts(self):
+        self.skipTest("a disabled web has no WebAuth to sign in with")
 
     def test_revoking_the_grant_voids_a_code_when_there_is_no_account_yet(self):
         self.skipTest("a disabled web issues no code")

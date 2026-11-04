@@ -506,6 +506,13 @@ class DispatchTests(unittest.TestCase):
         # Commands with Bot-relative coordinates still require their sender.
         self.assertIn("no longer online", results["explicit"])
 
+    def test_a_web_session_acts_without_its_player_in_game_like_the_console(self):
+        world = ServerThreadWorld(object(), None, lambda source: None)
+        player = "00000000-0000-4000-8000-000000000001"
+        self.assertIsNone(world._sender(Principal("web", xuid="2535400000000001", player_id=player)))
+        with self.assertRaisesRegex(ValueError, "no longer online"):
+            world._sender(Principal("player", xuid="2535400000000001", player_id=player))
+
     def test_mining_batch_runs_every_raycast_in_one_bridge_call(self):
         bridge_calls, world_calls = [], []
 

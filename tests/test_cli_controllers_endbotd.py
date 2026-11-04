@@ -1,5 +1,6 @@
 """`endbot controllers add|remove|list` against a real endbotd in process (docs/ENDBOTD.md P8)."""
 
+import importlib.util
 import json
 import os
 import socket
@@ -113,6 +114,7 @@ class EndbotdCliTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertIn("Ended 0 web sessions", result["messages"][0])
 
+    @unittest.skipUnless(importlib.util.find_spec("websockets"), "the web libraries are not installed")
     def test_deploy_and_endbotd_derive_the_same_key_id(self) -> None:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
         from endbot_cli.webdeploy import link_key_secret

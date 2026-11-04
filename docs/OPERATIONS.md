@@ -222,7 +222,8 @@ or Wrangler is needed. It creates the link key once, in `state/secrets/web-link.
 It writes `[web]` into `endbot.toml` and waits for the link. The API token comes from a hidden prompt or
 `CLOUDFLARE_API_TOKEN`, is never an argument and is never stored. `--domain <host> --zone-id <id>` uses a custom domain.
 Moving to another origin makes every passkey unusable, so it needs `--confirm-domain-change` and then deletes all
-passkeys and sessions. `endbot web rotate-key` replaces the link key. `endbot doctor --live` reports the link.
+passkeys and sessions. `endbot web rotate-key` replaces the link key. `endbot doctor --live` reports the link. A web
+problem is a FAIL in `endbot doctor` but only a warning for `endbot start`: the broken part stays off, and the server runs.
 
 ### Runtime grants and revocations
 

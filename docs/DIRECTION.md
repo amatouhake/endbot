@@ -121,7 +121,7 @@ browser ──HTTPS──▶ Worker (static UI, cookie, relay)
 | Messages | The shared message catalog from BOT-019 | Same wording as chat |
 | endbotd side | Python `websockets`, pinned and bundled | |
 | Protocol | JSON over WebSocket with a protocol version and request IDs | endbotd proves itself with its paired key on connect |
-| Tests | Vitest with `@cloudflare/vitest-pool-workers`; Playwright for end-to-end | |
+| Tests | Vitest with `@cloudflare/vitest-plugin`; Playwright for end-to-end | |
 | Build and deploy | CI builds the Worker; release bundles carry it prebuilt | `endbot web deploy` calls the Cloudflare API directly (module upload, Durable Object migrations, secrets, static assets). Confirm the static-asset upload works through the API alone; fall back to a pinned wrangler if it does not |
 
 Dependencies are pinned with a lockfile, like the other parts. Operators need no Node, npm or build step.

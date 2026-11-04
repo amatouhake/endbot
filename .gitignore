@@ -9,6 +9,8 @@ dist/
 *.egg-info/
 *.py[cod]
 node_modules/
+.wrangler/
+web/src/generated/
 *.pem
 *.key
 *.token

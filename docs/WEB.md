@@ -2,8 +2,8 @@
 
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
 the answers to the former open points (see [settled points](#settled-points)). Steps 1 (the supervisor policy, P10), 2a
-(accounts and link codes) 2b (WebAuthn and sessions in endbotd), 2c (the trusted site), 3a (the protocol) and 3b (endbotd's link) are
-implemented; no browser can reach them until the Worker lands.
+(accounts and link codes) 2b (WebAuthn and sessions in endbotd), 2c (the trusted site), 3a (the protocol), 3b (endbotd's link) and 3c (the
+Worker and Durable Object) are implemented; there is no deploy or UI yet.
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -265,10 +265,11 @@ session issued through the site (P5 marks each session with how it was created).
 ```text
 1. browser  GET  /auth/site/start            Worker → endbotd: new nonce (128 bits, single use, 2 minutes)
             ◀── 303 to start-url?nonce=…&return=<origin>/auth/site/return
-                 + cookie __Host-endbot_site=<nonce id>; Secure; HttpOnly; SameSite=None; Path=/auth/site; Max-Age=120
+                 + cookie __Host-endbot_site=<nonce id>; Secure; HttpOnly; SameSite=None; Path=/; Max-Age=120
 2. site     signs the user in its own way, then serves an auto-submitted form:
             POST <origin>/auth/site/return   assertion=<compact JWS>
-3. Worker   accepts this POST only with Origin == issuer and the site cookie; relays both to endbotd
+3. Worker   accepts this POST only with an Origin and the site cookie; relays both to endbotd, which compares the
+            Origin with the issuer (the Worker does not know the issuer, and is not trusted to check it)
 4. endbotd  verifies (below), consumes the nonce, then links, registers a passkey, or issues a session (mode)
             ◀── 303 to /?site_ceremony=<id> (link: the page fetches the options with POST /auth/site/options),
                  / with the session cookie (sign-in), or /?site_error=<code>
@@ -276,7 +277,8 @@ session issued through the site (P5 marks each session with how it was created).
 
 A link started on the operator's site ("open the Endbot web") sends the user to `/auth/site/start` first; the site
 needs no second integration. The site cookie is `SameSite=None` because a cross-site POST would not carry a stricter
-one; it identifies a pending nonce and grants nothing. The session cookie (P5) is unchanged.
+one, and `Path=/` because browsers refuse a `__Host-` cookie with any other path; it identifies a pending nonce and grants
+nothing. The session cookie (P5) is unchanged.
 
 **The assertion** is a compact JWS. Header: `alg` exactly `ES384`, a `kid` from the configured keys, `typ`
 `endbot-site+jwt`; `crit` and any other `alg` are refused. Claims, all required:
@@ -382,7 +384,8 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
    - **3c. Worker and Durable Object** (Hono, Hibernation API): routing, cookie, Origin checks, headers, coarse rate
      limits, relay, the `/auth/site/*` routes with their own cookie and Origin rule. Claude writes the auth, cookie,
      site and relay paths; the static-asset serving and Vitest
-     (`@cloudflare/vitest-pool-workers`) coverage are delegable.
+     (`@cloudflare/vitest-plugin`, the renamed pool) coverage are delegable. Done, except static assets, which arrive with
+     the UI.
 4. **Deploy.** `endbot web deploy|rotate-key` through the Cloudflare API, token handling (P9), domain-change
    confirmation (P4), doctor checks (link up, protocol match, origin configured). Delegable against this document,
    Claude reviewing the token handling. First confirm that static assets upload through the API alone; fall back to a

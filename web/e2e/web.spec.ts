@@ -124,7 +124,7 @@ test("a code links a passkey, the session survives a reload, and a passkey signs
   await expect(page.getByText("layer 3 done, moving down")).toBeVisible();
   await shot(page, "03-log");
 
-  await page.getByRole("button", { name: "Devices" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Devices" }).click();
   await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
   await expect(page.getByText("Type /botweb link in the game")).toBeVisible();
   await shot(page, "04-devices");
@@ -141,7 +141,7 @@ test("a second device joins with a code from the game, and the first page hears 
   await withAuthenticator(context, page);
   await page.goto("/");
   await link(page);
-  await page.getByRole("button", { name: "Devices" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Devices" }).click();
   const { code } = await ask("code");
 
   const other = await browser.newContext({ baseURL: ORIGIN, locale: "en-US" });
@@ -159,7 +159,7 @@ test("a session ended elsewhere leaves nothing of the account on the page", asyn
   await withAuthenticator(context, page);
   await page.goto("/");
   await link(page);
-  await page.getByRole("button", { name: "Devices" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Devices" }).click();
   await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
 
   const other = await browser.newContext({ baseURL: ORIGIN, locale: "en-US" });
@@ -167,7 +167,7 @@ test("a session ended elsewhere leaves nothing of the account on the page", asyn
   await withAuthenticator(other, second);
   await second.goto("/");
   await link(second);
-  await second.getByRole("button", { name: "Devices" }).click();
+  await second.getByRole("navigation").getByRole("button", { name: "Devices" }).click();
   const row = second.getByRole("listitem").filter({ has: second.getByRole("button", { name: "Remove" }) }).last();
   await row.getByRole("button", { name: "Remove" }).click();
   await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toBeVisible({ timeout: 15_000 });
@@ -208,10 +208,74 @@ test("the page has its icon, and choosing a tab moves nothing", async ({ page, c
   const positions = async () => page.getByRole("navigation").getByRole("button").evaluateAll(
     (buttons) => buttons.map((button) => { const box = button.getBoundingClientRect(); return [box.left, box.width]; }));
   const first = await positions();
-  for (const name of ["Log", "Devices", "Status"]) {
-    await page.getByRole("button", { name, exact: true }).click();
+  for (const name of ["Bots", "Scripts", "Log", "Devices", "Status"]) {
+    await page.getByRole("navigation").getByRole("button", { name, exact: true }).click();
     expect(await positions()).toEqual(first);
   }
+});
+
+test("a Bot is controlled from forms built from the registry", async ({ page, context }) => {
+  await withAuthenticator(context, page);
+  await page.goto("/");
+  await link(page);
+  await page.getByRole("navigation").getByRole("button", { name: "Bots" }).click();
+  await page.getByRole("button", { name: /Miner_01/ }).click();
+  await shot(page, "11-bots");
+  await page.getByLabel("direction").selectOption("forward");
+  await page.getByLabel(/ticks/).fill("20");
+  await page.getByRole("button", { name: "Run move" }).click();
+  await expect(page.getByRole("heading", { name: "Results" })).toBeVisible();
+  await expect.poll(async () => JSON.stringify(await ask("calls"))).toContain("forward");
+  await shot(page, "12-bots-result");
+  // Forget is the one that asks first: declining sends nothing.
+  await page.getByRole("button", { name: "Bot", exact: true }).click();
+  await page.getByRole("button", { name: "forget", exact: true }).click();
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Run forget" }).click();
+  expect(JSON.stringify(await ask("calls"))).not.toContain('"forget"');
+});
+
+test("a script is written, checked, saved, compared and run", async ({ page, context }) => {
+  test.skip(!process.env.E2E_RUNNER, "needs a built Luau runner in E2E_RUNNER");
+  await withAuthenticator(context, page);
+  await page.goto("/");
+  await link(page);
+  await page.getByRole("navigation").getByRole("button", { name: "Scripts" }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.getByPlaceholder("my_script").fill("e2e_script");
+  const editor = page.getByRole("textbox", { name: "Script source" });
+  await editor.click();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.type('params {\n\n"not valid"');
+  await page.getByRole("button", { name: "Check" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await shot(page, "13-script-error");
+  await editor.click();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.insertText('local a = params { param.number("count", 2) }\nlog("count " .. a.count)\n');
+  await page.getByRole("button", { name: "Check" }).click();
+  await expect(page.getByRole("status")).toContainText("No problems");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.getByRole("button", { name: /e2e_script/ })).toBeVisible();
+
+  await editor.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.insertText('log("second")\n');
+  await expect(page.getByText("unsaved changes")).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("heading", { name: "Earlier revisions" })).toBeVisible();
+  await page.getByRole("button", { name: "Compare" }).click();
+  await expect(page.locator(".diff .added")).toContainText('log("second")');
+  await shot(page, "14-script-history");
+
+  await page.getByRole("button", { name: "Run..." }).click();
+  await expect(page.getByLabel("count")).toHaveValue("2");
+  await page.getByLabel("count").fill("7");
+  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Log" }).click();
+  await expect(page.getByText("count 7")).toBeVisible({ timeout: 15_000 });
+  await shot(page, "15-script-log");
 });
 
 test("a wrong code says so", async ({ page, context }) => {
@@ -233,7 +297,7 @@ test("the layout fits a phone with no sideways scrolling", async ({ page, contex
   await expect(page.getByText("Miner_01")).toBeVisible();
   await shot(page, "07-phone-status");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.getByRole("button", { name: "Devices" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Devices" }).click();
   await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
   await shot(page, "08-phone-devices");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -262,7 +326,12 @@ test("the page keeps to its Content-Security-Policy", async ({ page, context }) 
   expect(response!.headers()["content-security-policy"]).toContain("default-src 'self'");
   await expect(page.getByRole("heading", { name: "E2E server" })).toBeVisible();
   await link(page);
-  for (const name of ["Log", "Devices", "Status"]) await page.getByRole("button", { name }).click();
+  for (const name of ["Bots", "Scripts", "Log", "Devices", "Status"]) {
+    await page.getByRole("navigation").getByRole("button", { name }).click();
+  }
+  await page.getByRole("navigation").getByRole("button", { name: "Scripts" }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Script source" })).toBeVisible();
   expect(violations).toEqual([]);
 });
 

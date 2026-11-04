@@ -101,7 +101,8 @@ class ServerThreadWorld:
 
     def _sender(self, source: Principal):
         sender = self._resolve_sender(source)
-        if source.player_id is not None and sender is None and source.run_id is None:
+        # A run or a web session acts for someone who need not be in game: like the console, it has no position.
+        if source.player_id is not None and sender is None and source.run_id is None and source.kind != "web":
             raise ValueError("Command player is no longer online")
         return sender
 

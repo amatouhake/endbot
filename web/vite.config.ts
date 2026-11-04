@@ -3,6 +3,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [svelte()],
+  server: { fs: { allow: [".."] } },
   build: {
     outDir: "dist/bundle/assets",
     emptyOutDir: true,

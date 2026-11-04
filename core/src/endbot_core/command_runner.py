@@ -99,6 +99,27 @@ class AsyncCommandRunner:
 
         self._bridge.post(deliver)
 
+    def call(self, arguments: list[str], principal: Principal, *, command: str = "bot",
+             timeout: float = 30.0) -> CommandResult:
+        """Run one command on the same ordered worker and return its result instead of delivering it (the web)."""
+        if command not in {"bot", "botgroup", "botscript"}:
+            raise ValueError("Unknown Endbot command root")
+
+        def work() -> CommandResult:
+            if self._authorize is not None and not self._bridge.call(lambda: self._authorize(principal)):
+                revoked = tr(principal.language, "Bot control permission was revoked; command canceled")
+                return CommandResult(True, (reply(revoked, color=WARNING),), accepted=False, code="unauthorized")
+            execute = (self._scripts.execute if command == "botscript" and self._scripts is not None else
+                       self._service.execute_group if command == "botgroup" else self._service.execute)
+            return execute(arguments, principal)
+
+        with self._lock:
+            if not self._open:
+                return CommandResult(True, (reply(tr(principal.language, "command service is unavailable")),),
+                                     accepted=False, code="unavailable")
+            future = self._executor.submit(work)
+        return future.result(timeout)
+
     def submit(self, arguments: list[str], principal: Principal, *, command: str = "bot") -> bool:
         """Queue one command; the adapter captured ``principal`` on the server thread."""
         if command not in {"bot", "botgroup", "botscript"}:

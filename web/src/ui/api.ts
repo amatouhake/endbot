@@ -1,7 +1,9 @@
 // HTTP and WebSocket to endbotd, through the relay. The session lives in an HttpOnly cookie: no script here sees it.
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { WEB_PROTOCOL } from "../generated/protocol-version";
-import { language } from "./i18n";
+import { errorText, language } from "./i18n";
+
+const REQUEST_MS = 45_000;
 
 export class ApiError extends Error {
   constructor(readonly code: string, readonly status: number) {
@@ -88,7 +90,15 @@ export class Connection {
   request(type: string, fields: Record<string, unknown> = {}): Promise<any> {
     const id = this.next++;
     return new Promise((resolve) => {
-      this.waiting.set(id, resolve);
+      // Never leave a screen waiting for good: the link can drop an answer, and the server can go away.
+      const timer = setTimeout(() => {
+        this.waiting.delete(id);
+        resolve({ code: "timeout", messages: [errorText("timeout")] });
+      }, REQUEST_MS);
+      this.waiting.set(id, (answer) => {
+        clearTimeout(timer);
+        resolve(answer);
+      });
       this.socket.send(JSON.stringify({ v: WEB_PROTOCOL, id, type, lang: language, ...fields }));
     });
   }

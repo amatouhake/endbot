@@ -117,7 +117,7 @@ class WebApiTests(unittest.TestCase):
 
     def test_unknown_requests_are_unsupported(self):
         for message in ({"type": "query", "what": "secrets"}, {"type": "query", "what": 5}, {"type": "nope"},
-                        {"type": "subscribe", "topic": "others"}, {"type": "op"}):
+                        {"type": "subscribe", "topic": "others"}):
             with self.subTest(message=message):
                 self.assertEqual(self.api.handle(self.token, "c1", message, print)["code"], "unsupported")
         self.assertEqual(self.api.handle(self.token, "c1", 5, print)["code"], "invalid_request")

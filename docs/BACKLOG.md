@@ -1180,6 +1180,25 @@ Candidates, in order:
 Acceptance: a save that hits the failure leaves a log line naming the runner's fate, and if a retry is added, the
 save completes; the BACKLOG entry is closed only when the cause is named, not when retries hide it.
 
+## BOT-033: A desired-online Bot takes about a minute to rejoin after a start
+
+Status: **Open; measured, cause not established** (2026-11-04 JST).
+
+A Bot whose desired state is online joined 62 to 65 s after BDS logged `Server started`. Measured on Windows with the
+0.6.0 bundle, direct signalling and one Bot: 65 s on a plain `endbot start`, 65 s after console `stop` and `start`, and
+62 s after a killed BDS and `start` ([WEB.md P10](WEB.md#p10-endbotd-keeps-running-while-bds-is-stopped)). The restart
+path therefore did not introduce it. Twenty seconds after `Server started`, `status` still showed `reconnecting` with
+`NetherNet direct signalling to http://127.0.0.1:19132/v1/join/... failed: fetch failed`.
+
+The web makes this visible, because BDS-stopped and starting states are shown there, and every restart costs it.
+
+Hypothesis, not checked: the runtime is ready before BDS, so its first attempts fail, and each failure doubles the delay
+(`runtime/src/lifecycle.js`: 1 s up to 30 s). The delays alone do not explain 60 s after `Server started`, since BDS is up
+within about 12 s, so also check whether an attempt during BDS start-up hangs until a timeout.
+
+Acceptance: record the attempt timeline; a Bot rejoins within a few seconds of BDS accepting connections on a start, with
+no extra load from Bots retrying against a stopped server. Multi-Bot start-up should stay staggered if it is today.
+
 ## Deferred priorities
 
 - Container/UI operations — crafting, villager trading, enchanting — use `item_stack_request` on current Bedrock, which

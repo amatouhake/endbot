@@ -14,6 +14,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from endbot_cli.allowlist import AllowlistError, entry_matches, read_allowlist
 from endbot_cli.compat import tomllib
@@ -396,7 +397,11 @@ def check_trusted_site(config: EndbotConfig, paths: InstancePaths) -> CheckResul
     if not isinstance(site.get("name"), str) or not site["name"]:
         return CheckResult(FAIL, name, "name is missing; it is shown on the sign-in button")
     for key in ("issuer", "start-url"):
-        if not isinstance(site.get(key), str) or not site[key].startswith("https://"):
+        try:
+            parts = urlsplit(site[key]) if isinstance(site.get(key), str) else None
+        except ValueError:
+            parts = None
+        if parts is None or parts.scheme != "https" or not parts.hostname:
             return CheckResult(FAIL, name, f"{key} must be an https:// URL")
     entries = site.get("keys")
     if not isinstance(entries, list) or not 1 <= len(entries) <= 2:
@@ -416,9 +421,9 @@ def check_trusted_site(config: EndbotConfig, paths: InstancePaths) -> CheckResul
             return CheckResult(FAIL, name, f"key {kid} cannot be read from {path}: {error}")
         if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(key.curve, ec.SECP384R1):
             return CheckResult(FAIL, name, f"key {kid} in {path} must be a P-384 public key")
-    return CheckResult(WARN if not config.web.enabled else PASS, name,
-                       f"trusted site {site['name']!r}, mode {site['mode']}, {len(kids)} keys"
-                       + ("; [web] enabled is false, so it stays off" if not config.web.enabled else ""))
+    off = "" if config.web.enabled and config.web.origin else "; [web] is not enabled and deployed, so it stays off"
+    return CheckResult(WARN if off else PASS, name,
+                       f"trusted site {site['name']!r}, mode {site['mode']}, {len(kids)} keys{off}")
 
 
 def check_control_token(paths: InstancePaths) -> CheckResult:

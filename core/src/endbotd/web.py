@@ -85,7 +85,7 @@ class WebService:
 
         try:
             config = SiteConfig.load(section.get("trusted-site") or {}, base or Path("."))
-        except SiteConfigError as error:
+        except (SiteConfigError, ValueError, TypeError, AttributeError) as error:
             # P12: no site button, /auth/site/* is 404; passkeys and /botweb link keep working.
             self._log("error", f"Trusted site disabled: {error}")
             return None
@@ -194,11 +194,13 @@ class WebService:
             return {"ok": False, "messages": ["Web store is unavailable; see the endbotd log"]}
         try:
             removed = self.store.delete_sessions_via("site")
+            passkeys = self.store.delete_passkeys_via("site")
         except OSError as error:
             return {"ok": False, "messages": self._failed_write(error)}
         self.on_sessions_removed(removed)
-        self._log("info", f"Web sessions issued through the trusted site ended: {len(removed)}")
-        return {"ok": True, "messages": [f"Ended {len(removed)} web sessions issued through the trusted site"]}
+        self._log("info", f"Web sign-ins through the trusted site ended: {len(removed)} sessions, {passkeys} passkeys")
+        return {"ok": True, "messages": [f"Ended {len(removed)} web sessions and removed {passkeys} passkeys "
+                                         "that came through the trusted site"]}
 
     def _find_account(self, target: str) -> dict | None:
         if target.startswith("xuid:"):

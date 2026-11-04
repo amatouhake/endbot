@@ -64,6 +64,8 @@ class SiteConfig:
     @classmethod
     def load(cls, section: dict, base: Path) -> SiteConfig | None:
         """None when disabled or absent; raises ``SiteConfigError`` when enabled and invalid."""
+        if not isinstance(section, dict):
+            raise SiteConfigError("[web.trusted-site] must be a table")
         if not section or section.get("enabled", False) is not True:
             return None
         name, mode, issuer, start_url = (section.get(key) for key in ("name", "mode", "issuer", "start-url"))
@@ -72,7 +74,7 @@ class SiteConfig:
         if mode not in MODES:
             raise SiteConfigError(f"mode must be one of {MODES}")
         for key, value in (("issuer", issuer), ("start-url", start_url)):
-            if not isinstance(value, str) or urlsplit(value).scheme != "https" or not urlsplit(value).hostname:
+            if not _https_url(value):
                 raise SiteConfigError(f"{key} must be an https:// URL")
         entries = section.get("keys")
         if not isinstance(entries, list) or not 1 <= len(entries) <= MAX_KEYS:
@@ -93,6 +95,14 @@ class SiteConfig:
                 raise SiteConfigError(f"key {kid} must be a P-384 public key")
             keys[kid] = key
         return cls(name, mode, issuer, start_url, keys)
+
+
+def _https_url(value: object) -> bool:
+    try:
+        parts = urlsplit(value) if isinstance(value, str) else None
+        return parts is not None and parts.scheme == "https" and bool(parts.hostname)
+    except ValueError:  # urlsplit refuses a malformed host such as "https://["
+        return False
 
 
 def _decode(part: str) -> bytes:
@@ -178,7 +188,8 @@ class TrustedSite:
             header = json.loads(_decode(encoded_header))
             signature = _decode(encoded_signature)
             claims = json.loads(_decode(encoded_claims))
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            # Parsed before the signature is checked, so anyone with a started flow can send anything here.
             raise _Refused("site_refused", "malformed JWS") from None
         if not isinstance(header, dict) or not isinstance(claims, dict):
             raise _Refused("site_refused", "malformed JWS")
@@ -229,7 +240,7 @@ class TrustedSite:
                                  f"bound as {row['name']!r}")
         identity = LinkIdentity(claims["sub"], row["uuid"], row["name"])
         if self.config.mode == "link":
-            started = self._auth.registration_options(identity)
+            started = self._auth.registration_options(identity, via="site")
             ceremony = started["body"]["ceremony"]
             self._registrations[ceremony] = (started["body"], self._clock() + NONCE_SECONDS)
             return {"status": 303, "location": f"/?site_ceremony={ceremony}", "body": {}}

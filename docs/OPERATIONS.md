@@ -212,8 +212,8 @@ that GamerTag. Pending entries are therefore shown by `endbot doctor`, and setup
 running. The controller grant stays, so the player can link again; to keep someone out, remove the grant. Removing a grant
 ends that player's web sessions at once and keeps the account and passkeys for a later regrant. The store is
 `state/web/` (owner-only), and endbotd is its only writer. See [WEB.md](WEB.md#p6-revocation-reaches-the-web-at-once).
-`endbot web revoke --site-sessions` ends every session issued through the optional trusted site, for a suspected key
-exposure ([P12](WEB.md#p12-trusted-external-site-optional-off-by-default)); `endbot doctor` checks that site's configuration.
+`endbot web revoke --site-sessions` ends every session and removes every passkey that came through the optional trusted
+site, for a suspected key exposure ([P12](WEB.md#p12-trusted-external-site-optional-off-by-default)); `endbot doctor` checks that site's configuration.
 
 ### Runtime grants and revocations
 

@@ -258,7 +258,7 @@ guide shows how to make one with OpenSSL and gives a short reference signer.
 **Rotation:** add the new key next to the old one and restart endbotd (config is read at start), switch the site to the
 new `kid`, then remove the old key and restart again. Removing a key refuses every assertion signed with it at once.
 On suspected exposure: remove the key, restart, and run `endbot web revoke --site-sessions`, which deletes every
-session issued through the site (P5 marks each session with how it was created).
+session issued through the site and every passkey registered through it (P5 marks each with how it was created).
 
 **Flow.** It always starts at the Endbot web, so endbotd can bind the assertion to one browser:
 

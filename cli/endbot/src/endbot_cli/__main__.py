@@ -14,6 +14,7 @@ from endbot_cli.commands import (
     run_controllers_reset,
     run_start,
     run_stop,
+    run_web_revoke,
 )
 from endbot_cli.config import TRANSPORTS
 from endbot_cli.doctor import FAIL, WARN, CheckResult, DoctorContext, exit_code, run_doctor
@@ -68,6 +69,12 @@ def build_parser() -> argparse.ArgumentParser:
     controllers_subcommands.add_parser("list", help="list effective controller configuration on the BDS console")
     reset = controllers_subcommands.add_parser("reset", help="return one controller binding to pending (section 3)")
     reset.add_argument("gamertag", help="the GamerTag whose binding should be removed")
+    web = subcommands.add_parser("web", help="administer the Endbot web (docs/WEB.md)")
+    web_subcommands = web.add_subparsers(dest="web_command", required=True)
+    revoke = web_subcommands.add_parser(
+        "revoke", help="delete one player's web account, passkeys and sessions; the controller grant stays"
+    )
+    revoke.add_argument("target", help="GamerTag or xuid:<id>")
     setup = subcommands.add_parser("setup", help="create or adopt an instance; prints the full plan first (section 6)")
     mode = setup.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fresh", action="store_true", help="create <instance>/server and download the locked BDS")
@@ -154,6 +161,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_stop(paths, timeout=args.timeout)
     if args.command == "console":
         return run_console(paths, " ".join(args.line))
+    if args.command == "web":
+        return run_web_revoke(paths, args.target)
     if args.command == "controllers" and args.controllers_command == "reset":
         return run_controllers_reset(paths, args.gamertag)
     if args.command == "controllers":

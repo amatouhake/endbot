@@ -27,7 +27,7 @@ from endstone_endbot.inventory_sync import HotbarPublisher, sync_settings, unsup
 from endstone_endbot.link_adapter import PluginLink
 from endstone_endbot.world import EndstoneWorld, unsupported
 
-ROOTS = frozenset({"bot", "botgroup", "botscript", "botcontrollers"})
+ROOTS = frozenset({"bot", "botgroup", "botscript", "botcontrollers", "botweb"})
 # Below endbotd's world-call deadline, so a stuck tick fails one call (docs/ENDBOTD.md P2).
 CALL_DEADLINE_SECONDS = 5.0
 
@@ -186,6 +186,11 @@ class EndbotPlugin(Plugin):
         "bot": {
             "description": "Control Endbot fake players.",
             "usages": COMMAND_USAGES,
+            "permissions": ["endbot.command.control"],
+        },
+        "botweb": {
+            "description": "Link this player to the Endbot web.",
+            "usages": ["/botweb", "/botweb (link|unlink|status)<action: EndbotWebAction>"],
             "permissions": ["endbot.command.control"],
         },
         "botcontrollers": {

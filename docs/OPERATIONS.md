@@ -108,8 +108,9 @@ items only and takes effect on the next start. Someone else's private Bot or Gro
 resolves as not found), and `forget`, `rename` and `visibility` on someone else's Bot stay with its owner and the
 console even when it is shared (see [PERMISSIONS.md](PERMISSIONS.md)).
 
-`[web] enabled` is a boolean and defaults to false. The web itself is not implemented yet ([WEB.md](WEB.md)); for now
-the setting only keeps endbotd running when BDS exits (see the supervision policy in section 5a).
+`[web] enabled` is a boolean and defaults to false. The web itself is not finished yet ([WEB.md](WEB.md)); for now the
+setting keeps endbotd running when BDS exits (see the supervision policy in section 5a) and, with `[web] origin` set
+(`https://host`, normally written by `endbot web deploy`), lets `/botweb link` issue codes.
 
 `[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
 (default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value
@@ -202,6 +203,13 @@ Operators name controllers by GamerTag. GamerTags are a bootstrap identifier, ne
 
 Risk accepted: between setup and the owner's first join, a pending GamerTag can be claimed by whoever currently holds
 that GamerTag. Pending entries are therefore shown by `endbot doctor`, and setup tells the operator to join once.
+
+### Web accounts
+
+`endbot web revoke <GamerTag|xuid:id>` deletes one player's web account, passkeys and sessions while `endbot start` is
+running. The controller grant stays, so the player can link again; to keep someone out, remove the grant. Removing a grant
+ends that player's web sessions at once and keeps the account and passkeys for a later regrant. The store is
+`state/web/` (owner-only), and endbotd is its only writer. See [WEB.md](WEB.md#p6-revocation-reaches-the-web-at-once).
 
 ### Runtime grants and revocations
 

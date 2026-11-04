@@ -344,6 +344,12 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
         scripting["runner"] = _path_value(tomlkit, runner)
     document.add("scripting", scripting)
 
+    web = tomlkit.table()
+    web["enabled"] = config.web.enabled
+    if config.web.origin:
+        web["origin"] = config.web.origin
+    document.add("web", web)
+
     atomic_write_text(target, tomlkit.dumps(document))
     return target, [warning] if warning else []
 

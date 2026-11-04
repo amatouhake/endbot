@@ -1122,6 +1122,18 @@ JA.update({
     "Script {name} deleted": "スクリプト {name} を削除しました",
     "Script {name} started: {run}": "スクリプト {name} を開始: {run}",
     "Script menu is available only to players": "スクリプトメニューはプレイヤーのみ利用できます",
+    "Use /botweb link, /botweb unlink or /botweb status":
+        "/botweb link、/botweb unlink、/botweb status のいずれかを使ってください",
+    "The web is not available on this server": "このサーバーでは Web を利用できません",
+    "This player has no web account": "このプレイヤーの Web アカウントはありません",
+    "This player has no web account; /botweb link creates one":
+        "このプレイヤーの Web アカウントはありません。/botweb link で作成できます",
+    "Web account removed; its passkeys and sessions no longer work":
+        "Web アカウントを削除しました。パスキーとセッションは使えなくなりました",
+    "Web link code: {code} (5 minutes, one use). Enter it at {origin}":
+        "Web リンクコード: {code} (有効 5 分、1 回のみ)。{origin} で入力してください",
+    "Web account linked: {passkeys} passkeys, {sessions} sessions":
+        "Web アカウントはリンク済みです: パスキー {passkeys} 件、セッション {sessions} 件",
 })
 
 CATALOGS: dict[str, dict[str, str]] = {"ja": JA}

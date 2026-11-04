@@ -110,7 +110,9 @@ console even when it is shared (see [PERMISSIONS.md](PERMISSIONS.md)).
 
 `[web] enabled` is a boolean and defaults to false. The web itself is not finished yet ([WEB.md](WEB.md)); for now the
 setting keeps endbotd running when BDS exits (see the supervision policy in section 5a) and, with `[web] origin` set
-(`https://host`, normally written by `endbot web deploy`), lets `/botweb link` issue codes.
+(`https://host`, normally written by `endbot web deploy`), lets `/botweb link` issue codes and opens the outbound link
+when `state/secrets/web-link.key` exists. `[web] display-name` (empty by default) is shown on the sign-in page and is
+the one thing of yours Cloudflare keeps.
 
 `[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
 (default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value

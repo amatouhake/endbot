@@ -123,6 +123,7 @@ class EndbotService:
             self._log("info", f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
         self.web = WebService(config.web, config.stores_directory, self.authority, base=config.base, log=self._log)
         self.web.on_passkey_added = self._passkey_added
+        self.web_link = None
         self._delivery = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbotd-delivery")
         self._closed = threading.Event()
         if control is None:
@@ -192,13 +193,40 @@ class EndbotService:
         self._recover()
         self._inputs.on_change = self.scripts.on_runs_changed = self._record_runs
         self.link.start()
+        self._start_web_link()
         threading.Thread(target=self._poll_loop, name="endbotd-mining", daemon=True).start()
         return self
+
+    def _start_web_link(self) -> None:
+        """The outbound link to the Worker (docs/WEB.md P1). Only endbotd opens it; nothing listens here."""
+        if self.web.auth is None or self.config.web_link_key_file is None:
+            return
+        try:
+            from endbotd.web_link import LinkKeyError, WebLink, load_link_key
+        except ImportError as error:
+            self._log("error", f"Web link is off: a library is missing ({error}); reinstall Endbot")
+            return
+
+        try:
+            key = load_link_key(self.config.web_link_key_file)
+        except LinkKeyError as error:
+            self._log("warning", f"Web link is off: {error}")
+            return
+        self.web_link = WebLink(self.web, self.web.origin, key, __version__, ws_handler=self.web.ws,
+                                cache=self._web_cache, log=self._log)
+        self.web.on_sessions_removed = self.web_link.sessions_removed
+        self.web_link.start()
+
+    def _web_cache(self) -> dict:
+        """All that Cloudflare keeps: what the sign-in page shows (P8)."""
+        return {"displayName": self.web.display_name, "bds": "up" if self.link.connected else "down"}
 
     def close(self) -> None:
         if self._closed.is_set():
             return
         self._closed.set()
+        if self.web_link is not None:
+            self.web_link.stop()
         # Cleanup (stopping scripts, Group work and mining) still reaches the runtime.
         self.runner.close(timeout=CLOSE_SECONDS)
         # A clean stop leaves only runs whose input cleanup did not finish for the next start.
@@ -250,8 +278,14 @@ class EndbotService:
                                                            reason=tr(language, RESTARTED)))])
 
     def _poll_loop(self) -> None:
+        published = None
         while not self._closed.wait(POLL_SECONDS):
             self.runner.poll()
+            if self.web_link is not None and self.web_link.connected.is_set():
+                bds = self.link.connected
+                if bds != published:
+                    self.web_link.publish_cache()
+                    published = bds
 
     # -- link callbacks (the link's ordered thread) -------------------------
 

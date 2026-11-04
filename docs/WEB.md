@@ -88,7 +88,7 @@ link (endbotd ↔ DO)       challenge / prove, then multiplexed frames:
   cache   endbotd → DO    {displayName, bds: up|down}    the display cache (P8)
 
 browser ↔ endbotd        JSON with {v, id, type, ...}:
-  auth.*       link code, register, login, add-device, logout     (HTTP, P4)
+  auth.*       link code, register, login, logout                 (HTTP, P4)
   op           {operation} → Outcome                                (WebSocket)
   query        status, Bot list, Groups, own runs, own log tail    (WebSocket)
   subscribe    status | log | run:<id>  → pushed Events             (WebSocket)
@@ -130,7 +130,7 @@ browser ↔ endbotd        JSON with {v, id, type, ...}:
 - Options: discoverable credentials required, `userVerification: "required"`, attestation `none`, ES256, EdDSA and
   RS256. RS256 is there for Windows Hello: a PC whose TPM offers only RSA would otherwise be left out of the prompt.
   Login is usernameless.
-- Challenges are single use, bound to the ceremony (register, login, add-device) and its account or link code, and
+- Challenges are single use, bound to the ceremony (register, login) and its account or link code, and
   expire after 2 minutes.
 - **Ceremonies are HTTP**, because a WebSocket cannot set a cookie: `POST /auth/<step>`; the Worker relays the body as
   an `http` conn and, when endbotd returns a new session, sets the cookie.
@@ -138,9 +138,9 @@ browser ↔ endbotd        JSON with {v, id, type, ...}:
   single use, at most one live code per XUID) → the browser posts the code → endbotd returns registration options for
   that XUID's account → the passkey is registered and a session issued. The same path adds a passkey to an existing
   account.
-- **Add this device:** a signed-in session with a passkey assertion less than 5 minutes old requests a code; the new
-  device posts it and registers its own passkey. Adding a passkey notifies the account's sessions and, when online,
-  the player in chat.
+- **A new passkey starts in the game (S8).** A signed-in browser cannot issue a code, so another device always takes
+  `/botweb link`, or the trusted site where the operator enabled it. Adding a passkey notifies the account's sessions and,
+  when online, the player in chat. An account holds at most 10 passkeys; removing one makes room.
 
 **Changing the domain invalidates every passkey.** A passkey is bound to its RP ID, so moving from the `workers.dev`
 subdomain to a custom domain, or between custom domains, makes every registered passkey unusable. `endbot web deploy`
@@ -164,7 +164,7 @@ whose stored RP ID differs from the current one.
 - Headers: `Content-Security-Policy: default-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'`,
   `Referrer-Policy: no-referrer`, HSTS. No third-party scripts or fonts.
 - Logout deletes the session in endbotd and clears the cookie. The web device list removes a passkey or a session;
-  removing a passkey needs a recent assertion, as add-device does.
+  removing a passkey needs a recent assertion.
 
 ### P6. Revocation reaches the web at once
 
@@ -309,7 +309,7 @@ role. `gtg` is not used for authorization; a mismatch with the bound GamerTag is
 - **link:** the assertion replaces the in-game code. The browser continues into passkey registration for that XUID's
   account (created if missing); later sign-ins use the passkey. A session is issued only after a passkey is registered.
 - **sign-in:** the assertion issues a session directly (marked `via: site`) for that XUID's account, created if
-  missing; no passkey is needed. Lifetimes are those of P5. Adding a device or removing a passkey needs a site sign-in
+  missing; no passkey is needed. Lifetimes are those of P5. Removing a passkey needs a site sign-in
   less than 5 minutes old, as P5 asks for a recent passkey assertion.
 
 In both modes `/botweb link` and passkeys keep working, so an outage of the site never locks a player out who has a
@@ -348,7 +348,7 @@ Decided 2026-10-29 JST.
 
 - **S1. Pairing installs endbotd's public link key directly** instead of a pairing secret (P1), refining Decision 3.
 - **S2. endbotd keeps running when BDS exits** with the web enabled; `--exit-with-bds` restores today's exit (P10).
-- **S3. Sessions** last 7 days idle and 30 days absolute; adding a device or removing a passkey needs a passkey
+- **S3. Sessions** last 7 days idle and 30 days absolute; removing a passkey needs a passkey
   assertion less than 5 minutes old (P5).
 - **S4. The trusted external site is in this release** (P12), optional and off by default; the operator will use it.
 - **S5. The Cloudflare API token is never stored**; it is prompted at deploy, rotate-key and update (P9).
@@ -357,6 +357,11 @@ Decided 2026-10-29 JST.
 - **S7. UI direction** (2026-10-29 JST): a plain, readable admin interface, not a Minecraft-styled one, equally usable
   on phones and PCs (responsive layout, no phone-only or desktop-only screens). No mockups up front: the operator
   reviews the real screens of the first status-and-logs PR, and later screens follow what was agreed there.
+
+- **S8. No "add this device" on the web** (2026-11-04 JST, replacing that part of P4 after the operator tried the real
+  page). The in-game code ties an account to the player who joined with Xbox authentication. A signed-in browser that
+  could mint more would let anyone at an unattended PC plant a lasting passkey, and a notice does not prevent that. The
+  cost is small: a code from the game can be entered on any device.
 
 ## Steps
 
@@ -408,7 +413,7 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
    `WEB_DEPLOY.md` also covers the trusted site: key generation, the start/return contract, a reference signer and
    rotation. The deployment guide is delegable; the SECURITY.md section and the site contract are Claude.
 10. **Validation**, inside the combined release pass. Live deploy to the operator's Cloudflare account, the operator
-    entering the token. Check: link on a phone and a PC, add-device, cross-device QR sign-in, revoke during an open
+    entering the token. Check: link on a phone and a PC, a second passkey from a second code, cross-device QR sign-in, revoke during an open
     session and during a run, domain change forcing re-registration, mismatched protocol refused, rate limits, BDS
     stopped with web status and script editing working, a Worker with a wrong link key refused. With the operator's
     real site: both modes, key rotation with two keys, a replayed or foreign-browser assertion refused, an XUID

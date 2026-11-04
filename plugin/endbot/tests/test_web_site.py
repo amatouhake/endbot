@@ -293,12 +293,13 @@ class GrantRuleTests(SiteCase):
         cookie, nonce = self.begin()
         old = self.finish(self.sign(self.claims(nonce)), cookie)["session"]
         self.clock.now += 300
-        self.assertEqual(self.auth.handle("/auth/device-code", {}, old)["body"]["code"], "reauthenticate")
+        refused = self.auth.handle("/auth/passkey/remove", {"id": "none"}, old)
+        self.assertEqual(refused["body"]["code"], "reauthenticate")
         cookie, nonce = self.begin()
         claims = self.claims(nonce, iat=NOW + 300, exp=NOW + 360)
         new = self.finish(self.sign(claims), cookie, token=old)["session"]
         self.assertIsNone(self.auth.session(old))
-        self.assertEqual(self.auth.handle("/auth/device-code", {}, new)["status"], 200)
+        self.assertEqual(self.auth.handle("/auth/passkey/remove", {"id": "none"}, new)["status"], 404)
 
 
 class LinkModeTests(SiteCase):

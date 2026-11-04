@@ -1,8 +1,8 @@
 """The real endbotd for the end-to-end test: no BDS and no runtime, only what a browser can reach.
 
 Reads commands on stdin and answers on stdout, one JSON line each:
-``code`` gives a link code for the test player, ``revoke`` removes their grant, ``log``
-records a run log line. Never used outside tests.
+``code`` gives a link code for the test player, ``reset`` deletes every passkey and session,
+``revoke`` removes their grant, ``log`` records a run log line. Never used outside tests.
 """
 
 import json
@@ -61,6 +61,9 @@ def main() -> None:
             command = line.strip()
             if command == "code":
                 print(json.dumps({"code": service.web.codes.issue(LinkIdentity(XUID, PLAYER, "Alice"))}), flush=True)
+            elif command == "reset":
+                service.web.domain_changed()
+                print(json.dumps({"ok": True}), flush=True)
             elif command == "revoke":
                 service._cli_controllers({"operation": "remove", "target": "Alice"})
                 print(json.dumps({"ok": True}), flush=True)

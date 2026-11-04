@@ -94,6 +94,11 @@ async function link(page: Page): Promise<void> {
 
 test.describe.configure({ mode: "serial" });
 
+// One player for the whole file: without this they would reach the passkey limit.
+test.beforeEach(async () => {
+  await ask("reset");
+});
+
 test("a code links a passkey, the session survives a reload, and a passkey signs in again", async ({ page, context }) => {
   await withAuthenticator(context, page);
   await page.goto("/");
@@ -121,8 +126,7 @@ test("a code links a passkey, the session survives a reload, and a passkey signs
 
   await page.getByRole("button", { name: "Devices" }).click();
   await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
-  await page.getByRole("button", { name: "Add another device" }).click();
-  await expect(page.getByText(/Code for the other device/)).toBeVisible();
+  await expect(page.getByText("Type /botweb link in the game")).toBeVisible();
   await shot(page, "04-devices");
 
   await page.getByRole("button", { name: "Sign out" }).click();
@@ -133,14 +137,12 @@ test("a code links a passkey, the session survives a reload, and a passkey signs
   await expect(page.getByText("Signed in as Alice")).toBeVisible();
 });
 
-test("a second device joins with a code, and the first page hears about it", async ({ browser, page, context }) => {
+test("a second device joins with a code from the game, and the first page hears about it", async ({ browser, page, context }) => {
   await withAuthenticator(context, page);
   await page.goto("/");
   await link(page);
   await page.getByRole("button", { name: "Devices" }).click();
-  await page.getByRole("button", { name: "Add another device" }).click();
-  const shown = await page.getByText(/Code for the other device/).textContent();
-  const code = shown!.split(": ")[1]!.trim();
+  const { code } = await ask("code");
 
   const other = await browser.newContext({ baseURL: ORIGIN, locale: "en-US" });
   const second = await other.newPage();
@@ -158,8 +160,7 @@ test("a session ended elsewhere leaves nothing of the account on the page", asyn
   await page.goto("/");
   await link(page);
   await page.getByRole("button", { name: "Devices" }).click();
-  await page.getByRole("button", { name: "Add another device" }).click();
-  await expect(page.getByText(/Code for the other device/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
 
   const other = await browser.newContext({ baseURL: ORIGIN, locale: "en-US" });
   const second = await other.newPage();
@@ -174,9 +175,9 @@ test("a session ended elsewhere leaves nothing of the account on the page", asyn
 
   await page.getByRole("button", { name: "Sign in with a passkey" }).click();
   await expect(page.getByText("Signed in as Alice")).toBeVisible();
-  await page.getByRole("button", { name: "Devices" }).click();
-  await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
-  await expect(page.getByText(/Code for the other device/)).toHaveCount(0);
+  // Back on the first tab, with the earlier account's device list gone until asked for again.
+  await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Passkeys" })).toHaveCount(0);
 });
 
 test("a code needs no hyphen, however it is typed or pasted", async ({ page, context }) => {

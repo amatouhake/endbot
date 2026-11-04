@@ -16,7 +16,6 @@
   let status = $state<any>(null);
   let log = $state<any[]>([]);
   let devices = $state<any>(null);
-  let deviceCode = $state("");
   let connection: Connection | null = null;
 
   /** The hyphen is ours to place: letters and digits are all anyone has to type or paste. */
@@ -61,7 +60,6 @@
     status = null;
     log = [];
     devices = null;
-    deviceCode = "";
     notice = "";
     reauthNeeded = false;
     tab = "status";
@@ -317,14 +315,6 @@
       <section class="card">
         <h2>{t("addDevice")}</h2>
         <p class="quiet">{t("addDeviceHelp")}</p>
-        {#if deviceCode}
-          <p class="code">{t("deviceCode", { code: deviceCode })}</p>
-          <p class="quiet">{t("deviceCodeNote")}</p>
-        {:else}
-          <button disabled={busy} onclick={() => reauthGuard(async () => { deviceCode = (await post("/auth/device-code")).code; })}>
-            {t("addDevice")}
-          </button>
-        {/if}
       </section>
       {#if devices}
         <section class="card">
@@ -435,7 +425,6 @@
   .tag { font-size: .8rem; padding: .05rem .5rem; border: 1px solid var(--line); border-radius: 1rem; color: var(--quiet); white-space: nowrap; }
   .tag.good { color: var(--good); border-color: var(--good); }
   code { font-size: .85rem; color: var(--quiet); }
-  .code { font-size: 1.15rem; font-weight: 600; }
   .log li { display: block; }
   .log li.warn span { color: var(--bad); }
   .log time { display: block; font-size: .8rem; color: var(--quiet); }

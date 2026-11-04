@@ -86,7 +86,6 @@ All are `POST` with `Content-Type: application/json`, except `GET /auth/site/sta
 | `/auth/login/options` | none | `{ceremony, options}` |
 | `/auth/login/verify` | `{ceremony, credential, label}` | `{gamertag}`, with a session |
 | `/auth/logout` | none | `{}`, clears the session |
-| `/auth/device-code` | none | `{code}` |
 | `/auth/devices` | none | `{sessions, passkeys}` |
 | `/auth/session/remove` | `{id}` | `{}` |
 | `/auth/passkey/remove` | `{id}` | `{}` |
@@ -95,4 +94,5 @@ All are `POST` with `Content-Type: application/json`, except `GET /auth/site/sta
 | `/auth/site/options` | `{ceremony}` | `{ceremony, options}` |
 
 Refusals carry `{code}`: `invalid_request`, `invalid_code`, `link_closed`, `no_access`, `expired`, `passkey_refused`,
+`passkey_limit`,
 `signed_out`, `reauthenticate`, `not_found`, `busy`, `unavailable`, `site_expired`, `site_refused`.

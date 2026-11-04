@@ -55,6 +55,8 @@ LAST_SEEN_SECONDS = 3600.0
 ALGORITHMS = [COSEAlgorithmIdentifier.ECDSA_SHA_256, COSEAlgorithmIdentifier.EDDSA,
               COSEAlgorithmIdentifier.RSASSA_PKCS1_v1_5_SHA_256]
 LABEL_CHARACTERS = 64
+# A person's real devices fit well under this; it bounds what any one proof can leave behind.
+MAX_PASSKEYS_PER_ACCOUNT = 10
 
 
 class AuthError(Exception):
@@ -119,7 +121,6 @@ class WebAuth:
             "/auth/login/options": self._login_options,
             "/auth/login/verify": self._login_verify,
             "/auth/logout": self._logout,
-            "/auth/device-code": self._device_code,
             "/auth/devices": self._devices,
             "/auth/session/remove": self._remove_session,
             "/auth/passkey/remove": self._remove_passkey,
@@ -181,6 +182,8 @@ class WebAuth:
     def registration_options(self, identity: LinkIdentity, *, via: str = "passkey") -> dict:
         """Passkey registration for a proven identity: a link code, or a site assertion (P12)."""
         account = self.store.ensure_account(identity.xuid, identity.player_id, identity.gamertag)
+        if len(self.store.passkeys(account["id"])) >= MAX_PASSKEYS_PER_ACCOUNT:
+            raise AuthError(409, "passkey_limit")
         options = generate_registration_options(
             rp_id=self.rp_id, rp_name="Endbot", user_id=base64url_to_bytes(account["userHandle"]),
             user_name=identity.gamertag, user_display_name=identity.gamertag,
@@ -211,6 +214,9 @@ class WebAuth:
         except (WebAuthnException, ValueError, KeyError, TypeError, AttributeError) as error:
             self._log("warning", f"Web passkey registration refused for {identity.gamertag}: {error}")
             raise AuthError(400, "passkey_refused") from None
+        # Again here: two ceremonies can be open at once.
+        if len(self.store.passkeys(account["id"])) >= MAX_PASSKEYS_PER_ACCOUNT:
+            raise AuthError(409, "passkey_limit")
         credential_id = bytes_to_base64url(verified.credential_id)
         if self.store.find_passkey(credential_id) is not None:
             self._log("warning", f"Web passkey registration refused for {identity.gamertag}: credential already used")
@@ -357,12 +363,6 @@ class WebAuth:
         return {"status": 200, "body": {}, "clearSession": True}
 
     # -- devices -----------------------------------------------------------------
-
-    def _device_code(self, body: dict, token: str | None) -> dict:
-        session = self._recent_session(token)
-        account = self.store.account(session["account"])
-        code = self.codes.issue(LinkIdentity(account["xuid"], account["uuid"], account["gamertag"]))
-        return {"status": 200, "body": {"code": code}}
 
     def _devices(self, body: dict, token: str | None) -> dict:
         session = self._required_session(token)

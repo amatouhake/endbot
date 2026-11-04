@@ -36,6 +36,7 @@ from endbotd import __version__
 from endbotd.authority import Authority
 from endbotd.config import EndbotdConfig
 from endbotd.journal import RunJournal
+from endbotd.web import WebService
 
 LOGGER = logging.getLogger("endbotd")
 # Mining loops renew every 4 ticks, as they did on the BDS scheduler.
@@ -115,11 +116,12 @@ class EndbotService:
             config={"language": self._language_setting, "hotbar": dict(config.hotbar)},
             on_submit=self._submit, on_presence=self._presence, grant_revision=self._grant_revision,
             role=self._role, log=self._log, world_timeout=world_timeout,
-            cli_handlers={"controllers": self._cli_controllers},
+            cli_handlers={"controllers": self._cli_controllers, "web": self._cli_web},
         )
         self.authority = Authority.from_config(self.link.presence, config.authorization, config.base, log=self._log)
         for gamertag in self.authority.controllers.pending():
             self._log("info", f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
+        self.web = WebService(config.web, config.stores_directory, self.authority, log=self._log)
         self._delivery = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbotd-delivery")
         self._closed = threading.Event()
         if control is None:
@@ -303,14 +305,29 @@ class EndbotService:
                 self.deliver(to, ["Endbot: controller management is available only from the server console"])
                 return {"accepted": False, "code": "unauthorized"}
             lines, permissions = self.authority.manage(list(submission.argv or ()))
+            self.web.grants_changed()
             self.deliver("console", lines)
             self._send_permissions(permissions)
             return {"accepted": True, "code": "ok"}
+        if submission.root == "botweb":
+            return self._botweb(submission, principal, to)
         if submission.argv is None:
             raise LinkError("unsupported", "operation submissions are not supported yet")
         if not self.runner.submit(list(submission.argv), principal, command=submission.root):
             self.deliver(to, [f"Endbot: {tr(principal.language, 'command service is unavailable')}"])
             return {"accepted": False, "code": "unavailable"}
+        return {"accepted": True, "code": "ok"}
+
+    def _botweb(self, submission: Submission, principal: Principal, to: str) -> dict:
+        if principal.kind != "player":
+            self.deliver(to, ["Endbot: /botweb is available only to players; use `endbot web revoke` here"])
+            return {"accepted": False, "code": "unauthorized"}
+        if submission.argv is None:
+            raise LinkError("unsupported", "operation submissions are not supported yet")
+        # Allowed above, from the same presence record: the XUID here is endbotd's, not the plugin's word.
+        record = self.link.presence.player(principal.player_id)
+        lines = self.web.command(record, principal.language, list(submission.argv)) if record is not None else []
+        self.deliver(to, [f"Endbot: {line}" for line in lines])
         return {"accepted": True, "code": "ok"}
 
     # -- the endbot CLI (its connection's ordered thread) ---------------------
@@ -332,10 +349,20 @@ class EndbotService:
                 raise ValueError("role is only accepted for add")
         # The target is one whole name; it is never reparsed as console text.
         result, permissions = self.authority.operation([operation], target, role=role)
+        self.web.grants_changed()
         self._send_permissions(permissions)
         if operation != "list":
             self._log("info", f"endbot CLI controllers {operation}: {result['messages'][0]}")
         return {"ok": result["ok"], "messages": list(result["messages"]), "entries": result.get("entries", [])}
+
+    def _cli_web(self, body: dict) -> dict:
+        """``endbot web revoke``: run as the console, answered on the CLI connection."""
+        operation, target = body.get("operation"), body.get("target")
+        if operation != "revoke":
+            raise ValueError("expected revoke")
+        if not isinstance(target, str) or not target.strip() or not target.isprintable() or len(target) > 256:
+            raise ValueError("a non-empty printable target of at most 256 characters is required")
+        return self.web.revoke(target)
 
     # -- toward the plugin (the delivery thread) ----------------------------
 

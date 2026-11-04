@@ -56,7 +56,7 @@ MAX_CLI_CONNECTIONS = 4
 MAX_CLI_REQUESTS = 64
 CLI_IDLE_SECONDS = 60.0
 
-ROOTS = frozenset({"bot", "botgroup", "botscript", "botcontrollers"})
+ROOTS = frozenset({"bot", "botgroup", "botscript", "botcontrollers", "botweb"})
 PRESENCE_KINDS = frozenset({"snapshot", "join", "quit", "locale"})
 # The ServerThreadWorld methods endbotd may call on the plugin.
 WORLD_METHODS = frozenset({

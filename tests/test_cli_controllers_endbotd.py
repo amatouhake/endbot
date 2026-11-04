@@ -12,7 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "src"))
 sys.path.insert(0, str(ROOT / "cli" / "endbot" / "src"))
 
-from endbot_cli.endbotd_client import PROTOCOL, EndbotdError, controllers_request
+from endbot_cli.endbotd_client import (
+    PROTOCOL,
+    EndbotdError,
+    controllers_request,
+    web_request,
+)
 from endbotd.config import EndbotdConfig
 from endbotd.service import EndbotService
 
@@ -93,6 +98,15 @@ class EndbotdCliTests(unittest.TestCase):
         self.assertEqual(invalid["error"]["code"], "invalid")
         self.assertFalse(self.service.link.connected)
         self.assertFalse((self.root / "controller-policy.json").exists())
+
+    def test_web_revoke_deletes_the_account_and_says_when_there_is_none(self) -> None:
+        self.service.web.store.ensure_account("2535400000000001", "00000000-0000-4000-8000-0000000000a1", "Alice")
+        result = web_request(self.run_dir, self.token, self.port, "revoke", "Alice", timeout=5)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.service.web.store.accounts(), [])
+        self.assertFalse(web_request(self.run_dir, self.token, self.port, "revoke", "Alice", timeout=5)["ok"])
+        with self.assertRaises(EndbotdError):
+            web_request(self.run_dir, self.token, self.port, "revoke", "bad\nname", timeout=5)
 
     def test_endbotd_down_says_so(self) -> None:
         self.service.close()

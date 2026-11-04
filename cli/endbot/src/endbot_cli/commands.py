@@ -315,6 +315,24 @@ def run_controllers_reset(paths: InstancePaths, gamertag: str) -> int:
     return 0
 
 
+def run_web_revoke(paths: InstancePaths, target: str) -> int:
+    """`endbot web revoke`: only endbotd writes the web store (docs/WEB.md P6)."""
+    from endbot_cli.endbotd_client import web_request
+
+    try:
+        config = load_config(paths.endbot_toml)
+        result = web_request(paths.state_run, paths.endbotd_token, config.endbotd.link_port, "revoke", target)
+    except ConfigError as error:
+        return _fail(f"FAIL web revoke: {error}")
+    except KeyboardInterrupt:
+        return _fail("FAIL web revoke: interrupted; the result is unknown; run it again")
+    except (OSError, ValueError) as error:
+        return _fail(f"FAIL web revoke: {error}")
+    for message in result["messages"]:
+        _print(message) if result["ok"] else _fail(message)
+    return 0 if result["ok"] else 1
+
+
 def run_controllers_live(paths: InstancePaths, operation: str, target: str | None = None,
                          role: str | None = None) -> int:
     """Ask endbotd over its loopback CLI endpoint; only endbotd writes policy (docs/ENDBOTD.md P8)."""

@@ -265,6 +265,19 @@ console, like the console-only `botcontrollers` commands, and persist grants/rev
 See [runtime authorization](OPERATIONS.md#runtime-grants-and-revocations) for offline enrollment, precedence and queued
 command behavior.
 
+## Linking the web
+
+With the web enabled, a controller links their own account from the game. Only a player with a grant and Xbox
+authentication can do this, and only for themselves.
+
+```text
+/botweb link     a code for the Endbot web: 6 symbols, 5 minutes, one use
+/botweb status   whether this player has a web account, with its passkey and session counts (the default)
+/botweb unlink   delete this player's web account, passkeys and sessions
+```
+
+A new code replaces an earlier one. Unlinking leaves the controller grant as it is. See [the web design](WEB.md).
+
 ## Lifecycle
 
 ```text

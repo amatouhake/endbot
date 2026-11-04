@@ -48,13 +48,13 @@ class ServiceHarness(unittest.TestCase):
         self.views = []
         self.configs = []
 
-    def start_service(self, permissions=None):
+    def start_service(self, permissions=None, web=None):
         config = EndbotdConfig(
             base=self.root, link_port=0, link_token_file=self.root / "endbotd.token", stores_directory=self.root,
             scripts_folder=self.root / "scripts",
             authorization={"controller-policy-file": "controller-policy.json"},
             ui={"language": "en"}, hotbar={"hotbar-sync-interval-ticks": 2},
-            permissions=permissions if permissions is not None else {},
+            permissions=permissions if permissions is not None else {}, web=web if web is not None else {},
         )
         self.service = EndbotService(config, control=self.control,
                                      log=lambda level, message: self.logs.append((level, message))).start()

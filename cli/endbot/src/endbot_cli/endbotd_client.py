@@ -116,6 +116,24 @@ def controllers_request(
             raise EndbotdError("invalid", "role must be scripter or controller")
         if operation != "add":
             raise EndbotdError("invalid", "role is only accepted for add")
+    body = {"operation": operation, "target": target}
+    if role is not None:
+        body["role"] = role
+    return _request(run_dir, token_file, port, "controllers", body, UNKNOWN if operation != "list" else None, timeout)
+
+
+def web_request(run_dir: Path, token_file: Path, port: int, operation: str, target: str, *,
+                timeout: float = 15.0) -> dict:
+    """Run one web administration operation in endbotd and return its result ``{ok, messages}``."""
+    if not target.strip() or not target.isprintable() or len(target) > 256:
+        raise EndbotdError("invalid", "a non-empty printable target of at most 256 characters is required")
+    unknown = "the result is unknown; run the command again"
+    return _request(run_dir, token_file, port, "web", {"operation": operation, "target": target}, unknown, timeout)
+
+
+def _request(run_dir: Path, token_file: Path, port: int, kind: str, body: dict, unknown: str | None,
+             timeout: float) -> dict:
+    """One request on a new CLI connection; ``unknown`` is what a lost reply means (None: safe to retry)."""
     if inspect_supervisor(run_dir).status != RUNNING:
         raise EndbotdError("unavailable", "the instance is not running; start it with `endbot start`")
     token = _token(token_file)
@@ -143,20 +161,17 @@ def controllers_request(
                 raise _error(reply)
             if not isinstance(reply.get("result"), dict) or reply["result"].get("protocol") != PROTOCOL:
                 raise EndbotdError("protocol_mismatch", "endbotd speaks another protocol; run `endbot update`")
-            body = {"operation": operation, "target": target}
-            if role is not None:
-                body["role"] = role
-            request = {"id": REQUEST_ID, "type": "controllers", "body": body}
+            request = {"id": REQUEST_ID, "type": kind, "body": body}
             sock.sendall(json.dumps(request).encode("utf-8") + b"\n")
             sent = True
             reply = _read_frame(sock, buffer, deadline)
         except (TimeoutError, OSError) as error:
             lost = "timed out" if isinstance(error, TimeoutError) else "closed the connection"
-            if sent and operation != "list":
-                raise EndbotdError("unknown", f"endbotd {lost}; {UNKNOWN}") from None
+            if sent and unknown is not None:
+                raise EndbotdError("unknown", f"endbotd {lost}; {unknown}") from None
             raise EndbotdError("unavailable", f"endbotd {lost}; retry shortly") from None
         if reply.get("id") != REQUEST_ID:
-            raise EndbotdError("unknown", f"endbotd answered another request; {UNKNOWN}")
+            raise EndbotdError("unknown", f"endbotd answered another request; {unknown or 'retry shortly'}")
         if reply.get("ok") is not True:
             raise _error(reply)
         return _valid_result(reply.get("result"))

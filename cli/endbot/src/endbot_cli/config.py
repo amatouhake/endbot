@@ -99,6 +99,7 @@ class PermissionsConfig:
 @dataclass(frozen=True, slots=True)
 class WebConfig:
     enabled: bool = False
+    origin: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,11 +373,14 @@ def _load_web(path: Path, document: dict[str, Any]) -> WebConfig:
     table = document.get("web", {})
     if not isinstance(table, dict):
         raise _fail(path, "web", "must be a table", "write it as a [web] section")
-    _reject_unknown_keys(path, table, "web", ("enabled",))
+    _reject_unknown_keys(path, table, "web", ("enabled", "origin"))
     enabled = table.get("enabled", False)
     if type(enabled) is not bool:
         raise _fail(path, "web.enabled", "must be a boolean", "use enabled = false or true")
-    return WebConfig(enabled=enabled)
+    origin = table.get("origin", "")
+    if not isinstance(origin, str):
+        raise _fail(path, "web.origin", "must be a string", 'use origin = "https://your-host"')
+    return WebConfig(enabled=enabled, origin=origin)
 
 
 def load_config(path: Path) -> EndbotConfig:

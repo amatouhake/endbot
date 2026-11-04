@@ -10,6 +10,7 @@ Sections::
     [run]            journal-file                    the run journal (P6)
     [permissions]    bots-default, groups-default    Bot and Group ownership defaults (BOT-024 4a)
     [authorization]  [limits]  [ui]  [scripting]      as the plugin config had them
+    [web]            enabled, origin                 the web (docs/WEB.md)
 
 Relative paths resolve against the file's directory. Developers with a manual
 plugin install write this file themselves (docs/ENDBOTD.md S3).
@@ -62,6 +63,7 @@ class EndbotdConfig:
     ui: dict = field(default_factory=dict)
     scripting: dict = field(default_factory=dict)
     permissions: dict = field(default_factory=dict)
+    web: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> EndbotdConfig:
@@ -98,4 +100,5 @@ class EndbotdConfig:
             ui=_table(document, "ui"),
             scripting=_table(document, "scripting"),
             permissions=_table(document, "permissions"),
+            web=_table(document, "web"),
         )

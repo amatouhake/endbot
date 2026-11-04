@@ -1199,6 +1199,43 @@ within about 12 s, so also check whether an attempt during BDS start-up hangs un
 Acceptance: record the attempt timeline; a Bot rejoins within a few seconds of BDS accepting connections on a start, with
 no extra load from Bots retrying against a stopped server. Multi-Bot start-up should stay staggered if it is today.
 
+## BOT-034: Web usability after the operator's first full try
+
+Status: **Open; the layout proposal awaits the operator's decision** (2026-11-04 JST). Steps 1 to 7 of BOT-021 are merged and
+work; the operator found nothing that stops them merging and no reason yet to call the web finished: the parts work, but
+the page lacks polish, some features, and a design that thinks about scrolling and how a person moves through it.
+
+Small, clear fixes:
+
+- `/botweb help` is missing, unlike `/bot`, `/botgroup` and `/botscript`.
+- The loading state is a small "..." in a corner and reads like a failure.
+- The link code adds its hyphen on the fourth symbol, not after the third, so a careful typist types one needlessly.
+- Deleting a symbol in the middle of a link code moves the cursor to the end.
+- F5 returns to the Status tab, whichever was open.
+- Leaving the Scripts tab forgets the open script.
+- The result of Save or Check appears above the source without reserved space, so the source shifts.
+- Renaming a script uses a browser prompt while renaming a Bot uses the page's own form.
+
+Layout and navigation:
+
+- A dashboard should fit one screen without page scrolling. A long script scrolls the tabs away, and its scrollbar shifts
+  the page sideways against the other tabs; other tabs may share the problem with many items.
+- The account name belongs beside Sign out, not only on Status.
+- Devices is rarely opened and may not belong beside the everyday tabs.
+- Status and Bots both list Bots, but only Bots can select one, and Status does not link to it.
+- The two rows of buttons on the Bot screen (kind, then operation) look alike and are hard to understand at first.
+- On a phone, Bots and Scripts need long scrolling between the list and what was selected.
+- Running a script and reading its output are on different tabs, which is poor for an editor.
+
+Missing features:
+
+- Group editing and management on the web.
+- Live updates: a Bot added or removed elsewhere, on the web or in game, does not reach an open page, so a person can act on
+  a stale view.
+- The log shows only the player's own scripts and jobs, not Group results or the commands they ran.
+- Bot status is shown as the chat line; on the web it should be parsed into fields.
+- Bot lists have no sorting by state, sort order or search, which large fleets need.
+
 ## Deferred priorities
 
 - Container/UI operations — crafting, villager trading, enchanting — use `item_stack_request` on current Bedrock, which

@@ -19,6 +19,14 @@
   let deviceCode = $state("");
   let connection: Connection | null = null;
 
+  /** The hyphen is ours to place: letters and digits are all anyone has to type or paste. */
+  function formatCode(event: Event): void {
+    const field = event.currentTarget as HTMLInputElement;
+    const symbols = field.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 6);
+    code = symbols.length > 3 ? `${symbols.slice(0, 3)}-${symbols.slice(3)}` : symbols;
+    field.value = code;
+  }
+
   function explain(failure: unknown): string {
     if (failure instanceof ApiError) return errorText(failure.code);
     if (failure instanceof Error && failure.name === "NotAllowedError") return errorText("cancelled");
@@ -200,9 +208,9 @@
       <form onsubmit={(event) => { event.preventDefault(); void act(async () => { await linkWithCode(code); await afterSignIn(); }); }}>
         <label for="code">{t("linkCode")}</label>
         <div class="row">
-          <input id="code" bind:value={code} autocomplete="one-time-code" autocapitalize="characters"
-                 spellcheck="false" placeholder="K7Q-4M2" maxlength="16" />
-          <button disabled={busy || !code.trim()}>{t("linkButton")}</button>
+          <input id="code" class="code-field" value={code} oninput={formatCode} autocomplete="one-time-code"
+                 autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="K7Q-4M2" />
+          <button disabled={busy || code.replace("-", "").length < 6}>{t("linkButton")}</button>
         </div>
       </form>
     </section>
@@ -223,7 +231,7 @@
     <nav>
       {#each [["status", t("tabStatus")], ["log", t("tabLog")], ["devices", t("tabDevices")]] as [key, label]}
         <button class:current={tab === key} aria-current={tab === key ? "page" : undefined}
-                onclick={() => show(key as Tab)}>{label}</button>
+                onclick={() => show(key as Tab)}><span data-text={label}>{label}</span></button>
       {/each}
     </nav>
 
@@ -397,6 +405,8 @@
   nav { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; overflow-x: auto; }
   nav button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--quiet); padding: .55rem .9rem; }
   nav button.current { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  /* Holds the width of the bold label on every tab, so choosing one moves nothing. */
+  nav button span::after { content: attr(data-text); display: block; height: 0; overflow: hidden; visibility: hidden; font-weight: 600; }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: .6rem; padding: 1rem; margin-bottom: 1rem; }
   .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); align-items: start; }
   .grid .card { margin: 0; }
@@ -419,6 +429,7 @@
     font: inherit; flex: 1; min-width: 0; min-height: 2.75rem; padding: .5rem .75rem; border-radius: .45rem;
     border: 1px solid var(--line); background: var(--bg); color: var(--text); letter-spacing: .06em;
   }
+  .code-field { font-family: ui-monospace, Consolas, monospace; font-size: 1.25rem; letter-spacing: .15em; text-align: center; }
   .error { background: var(--bad-bg); color: var(--bad); padding: .6rem .8rem; border-radius: .45rem; }
   .warning { background: var(--warn-bg); color: var(--warn-text); padding: .6rem .8rem; border-radius: .45rem; }
   .tag { font-size: .8rem; padding: .05rem .5rem; border: 1px solid var(--line); border-radius: 1rem; color: var(--quiet); white-space: nowrap; }

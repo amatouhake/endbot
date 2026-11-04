@@ -179,10 +179,44 @@ test("a session ended elsewhere leaves nothing of the account on the page", asyn
   await expect(page.getByText(/Code for the other device/)).toHaveCount(0);
 });
 
+test("a code needs no hyphen, however it is typed or pasted", async ({ page, context }) => {
+  await withAuthenticator(context, page);
+  await page.goto("/");
+  const field = page.getByLabel("Link code");
+  const continueButton = page.getByRole("button", { name: "Continue" });
+  await field.pressSequentially("k7q");
+  await expect(field).toHaveValue("K7Q");
+  await expect(continueButton).toBeDisabled();
+  await field.pressSequentially("4m2");
+  await expect(field).toHaveValue("K7Q-4M2");
+  await expect(continueButton).toBeEnabled();
+  await field.fill(" k7q 4m2 extra ");
+  await expect(field).toHaveValue("K7Q-4M2");
+  const { code } = await ask("code");
+  await field.fill(code.replace("-", ""));
+  await continueButton.click();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+});
+
+test("the page has its icon, and choosing a tab moves nothing", async ({ page, context }) => {
+  await withAuthenticator(context, page);
+  await page.goto("/");
+  const icon = await page.request.get(await page.locator('link[rel="icon"]').evaluate((link: HTMLLinkElement) => link.href));
+  expect(icon.headers()["content-type"]).toContain("image/png");
+  await link(page);
+  const positions = async () => page.getByRole("navigation").getByRole("button").evaluateAll(
+    (buttons) => buttons.map((button) => { const box = button.getBoundingClientRect(); return [box.left, box.width]; }));
+  const first = await positions();
+  for (const name of ["Log", "Devices", "Status"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    expect(await positions()).toEqual(first);
+  }
+});
+
 test("a wrong code says so", async ({ page, context }) => {
   await withAuthenticator(context, page);
   await page.goto("/");
-  await page.getByLabel("Link code").fill("AAA-AAA");
+  await page.getByLabel("Link code").fill("AAAAAA");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("alert")).toContainText("not right");
   await shot(page, "05-wrong-code");

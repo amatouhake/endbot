@@ -372,6 +372,21 @@ class RunnerPipeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "revoked"):
             process.receive(None, threading.Event(), Mock(side_effect=[None, ValueError("revoked")]))
 
+    def test_a_failed_runner_write_logs_the_runners_fate(self):
+        # BOT-032: an intermittent "[Errno 32] Broken pipe" on save left no trace of why the runner was gone.
+        process = RunnerProcess.__new__(RunnerProcess)
+        process._confinement_error = None
+        process._host_terminated = False
+        process._confine = Mock(failure=Mock(return_value=None))
+        process._process = Mock(pid=4321)
+        process._process.stdin.write.side_effect = BrokenPipeError(32, "Broken pipe")
+        process._process.poll.return_value = 9
+        with self.assertLogs("endbot_core.script_process", "WARNING") as logs, \
+             self.assertRaisesRegex(ValueError, "Broken pipe"):
+            process.send({"type": "load", "source": "secret source"})
+        self.assertIn("pid=4321 exit=9 host_terminated=False event=load", logs.output[0])
+        self.assertNotIn("secret source", logs.output[0])
+
     def test_a_burst_of_logs_past_the_queue_bound_waits_instead_of_killing_the_runner(self):
         # Regression (2026-10-25 client check): a script logging 15 lines at once ended "runner exited" at
         # line 8, because the reader failed on a full 8-event queue while the host was still handling logs.

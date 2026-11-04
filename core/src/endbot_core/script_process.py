@@ -109,6 +109,10 @@ class RunnerProcess:
             self._process.stdin.flush()
         except OSError as error:
             self._wait_exit()
+            LOGGER.warning(
+                "Endbot runner write failed: pid=%s exit=%s host_terminated=%s event=%s error=%s",
+                self._process.pid, self._process.poll(), self._host_terminated, event.get("type"), error,
+            )
             self._failure(str(error))
 
     def _wait_exit(self):

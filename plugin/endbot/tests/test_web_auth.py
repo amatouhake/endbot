@@ -1,5 +1,6 @@
 """Passkey ceremonies and sessions, against a software authenticator (docs/WEB.md P4, P5, P6)."""
 
+import hashlib
 import importlib.util
 import tempfile
 import unittest
@@ -97,6 +98,8 @@ class RegistrationTests(WebAuthCase):
 
     def test_only_the_session_token_hash_is_stored(self):
         token = self.link()
+        stored = self.store.sessions(self.account()["id"])[0]["hash"]
+        self.assertEqual(stored, hashlib.sha256(token.encode()).hexdigest())
         for path in (self.root / "web").iterdir():
             self.assertNotIn(token, path.read_text(encoding="utf-8"))
 
@@ -352,6 +355,65 @@ class SessionTests(WebAuthCase):
             self.assertEqual(self.post("/auth/link/options", {"code": self.codes.issue(ALICE)})["status"], 503)
 
 
+class FailedWriteTests(WebAuthCase):
+    def failing(self):
+        from unittest.mock import patch
+
+        return patch("endbotd.web_store.os.replace", side_effect=OSError("disk full"))
+
+    def test_a_failed_logout_clears_the_cookie_and_the_store_stays_consistent(self):
+        token = self.link()
+        with self.failing():
+            reply = self.post("/auth/logout", token=token)
+        self.assertEqual((reply["status"], reply["clearSession"]), (503, True))
+        # Memory and disk agree, so a restart holds no surprise; a retry can finish it.
+        self.assertIsNotNone(self.auth.session(token))
+        self.assertEqual(WebStore(self.root / "web").sessions(self.account()["id"]),
+                         self.store.sessions(self.account()["id"]))
+        self.assertTrue(self.post("/auth/logout", token=token)["clearSession"])
+        self.assertEqual(WebStore(self.root / "web").sessions(self.account()["id"]), [])
+
+    def test_a_removed_passkey_and_session_do_not_come_back_after_a_restart(self):
+        token = self.link()
+        passkey = self.store.passkeys(self.account()["id"])[0]["id"]
+        self.assertEqual(self.post("/auth/passkey/remove", {"id": passkey}, token)["status"], 200)
+        self.post("/auth/logout", token=token)
+        reloaded = WebStore(self.root / "web")
+        self.assertEqual(reloaded.passkeys(self.account()["id"]), [])
+        self.assertEqual(reloaded.sessions(self.account()["id"]), [])
+
+    def test_a_failed_removal_says_so_and_nothing_changes(self):
+        token = self.link()
+        passkey = self.store.passkeys(self.account()["id"])[0]["id"]
+        with self.failing():
+            self.assertEqual(self.post("/auth/passkey/remove", {"id": passkey}, token)["status"], 503)
+        self.assertEqual(len(WebStore(self.root / "web").passkeys(self.account()["id"])), 1)
+        self.assertEqual(len(self.store.passkeys(self.account()["id"])), 1)
+
+
+class RevokeEpochTests(WebAuthCase):
+    def test_a_surviving_session_stays_refused_after_the_revision_file_is_reset(self):
+        """grant-revisions.json is documented as safe to reset; a persisted session must not rely on it."""
+        token = self.link()
+        stored = self.store.sessions(self.account()["id"])[0]
+        self.clock.now += 1
+        self.store.end_sessions_for_revoke(XUID)
+        # The record survives, as a restored backup would bring it back, and the revisions are back at 0.
+        self.store.add_session(stored)
+        self.assertEqual(self.authority.grant_revisions.get(PLAYER), 0)
+        self.assertIsNone(self.auth.session(token))
+        self.assertIsNone(self.auth.principal(token))
+
+    def test_signing_in_after_a_regrant_works(self):
+        self.link()
+        self.clock.now += 1
+        self.store.end_sessions_for_revoke(XUID)
+        self.clock.now += 1
+        reply = self.login()
+        self.assertEqual(reply["status"], 200)
+        self.assertIsNotNone(self.auth.principal(reply["session"]))
+
+
 class DeviceTests(WebAuthCase):
     def test_adding_a_device_needs_a_recent_assertion(self):
         token = self.link()
@@ -409,6 +471,25 @@ class DeviceTests(WebAuthCase):
         token = self.login(token=token)["session"]
         self.assertEqual(self.post("/auth/passkey/remove", {"id": passkey}, token)["status"], 200)
         self.assertEqual(self.login()["body"]["code"], "passkey_refused")
+
+    def test_a_valid_credential_with_junk_in_its_unsigned_fields_still_works(self):
+        for junk in ([[]], [{}], [5], "usb", None):
+            with self.subTest(junk=junk):
+                device = SoftAuthenticator(ORIGIN, RP_ID)
+                started = self.link_options()
+                credential = device.register(started["options"])
+                credential["response"]["transports"] = junk
+                reply = self.post("/auth/link/verify", {"ceremony": started["ceremony"], "credential": credential})
+                self.assertEqual(reply["status"], 200, reply)
+                stored = self.store.find_passkey(credential["id"])
+                self.assertEqual(stored["transports"], [])
+
+    def test_a_label_is_cut_to_its_bound(self):
+        started = self.link_options()
+        reply = self.post("/auth/link/verify", {"ceremony": started["ceremony"], "label": "x" * 100,
+                                                "credential": self.device.register(started["options"])})
+        self.assertEqual(reply["status"], 200)
+        self.assertEqual(self.store.passkeys(self.account()["id"])[0]["label"], "x" * 64)
 
     def test_a_label_is_bounded_and_printable(self):
         started = self.link_options()

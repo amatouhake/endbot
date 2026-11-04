@@ -1129,6 +1129,7 @@ JA.update({
     "This player has no web account": "このプレイヤーの Web アカウントはありません",
     "This player has no web account; /botweb link creates one":
         "このプレイヤーの Web アカウントはありません。/botweb link で作成できます",
+    "The web account could not be removed; try again": "Web アカウントを削除できませんでした。もう一度試してください",
     "Web account removed; its passkeys and sessions no longer work":
         "Web アカウントを削除しました。パスキーとセッションは使えなくなりました",
     "Web link code: {code} (5 minutes, one use). Enter it at {origin}":

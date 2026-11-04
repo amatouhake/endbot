@@ -212,6 +212,7 @@ class WebAuth:
             raise AuthError(400, "passkey_refused")
         response = credential.get("response") if isinstance(credential.get("response"), dict) else {}
         transports = response.get("transports") if isinstance(response.get("transports"), list) else []
+        # Unsigned and browser-supplied: keep only the strings we know.
         known = {transport.value for transport in AuthenticatorTransport}
         self.store.add_passkey({
             "id": credential_id,
@@ -219,7 +220,7 @@ class WebAuth:
             "publicKey": bytes_to_base64url(verified.credential_public_key),
             "signCount": verified.sign_count,
             "rpId": self.rp_id,
-            "transports": [transport for transport in transports if transport in known],
+            "transports": [transport for transport in transports if isinstance(transport, str) and transport in known],
             "label": _label(body),
             "created": self._clock(),
             "lastUsed": None,
@@ -297,7 +298,8 @@ class WebAuth:
         now = self._clock()
         account = self.store.account(session["account"])
         if (account is None or now - session["lastSeen"] >= SESSION_IDLE_SECONDS
-                or now - session["created"] >= SESSION_ABSOLUTE_SECONDS):
+                or now - session["created"] >= SESSION_ABSOLUTE_SECONDS
+                or session["created"] < account.get("sessionsFrom", 0)):
             self._end_session(session)
             return None
         if now - session["lastSeen"] >= LAST_SEEN_SECONDS:
@@ -338,8 +340,13 @@ class WebAuth:
 
     def _logout(self, body: dict, token: str | None) -> dict:
         session = self.session(token)
-        if session is not None:
-            self._end_session(session)
+        try:
+            if session is not None:
+                self._end_session(session)
+        except OSError as error:
+            # This browser still forgets it, and the page must say the session may stay valid elsewhere.
+            self._log("error", f"Web store write failed: {error}")
+            return {"status": 503, "body": {"code": "unavailable"}, "clearSession": True}
         return {"status": 200, "body": {}, "clearSession": True}
 
     # -- devices -----------------------------------------------------------------

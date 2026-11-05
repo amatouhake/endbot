@@ -63,6 +63,7 @@ label { display: block; font-size: .85rem; }
 .grow { flex: 1; }
 .flush { margin: 0; border-radius: 0; }
 .ticks input { display: block; width: 6rem; }
+.ticks small { display: block; margin-top: .15rem; }
 button.primary.danger-fill { background: var(--bad); border-color: var(--bad); }
 
 /* Loading and sign-in */
@@ -136,7 +137,19 @@ button.primary.danger-fill { background: var(--bad); border-color: var(--bad); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 .pad { display: grid; grid-template-columns: repeat(3, 3.2rem); grid-template-rows: repeat(2, 2.4rem); gap: .25rem; }
 .pad button { padding: 0; min-height: 0; }
-.quick { display: flex; flex-wrap: wrap; gap: 1.1rem; align-items: flex-start; }
+.quick { display: flex; flex-wrap: wrap; gap: 1.1rem; align-items: flex-start; margin-top: .6rem; }
+.choices { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.choices.recent { margin-bottom: .5rem; }
+.choices.recent .quiet { font-size: .85rem; margin-right: .2rem; }
+.choices.categories { padding-bottom: .5rem; border-bottom: 1px solid var(--line); }
+.choices.operations { margin-top: .6rem; }
+.choices button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.op-panel { display: grid; gap: .5rem; margin-top: .6rem; }
+/* Fields side by side, so that Run stays on screen beside them. */
+.op-panel form { margin: 0; display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: flex-end; }
+.op-panel form .field { flex: 1 1 8rem; margin: 0; min-width: 0; }
+.op-panel form .field input:not([type="checkbox"]), .op-panel form .field select { width: 100%; }
+.op-panel form p { flex-basis: 100%; margin: 0; font-size: .85rem; }
 .results { max-height: 11rem; overflow: auto; }
 .results li { padding: .2rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; font-size: .9rem; }
 .results li:first-child { border-top: 0; }

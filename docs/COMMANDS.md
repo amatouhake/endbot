@@ -279,6 +279,8 @@ authentication can do this, and only for themselves.
 
 A new code replaces an earlier one. Unlinking leaves the controller grant as it is. See [the web design](WEB.md).
 
+On the web, "To my position" in Teleport is `tp me`. It works while you are online in the game.
+
 ## Lifecycle
 
 ```text

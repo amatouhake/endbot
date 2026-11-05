@@ -106,7 +106,7 @@
       </div>
       <div class="row">
         <select bind:value={filter} aria-label={t("filterLabel")}>
-          <option value="all">{t("filterAll", { count: bots.length })}</option>
+          <option value="all">{t("filterAll", { count: bots.length + groups.length })}</option>
           <option value="online">{t("filterOnline", { count: online })}</option>
           <option value="offline">{t("filterOffline", { count: bots.length - online })}</option>
           <option value="groups">{t("filterGroups", { count: groups.length })}</option>
@@ -201,6 +201,9 @@
             <button class="danger" onclick={() => controls?.send("stop")}>{t("stopAll")}</button>
           {:else}
             <button class="primary" onclick={() => controls?.send("resume")}>{t("startBot")}</button>
+            {#if current && current.state !== "offline"}
+              <button onclick={() => controls?.send("despawn")}>{t("stopBot")}</button>
+            {/if}
           {/if}
         </div>
       </section>
@@ -229,7 +232,8 @@
       </section>
       {/if}
       {#key selected}
-        <Controls bind:this={controls} {connection} target={selected} group={isGroup} onchanged={after} />
+        <Controls bind:this={controls} {connection} target={selected} group={isGroup}
+                  botState={isGroup ? "online" : current?.state ?? "offline"} onchanged={after} />
       {/key}
     {/if}
   </div>

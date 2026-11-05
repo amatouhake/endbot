@@ -2,7 +2,8 @@
 
 Reads commands on stdin and answers on stdout, one JSON line each:
 ``code`` gives a link code for the test player, ``reset`` deletes every passkey and session,
-``revoke`` removes their grant, ``log`` records a run log line, ``online NAME`` brings a Bot online.
+``revoke`` removes their grant, ``log`` records a run log line, ``online NAME`` brings a Bot online,
+``state NAME STATE`` puts it in any other state.
 Never used outside tests.
 """
 
@@ -85,6 +86,9 @@ def main() -> None:
                 print(json.dumps(control.calls), flush=True)
             elif command.startswith("online "):
                 control.states[command.split()[1]] = "online"
+                print(json.dumps({"ok": True}), flush=True)
+            elif command.startswith("state "):
+                control.states[command.split()[1]] = command.split()[2]
                 print(json.dumps({"ok": True}), flush=True)
             elif command == "reset":
                 service.web.domain_changed()

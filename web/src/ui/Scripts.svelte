@@ -229,12 +229,14 @@
 
   async function rename(): Promise<void> {
     if (moreMenu) moreMenu.open = false;
+    if (!(await leaveOk())) return;
     const next = await promptDialog(t("rename"), t("scriptNewName"), open.name, t("ok"));
     if (next && next !== open.name) await action("script.rename", { new: next }, () => reopen(next));
   }
 
   async function copy(): Promise<void> {
     if (moreMenu) moreMenu.open = false;
+    if (!(await leaveOk())) return;
     const next = await promptDialog(t("copy"), t("scriptCopyName"), `${open.name}_copy`, t("ok"));
     if (next) await action("script.copy", { new: next }, () => reopen(next));
   }
@@ -250,12 +252,15 @@
     });
   }
 
-  function share(): void {
+  async function share(): Promise<void> {
+    if (moreMenu) moreMenu.open = false;
+    if (!(await leaveOk())) return;
     const visibility = open.visibility === "shared" ? "private" : "shared";
     void action("script.visibility", { visibility }, () => reopen(open.name));
   }
 
-  function restore(index: number): void {
+  async function restore(index: number): Promise<void> {
+    if (!(await leaveOk())) return;
     void action("script.restore", { index }, () => reopen(open.name));
   }
 

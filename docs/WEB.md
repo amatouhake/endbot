@@ -381,6 +381,17 @@ Decided 2026-10-29 JST.
   reload and Back keep it, and a tab keeps its draft while another is open. Results have their own place, so nothing
   moves when one arrives. Questions use the page's own dialogs, never the browser's.
 
+- **S10. Bots and Groups are operated from one list** (2026-11-05 JST, after the operator's look at the rebuilt page). As in
+  game, a Group is one more thing `/bot` can address, so the Bots tab lists Bots and then `#Groups` with the same operations.
+  The Groups tab keeps what `/botgroup` does: creating, deleting and changing members.
+- **S11. New is beside Search on every list** (2026-11-05 JST). A Bot or Group is named in a dialog and exists when it closes,
+  and a refused name is corrected there. A script needs its content, so it stays a draft until it is saved; the list says
+  "not saved", its button says Create, and Cancel leaves nothing behind.
+- **S12. Operations are by category, with no guessed favourites** (2026-11-05 JST). The in-game menu's categories hold every
+  operation within two clicks and no scrolling. Recent shows what this browser actually used, instead of a list chosen for
+  the operator. Modes are buttons, each asking only for its own clauses. An offline Bot offers what the in-game menu offers,
+  and what the in-game forms leave to the command, such as `tp ... facing`, stays there.
+
 ## Steps
 
 Each step is split into PRs that keep main releasable. **Claude** marks the security boundary and protocol core,

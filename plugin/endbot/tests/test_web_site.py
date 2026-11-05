@@ -375,6 +375,10 @@ class ConfigTests(SiteCase):
             ("issuer with a path", {"issuer": "https://alice.example/x"}),
             ("uppercase issuer", {"issuer": "https://Alice.example"}),
             ("issuer with the default port", {"issuer": "https://alice.example:443"}),
+            ("issuer with an empty port", {"issuer": "https://alice.example:"}),
+            ("issuer with a padded port", {"issuer": "https://alice.example:0443"}),
+            ("issuer with an impossible port", {"issuer": "https://alice.example:99999"}),
+            ("issuer that is not punycode", {"issuer": "https://m\u00fcnchen.example"}),
             ("http start", {"start-url": "http://alice.example/start"}),
             ("no keys", {"keys": []}),
             ("three keys", {"keys": [{"kid": str(i), "public-key-file": "a.pem"} for i in range(3)]}),
@@ -389,6 +393,11 @@ class ConfigTests(SiteCase):
     def test_a_section_that_is_not_a_table_is_refused(self):
         with self.assertRaises(SiteConfigError):
             SiteConfig.load("enabled", self.root)
+
+    def test_an_issuer_a_browser_can_send_is_accepted(self):
+        for issuer in ("https://alice.example:8443", "https://xn--mnchen-3ya.example"):
+            with self.subTest(issuer=issuer):
+                self.assertEqual(SiteConfig.load(self.section(issuer=issuer), self.root).issuer, issuer)
 
     def test_a_key_on_another_curve_is_refused(self):
         name = self.write_key("p256.pem", ec.SECP256R1())

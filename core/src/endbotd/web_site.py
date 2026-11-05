@@ -109,9 +109,12 @@ def _https_url(value: object) -> bool:
 
 def _is_origin(value: str) -> bool:
     """The one spelling a browser sends as ``Origin``, which ``finish`` compares byte for byte."""
-    parts = urlsplit(value)
-    return value == f"https://{parts.netloc}" and value == value.lower() and "@" not in value \
-        and not value.endswith(":443")
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError:
+        return False
+    return value.isascii() and value == f"https://{parts.hostname}" + (f":{port}" if port not in (None, 443) else "")
 
 
 def _decode(part: str) -> bytes:

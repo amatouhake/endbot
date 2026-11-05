@@ -192,7 +192,8 @@ Because every request rechecks the grant revision, a revoke takes effect even if
 
 - Static UI and the Worker code; the secret `ENDBOTD_LINK_KEY` (a public key) and `ENDBOT_ORIGIN`.
 - Durable Object storage: the display cache only, `{displayName, bds, since}`, shown on the sign-in page. With no proven
-  link it reports `bds: down`, since nothing vouches for the last value.
+  link it reports `bds: down`, since nothing vouches for the last value. A link that dies with no close, as in a power
+  loss, still counts until Cloudflare notices, because nothing refreshes the value; step 10 measures how long that is.
   `displayName` is `[web] display-name`, empty by default.
 - Nothing else: no account, passkey, session, script source, Outcome or log. The Worker logs no request or response
   body; deploy sets Workers observability and logpush off, and disables version preview URLs so the UI is served from
@@ -433,7 +434,8 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
 10. **Validation**, inside the combined release pass. Live deploy to the operator's Cloudflare account, the operator
     entering the token. Check: link on a phone and a PC, a second passkey from a second code, cross-device QR sign-in, revoke during an open
     session and during a run, domain change forcing re-registration, mismatched protocol refused, rate limits, BDS
-    stopped with web status and script editing working, a Worker with a wrong link key refused. With the operator's
+    stopped with web status and script editing working, a Worker with a wrong link key refused, what the sign-in page says
+    after the PC loses power or network with no clean close. With the operator's
     real site: both modes, key rotation with two keys, a replayed or foreign-browser assertion refused, an XUID
     without a grant refused, `endbot web revoke` while the site still vouches. Recorded in a docs PR.
 

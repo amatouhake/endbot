@@ -223,11 +223,22 @@ class TrustedSiteTests(DoctorTestCase):
         self.enable()
         self.assertEqual(self.status_of(self.doctor(), "web-trusted-site"), FAIL)
 
+    def test_an_issuer_a_browser_can_send_passes(self) -> None:
+        self.write_key()
+        for issuer in ("https://a.example:8443", "https://xn--mnchen-3ya.example"):
+            with self.subTest(issuer=issuer):
+                original = self.paths.endbot_toml.read_text(encoding="utf-8")
+                self.enable(issuer=f"'{issuer}'")
+                self.assertEqual(self.status_of(self.doctor(), "web-trusted-site"), PASS)
+                self.paths.endbot_toml.write_text(original, encoding="utf-8")
+
     def test_invalid_settings_fail(self) -> None:
         self.write_key()
         for changes in ({"issuer": "'http://a.example'"}, {"issuer": "'https://['"}, {"start-url": "'https://'"},
                         {"issuer": "'https://a.example/'"}, {"issuer": "'https://a.example/x'"},
                         {"issuer": "'https://A.example'"}, {"issuer": "'https://a.example:443'"},
+                        {"issuer": "'https://a.example:'"}, {"issuer": "'https://a.example:0443'"},
+                        {"issuer": "'https://a.example:99999'"}, {"issuer": "'https://m\u00fcnchen.example'"},
                         {"start-url": "'http://a.example/s'"}, {"mode": "'both'"},
                         {"name": "''"}, {"keys": "[]"},
                         {"keys": "[{kid='a', public-key-file='site/a.pem'}, {kid='a', public-key-file='site/a.pem'}]"},

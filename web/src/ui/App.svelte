@@ -238,7 +238,7 @@
         {#each TABS as [section, label]}
           <a href={href(section, chosen[section] ?? null)} aria-current={route.section === section ? "page" : undefined}
              onclick={(event) => follow(event, section, chosen[section] ?? null)}>
-            <span data-text={t(label)}>{t(label)}</span>
+            {t(label)}
           </a>
         {/each}
       </nav>

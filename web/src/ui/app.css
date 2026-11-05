@@ -89,9 +89,7 @@ button.primary.danger-fill { background: var(--bad); border-color: var(--bad); }
 .brand small { white-space: nowrap; }
 .tabs { display: flex; gap: .1rem; flex: 1; align-self: stretch; overflow-x: auto; scrollbar-width: none; min-width: 0; }
 .tabs a { display: flex; align-items: center; padding: 0 .75rem; color: var(--quiet); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
-.tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-/* Holds the width of the bold label on every tab, so choosing one moves nothing. */
-.tabs a span::after { content: attr(data-text); display: block; height: 0; overflow: hidden; visibility: hidden; font-weight: 600; }
+.tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
 .account { position: relative; flex: none; }
 .account summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: .3rem; padding: .3rem .5rem; border-radius: .4rem; max-width: 12rem; }
 .account summary::-webkit-details-marker { display: none; }

@@ -502,7 +502,7 @@ class LifecycleTests(unittest.TestCase):
         self.host.config = replace(self.config, wall_seconds=0)
         with patch.object(self.host, "_process", return_value=self.runner) as process:
             self.host.inspect(Script("draft", "params {}", "r1"), self.source)
-            process.assert_called_once_with("params {}", 5)
+            process.assert_called_once_with("params {}", 5, foreground=True)
         identity = self.start([{"type": "wait", "id": 2, "ticks": 100000}])
         run = self.host.active()[0]
         self.assertIsNone(run.deadline)
@@ -683,7 +683,7 @@ class LifecycleTests(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow(*args):
+        def slow(*args, **options):
             started.set()
             release.wait(2)
             return self.runner

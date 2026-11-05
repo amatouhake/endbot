@@ -1144,40 +1144,26 @@ inside a second and ended the run with `Script operation rate limit reached` plu
 
 ## BOT-032: A script save occasionally fails with "Broken pipe"
 
-Status: **Unresolved; not reproducible on demand** (2026-11-03 JST). Candidate 1 below is done (2026-11-04 JST): a failed
-runner write now logs its pid, exit code, `host_terminated` and event type to `endbotd.log`; the cause is still unknown.
+Status: **Fixed; cause named and reproduced** (2026-11-05 JST). While checking the UI pack on a Windows client, saving from the
+script menus failed now and then with `[Errno 32] Broken pipe`, and a retry worked.
 
-While checking the optional UI pack on a 1.26.60.5 Windows client, saving from the script menus failed
-intermittently with `[Errno 32] Broken pipe` — several edits and saves in a row succeeded, then one failed, and a
-later retry worked. Both the line editor's whole-script field and the new-script screen were involved; no other
-operation showed it.
+The cause: a save runs a declaration check, in a runner started at below-normal priority with a 5 s limit. On Windows, below
+normal gets no CPU at all while every core is busy, which a game client on the same PC can do in bursts. The runner never read
+its load frame, so the write blocked, the 5 s limit killed the runner, and the write then failed with a broken pipe. The
+earlier `Script declaration failed: execution budget exceeded` on a first run fits the same starvation.
 
-What the evidence says:
+The evidence, one check at a time on 16 cores, with the real runner:
 
-- The message comes from `endbotd` (or its plugin-side caller) failing a **Luau runner** write:
-  `core/src/endbot_core/script_process.py::send` catches `OSError` from the runner's stdin, waits briefly for the
-  exit, and raises `Script runner failed: {error}`; the command layer turns that into `{operation} failed: ...`.
-  A save runs a declaration check, so it spawns that runner.
-- The plugin↔endbotd link was not the cause: `endbotd.log` shows one `linked` line and no reconnect or warning for
-  the session, and the failing operation did not appear in the log at all.
-- Nothing is logged when it happens, so the runner's exit code and the write that failed are unknown. A throwaway
-  instance carried a local patch that logs pid, exit code, `host_terminated` and the event; repeated saves did not
-  reproduce the failure afterwards.
-- An earlier symptom may be related: the first script run after a fresh server start once ended with
-  `Script declaration failed: execution budget exceeded` and the retry completed in 46 ms, which points at runner
-  start-up latency (a first-execution scan) rather than at the script.
+| Busy cores | Below normal | Normal |
+|---|---|---|
+| None | 0.03 s | 0.03 s |
+| 8 | 0.05 s | 0.05 s |
+| 16 | killed at 5 s, every time | 0.2 to 0.4 s |
+| 32 | killed at 5 s, every time | 0.8 to 1 s |
 
-Candidates, in order:
-
-1. Log the failed write (runner pid, exit code, whether the host terminated it, event type) in
-   `script_process.send`. This is the missing observation, not a fix.
-2. Retry the declaration check once when the runner process fails before returning its `params`; a save has no
-   side effects yet, so a retry is safe. Only after (1) says the runner really exits early.
-3. If the runner is being killed by an outside actor (antivirus, an OS limit), the confinement exit reason or a
-   runner log line should name it.
-
-Acceptance: a save that hits the failure leaves a log line naming the runner's fate, and if a retry is added, the
-save completes; the BACKLOG entry is closed only when the cause is named, not when retries hide it.
+The fix: a declaration check runs at normal priority, on Linux at nice 0 too. It lasts a few seconds at most and a person is
+waiting for it. A script's body still runs below normal, so it yields to BDS. If the runner is still stopped by the limit, the
+message says it did not respond in time instead of naming a pipe.
 
 ## BOT-033: A desired-online Bot takes about a minute to rejoin after a start
 

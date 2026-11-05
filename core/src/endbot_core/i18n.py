@@ -964,6 +964,8 @@ JA.update({
     "Script protocol frame too large": "スクリプトの通信データが上限を超えています",
     "Script stopped or time limit reached": "スクリプトが停止されたか、制限時間に達しました",
     "Script runner failed: {error}": "スクリプト実行プログラムでエラー: {error}",
+    "Script runner did not respond in time; the server may be busy, try again":
+        "スクリプト実行プログラムが時間内に応答しませんでした。サーバーが混み合っている可能性があります。もう一度試してください",
     "Script runner OS confinement failed; see the server log": (
         "スクリプト実行プログラムの OS 制限を設定できません。サーバーログを確認してください"
     ),

@@ -301,11 +301,45 @@ test("the list can be searched and filtered, and follows what happens elsewhere 
   await expect(list.getByRole("link")).toHaveText([/Farmer/, /Miner_01/], { timeout: 10_000 });
 });
 
+test("New is in one place on all three lists, and a refused name stays in its dialog", async ({ page, context }) => {
+  await start(page, context);
+  const search = page.getByLabel("Search").locator("visible=true");
+  const button = page.locator(".list-tools").getByRole("button", { name: "New", exact: true }).locator("visible=true");
+  const place = async () => [(await search.boundingBox())!.y, (await button.boundingBox())!.y, (await button.boundingBox())!.x];
+  const bots = await place();
+  await tab(page, "Groups");
+  expect(await place()).toEqual(bots);
+  await tab(page, "Scripts");
+  expect(await place()).toEqual(bots);
+
+  await tab(page, "Groups");
+  await button.click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("New Group name").fill("1 bad");
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Use up to 16");
+  await expect(dialog.getByLabel("New Group name")).toHaveValue("1 bad");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  expect(await page.locator(".list-scroll").locator("visible=true").getByRole("link").count()).toBe(0);
+
+  // A script is not created until it is saved, and the list and the button both say so.
+  await tab(page, "Scripts");
+  await button.click();
+  await expect(page.getByText("New script (not saved)")).toBeVisible();
+  await expect(page.locator(".script-bar").getByRole("button", { name: "Create" })).toBeVisible();
+  await expect(page).toHaveURL(/\/scripts$/);
+  await shot(page, "17-script-draft");
+  await page.locator(".script-bar").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("New script (not saved)")).toHaveCount(0);
+});
+
 test("a Group is created, filled, operated as a whole and deleted, and all of it is in the history", async ({ page, context }) => {
   await start(page, context);
   await tab(page, "Groups");
-  await page.getByLabel("New Group name").fill("miners");
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.locator(".list-tools").getByRole("button", { name: "New", exact: true }).locator("visible=true").click();
+  await page.getByRole("dialog").getByLabel("New Group name").fill("miners");
+  await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("heading", { name: "#miners" })).toBeVisible();
   await expect(page).toHaveURL(/\/groups\/miners$/);
   await page.getByLabel("Bot to add").selectOption("Miner_01");
@@ -348,7 +382,7 @@ test("a script is written, checked, saved, compared and run on one screen", asyn
   await page.keyboard.insertText('local a = params { param.number("count", 2) }\nlog("count " .. a.count)\n');
   await page.getByRole("button", { name: "Check" }).click();
   await expect(page.getByRole("status")).toContainText("No problems");
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("status")).toContainText("Saved");
   await expect(page.getByRole("link", { name: /e2e_script/ })).toBeVisible();
   await expect(page).toHaveURL(/\/scripts\/e2e_script$/);
@@ -475,8 +509,9 @@ test("a broken address still opens the page", async ({ page, context }) => {
 test("revoking the grant ends an open page at once, and takes an open question with it", async ({ page, context }) => {
   await start(page, context);
   await tab(page, "Groups");
-  await page.getByLabel("New Group name").fill("secret_group");
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.locator(".list-tools").getByRole("button", { name: "New", exact: true }).locator("visible=true").click();
+  await page.getByRole("dialog").getByLabel("New Group name").fill("secret_group");
+  await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
   await page.getByRole("button", { name: "Delete Group" }).click();
   await expect(page.getByRole("dialog")).toContainText("secret_group");
   await ask("revoke");

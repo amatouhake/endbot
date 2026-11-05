@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Connection } from "./api";
   import Controls from "./Controls.svelte";
-  import { confirmDialog } from "./dialogs.svelte";
+  import { confirmDialog, createDialog } from "./dialogs.svelte";
   import { t } from "./i18n";
   import { href, navigate } from "./route.svelte";
 
@@ -15,7 +15,6 @@
   } = $props();
 
   let search = $state("");
-  let newGroup = $state("");
   let addition = $state("");
   let busy = $state(false);
   let error = $state("");
@@ -42,16 +41,18 @@
     return true;
   }
 
+  const bare = (text: string): string => text.replace(/^#/, "");
+
   async function create(): Promise<void> {
-    const name = newGroup.trim().replace(/^#/, "");
-    if (!NAME.test(name)) {
-      error = t("groupNameRule");
-      return;
-    }
-    if (await ask("group.create", { name })) {
-      newGroup = "";
-      navigate("groups", name);
-    }
+    const name = await createDialog(t("groupNewTitle"), t("groupNew"), t("groupCreate"), 17, async (text) => {
+      if (!NAME.test(bare(text))) return t("groupNameRule");
+      const answer = await connection.request("group.create", { name: bare(text) });
+      return answer.code === "ok" ? null : answer.messages?.[0] ?? t("opFailed", { code: answer.code });
+    });
+    if (!name) return;
+    error = "";
+    onchanged();
+    navigate("groups", bare(name));
   }
 
   async function remove(): Promise<void> {
@@ -68,7 +69,10 @@
 <div class="split" class:showing={selected !== null}>
   <div class="list-pane">
     <div class="list-tools">
-      <input type="search" bind:value={search} placeholder={t("search")} aria-label={t("search")} />
+      <div class="row">
+        <input class="grow" type="search" bind:value={search} placeholder={t("search")} aria-label={t("search")} />
+        <button onclick={create}>{t("new")}</button>
+      </div>
     </div>
     <div class="list-scroll">
       {#if groups.length === 0}
@@ -85,13 +89,6 @@
           </a>
         {/each}
       {/if}
-    </div>
-    <div class="list-foot">
-      {#if error && !selected}<p class="error" role="alert">{error}</p>{/if}
-      <form onsubmit={(event) => { event.preventDefault(); void create(); }}>
-        <input bind:value={newGroup} aria-label={t("groupNew")} placeholder={t("groupNew")} spellcheck="false" maxlength="17" />
-        <button disabled={busy || !newGroup.trim()}>{t("groupCreate")}</button>
-      </form>
     </div>
   </div>
 

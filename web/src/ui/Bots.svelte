@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Connection } from "./api";
   import Controls from "./Controls.svelte";
+  import { createDialog } from "./dialogs.svelte";
   import { opLabel, stateLabel, t } from "./i18n";
   import { href, navigate } from "./route.svelte";
 
@@ -17,9 +18,6 @@
   let search = $state("");
   let filter = $state<"all" | "online" | "offline">("all");
   let sort = $state<"state" | "name">("state");
-  let newBot = $state("");
-  let spawning = $state(false);
-  let spawnError = $state("");
   let detail = $state<any>(null);
   let detailProblem = $state("");
   let controls = $state<Controls>();
@@ -55,19 +53,13 @@
   });
 
   async function spawnBot(): Promise<void> {
-    const name = newBot.trim();
+    const name = await createDialog(t("newBotTitle"), t("newBotName"), t("spawn"), 16, async (text) => {
+      const answer = await connection.request("op", { operation: { op: "spawn", target: text, params: {} } });
+      return answer.code === "ok" ? null : answer.messages?.[0] ?? t("opFailed", { code: answer.code });
+    });
     if (!name) return;
-    spawning = true;
-    spawnError = "";
-    const answer = await connection.request("op", { operation: { op: "spawn", target: name, params: {} } });
-    spawning = false;
-    if (answer.code === "ok") {
-      newBot = "";
-      onchanged();
-      navigate("bots", name);
-    } else {
-      spawnError = answer.messages?.[0] ?? t("opFailed", { code: answer.code });
-    }
+    onchanged();
+    navigate("bots", name);
   }
 
   function after(op: string, fields: Record<string, unknown>): void {
@@ -96,7 +88,10 @@
 <div class="split" class:showing={selected !== null}>
   <div class="list-pane">
     <div class="list-tools">
-      <input type="search" bind:value={search} placeholder={t("search")} aria-label={t("search")} />
+      <div class="row">
+        <input class="grow" type="search" bind:value={search} placeholder={t("search")} aria-label={t("search")} />
+        <button onclick={spawnBot}>{t("new")}</button>
+      </div>
       <div class="row">
         <select bind:value={filter} aria-label={t("filterLabel")}>
           <option value="all">{t("filterAll", { count: bots.length })}</option>
@@ -126,13 +121,6 @@
           </a>
         {/each}
       {/if}
-    </div>
-    <div class="list-foot">
-      {#if spawnError}<p class="error" role="alert">{spawnError}</p>{/if}
-      <form onsubmit={(event) => { event.preventDefault(); void spawnBot(); }}>
-        <input bind:value={newBot} aria-label={t("newBotName")} placeholder={t("newBotName")} spellcheck="false" maxlength="16" />
-        <button disabled={spawning || !newBot.trim()}>{t("spawn")}</button>
-      </form>
     </div>
   </div>
 

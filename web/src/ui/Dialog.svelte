@@ -4,6 +4,8 @@
 
   let element = $state<HTMLDialogElement>();
   let text = $state("");
+  let refusal = $state("");
+  let busy = $state(false);
 
   $effect(() => {
     const request = dialogs.current;
@@ -13,6 +15,8 @@
       return;
     }
     text = request.input?.value ?? "";
+    refusal = "";
+    busy = false;
     if (!element.open) element.showModal();
   });
 
@@ -23,11 +27,25 @@
     request?.resolve(value);
   }
 
-  function submit(event: Event): void {
+  async function submit(event: Event): Promise<void> {
     event.preventDefault();
     const request = dialogs.current;
     if (request?.input) {
-      if (text.trim()) answer(text.trim());
+      const value = text.trim();
+      if (!value || busy) return;
+      if (request.attempt) {
+        busy = true;
+        refusal = "";
+        const problem = await request.attempt(value);
+        // Cancelled meanwhile, or the account is gone: this answer is nobody's.
+        if (dialogs.current !== request) return;
+        busy = false;
+        if (problem) {
+          refusal = problem;
+          return;
+        }
+      }
+      answer(value);
     } else {
       answer(true);
     }
@@ -42,12 +60,13 @@
       {#if dialogs.current.input}
         <label class="field">{dialogs.current.input.label}
           <!-- svelte-ignore a11y_autofocus -->
-          <input bind:value={text} spellcheck="false" autofocus />
+          <input bind:value={text} spellcheck="false" autofocus maxlength={dialogs.current.input.maxlength} />
         </label>
       {/if}
+      {#if refusal}<p class="error" role="alert">{refusal}</p>{/if}
       <div class="dialog-actions">
         <button type="button" onclick={() => answer(null)}>{t("cancel")}</button>
-        <button class={dialogs.current.danger ? "primary danger-fill" : "primary"}>{dialogs.current.confirm}</button>
+        <button class={dialogs.current.danger ? "primary danger-fill" : "primary"} disabled={busy}>{dialogs.current.confirm}</button>
       </div>
     </form>
   {/if}

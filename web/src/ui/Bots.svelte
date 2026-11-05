@@ -1,4 +1,5 @@
 <script lang="ts">
+  // What `/bot` can address, as in the game: Bots, then Groups, each with the same operations.
   import type { Connection } from "./api";
   import Controls from "./Controls.svelte";
   import { createDialog } from "./dialogs.svelte";
@@ -16,7 +17,7 @@
   } = $props();
 
   let search = $state("");
-  let filter = $state<"all" | "online" | "offline">("all");
+  let filter = $state<"all" | "online" | "offline" | "groups">("all");
   let sort = $state<"state" | "name">("state");
   let detail = $state<any>(null);
   let detailProblem = $state("");
@@ -24,13 +25,24 @@
 
   const bots = $derived<any[]>(status?.bots ?? []);
   const online = $derived(bots.filter((bot) => bot.state === "online").length);
+  const groups = $derived<any[]>(status?.groups ?? []);
+  const typed = $derived(search.trim().toLowerCase().replace(/^#/, ""));
+  const shownGroups = $derived(filter === "all" || filter === "groups"
+    ? groups.filter((group) => group.name.toLowerCase().includes(typed)).toSorted((a, b) => a.name.localeCompare(b.name))
+    : []);
   const shown = $derived(bots
-    .filter((bot) => bot.name.toLowerCase().includes(search.trim().toLowerCase()))
-    .filter((bot) => filter === "all" || (filter === "online") === (bot.state === "online"))
+    .filter((bot) => bot.name.toLowerCase().includes(typed))
+    .filter((bot) => filter === "all" || (filter !== "groups" && (filter === "online") === (bot.state === "online")))
     .toSorted((a, b) => (sort === "state" ? Number(b.state === "online") - Number(a.state === "online") : 0)
       || a.name.localeCompare(b.name)));
   const current = $derived(bots.find((bot) => bot.name === selected));
   const isOnline = $derived(current?.state === "online");
+  const isGroup = $derived(selected?.startsWith("#") ?? false);
+  const currentGroup = $derived(isGroup ? groups.find((group) => `#${group.name}` === selected) : undefined);
+
+  function stateOf(member: string): string | undefined {
+    return bots.find((bot) => bot.name === member)?.state;
+  }
 
   async function read(name: string): Promise<void> {
     const answer = await connection.request("query", { what: "bot", name });
@@ -97,6 +109,7 @@
           <option value="all">{t("filterAll", { count: bots.length })}</option>
           <option value="online">{t("filterOnline", { count: online })}</option>
           <option value="offline">{t("filterOffline", { count: bots.length - online })}</option>
+          <option value="groups">{t("filterGroups", { count: groups.length })}</option>
         </select>
         <select bind:value={sort} aria-label={t("sortLabel")}>
           <option value="state">{t("sortState")}</option>
@@ -107,9 +120,9 @@
     <div class="list-scroll">
       {#if status?.bots === null}
         <p class="empty">{t("botsUnknown")}</p>
-      {:else if bots.length === 0}
+      {:else if bots.length === 0 && groups.length === 0}
         <p class="empty">{t("noBots")}</p>
-      {:else if shown.length === 0}
+      {:else if shown.length === 0 && shownGroups.length === 0}
         <p class="empty">{t("noMatches")}</p>
       {:else}
         {#each shown as bot (bot.name)}
@@ -120,6 +133,17 @@
             <span class="tag" class:online={bot.state === "online"}>{stateLabel(bot.state)}</span>
           </a>
         {/each}
+        {#if shownGroups.length}
+          <h3 class="list-heading">{t("tabGroups")}</h3>
+          {#each shownGroups as group (group.name)}
+            <a class="item" class:current={selected === `#${group.name}`} href={href("bots", `#${group.name}`)}
+               aria-current={selected === `#${group.name}` ? "true" : undefined}
+               onclick={(event) => { event.preventDefault(); navigate("bots", `#${group.name}`); }}>
+              <span class="name">#{group.name}</span>
+              <small>{t("members", { count: group.members.length })}</small>
+            </a>
+          {/each}
+        {/if}
       {/if}
     </div>
   </div>
@@ -128,7 +152,44 @@
     <button class="back" onclick={() => navigate("bots")}>← {t("back")}</button>
     {#if !selected}
       <p class="empty">{t("botPick")}</p>
+    {:else if isGroup && !currentGroup}
+      <p class="empty">{t("groupMissing")}</p>
     {:else}
+      {#if isGroup}
+      <section class="card">
+        <div class="spread">
+          <h2>{selected}</h2>
+          <a href={href("groups", currentGroup.name)}
+             onclick={(event) => { event.preventDefault(); navigate("groups", currentGroup.name); }}>{t("groupManage")}</a>
+        </div>
+        <div class="row gap-top">
+          <button class="primary" onclick={() => controls?.send("resume")}>{t("startBot")}</button>
+          <button onclick={() => controls?.send("despawn")}>{t("stopBot")}</button>
+          <button class="danger" onclick={() => controls?.send("stop")}>{t("stopAll")}</button>
+        </div>
+      </section>
+      <section class="card">
+        <h2>{t("groupMembers")}</h2>
+        {#if currentGroup.members.length === 0}
+          <p class="quiet">{t("noMembers")}</p>
+        {:else}
+          <ul class="members">
+            {#each currentGroup.members as member, index (`${member}:${index}`)}
+              <li>
+                {#if member === null}
+                  <span class="quiet">{t("memberGone")}</span>
+                {:else}
+                  <a href={href("bots", member)} onclick={(event) => { event.preventDefault(); navigate("bots", member); }}>{member}</a>
+                  {#if stateOf(member)}
+                    <span class="tag" class:online={stateOf(member) === "online"}>{stateLabel(stateOf(member)!)}</span>
+                  {/if}
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+      {:else}
       <section class="card">
         <div class="spread">
           <h2>{selected}</h2>
@@ -166,8 +227,9 @@
           </dl>
         {/if}
       </section>
+      {/if}
       {#key selected}
-        <Controls bind:this={controls} {connection} target={selected} onchanged={after} />
+        <Controls bind:this={controls} {connection} target={selected} group={isGroup} onchanged={after} />
       {/key}
     {/if}
   </div>

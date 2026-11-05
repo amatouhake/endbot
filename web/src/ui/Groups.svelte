@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Connection } from "./api";
-  import Controls from "./Controls.svelte";
   import { confirmDialog, createDialog } from "./dialogs.svelte";
   import { t } from "./i18n";
   import { href, navigate } from "./route.svelte";
@@ -103,6 +102,10 @@
           <h2>#{selected}</h2>
           <button class="danger" disabled={busy} onclick={remove}>{t("groupDelete")}</button>
         </div>
+        <p class="gap-top">
+          <a href={href("bots", `#${selected}`)}
+             onclick={(event) => { event.preventDefault(); navigate("bots", `#${selected}`); }}>{t("groupOperate")}</a>
+        </p>
       </section>
       <section class="card">
         <h2>{t("groupMembers")}</h2>
@@ -132,10 +135,6 @@
           <button disabled={busy || !addition}>{t("groupAdd")}</button>
         </form>
       </section>
-      {#key selected}
-        <h3>{t("groupOperate")}</h3>
-        <Controls {connection} target={`#${selected}`} onchanged={() => onchanged()} />
-      {/key}
     {/if}
   </div>
 </div>

@@ -301,6 +301,34 @@ test("the list can be searched and filtered, and follows what happens elsewhere 
   await expect(list.getByRole("link")).toHaveText([/Farmer/, /Miner_01/], { timeout: 10_000 });
 });
 
+test("Groups follow the Bots in the list and offer only what a Group can do", async ({ page, context }) => {
+  await start(page, context);
+  await tab(page, "Groups");
+  await page.locator(".list-tools").getByRole("button", { name: "New", exact: true }).locator("visible=true").click();
+  await page.getByRole("dialog").getByLabel("New Group name").fill("crew");
+  await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("heading", { name: "#crew" })).toBeVisible();
+  await tab(page, "Bots");
+  const list = page.locator(".list-scroll").locator("visible=true");
+  // Bots first, then Groups, whatever the earlier tests left online.
+  await expect(list.getByRole("link")).toHaveText([/Farmer/, /Miner_01/, /#crew/]);
+  await page.getByLabel("State").selectOption("groups");
+  await expect(list.getByRole("link")).toHaveText([/#crew/]);
+  await page.getByLabel("State").selectOption("online");
+  await expect(list.getByRole("link")).toHaveText([/Farmer/, /Miner_01/]);
+  await page.getByLabel("State").selectOption("all");
+  await page.getByLabel("Search").locator("visible=true").fill("#cr");
+  await expect(list.getByRole("link")).toHaveText([/#crew/]);
+  await list.getByRole("link").click();
+  expect(await page.getByLabel(/^Operation/).locator("option").allTextContents()).not.toContain("forget");
+  expect(await page.getByLabel(/^Operation/).locator("option").allTextContents()).toContain("despawn");
+  await page.getByRole("link", { name: "Manage this Group" }).click();
+  await page.getByRole("button", { name: "Delete Group" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await tab(page, "Bots");
+  await expect(page.getByText("This Group no longer exists")).toBeVisible();
+});
+
 test("New is in one place on all three lists, and a refused name stays in its dialog", async ({ page, context }) => {
   await start(page, context);
   const search = page.getByLabel("Search").locator("visible=true");
@@ -347,10 +375,22 @@ test("a Group is created, filled, operated as a whole and deleted, and all of it
   await expect(page.getByRole("button", { name: "Take out" })).toBeVisible();
   await expect(page.getByRole("link", { name: /#miners/ })).toContainText("Members: 1");
   await shot(page, "16-group");
+
+  // A Group is operated where Bots are, as in the game; managing it stays on its own tab.
+  await page.getByRole("link", { name: "Operate this Group" }).click();
+  await expect(page).toHaveURL(/\/bots\/%23miners$/);
+  await expect(page.getByRole("heading", { name: "#miners" })).toBeVisible();
+  await expect(page.locator(".members").locator("visible=true")).toContainText("Miner_01");
+  await expect(page.getByRole("link", { name: /#miners/ })).toHaveAttribute("aria-current", "true");
+  await shot(page, "18-group-target");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "#miners" })).toBeVisible();
   await page.getByRole("button", { name: "jump" }).click();
   await expect.poll(async () => JSON.stringify(await ask("calls"))).toContain("jump");
+  await page.getByRole("link", { name: "Manage this Group" }).click();
+  await expect(page).toHaveURL(/\/groups\/miners$/);
   await page.getByRole("button", { name: "Take out" }).click();
-  await expect(page.getByText("No Bots in this Group yet.")).toBeVisible();
+  await expect(page.getByText("No Bots in this Group yet.").locator("visible=true")).toBeVisible();
   await page.getByRole("button", { name: "Delete Group" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText("No Groups")).toBeVisible();

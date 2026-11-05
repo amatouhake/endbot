@@ -435,8 +435,8 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
    in-house Luau highlighting, completion from the registry and `api.luau`, line-numbered compile errors, revision
    diffs. The endbotd side is delegable (it calls existing authorized operations); so is the editor. Done. The editor lives in a
    shadow root, where CodeMirror can add its styles without an inline `<style>`, so P5's Content-Security-Policy stays as it is.
-7. **Bot control** from the registry, running scripts with declarations shown. Delegable. Done. Area options are left to
-   scripts and chat for now: the forms have no input for them yet.
+7. **Bot control** from the registry, running scripts with declarations shown. Delegable. Done. An area is typed as its clauses, as in chat
+   (`within 6 except ~ ~-1 ~`), and is offered only where the grammar takes one.
 8. **`endbot update` integration** (P9): redeploy after update and rollback, the offline-web message. Delegable. Done
    against the fake API; step 10's update and rollback run it for real.
 9. **Documentation.** `docs/WEB_DEPLOY.md` (account, token permissions, `workers.dev` or custom domain, the

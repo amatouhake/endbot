@@ -65,6 +65,18 @@ def generated():
                         yield operation
 
 
+class BotNameTests(unittest.TestCase):
+    def test_a_bot_name_may_start_with_a_digit_as_the_runtime_allows(self):
+        self.assertEqual(operations.operation_argv("2b", "status", {}), ["2b", "status"])
+        self.assertEqual(operations.parse_operation(["2b", "status"]).target, "2b")
+
+    def test_a_group_name_may_not(self):
+        self.assertEqual(operations.operation_argv("#a2", "status", {}), ["#a2", "status"])
+        for target in ("#2b", "a-b", "a b", "a" * 17, ""):
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                operations.operation_argv(target, "status", {})
+
+
 class OperationRoundTripTests(unittest.TestCase):
     def test_parse_of_format_is_the_operation(self):
         count = 0

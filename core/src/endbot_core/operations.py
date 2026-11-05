@@ -26,7 +26,8 @@ ALIASES = {"teleport": "tp"}
 ROOT_OPERATIONS = {"list", "ping", "help"}
 # Options that only mean something together; a reading never holds part of one.
 GROUPS = (("yaw", "pitch"), ("facingX", "facingY", "facingZ"))
-TARGET = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
+# A Bot's name as the runtime allows it, or a Group, whose name may not start with a digit.
+TARGET = re.compile(r"[A-Za-z0-9_]{1,16}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
 
 
 def area_argument(value) -> list[str]:
@@ -68,7 +69,7 @@ def operation_argv(target, operation, parameters):
     if not (operation in ROOT_OPERATIONS and target is None) and (
         not isinstance(target, str) or not TARGET.fullmatch(target)
     ):
-        raise ValueError("Invalid script target")
+        raise ValueError("Invalid Bot or Group name")
     for shape in OPERATIONS[operation]:
         required = dict(shape["positional"])
         allowed = {**required, **shape["options"]}

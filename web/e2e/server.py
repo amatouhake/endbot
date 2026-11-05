@@ -3,7 +3,7 @@
 Reads commands on stdin and answers on stdout, one JSON line each:
 ``code`` gives a link code for the test player, ``reset`` deletes every passkey and session,
 ``revoke`` removes their grant, ``log`` records a run log line, ``online NAME`` brings a Bot online,
-``state NAME STATE`` puts it in any other state.
+``state NAME STATE`` puts it in any other state, ``remove NAME`` takes away one the page created.
 Never used outside tests.
 """
 
@@ -38,12 +38,14 @@ class FakeControl:
 
     def request(self, method, **params):
         if method in {"profiles", "list"}:
-            return [{"name": "Miner_01", "identityId": BOT, "connectionState": self.states["Miner_01"]},
-                    {"name": "Farmer", "identityId": "00000000-0000-4000-8000-00000000000c",
-                     "connectionState": self.states["Farmer"]}]
+            ids = {"Miner_01": BOT, "Farmer": "00000000-0000-4000-8000-00000000000c"}
+            return [{"name": name, "identityId": ids.get(name, f"00000000-0000-4000-8000-{index:012x}"),
+                     "connectionState": state} for index, (name, state) in enumerate(self.states.items(), 16)]
         if method == "capabilities":
             return {"identityPinnedRequests": True, "groupInputBatch": True}
         self.calls.append([method, params])
+        if method == "spawn":
+            self.states[params["name"]] = "online"
         if method == "status":
             return {"name": params.get("name"), "identityId": BOT, "connectionState": "online", "desiredState": "online",
                     "chunkRadius": 5, "vitals": {"hunger": 20}}
@@ -76,6 +78,9 @@ def main() -> None:
         service.commands.world.observe = lambda identity: {
             "x": 12.5, "y": 64, "z": -3, "dimension": "overworld", "yaw": 90, "pitch": 0, "health": 18, "maxHealth": 20,
             "selectedSlot": 2, "held": {"name": "minecraft:diamond_pickaxe", "count": 1}}
+        service.commands.world.default_spawn = lambda sender: None
+        service.commands.world.assert_name_available = lambda name, identity: None
+        service.commands.world.clear_pending_placement = lambda identity: None
         service.start()
         print(json.dumps({"ready": True}), flush=True)
         for line in sys.stdin:
@@ -86,6 +91,9 @@ def main() -> None:
                 print(json.dumps(control.calls), flush=True)
             elif command.startswith("online "):
                 control.states[command.split()[1]] = "online"
+                print(json.dumps({"ok": True}), flush=True)
+            elif command.startswith("remove "):
+                control.states.pop(command.split()[1])
                 print(json.dumps({"ok": True}), flush=True)
             elif command.startswith("state "):
                 control.states[command.split()[1]] = command.split()[2]

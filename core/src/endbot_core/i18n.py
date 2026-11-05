@@ -1029,6 +1029,7 @@ JA.update({
         "interact @<entity> [continuous|interval <ticks>] [for <ticks>] [count <n>] のどれかを使ってください",
     "Invalid script wait": "スクリプトの待機時間が正しくありません",
     "Invalid script target": "スクリプトの対象が正しくありません",
+    "Invalid Bot or Group name": "Bot またはグループの名前が正しくありません",
     "Your role can run scripts but not create or change them; ask the operator for the scripter role":
         "あなたのロールではスクリプトの実行はできますが、作成や変更はできません。"
         "オペレーターに scripter ロールを依頼してください",

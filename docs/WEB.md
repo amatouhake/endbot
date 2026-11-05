@@ -169,7 +169,7 @@ whose stored RP ID differs from the current one.
 
 | Event | Effect |
 |---|---|
-| Controller grant revoked (grant revision bumps) | endbotd deletes the XUID's sessions and closes their connections (`close` frames). Account and passkeys stay; after a regrant the player signs in again |
+| Controller grant revoked (grant revision bumps), or removed from `endbot.toml` and seen at the next start | endbotd deletes the XUID's sessions and closes their connections (`close` frames). Account and passkeys stay; after a regrant the player signs in again |
 | Role changed | Sessions stay; every later request uses the new role |
 | `/botweb unlink`, `endbot web revoke <GamerTag>` | Account, passkeys and sessions deleted; connections closed |
 | Passkey or session removed on the web | That one item deleted; a removed session's connections closed |
@@ -191,7 +191,9 @@ Because every request rechecks the grant revision, a revoke takes effect even if
 ### P8. What Cloudflare stores
 
 - Static UI and the Worker code; the secret `ENDBOTD_LINK_KEY` (a public key) and `ENDBOT_ORIGIN`.
-- Durable Object storage: the display cache only, `{displayName, online, bds, since}`, shown on the sign-in page.
+- Durable Object storage: the display cache only, `{displayName, bds, since}`, shown on the sign-in page. With no proven
+  link it reports `bds: down`, since nothing vouches for the last value. A link that dies with no close, as in a power
+  loss, still counts until Cloudflare notices, because nothing refreshes the value; step 10 measures how long that is.
   `displayName` is `[web] display-name`, empty by default.
 - Nothing else: no account, passkey, session, script source, Outcome or log. The Worker logs no request or response
   body; deploy sets Workers observability and logpush off, and disables version preview URLs so the UI is served from
@@ -264,7 +266,8 @@ keys = [ { kid = "2026-10", public-key-file = "trusted-site/2026-10.pem" } ]   #
 
 Key files live under the instance directory, not in the repository. A key is a P-384 public key in PEM;
 `endbot doctor` checks every listed file, the curve, that `kid`s are unique, that `issuer` and `start-url` are
-`https://`, and that no more than two keys are listed. The private key never touches the Endbot PC; the deployment
+`https://`, that `issuer` is exactly an origin as a browser spells it (endbotd compares it byte for byte with `Origin`,
+and keeps the site off otherwise), and that no more than two keys are listed. The private key never touches the Endbot PC; the deployment
 guide shows how to make one with OpenSSL and gives a short reference signer.
 
 **Rotation:** add the new key next to the old one and restart endbotd (config is read at start), switch the site to the
@@ -431,7 +434,8 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
 10. **Validation**, inside the combined release pass. Live deploy to the operator's Cloudflare account, the operator
     entering the token. Check: link on a phone and a PC, a second passkey from a second code, cross-device QR sign-in, revoke during an open
     session and during a run, domain change forcing re-registration, mismatched protocol refused, rate limits, BDS
-    stopped with web status and script editing working, a Worker with a wrong link key refused. With the operator's
+    stopped with web status and script editing working, a Worker with a wrong link key refused, what the sign-in page says
+    after the PC loses power or network with no clean close. With the operator's
     real site: both modes, key rotation with two keys, a replayed or foreign-browser assertion refused, an XUID
     without a grant refused, `endbot web revoke` while the site still vouches. Recorded in a docs PR.
 

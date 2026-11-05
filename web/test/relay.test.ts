@@ -486,6 +486,15 @@ describe("the display cache", () => {
     expect(JSON.stringify(display)).not.toContain("must not stay");
   });
 
+  it("says the server is down once the link is gone, keeping the name", async () => {
+    const link = await provenLink();
+    link.send({ t: "cache", displayName: "Mine", bds: "up" });
+    await expect.poll(async () => ((await (await SELF.fetch(`${ORIGIN}/api/display`)).json()) as any).bds).toBe("up");
+    link.socket.close(1000, "stopping");
+    await expect.poll(async () => ((await (await SELF.fetch(`${ORIGIN}/api/display`)).json()) as any).bds).toBe("down");
+    expect(await (await SELF.fetch(`${ORIGIN}/api/display`)).json()).toMatchObject({ displayName: "Mine" });
+  });
+
   it("does not take a cache from an unproven link", async () => {
     const link = await openLink();
     await link.next();

@@ -63,7 +63,7 @@ export class Relay extends DurableObject<Env> {
 
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/api/display") return Response.json((await this.ctx.storage.get("display")) ?? { bds: "down" });
+    if (url.pathname === "/api/display") return Response.json(await this.display());
     const bucket = await hashIp(request.headers.get("CF-Connecting-IP") ?? "unknown");
     if (url.pathname === "/link") {
       // A separate count: browsers behind the server's own address must not stop it reconnecting.
@@ -174,6 +174,12 @@ export class Relay extends DurableObject<Env> {
     if (frame.t === "cache") await this.storeDisplay(frame);
     else if (frame.t === "msg") this.onLinkMessage(frame);
     else if (frame.t === "close") this.onLinkClose(frame);
+  }
+
+  /** The cache is what endbotd last said: with no link, nothing vouches that the server is still up. */
+  private async display(): Promise<Record<string, unknown>> {
+    const stored = (await this.ctx.storage.get<Record<string, unknown>>("display")) ?? {};
+    return this.provenLink() ? { bds: "down", ...stored } : { ...stored, bds: "down" };
   }
 
   private async storeDisplay(frame: Record<string, unknown>): Promise<void> {

@@ -76,6 +76,8 @@ class SiteConfig:
         for key, value in (("issuer", issuer), ("start-url", start_url)):
             if not _https_url(value):
                 raise SiteConfigError(f"{key} must be an https:// URL")
+        if not _is_origin(issuer):
+            raise SiteConfigError("issuer must be exactly the site's origin: lowercase, with no path or trailing slash")
         entries = section.get("keys")
         if not isinstance(entries, list) or not 1 <= len(entries) <= MAX_KEYS:
             raise SiteConfigError(f"keys must list 1 to {MAX_KEYS} keys")
@@ -103,6 +105,16 @@ def _https_url(value: object) -> bool:
         return parts is not None and parts.scheme == "https" and bool(parts.hostname)
     except ValueError:  # urlsplit refuses a malformed host such as "https://["
         return False
+
+
+def _is_origin(value: str) -> bool:
+    """The one spelling a browser sends as ``Origin``, which ``finish`` compares byte for byte."""
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError:
+        return False
+    return value.isascii() and value == f"https://{parts.hostname}" + (f":{port}" if port not in (None, 443) else "")
 
 
 def _decode(part: str) -> bytes:

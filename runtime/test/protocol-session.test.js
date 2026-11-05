@@ -153,6 +153,41 @@ test('a login that never reaches spawn fails the attempt instead of waiting fore
   assert.equal(closes, 1)
 })
 
+function startingBds (t, client) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-first-reply-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  client.connection = { nethernet: {} }
+  client.close = () => queueMicrotask(() => client.emit('close'))
+  return new BedrockSession(
+    { name: 'Alice', identityId: '00000000-0000-4000-8000-000000000001' },
+    {
+      protocolLoader: async () => ({ createClient: () => client }),
+      ownerPrivateKeyPath: path.join(directory, 'owner-private.pem'),
+      ownerPublicKeyPath: path.join(directory, 'owner-public.pem'),
+      serverHost: '127.0.0.1',
+      serverPort: 19132,
+      gameVersion: '1.26.60',
+      transport: 'nethernet',
+      nethernetSignalling: 'direct',
+      firstReplyTimeoutMs: 20,
+      spawnTimeoutMs: 60
+    }
+  )
+}
+
+test('a BDS that accepts the transport and does not answer is not ready yet (BOT-033)', async t => {
+  await assert.rejects(startingBds(t, fakeLiveClient()).connect(),
+    error => error.code === 'bds_not_ready' && /did not answer the login within 20 ms/.test(error.message))
+})
+
+test('once BDS has answered, a slow login has the whole login timeout and is an ordinary failure', async t => {
+  const client = fakeLiveClient()
+  const session = startingBds(t, client)
+  const connecting = session.connect()
+  setTimeout(() => client.emit('network_settings', {}), 5)
+  await assert.rejects(connecting, error => error.code === undefined && /did not finish the login within 60 ms/.test(error.message))
+})
+
 test('sessions reject an unknown NetherNet signalling mode before loading protocol code', async () => {
   const session = new BedrockSession({}, {
     nethernetSignalling: 'services',

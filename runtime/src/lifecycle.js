@@ -31,7 +31,11 @@ export class BotLifecycle extends EventEmitter {
       initialDelayMs: reconnect.initialDelayMs ?? 1000,
       maximumDelayMs: reconnect.maximumDelayMs ?? 30_000,
       maximumAttempts: reconnect.maximumAttempts ?? 8,
-      sessionReplacementDelayMs: reconnect.sessionReplacementDelayMs ?? 1000
+      sessionReplacementDelayMs: reconnect.sessionReplacementDelayMs ?? 1000,
+      // BDS is starting: on loopback a try costs next to nothing, and every second here is a second the Bot is away.
+      notReadyDelayMs: reconnect.notReadyDelayMs ?? 2000,
+      // A BDS that is taking this long has a problem: the ordinary attempts then decide.
+      notReadyLimitMs: reconnect.notReadyLimitMs ?? 300_000
     }
     this.sessions = new Map()
     this.generations = new Map()
@@ -386,6 +390,7 @@ export class BotLifecycle extends EventEmitter {
       session: previous.session,
       inputs: previous.inputs ?? new InputState(),
       reconnectAttempt: previous.reconnectAttempt ?? 0,
+      waitingForBdsSince: previous.waitingForBdsSince,
       nextReconnectAt: previous.nextReconnectAt ?? null,
       lastError: previous.lastError ?? null,
       timer: previous.timer,
@@ -484,6 +489,7 @@ export class BotLifecycle extends EventEmitter {
       }
       state.state = 'online'
       state.reconnectAttempt = 0
+      state.waitingForBdsSince = undefined
       state.lastError = null
       session.applyInputs(state.inputs)
       this.emit('state', this.#status(currentProfile))
@@ -512,6 +518,13 @@ export class BotLifecycle extends EventEmitter {
       this.emit('state', this.#status(profile))
       return
     }
+    if (error?.code === 'bds_not_ready') {
+      state.waitingForBdsSince ??= Date.now()
+      if (Date.now() - state.waitingForBdsSince < this.reconnect.notReadyLimitMs) {
+        this.#retryAfter(this.reconnect.notReadyDelayMs, profile, identityId, generation, state)
+        return
+      }
+    }
     state.reconnectAttempt += 1
     if (state.reconnectAttempt > this.reconnect.maximumAttempts) {
       state.state = 'failed'
@@ -521,6 +534,10 @@ export class BotLifecycle extends EventEmitter {
       return
     }
     const delay = Math.min(this.reconnect.maximumDelayMs, this.reconnect.initialDelayMs * (2 ** (state.reconnectAttempt - 1)))
+    this.#retryAfter(delay, profile, identityId, generation, state)
+  }
+
+  #retryAfter (delay, profile, identityId, generation, state) {
     state.state = 'reconnecting'
     state.nextReconnectAt = new Date(Date.now() + delay).toISOString()
     state.timer = this.timers.setTimeout(() => {

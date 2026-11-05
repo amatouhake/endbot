@@ -52,7 +52,7 @@
   }
 </script>
 
-<dialog bind:this={element} oncancel={(event) => { event.preventDefault(); answer(null); }}>
+<dialog bind:this={element} oncancel={(event) => { event.preventDefault(); if (!busy) answer(null); }}>
   {#if dialogs.current}
     <form onsubmit={submit}>
       <h2>{dialogs.current.title}</h2>
@@ -65,7 +65,7 @@
       {/if}
       {#if refusal}<p class="error" role="alert">{refusal}</p>{/if}
       <div class="dialog-actions">
-        <button type="button" onclick={() => answer(null)}>{t("cancel")}</button>
+        <button type="button" disabled={busy} onclick={() => answer(null)}>{t("cancel")}</button>
         <button class={dialogs.current.danger ? "primary danger-fill" : "primary"} disabled={busy}>{dialogs.current.confirm}</button>
       </div>
     </form>

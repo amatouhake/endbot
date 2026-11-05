@@ -162,6 +162,25 @@ class WindowsJobTests(unittest.TestCase):
 
 
 class LaunchTests(unittest.TestCase):
+    def test_a_declaration_check_is_not_left_below_normal(self):
+        with patch.object(confine.sys, "platform", "win32"), patch.object(confine, "WindowsJob"):
+            self.assertEqual(confine.Confinement({"foreground": True}).popen_kwargs, {"creationflags": 0x08000000})
+        with patch.object(confine.sys, "platform", "linux"), patch.object(os, "getpid", return_value=1234):
+            self.assertEqual(confine.Confinement({"foreground": True}).runner_args[-2:], ["--nice", "0"])
+
+    def test_a_write_that_fails_because_the_limit_stopped_the_runner_says_so(self):
+        with (patch.object(confine.sys, "platform", "linux"),
+              patch("endbot_core.script_process.subprocess.Popen") as popen,
+              patch("endbot_core.script_process.threading.Thread")):
+            process = RunnerProcess(Mock(is_file=lambda: True), "source", "api", {}, ScriptConfig().limits())
+            popen.return_value.poll.return_value = None
+            process._terminate()
+            popen.return_value.stdin.write.side_effect = BrokenPipeError()
+            with (self.assertLogs("endbot_core.script_process", level="WARNING"),
+                  self.assertRaisesRegex(LocalizedError, "did not respond in time")):
+                process.send({"type": "load"})
+            process.close()
+
     def test_platform_popen_options_and_explicit_opt_out(self):
         with patch.object(confine.sys, "platform", "win32"), patch.object(confine, "WindowsJob") as job:
             limits = confine.Confinement({})

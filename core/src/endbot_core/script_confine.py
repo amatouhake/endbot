@@ -117,13 +117,17 @@ class Confinement:
         self.runner_args = []
         if not self.enabled:
             return
+        # A running script yields to BDS. A declaration check does not: below normal gets no CPU at all on Windows while
+        # every core is busy, so it would never start, and it is a person waiting, for at most a few seconds (BOT-032).
+        foreground = limits.get("foreground", False)
         if self.platform == "win32":
             self.job = WindowsJob(self.memory, self.cpu)
-            self.popen_kwargs = {"creationflags": 0x08000000 | 0x00004000}  # NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS
+            # NO_WINDOW, and BELOW_NORMAL_PRIORITY_CLASS unless in the foreground.
+            self.popen_kwargs = {"creationflags": 0x08000000 | (0 if foreground else 0x00004000)}
         elif self.platform == "linux":
             self.runner_args = [
                 "--max-address-space", str(self.memory), "--max-cpu-seconds", str(self.cpu),
-                "--parent-pid", str(os.getpid()), "--nice", "10",
+                "--parent-pid", str(os.getpid()), "--nice", "0" if foreground else "10",
             ]
         else:
             raise OSError("OS confinement is supported only on Windows and Linux")

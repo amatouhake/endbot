@@ -139,7 +139,7 @@ class ScriptService:
         if run.canceled.is_set() or (run.deadline is not None and time.monotonic() >= run.deadline):
             raise LocalizedError("Script stopped or time limit reached")
 
-    def _process(self, source, wall_seconds=None):
+    def _process(self, source, wall_seconds=None, foreground=False):
         self._enabled()
         bootstrap = self.bootstrap
         if bootstrap is None:
@@ -150,6 +150,8 @@ class ScriptService:
         limits = self.config.limits()
         if wall_seconds is not None:
             limits["wallMs"] = wall_seconds * 1000
+        if foreground:
+            limits["foreground"] = True
         return self.process_factory(self.executable, source, bootstrap, OPERATIONS, limits)
 
     def _declaration(self, process, source, canceled, deadline):
@@ -179,7 +181,7 @@ class ScriptService:
 
     def _inspect(self, script, source):
         seconds = min(5, self.config.wall_seconds or 5)
-        process = self._process(script.source, seconds)
+        process = self._process(script.source, seconds, foreground=True)
         try:
             return self._declaration(process, source, threading.Event(), time.monotonic() + seconds)
         finally:

@@ -58,7 +58,7 @@ class RunnerProcess:
             self.send(
                 {"type": "load", "source": source, "bootstrap": bootstrap, "operations": operations,
                  "limits": {key: value for key, value in limits.items()
-                            if key not in {"osConfinement", "processMemoryBytes", "cpuSeconds"}}}
+                            if key not in {"osConfinement", "processMemoryBytes", "cpuSeconds", "foreground"}}}
             )
         except BaseException:
             try:
@@ -113,6 +113,9 @@ class RunnerProcess:
                 "Endbot runner write failed: pid=%s exit=%s host_terminated=%s event=%s error=%s",
                 self._process.pid, self._process.poll(), self._host_terminated, event.get("type"), error,
             )
+            # The pipe broke because this side stopped the runner: that is what to say, not the pipe.
+            if self._host_terminated and self._confinement_error is None:
+                raise LocalizedError("Script runner did not respond in time; the server may be busy, try again") from error
             self._failure(str(error))
 
     def _wait_exit(self):

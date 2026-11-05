@@ -6,9 +6,10 @@
   import { confirmDialog } from "./dialogs.svelte";
   import { fieldLabel, opLabel, t } from "./i18n";
 
-  let { connection, target, onchanged }: {
+  let { connection, target, group = false, onchanged }: {
     connection: Connection;
     target: string;
+    group?: boolean;
     onchanged: (op: string, fields: Record<string, unknown>) => void;
   } = $props();
 
@@ -32,6 +33,9 @@
   if (OTHERS.length) SECTIONS.push({ key: "catOther", operations: OTHERS });
   // Asked again before running: they cannot be taken back from here.
   const CONFIRM = new Set(["forget"]);
+  // The command refuses these for a Group: they need one Bot.
+  const ONE_BOT_ONLY = new Set(["rename", "forget"]);
+  const offered = (operations: string[]): string[] => operations.filter((op) => !group || !ONE_BOT_ONLY.has(op));
 
   let ticks = $state(20);
   let operation = $state("");
@@ -126,7 +130,7 @@
       <option value="">—</option>
       {#each SECTIONS as section}
         <optgroup label={t(section.key)}>
-          {#each section.operations as op}<option value={op}>{opLabel(op)}</option>{/each}
+          {#each offered(section.operations) as op}<option value={op}>{opLabel(op)}</option>{/each}
         </optgroup>
       {/each}
     </select>

@@ -1,8 +1,8 @@
 # Web design (BOT-021)
 
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
-the answers to the former open points (see [settled points](#settled-points)). Steps 1 to 7 are implemented: the supervisor policy, accounts, passkeys, the trusted site, the relay, deploy (checked
-against a fake API only), the screens, script editing and Bot control. Nothing has run on
+the answers to the former open points (see [settled points](#settled-points)). Steps 1 to 8 are implemented: the supervisor policy, accounts, passkeys, the trusted site, the relay, deploy and its
+redeploy during an update (checked against a fake API only), the screens, script editing and Bot control. Nothing has run on
 Cloudflare or with a real authenticator yet (step 10).
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
@@ -207,6 +207,14 @@ Because every request rechecks the grant revision, a revoke takes effect even if
 - **`endbot update` with web enabled:** after the app switch it asks for the token and redeploys the matching bundle.
   Without a token it completes the update and says that the web stays offline until `endbot web deploy` runs; endbotd
   refuses the old Worker (P2). `--rollback` does the same with the older bundle.
+- **The version switched to does the deploy.** The update runs that version's own `endbot web deploy` with the token in
+  its environment, so the deploy code and the Worker it uploads always belong together. By then the switch has happened,
+  so a failed deploy is a warning and the update still succeeds. A version with no web in its bundle is not asked to
+  deploy, and says so.
+- **A plain `endbot web deploy` keeps a custom domain.** The zone id is not stored and an update has nothing to ask about
+  the route, so with no `--domain` the origin, the attached domain and the routes stay as they are. Going back to
+  `workers.dev` takes `--confirm-domain-change`, as any new origin does (P4). If the Worker was deleted on Cloudflare, the
+  deploy refuses and asks for `--domain` and `--zone-id` again.
 
 ### P10. endbotd keeps running while BDS is stopped
 
@@ -414,7 +422,8 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
    shadow root, where CodeMirror can add its styles without an inline `<style>`, so P5's Content-Security-Policy stays as it is.
 7. **Bot control** from the registry, running scripts with declarations shown. Delegable. Done. Area options are left to
    scripts and chat for now: the forms have no input for them yet.
-8. **`endbot update` integration** (P9): redeploy after update and rollback, the offline-web message. Delegable.
+8. **`endbot update` integration** (P9): redeploy after update and rollback, the offline-web message. Delegable. Done
+   against the fake API; step 10's update and rollback run it for real.
 9. **Documentation.** `docs/WEB_DEPLOY.md` (account, token permissions, `workers.dev` or custom domain, the
    domain-change warning, revocation, what Cloudflare stores, troubleshooting); SECURITY.md gains the web boundary.
    `WEB_DEPLOY.md` also covers the trusted site: key generation, the start/return contract, a reference signer and

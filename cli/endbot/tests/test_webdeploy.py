@@ -279,6 +279,34 @@ class DeployTests(DeployCase):
         self.assertEqual(self.paths.endbot_toml.read_text(encoding="utf-8"), before)
         self.assertEqual([call for call in self.api.calls if call[0] != "GET"], [])
 
+    def test_a_plain_redeploy_leaves_a_custom_domain_as_it_is(self) -> None:
+        self.deploy(domain="endbot.example", zone_id="zone1")
+        self.api.migration = "v1"
+        self.api.calls.clear()
+        self.assertTrue(self.deploy(account_id=None))
+        self.assertEqual(load_config(self.paths.endbot_toml).web.origin, "https://endbot.example")
+        self.assertEqual(next(b["text"] for b in self.metadata()["bindings"] if b["name"] == "ENDBOT_ORIGIN"),
+                         "https://endbot.example")
+        for fragment in ("/workers/domains", "/subdomain"):
+            self.assertFalse(any(fragment in path for path in self.api.paths()), fragment)
+
+    def test_a_plain_redeploy_of_a_vanished_worker_says_to_attach_the_domain_again(self) -> None:
+        self.deploy(domain="endbot.example", zone_id="zone1")
+        self.api.calls.clear()
+        before = self.paths.endbot_toml.read_text(encoding="utf-8")
+        with self.assertRaisesRegex(DeployError, "--domain endbot.example --zone-id"):
+            self.deploy(account_id=None)
+        self.assertFalse(any(call[0] == "PUT" and call[1] == "/workers/scripts/endbot" for call in self.api.calls))
+        self.assertEqual(self.paths.endbot_toml.read_text(encoding="utf-8"), before)
+
+    def test_leaving_a_custom_domain_still_needs_confirmation(self) -> None:
+        self.deploy(domain="endbot.example", zone_id="zone1")
+        self.api.migration = "v1"
+        with self.assertRaisesRegex(DeployError, "confirm-domain-change"):
+            self.deploy(worker_name="other")
+        self.assertTrue(self.deploy(confirm_domain_change=True))
+        self.assertEqual(load_config(self.paths.endbot_toml).web.origin, "https://endbot.alice.workers.dev")
+
     def test_a_confirmed_change_deletes_credentials_in_a_stopped_instance(self) -> None:
         self.deploy()
         store = self.root / "state" / "web"
@@ -328,6 +356,13 @@ class DeployTests(DeployCase):
 
 
 class TokenTests(DeployCase):
+    def test_no_terminal_to_ask_on_is_said_plainly(self) -> None:
+        def closed(_prompt: str) -> str:
+            raise EOFError
+
+        with self.assertRaisesRegex(DeployError, "no Cloudflare API token"):
+            read_token({}, closed)
+
     def test_the_environment_wins_and_the_prompt_is_the_fallback(self) -> None:
         self.assertEqual(read_token({"CLOUDFLARE_API_TOKEN": " a "}, lambda _: "b"), "a")
         self.assertEqual(read_token({}, lambda _: "b"), "b")

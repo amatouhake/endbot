@@ -20,10 +20,15 @@ makes ``state/`` authoritative, a rollback writes the stores back to the
 plugin data folder and the script files back to the server's script folder.
 An update driven by a CLI from before endbotd cannot do this; the new version
 then migrates on its first ``endbot start`` or ``endbot setup``.
+
+With the web deployed, both directions then redeploy the Worker of the version
+now current (docs/WEB.md P9), through that version's own CLI. By then the switch
+has happened: a missing token or a refused deploy is a warning, not a failed update.
 """
 
 from __future__ import annotations
 
+import getpass
 import os
 import posixpath
 import re
@@ -33,7 +38,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -343,6 +348,83 @@ def blocking_failures(results: Sequence[tuple[str, str, str]], paths: InstancePa
 
 
 # ---------------------------------------------------------------------------
+# The web (docs/WEB.md P9)
+
+
+def _has_terminal() -> bool:
+    """False for a service or a scheduled task too, where stdin may be None or closed."""
+
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except ValueError:
+        return False
+
+
+def read_web_token(
+    environ: Mapping[str, str] | None = None,
+    prompt: Callable[[str], str] = getpass.getpass,
+    interactive: bool | None = None,
+) -> str | None:
+    """The API token, or None to skip; the update is already done, so it never insists."""
+
+    from endbot_cli.webdeploy import TOKEN_VARIABLE
+
+    environ = os.environ if environ is None else environ
+    token = environ.get(TOKEN_VARIABLE, "").strip()
+    if token:
+        return token
+    if not (_has_terminal() if interactive is None else interactive):
+        return None
+    _print("update: the web is deployed, so its Worker should match this version")
+    try:
+        return prompt("Cloudflare API token to redeploy it (input hidden, Enter to skip): ").strip() or None
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+
+def run_web_deploy_subprocess(
+    python: Path, instance_root: Path, token: str, *, runner: Callable[..., object] = subprocess.run
+) -> int:
+    """Deploy with the version now current: its code and its Worker belong together. The token never goes in argv."""
+
+    from endbot_cli.webdeploy import TOKEN_VARIABLE
+
+    command = [str(python), "-m", "endbot_cli", "--instance", str(instance_root), "web", "deploy"]
+    return runner(command, check=False, env={**os.environ, TOKEN_VARIABLE: token}).returncode
+
+
+def _redeploy_web(
+    paths: InstancePaths,
+    version: str,
+    python: Path,
+    web_token: Callable[[], str | None],
+    web_deploy: Callable[[Path, Path, str], int],
+) -> None:
+    web = load_config(paths.endbot_toml).web
+    if not (web.enabled and web.origin and web.account_id):
+        return
+    if not (paths.root / "app" / version / "web" / "manifest.json").is_file():
+        _print(f"update: WARN web: app/{version} carries no web, so it does not connect to the Worker at {web.origin}")
+        return
+    stale = "the Worker stays at its current version; if its web protocol differs, the web is offline until"
+    token = web_token()
+    if token is None:
+        _print(f"update: WARN web: no Cloudflare API token; {stale} you run `endbot web deploy`")
+        return
+    _print(f"update: redeploying the Worker of {version} to {web.origin}")
+    try:
+        code = web_deploy(python, paths.root, token)
+    except OSError as error:
+        _print(f"update: WARN web: could not run the deploy ({type(error).__name__}); {stale} you run it again")
+        return
+    except KeyboardInterrupt:
+        _print(f"update: WARN web: the deploy was interrupted; {stale} you run `endbot web deploy`")
+        return
+    if code != 0:
+        _print(f"update: WARN web: the deploy failed (reported above); {stale} `endbot web deploy` succeeds")
+
+
+# ---------------------------------------------------------------------------
 # Commands
 
 
@@ -368,6 +450,8 @@ def run_update(
     windows: bool | None = None,
     doctor: Callable[[Path, Path], tuple[int, list[str]]] | None = None,
     acquire: Callable[[Path, Path], None] | None = None,
+    web_token: Callable[[], str | None] = read_web_token,
+    web_deploy: Callable[[Path, Path, str], int] = run_web_deploy_subprocess,
 ) -> int:
     """Run the section 6a update sequence (see the module docstring)."""
 
@@ -391,6 +475,8 @@ def run_update(
             windows=on_windows,
             doctor=doctor,
             acquire=acquire,
+            web_token=web_token,
+            web_deploy=web_deploy,
         )
     except (UpdateError, BdsError, ConfigError, StoreError) as error:
         return _fail(f"FAIL update: {error}")
@@ -411,6 +497,8 @@ def _run_update(
     windows: bool,
     doctor: Callable[[Path, Path], tuple[int, list[str]]],
     acquire: Callable[[Path, Path], None],
+    web_token: Callable[[], str | None],
+    web_deploy: Callable[[Path, Path, str], int],
 ) -> int:
     if not archive.is_file():
         raise UpdateError(f"{archive} does not exist or is not a file")
@@ -496,6 +584,7 @@ def _run_update(
                 os.chmod(destination, 0o755)
         _print(f"update: app/current now names {info.version} (previous {previous} is kept in app/)")
         _print(f"update: launcher {', '.join(info.launchers)} replaced from the archive")
+        _redeploy_web(paths, info.version, new_python, web_token, web_deploy)
         _print("update: next steps: endbot doctor, then endbot start")
         _print("update: note: `endbot update --rollback` switches app/current back to the most recent previous version")
         return 0
@@ -561,10 +650,15 @@ def _recheck(
     return blocking_failures(results, paths)
 
 
-def run_rollback(paths: InstancePaths, windows: bool | None = None) -> int:
+def run_rollback(
+    paths: InstancePaths,
+    windows: bool | None = None,
+    *,
+    web_token: Callable[[], str | None] = read_web_token,
+    web_deploy: Callable[[Path, Path, str], int] = run_web_deploy_subprocess,
+) -> int:
     """Switch ``app/current`` back to the most recent previous version present."""
 
-    del windows
     refusal = _check_refusals(paths)
     if refusal is not None:
         return refusal
@@ -589,6 +683,7 @@ def run_rollback(paths: InstancePaths, windows: bool | None = None) -> int:
         return _fail(f"FAIL update: {error}; app/current still names {current}")
     atomic_write_text(paths.app_current, f"{previous.name}\n")
     _print(f"update: app/current now names {previous.name} (was {current}; {current} is kept in app/)")
+    _redeploy_web(paths, previous.name, previous / _python_name(_on_windows(windows)), web_token, web_deploy)
     _print("update: next steps: endbot doctor, then endbot start")
     _print("update: note: doctor refuses to start when the server's BDS does not match the rolled-back version's lock")
     return 0

@@ -85,7 +85,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     deploy.add_argument("--account-id", help="Cloudflare account id; kept in endbot.toml after the first deploy")
     deploy.add_argument("--worker-name", help="Worker name (default: endbot)")
-    deploy.add_argument("--domain", help="custom domain instead of the workers.dev subdomain")
+    deploy.add_argument(
+        "--domain", help="custom domain instead of the workers.dev subdomain; a later plain deploy keeps it"
+    )
     deploy.add_argument("--zone-id", help="the Cloudflare zone of --domain")
     deploy.add_argument(
         "--confirm-domain-change",

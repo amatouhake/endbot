@@ -59,6 +59,12 @@ function fixture (options = {}) {
 
 const turn = () => new Promise(resolve => setImmediate(resolve))
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+// Timers run about every 15 ms on Windows, so a fixed wait for short delays is a race: wait for the state instead.
+const until = async (condition, seconds = 5) => {
+  const deadline = Date.now() + seconds * 1000
+  while (!condition() && Date.now() < deadline) await wait(2)
+  assert.ok(condition(), 'the expected state did not come')
+}
 
 test('a Bot waits for a starting BDS without using up its attempts, and only for so long (BOT-033)', async () => {
   const notReady = Object.assign(new Error('still starting'), { code: 'bds_not_ready' })
@@ -506,16 +512,14 @@ test('operator resume resets an exhausted automatic reconnect budget', async () 
     reconnect: { initialDelayMs: 3, maximumDelayMs: 3, maximumAttempts: 2, sessionReplacementDelayMs: 0 }
   })
   await lifecycle.spawn('Alice')
-  await wait(20)
-  assert.equal(lifecycle.status('Alice').connectionState, 'failed')
+  await until(() => lifecycle.status('Alice').connectionState === 'failed')
   assert.equal(lifecycle.status('Alice').reconnectAttempt, 3)
 
+  const seen = []
+  lifecycle.on('state', status => seen.push([status.connectionState, status.reconnectAttempt]))
   await lifecycle.resume('Alice')
-  await turn()
-  assert.equal(lifecycle.status('Alice').connectionState, 'reconnecting')
-  assert.equal(lifecycle.status('Alice').reconnectAttempt, 1)
-  await wait(10)
-  assert.equal(lifecycle.status('Alice').connectionState, 'online')
+  await until(() => lifecycle.status('Alice').connectionState === 'online')
+  assert.deepEqual(seen.find(([state]) => state === 'reconnecting'), ['reconnecting', 1])
   assert.equal(lifecycle.status('Alice').reconnectAttempt, 0)
 })
 

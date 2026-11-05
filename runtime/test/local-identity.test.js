@@ -15,6 +15,7 @@ import {
   createLocalBotAuth,
   loadOrCreateIdentityId,
   loadOrCreateOwnerKeyPair,
+  loadOrCreatePersistentArtifact,
   prepareOwnerKeyPair,
   tamperPayload
 } from '../src/local-identity.js'
@@ -202,6 +203,44 @@ test('persists an identity UUID independently from the user-visible name', () =>
   assert.equal(loadOrCreateIdentityId(filename), identityId)
   assert.match(identityId, /^[0-9a-f-]{36}$/)
   if (process.platform !== 'win32') assert.equal(fs.statSync(filename).mode & 0o777, 0o600)
+})
+
+test('a candidate deleted while Windows publishes it yields to the winner, and only to a winner', t => {
+  const directory = temporaryDirectory('endbot-identity-eperm-')
+  const filename = path.join(directory, 'bot.token')
+  const eperm = () => Object.assign(new Error('operation not permitted, link'), { code: 'EPERM' })
+  const load = file => fs.readFileSync(file, 'utf8')
+
+  // Hard links are not available at all: there is no winner, so the failure is not hidden.
+  const refused = t.mock.method(fs, 'linkSync', () => { throw eperm() })
+  assert.throws(() => loadOrCreatePersistentArtifact(filename, () => 'mine', load, 'test artifact'), /operation not permitted/)
+  refused.mock.restore()
+  assert.equal(fs.existsSync(filename), false)
+
+  // Another process published first and cleaned up this candidate.
+  t.mock.method(fs, 'linkSync', () => {
+    fs.writeFileSync(filename, 'theirs')
+    throw eperm()
+  })
+  const result = loadOrCreatePersistentArtifact(filename, () => 'mine', load, 'test artifact')
+  assert.deepEqual(result, { value: 'theirs', created: false })
+  assert.deepEqual(fs.readdirSync(directory), ['bot.token'])
+})
+
+test('a candidate that cannot be removed does not undo a published artifact', t => {
+  const directory = temporaryDirectory('endbot-identity-rm-')
+  const filename = path.join(directory, 'bot.token')
+  const realRm = fs.rmSync
+  t.mock.method(fs, 'rmSync', (target, options) => {
+    if (String(target).endsWith('.tmp')) throw Object.assign(new Error('Permission denied'), { code: 'EPERM' })
+    return realRm(target, options)
+  })
+  const result = loadOrCreatePersistentArtifact(filename, () => 'mine', file => fs.readFileSync(file, 'utf8'), 'test artifact')
+  assert.deepEqual(result, { value: 'mine', created: true })
+  t.mock.restoreAll()
+  // The next load clears what was left.
+  assert.equal(loadOrCreatePersistentArtifact(filename, () => 'other', file => fs.readFileSync(file, 'utf8'), 'test artifact').value, 'mine')
+  assert.deepEqual(fs.readdirSync(directory), ['bot.token'])
 })
 
 test('concurrent processes converge on one persisted identity UUID', async () => {

@@ -57,7 +57,8 @@ test('no matching advertisement fails with the names that were seen', async () =
   const { module, created } = fakeNethernet([advertise(7n, 'amatouhake', 'LaminaSort Test')])
   await assert.rejects(
     discoverServer({
-      host: '127.0.0.1', serverName: 'Endstone Server', levelName: 'Bedrock level', timeoutMs: 50, nethernet: module, protocol
+      // Long enough for the advertisement to arrive first on a busy machine: this test is about what it saw.
+      host: '127.0.0.1', serverName: 'Endstone Server', levelName: 'Bedrock level', timeoutMs: 500, nethernet: module, protocol
     }),
     error => error instanceof ServerDiscoveryError &&
       error.code === 'server_not_found' &&

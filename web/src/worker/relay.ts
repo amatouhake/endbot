@@ -7,6 +7,10 @@ import type { Env } from "./index";
 
 export const MAX_FRAME_BYTES = 1024 * 1024;
 export const PROVE_MS = 5_000;
+// endbotd says `link-ping` every 30 s, answered by the runtime with no wake-up of this object and nothing stored.
+export const LINK_SILENT_MS = 90_000;
+const LINK_PING = "link-ping";
+const LINK_PONG = "link-pong";
 export const REQUEST_MS = 15_000;
 export const MAX_BROWSERS = 64;
 export const MAX_UNAUTHENTICATED = 16;
@@ -58,6 +62,13 @@ async function hashIp(address: string): Promise<string> {
 export class Relay extends DurableObject<Env> {
   // In memory only: losing these to hibernation costs a retry at most (P7).
   private readonly pending = new Map<string, Pending>();
+  private linkSilentMs = LINK_SILENT_MS;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(LINK_PING, LINK_PONG));
+  }
+
   private readonly buckets = new Map<string, { minute: number; count: number }>();
   private nextConn = 0;
 
@@ -171,15 +182,26 @@ export class Relay extends DurableObject<Env> {
       socket.send(JSON.stringify({ t: "ready" }));
       return;
     }
+    // Replaced while this frame was on its way: it no longer speaks for the server.
+    if (socket.readyState !== WebSocket.OPEN) return;
     if (frame.t === "cache") await this.storeDisplay(frame);
     else if (frame.t === "msg") this.onLinkMessage(frame);
     else if (frame.t === "close") this.onLinkClose(frame);
   }
 
-  /** The cache is what endbotd last said: with no link, nothing vouches that the server is still up. */
+  /** A power cut sends no close: a link is only trusted while it keeps answering. */
+  private linkAlive(): boolean {
+    const link = this.provenLink();
+    if (!link) return false;
+    const opened = (link.deserializeAttachment() as { opened: number }).opened;
+    const pinged = this.ctx.getWebSocketAutoResponseTimestamp(link)?.getTime() ?? 0;
+    return Date.now() - Math.max(opened, pinged) < this.linkSilentMs;
+  }
+
+  /** The cache is what endbotd last said: with no live link, nothing vouches that the server is still up. */
   private async display(): Promise<Record<string, unknown>> {
     const stored = (await this.ctx.storage.get<Record<string, unknown>>("display")) ?? {};
-    return this.provenLink() ? { bds: "down", ...stored } : { ...stored, bds: "down" };
+    return this.linkAlive() ? { bds: "down", ...stored } : { ...stored, bds: "down" };
   }
 
   private async storeDisplay(frame: Record<string, unknown>): Promise<void> {

@@ -27,6 +27,10 @@ from websockets.sync.client import connect as websocket_connect
 WEB_PROTOCOL = json.loads((Path(__file__).parent / "web_protocol.schema.json").read_text(encoding="utf-8"))["version"]
 MAX_FRAME_BYTES = 1024 * 1024
 CHALLENGE_SECONDS = 10.0
+# The Durable Object stops vouching for a link silent for 90 s (docs/WEB_PROTOCOL.md), and its runtime answers this alone.
+KEEP_ALIVE_SECONDS = 30.0
+KEEP_ALIVE = "link-ping"
+KEEP_ALIVE_ANSWER = "link-pong"
 RETRY_INITIAL = 1.0
 RETRY_MAX = 60.0
 MAX_SESSION_CONNECTIONS = 4
@@ -115,7 +119,8 @@ class WebLink:
                  cache: Callable[[], dict] | None = None,
                  log: Callable[[str, str], None] | None = None,
                  connect: Callable | None = None, clock: Callable[[], float] = time.monotonic,
-                 retry: tuple[float, float] = (RETRY_INITIAL, RETRY_MAX)) -> None:
+                 retry: tuple[float, float] = (RETRY_INITIAL, RETRY_MAX),
+                 keep_alive: float = KEEP_ALIVE_SECONDS) -> None:
         self._web = web
         self.origin = origin
         self._key = key
@@ -131,6 +136,7 @@ class WebLink:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._socket = None
+        self._keep_alive = keep_alive
         self._send_lock = threading.Lock()
         self._lock = threading.RLock()
         self._connections: dict[str, _Connection] = {}
@@ -206,7 +212,13 @@ class WebLink:
                 self._log("info", f"Web link up to {self.origin}")
                 self.publish_cache()
                 while not self._stop.is_set():
-                    raw = socket.recv()
+                    try:
+                        raw = socket.recv(timeout=self._keep_alive)
+                    except TimeoutError:
+                        self._send_text(KEEP_ALIVE)
+                        continue
+                    if raw == KEEP_ALIVE_ANSWER:
+                        continue
                     try:
                         self._frame(raw)
                     except Exception as error:  # noqa: BLE001 - one bad frame must not end the link
@@ -384,6 +396,12 @@ class WebLink:
         data = json.dumps(frame, separators=(",", ":"))
         if len(data.encode("utf-8")) > MAX_FRAME_BYTES:
             self._log("warning", "Web link: an outgoing frame over 1 MiB was dropped")
+            return
+        self._send_text(data)
+
+    def _send_text(self, data: str) -> None:
+        socket = self._socket
+        if socket is None:
             return
         try:
             with self._send_lock:

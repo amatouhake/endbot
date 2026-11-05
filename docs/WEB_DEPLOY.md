@@ -166,7 +166,7 @@ the Worker, so protect that account with its own strong sign-in ([what that risk
 | `the Worker ... no longer exists on Cloudflare` | It was deleted, so the custom domain must be attached again. Repeat with `--domain` and `--zone-id` |
 | `The link is not up yet: ...` | The message names the reason. Check that the PC can reach the address over HTTPS, then run `endbot doctor --live` |
 | `FAIL web: [web] origin ...` or `web-link.key is missing` | Run `endbot web deploy`. `endbot start` still runs, with the web off |
-| The sign-in page says "Server stopped" | BDS is stopped, endbotd is stopped, or the link is down. Run `endbot doctor --live` on the PC |
+| The sign-in page says "Server stopped" | BDS is stopped, endbotd is stopped, or the link is down, for up to 90 s after a power cut. Run `endbot doctor --live` on the PC |
 | The browser does not offer the passkey | The passkey was made for another address, or removed. Run `/botweb link` for a new one |
 | "Too many wrong codes on this server" | After 10 wrong codes in 10 minutes, code entry closes for 10 minutes for the whole server, and the console logs it |
 | "Too many attempts" | The Worker limits sign-in requests and new connections to 10 per minute per client address. Wait a minute |

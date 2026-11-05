@@ -17,10 +17,13 @@ class Messages {
   readonly received: any[] = [];
   private waiters: (() => void)[] = [];
   closed: { code: number; reason: string } | null = null;
+  pongs = 0;
 
   constructor(readonly socket: WebSocket) {
     socket.addEventListener("message", (event) => {
-      this.received.push(JSON.parse(event.data as string));
+      // The keep-alive's answer is plain text, not a frame.
+      if (event.data === "link-pong") this.pongs += 1;
+      else this.received.push(JSON.parse(event.data as string));
       this.wake();
     });
     socket.addEventListener("close", (event) => {
@@ -493,6 +496,25 @@ describe("the display cache", () => {
     link.socket.close(1000, "stopping");
     await expect.poll(async () => ((await (await SELF.fetch(`${ORIGIN}/api/display`)).json()) as any).bds).toBe("down");
     expect(await (await SELF.fetch(`${ORIGIN}/api/display`)).json()).toMatchObject({ displayName: "Mine" });
+  });
+
+  it("stops vouching for a link that goes silent with no close, and trusts it again when it answers", async () => {
+    const link = await provenLink();
+    link.send({ t: "cache", displayName: "Mine", bds: "up" });
+    const bds = async () => ((await (await SELF.fetch(`${ORIGIN}/api/display`)).json()) as any).bds;
+    await expect.poll(bds).toBe("up");
+    await (runInDurableObject as any)(relayStub(), async (instance: any) => {
+      instance.linkSilentMs = 200;
+    });
+    await expect.poll(bds).toBe("down");
+    expect(link.closed).toBeNull();
+    link.socket.send("link-ping");
+    await expect.poll(() => link.pongs).toBe(1);
+    expect(await bds()).toBe("up");
+    await expect.poll(bds).toBe("down");
+    await (runInDurableObject as any)(relayStub(), async (instance: any) => {
+      instance.linkSilentMs = 90_000;
+    });
   });
 
   it("does not take a cache from an unproven link", async () => {

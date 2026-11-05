@@ -7,6 +7,7 @@ import os
 import queue
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -69,6 +70,7 @@ class FakeDurableObject:
         self.frames = queue.Queue()
         self.accept = accept
         self.proofs = []
+        self.pings = 0
         self.socket = None
         self.connected = threading.Event()
         self.server = serve(self._handler, "127.0.0.1", 0)
@@ -88,7 +90,12 @@ class FakeDurableObject:
             self.socket = socket
             self.connected.set()
             for raw in socket:
-                self.frames.put(json.loads(raw))
+                if raw == "link-ping":
+                    # As the Workers runtime answers it, with the Durable Object asleep.
+                    self.pings += 1
+                    socket.send("link-pong")
+                else:
+                    self.frames.put(json.loads(raw))
         except Exception:  # noqa: BLE001, S110 - a closed test socket
             pass
 
@@ -136,7 +143,8 @@ class LinkCase(unittest.TestCase):
         self.link = WebLink(self.web, origin, self.key, "0.7.0", ws_handler=self.handler,
                             cache=lambda: {"displayName": "Mine", "bds": "up"},
                             on_connection_closed=self.closed_conns.append,
-                            log=lambda level, message: self.logs.append((level, message)), retry=(0.05, 0.2))
+                            log=lambda level, message: self.logs.append((level, message)), retry=(0.05, 0.2),
+                            keep_alive=getattr(self, "keep_alive", 30.0))
         self.link.start()
         self.addCleanup(self.link.stop)
         return self.link
@@ -337,6 +345,22 @@ class WebSocketTests(LinkCase):
 
         self.link.sessions_removed([hashlib.sha256(GOOD.encode()).hexdigest()])
         self.assertEqual(self.relay.next("close"), {"t": "close", "conn": "w1", "reason": "signed_out"})
+
+
+class KeepAliveTests(LinkCase):
+    def test_a_quiet_link_says_it_is_alive_and_the_answer_is_no_frame(self):
+        self.keep_alive = 0.05
+        self.up()
+        for _ in range(100):
+            if self.relay.pings >= 3:
+                break
+            time.sleep(0.05)
+        self.assertGreaterEqual(self.relay.pings, 3)
+        self.assertTrue(self.link.connected.is_set())
+        self.assertFalse([message for level, message in self.logs if level != "info"], self.logs)
+        # Still serving frames in between.
+        self.relay.http("c1", "/auth/info")
+        self.assertEqual(self.relay.next("msg")["conn"], "c1")
 
 
 class ReconnectTests(LinkCase):

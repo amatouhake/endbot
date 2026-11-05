@@ -241,7 +241,7 @@
           [
             "target",
             {
-              "type": "string"
+              "type": "player"
             }
           ]
         ],

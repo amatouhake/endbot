@@ -382,6 +382,15 @@ test("a Bot's state is laid out, and operations ask only what the command needs"
   await expect(page.getByText("tp me").locator("visible=true").first()).toBeVisible();
   await tab(page, "Bots");
 
+  // A GamerTag may hold a space.
+  await pace();
+  await panel.getByRole("button", { name: "target", exact: true }).click();
+  await panel.getByLabel(/^target/).fill("Major Nelson");
+  await panel.getByRole("button", { name: "Run tp" }).click();
+  await tab(page, "History");
+  await expect(page.getByText("tp 'Major Nelson'").locator("visible=true").first()).toBeVisible();
+  await tab(page, "Bots");
+
   // Forget is the one that asks first: declining sends nothing.
   await category("Bot").click();
   await operations.getByRole("button", { name: "forget" }).click();

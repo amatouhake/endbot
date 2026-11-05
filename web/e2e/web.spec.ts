@@ -266,23 +266,88 @@ test("the address keeps what was chosen, through a reload and the browser's Back
   await expect(page.getByRole("navigation").getByRole("link", { name: "History" })).toHaveAttribute("aria-current", "page");
 });
 
-test("a Bot's state is laid out, and common and detailed operations both work", async ({ page, context }) => {
+test("a Bot's state is laid out, and every operation is two clicks away", async ({ page, context }) => {
   await start(page, context);
   await page.getByRole("link", { name: /Miner_01/ }).click();
   await expect(page.getByText("12.5, 64, -3")).toBeVisible();
   await expect(page.getByText("18 / 20")).toBeVisible();
+  const category = (name: string) => page.getByRole("group", { name: "Categories" }).getByRole("button", { name, exact: true });
+  const operations = page.locator(".choices.operations");
+  const panel = page.locator(".op-panel");
   await page.getByRole("button", { name: "forward" }).click();
   await expect(page.getByRole("heading", { name: "Results" })).toBeVisible();
   await expect.poll(async () => JSON.stringify(await ask("calls"))).toContain("forward");
   await shot(page, "11-bot");
-  await page.getByLabel(/^Operation/).selectOption("look");
-  await page.getByLabel(/^Form/).selectOption({ index: 1 });
+
+  // Modes are buttons: one with nothing to ask runs at once, as on the in-game menu.
+  await category("Act").click();
+  await operations.getByRole("button", { name: "attack" }).click();
+  await panel.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.locator(".results")).not.toBeEmpty();
+  // A mode with clauses asks only for its own: `once` has no duration, and `interval` must have its ticks.
+  await panel.getByRole("button", { name: "At intervals" }).click();
+  await expect(panel.getByLabel(/^interval/)).toHaveAttribute("required");
+  await panel.getByLabel(/^interval/).fill("40");
+  await panel.getByLabel(/^ticks/).fill("80");
   await shot(page, "12-bot-form");
+  // Run stays on screen with the fields filled in.
+  await expect(panel.getByRole("button", { name: "Run attack" })).toBeInViewport({ ratio: 1 });
+  await panel.getByRole("button", { name: "Run attack" }).click();
+  await expect(page.locator(".results li").first()).not.toHaveClass(/failed/);
+  await tab(page, "History");
+  await expect(page.getByText("attack interval 40 for 80").locator("visible=true").first()).toBeVisible();
+  await tab(page, "Bots");
+
+  // What sent nothing but a form with a free-text box before.
+  await category("Move").click();
+  await operations.getByRole("button", { name: "sprint" }).click();
+  await panel.getByRole("button", { name: "On", exact: true }).click();
+  await tab(page, "History");
+  await expect(page.getByText("sprint on").locator("visible=true").first()).toBeVisible();
+  await tab(page, "Bots");
+
+  await category("Teleport").click();
+  await expect(panel.getByRole("button", { name: "To my position" })).toBeVisible();
+  await panel.getByRole("button", { name: "x y z" }).click();
+  await expect(panel.getByLabel(/^dimension/).locator("option")).toHaveText(["—", "overworld", "nether", "end"]);
+  // The in-game forms leave facing to the typed command.
+  await expect(panel.getByLabel(/^facing/)).toHaveCount(0);
+  await panel.getByRole("button", { name: "To my position" }).click();
+  await tab(page, "History");
+  await expect(page.getByText("tp Alice").locator("visible=true").first()).toBeVisible();
+  await tab(page, "Bots");
+
   // Forget is the one that asks first: declining sends nothing.
-  await page.getByLabel(/^Operation/).selectOption("forget");
-  await page.getByRole("button", { name: "Run forget" }).click();
+  await category("Bot").click();
+  await operations.getByRole("button", { name: "forget" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   expect(JSON.stringify(await ask("calls"))).not.toContain('"forget"');
+});
+
+test("what was used comes back under Recent, the category is remembered, and an offline Bot offers what it can do", async ({ page, context }) => {
+  await start(page, context);
+  await page.getByRole("link", { name: /Miner_01/ }).click();
+  const recent = page.getByRole("group", { name: "Recent" });
+  await expect(recent).toHaveCount(0);
+  await page.getByRole("group", { name: "Categories" }).getByRole("button", { name: "Info", exact: true }).click();
+  await page.locator(".choices.operations").getByRole("button", { name: "status" }).click();
+  await expect(recent.getByRole("button", { name: "status" })).toBeVisible();
+  await shot(page, "19-recent");
+  await page.reload();
+  await expect(recent.getByRole("button", { name: "status" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Categories" }).getByRole("button", { name: "Info", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => localStorage.setItem("endbot.opCategory", "not a category"));
+  await page.evaluate(() => localStorage.setItem("endbot.recentOps", "{broken"));
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Categories" }).getByRole("button", { name: "Move", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+  await expect(recent).toHaveCount(0);
+  // Offline, only the Bot section has anything to offer, as in the in-game menu.
+  await page.getByRole("link", { name: /Farmer/ }).click();
+  await expect(page.getByRole("group", { name: "Categories" }).getByRole("button")).toHaveText(["Bot"]);
+  await expect(page.locator(".choices.operations").getByRole("button", { name: "reconnect" })).toHaveCount(0);
+  await shot(page, "20-offline");
 });
 
 test("the list can be searched and filtered, and follows what happens elsewhere by itself", async ({ page, context }) => {
@@ -320,8 +385,11 @@ test("Groups follow the Bots in the list and offer only what a Group can do", as
   await page.getByLabel("Search").locator("visible=true").fill("#cr");
   await expect(list.getByRole("link")).toHaveText([/#crew/]);
   await list.getByRole("link").click();
-  expect(await page.getByLabel(/^Operation/).locator("option").allTextContents()).not.toContain("forget");
-  expect(await page.getByLabel(/^Operation/).locator("option").allTextContents()).toContain("despawn");
+  await page.getByRole("group", { name: "Categories" }).getByRole("button", { name: "Bot", exact: true }).click();
+  const offered = page.locator(".choices.operations");
+  await expect(offered.getByRole("button", { name: "visibility" })).toBeVisible();
+  await expect(offered.getByRole("button", { name: "forget" })).toHaveCount(0);
+  await expect(offered.getByRole("button", { name: "rename" })).toHaveCount(0);
   await page.getByRole("link", { name: "Manage this Group" }).click();
   await page.getByRole("button", { name: "Delete Group" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
@@ -385,7 +453,8 @@ test("a Group is created, filled, operated as a whole and deleted, and all of it
   await shot(page, "18-group-target");
   await page.reload();
   await expect(page.getByRole("heading", { name: "#miners" })).toBeVisible();
-  await page.getByRole("button", { name: "jump" }).click();
+  await page.locator(".choices.operations").getByRole("button", { name: "jump" }).click();
+  await page.locator(".op-panel").getByRole("button", { name: "Once" }).click();
   await expect.poll(async () => JSON.stringify(await ask("calls"))).toContain("jump");
   await page.getByRole("link", { name: "Manage this Group" }).click();
   await expect(page).toHaveURL(/\/groups\/miners$/);

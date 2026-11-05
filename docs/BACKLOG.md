@@ -1206,6 +1206,10 @@ real BDS. The first try found nothing that stopped steps 1 to 7 merging and no r
 worked, but the page lacked polish, some features, and a design that thinks about scrolling and how a person moves through
 it. What the operator finds on the rebuilt page comes next.
 
+Their next look (2026-11-05 JST) led to [S10, S11 and S12](WEB.md#settled-points): the chosen tab no longer turns bold, Bots and
+Groups share one list, New is in one place, and operations are by category. Whether the move pad earns its place is left open,
+because this is the first time Bots could be moved this casually; it stays one click away and Recent shows whether it is used.
+
 Small, clear fixes:
 
 - `/botweb help` is missing, unlike `/bot`, `/botgroup` and `/botscript`.

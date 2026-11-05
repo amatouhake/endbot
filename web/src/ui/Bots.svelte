@@ -106,7 +106,7 @@
       </div>
       <div class="row">
         <select bind:value={filter} aria-label={t("filterLabel")}>
-          <option value="all">{t("filterAll", { count: bots.length })}</option>
+          <option value="all">{t("filterAll", { count: bots.length + groups.length })}</option>
           <option value="online">{t("filterOnline", { count: online })}</option>
           <option value="offline">{t("filterOffline", { count: bots.length - online })}</option>
           <option value="groups">{t("filterGroups", { count: groups.length })}</option>
@@ -229,7 +229,8 @@
       </section>
       {/if}
       {#key selected}
-        <Controls bind:this={controls} {connection} target={selected} group={isGroup} onchanged={after} />
+        <Controls bind:this={controls} {connection} target={selected} group={isGroup} online={isGroup || isOnline}
+                  gamertag={status?.gamertag ?? ""} onchanged={after} />
       {/key}
     {/if}
   </div>

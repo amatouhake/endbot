@@ -1090,7 +1090,7 @@ test('a dismount BDS never confirms stops counting as riding, and @nearest skips
   session.dismount()
   assert.throws(() => session.dismount(), /already pending/)
   assert.equal(queued.filter(entry => entry.name === 'interact' && entry.packet.action_id === 'leave_vehicle').length, 1)
-  await new Promise(resolve => setTimeout(resolve, 3200))
+  await until(() => session.vehicleStatus() === null, 20)
   assert.equal(session.vehicleStatus(), null)
 })
 

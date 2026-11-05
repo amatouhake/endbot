@@ -90,6 +90,10 @@ export class Connection {
   request(type: string, fields: Record<string, unknown> = {}): Promise<any> {
     const id = this.next++;
     return new Promise((resolve) => {
+      if (this.socket.readyState !== WebSocket.OPEN) {
+        resolve({ code: "unavailable", messages: [errorText("unavailable")] });
+        return;
+      }
       // Never leave a screen waiting for good: the link can drop an answer, and the server can go away.
       const timer = setTimeout(() => {
         this.waiting.delete(id);

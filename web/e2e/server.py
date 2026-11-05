@@ -2,7 +2,8 @@
 
 Reads commands on stdin and answers on stdout, one JSON line each:
 ``code`` gives a link code for the test player, ``reset`` deletes every passkey and session,
-``revoke`` removes their grant, ``log`` records a run log line. Never used outside tests.
+``revoke`` removes their grant, ``log`` records a run log line, ``online NAME`` brings a Bot online.
+Never used outside tests.
 """
 
 import json
@@ -32,16 +33,19 @@ class FakeControl:
 
     def __init__(self):
         self.calls = []
+        self.states = {"Miner_01": "online", "Farmer": "offline"}
 
     def request(self, method, **params):
         if method in {"profiles", "list"}:
-            return [{"name": "Miner_01", "identityId": BOT, "connectionState": "online"},
+            return [{"name": "Miner_01", "identityId": BOT, "connectionState": self.states["Miner_01"]},
                     {"name": "Farmer", "identityId": "00000000-0000-4000-8000-00000000000c",
-                     "connectionState": "offline"}]
+                     "connectionState": self.states["Farmer"]}]
+        if method == "capabilities":
+            return {"identityPinnedRequests": True, "groupInputBatch": True}
         self.calls.append([method, params])
         if method == "status":
             return {"name": params.get("name"), "identityId": BOT, "connectionState": "online", "desiredState": "online",
-                    "chunkRadius": 5}
+                    "chunkRadius": 5, "vitals": {"hunger": 20}}
         return {"name": params.get("name"), "identityId": BOT, "connectionState": "online"}
 
 
@@ -67,6 +71,10 @@ def main() -> None:
             f"[{level}] {message}", file=sys.stderr, flush=True))
         service.authority.policy.add("Alice", xuid=XUID, player_uuid=PLAYER)
         service.authority.roles.set(XUID, "scripter")
+        # What the plugin would see in the world, with no BDS here to see it.
+        service.commands.world.observe = lambda identity: {
+            "x": 12.5, "y": 64, "z": -3, "dimension": "overworld", "yaw": 90, "pitch": 0, "health": 18, "maxHealth": 20,
+            "selectedSlot": 2, "held": {"name": "minecraft:diamond_pickaxe", "count": 1}}
         service.start()
         print(json.dumps({"ready": True}), flush=True)
         for line in sys.stdin:
@@ -75,6 +83,9 @@ def main() -> None:
                 print(json.dumps({"code": service.web.codes.issue(LinkIdentity(XUID, PLAYER, "Alice"))}), flush=True)
             elif command == "calls":
                 print(json.dumps(control.calls), flush=True)
+            elif command.startswith("online "):
+                control.states[command.split()[1]] = "online"
+                print(json.dumps({"ok": True}), flush=True)
             elif command == "reset":
                 service.web.domain_changed()
                 print(json.dumps({"ok": True}), flush=True)

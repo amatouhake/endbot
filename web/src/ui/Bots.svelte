@@ -1,255 +1,186 @@
 <script lang="ts">
-  // Every form comes from the registry (docs/WEB.md P11), so an operation added there appears here with its checks.
-  import registry from "../../../core/src/endbot_core/operations.json";
   import type { Connection } from "./api";
-  import { t } from "./i18n";
+  import Controls from "./Controls.svelte";
+  import { opLabel, stateLabel, t } from "./i18n";
+  import { href, navigate } from "./route.svelte";
 
-  let { connection, status, onchanged }: { connection: Connection; status: any; onchanged: () => void } = $props();
+  const READ_EVERY_MS = 3000;
 
-  type Spec = { type: string; choices?: string[]; clause?: string };
-  type Variant = { positional: [string, Spec][]; options: Record<string, Spec>; prefix: string[] };
-  const OPERATIONS = (registry as unknown as { operations: Record<string, Variant[]> }).operations;
+  let { connection, status, selected, active, onchanged }: {
+    connection: Connection;
+    status: any;
+    selected: string | null;
+    active: boolean;
+    onchanged: () => void;
+  } = $props();
 
-  type CategoryKey = "catMove" | "catLook" | "catAct" | "catInventory" | "catInfo" | "catBot" | "catOther";
-  const CATEGORIES: { key: CategoryKey; operations: string[] }[] = [
-    { key: "catMove", operations: ["move", "jump", "sprint", "sneak", "stop"] },
-    { key: "catLook", operations: ["look", "tp"] },
-    { key: "catAct", operations: ["attack", "destroy", "use", "interact", "dismount"] },
-    { key: "catInventory", operations: ["inventory", "hotbar", "hold", "swap", "drop"] },
-    { key: "catInfo", operations: ["status", "target", "block", "blocks", "entities", "entity"] },
-    { key: "catBot", operations: ["spawn", "resume", "reconnect", "despawn", "radius", "rename", "visibility", "forget"] },
-  ];
-  // Whatever the registry gains appears here until someone gives it a better home.
-  const PLACED = new Set(CATEGORIES.flatMap((item) => item.operations));
-  const OFF_THE_WEB = new Set(["menu", "help", "owner", "list", "ping"]);
-  const OTHERS = Object.keys(OPERATIONS).filter((name) => !PLACED.has(name) && !OFF_THE_WEB.has(name));
-  if (OTHERS.length) CATEGORIES.push({ key: "catOther", operations: OTHERS });
-  // Asked again before running: they cannot be taken back from here.
-  const CONFIRM = new Set(["forget"]);
-
-  let target = $state("");
-  let category = $state<CategoryKey>("catMove");
-  let operation = $state("move");
-  let variant = $state(0);
-  let fields = $state<Record<string, any>>({});
-  let busy = $state(false);
-  let results = $state<{ text: string; failed: boolean }[]>([]);
-  let info = $state<string[]>([]);
+  let search = $state("");
+  let filter = $state<"all" | "online" | "offline">("all");
+  let sort = $state<"state" | "name">("state");
   let newBot = $state("");
+  let spawning = $state(false);
+  let spawnError = $state("");
+  let detail = $state<any>(null);
+  let detailProblem = $state("");
+  let controls = $state<Controls>();
 
-  const targets = $derived([
-    ...(status?.bots ?? []).map((bot: any) => ({ value: bot.name, label: bot.name, state: bot.state })),
-    ...(status?.groups ?? []).map((group: any) => ({ value: `#${group.name}`, label: `#${group.name}`, state: null })),
-  ]);
-  const shapes = $derived(OPERATIONS[operation] ?? []);
-  const shape = $derived(shapes[Math.min(variant, shapes.length - 1)]);
+  const bots = $derived<any[]>(status?.bots ?? []);
+  const online = $derived(bots.filter((bot) => bot.state === "online").length);
+  const shown = $derived(bots
+    .filter((bot) => bot.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter((bot) => filter === "all" || (filter === "online") === (bot.state === "online"))
+    .toSorted((a, b) => (sort === "state" ? Number(b.state === "online") - Number(a.state === "online") : 0)
+      || a.name.localeCompare(b.name)));
+  const current = $derived(bots.find((bot) => bot.name === selected));
+  const isOnline = $derived(current?.state === "online");
 
-  function choose(next: string): void {
-    operation = next;
-    variant = 0;
-    fields = {};
+  async function read(name: string): Promise<void> {
+    const answer = await connection.request("query", { what: "bot", name });
+    if (selected !== name) return;
+    detail = answer.code === "ok" ? answer.data ?? null : null;
+    detailProblem = answer.code === "ok" ? "" : answer.messages?.[0] ?? t("opFailed", { code: answer.code });
   }
 
-  function pickCategory(key: CategoryKey): void {
-    category = key;
-    choose(CATEGORIES.find((item) => item.key === key)!.operations[0]!);
-  }
-
-  function variantLabel(item: Variant): string {
-    const words = [...item.prefix, ...item.positional.map(([name]) => name)];
-    return words.length ? words.join(" ") : t("variantPlain");
-  }
-
-  function convert(value: any, spec: Spec): any {
-    if (spec.type === "boolean") return value === true;
-    if (spec.type === "integer" || spec.type === "number") return Number(value);
-    const text = String(value).trim();
-    const numeric = /^-?\d+(\.\d+)?$/.test(text);
-    if (spec.type === "coordinate") return numeric ? Number(text) : text;
-    if (spec.type === "stringOrInteger" || spec.type === "integerOrDefault") return numeric ? Number(text) : text;
-    return text;
-  }
-
-  function parameters(item: Variant): Record<string, unknown> {
-    const given: Record<string, unknown> = {};
-    for (const [name, spec] of [...item.positional, ...Object.entries(item.options)]) {
-      const value = fields[name];
-      if (value === undefined || value === "" || (spec.type === "boolean" && value === false)) continue;
-      given[name] = convert(value, spec);
-    }
-    return given;
-  }
-
-  function report(answer: any, label: string): void {
-    const failed = answer.code !== "ok";
-    // Replies already say which Bot they are about; only a reply with no words needs the label.
-    const lines: string[] = answer.messages?.length ? answer.messages
-      : [`${label}: ${failed ? t("opFailed", { code: answer.code }) : t("opDone")}`];
-    results = [...lines.map((text) => ({ text, failed })), ...results].slice(0, 40);
-  }
-
-  async function send(op: string, name: string, params: Record<string, unknown>): Promise<any> {
-    busy = true;
-    const answer = await connection.request("op", { operation: { op, target: name, params } });
-    busy = false;
-    report(answer, `${name} ${op}`);
-    onchanged();
-    return answer;
-  }
-
-  async function submit(): Promise<void> {
-    if (CONFIRM.has(operation) && !confirm(t("opConfirm", { op: operation, target }))) return;
-    await send(operation, target, parameters(shape!));
-    if (operation === "rename" && fields.name) target = fields.name;
-  }
-
-  async function loadInfo(name: string): Promise<void> {
-    const answer = await connection.request("op", { operation: { op: "status", target: name, params: {} } });
-    info = answer.messages ?? [];
-  }
-
-  function pick(value: string): void {
-    target = value;
-    info = [];
-    void loadInfo(value);
-  }
+  // What it is doing changes on its own, so it is read again for as long as anyone is looking at it.
+  $effect(() => {
+    const name = selected;
+    detail = null;
+    detailProblem = "";
+    if (!name || !active || !isOnline) return;
+    void read(name);
+    const timer = setInterval(() => {
+      if (!document.hidden) void read(name);
+    }, READ_EVERY_MS);
+    return () => clearInterval(timer);
+  });
 
   async function spawnBot(): Promise<void> {
     const name = newBot.trim();
     if (!name) return;
-    const answer = await send("spawn", name, {});
+    spawning = true;
+    spawnError = "";
+    const answer = await connection.request("op", { operation: { op: "spawn", target: name, params: {} } });
+    spawning = false;
     if (answer.code === "ok") {
       newBot = "";
-      target = name;
+      onchanged();
+      navigate("bots", name);
+    } else {
+      spawnError = answer.messages?.[0] ?? t("opFailed", { code: answer.code });
     }
   }
 
-  function inputType(spec: Spec): string {
-    return spec.type === "integer" || spec.type === "number" ? "number" : "text";
+  function after(op: string, fields: Record<string, unknown>): void {
+    onchanged();
+    if (op === "rename" && typeof fields.name === "string") navigate("bots", fields.name, true);
+    if (op === "forget") navigate("bots", null, true);
+    if (selected && isOnline) void read(selected);
+  }
+
+  function number(value: unknown): string {
+    return typeof value === "number" ? String(Math.round(value * 10) / 10) : "—";
+  }
+
+  function held(value: any): string {
+    if (!value) return t("factIdle");
+    const name = String(value.name ?? "—").replace(/^minecraft:/, "");
+    return value.count > 1 ? `${name} ×${value.count}` : name;
+  }
+
+  function doing(value: any): string {
+    const jobs = Object.entries(value?.running ?? {}).filter(([, job]) => job).map(([channel]) => opLabel(channel));
+    return jobs.length ? jobs.join(", ") : t("factIdle");
   }
 </script>
 
-<div class="layout">
-  <aside>
-    <section class="card">
-      <h2>{t("targets")}</h2>
+<div class="split" class:showing={selected !== null}>
+  <div class="list-pane">
+    <div class="list-tools">
+      <input type="search" bind:value={search} placeholder={t("search")} aria-label={t("search")} />
+      <div class="row">
+        <select bind:value={filter} aria-label={t("filterLabel")}>
+          <option value="all">{t("filterAll", { count: bots.length })}</option>
+          <option value="online">{t("filterOnline", { count: online })}</option>
+          <option value="offline">{t("filterOffline", { count: bots.length - online })}</option>
+        </select>
+        <select bind:value={sort} aria-label={t("sortLabel")}>
+          <option value="state">{t("sortState")}</option>
+          <option value="name">{t("sortName")}</option>
+        </select>
+      </div>
+    </div>
+    <div class="list-scroll">
       {#if status?.bots === null}
-        <p class="quiet">{t("botsUnknown")}</p>
-      {:else if targets.length === 0}
-        <p class="quiet">{t("noBots")}</p>
+        <p class="empty">{t("botsUnknown")}</p>
+      {:else if bots.length === 0}
+        <p class="empty">{t("noBots")}</p>
+      {:else if shown.length === 0}
+        <p class="empty">{t("noMatches")}</p>
       {:else}
-        <ul class="pick">
-          {#each targets as item}
-            <li>
-              <button class:current={target === item.value} onclick={() => pick(item.value)}>
-                <span>{item.label}</span>
-                {#if item.state}<span class="tag" class:good={item.state === "online"}>{item.state}</span>{/if}
-              </button>
-            </li>
-          {/each}
-        </ul>
+        {#each shown as bot (bot.name)}
+          <a class="item" class:current={selected === bot.name} href={href("bots", bot.name)}
+             aria-current={selected === bot.name ? "true" : undefined}
+             onclick={(event) => { event.preventDefault(); navigate("bots", bot.name); }}>
+            <span class="name">{bot.name}</span>
+            <span class="tag" class:online={bot.state === "online"}>{stateLabel(bot.state)}</span>
+          </a>
+        {/each}
       {/if}
-      <form class="row spawn" onsubmit={(event) => { event.preventDefault(); void spawnBot(); }}>
+    </div>
+    <div class="list-foot">
+      {#if spawnError}<p class="error" role="alert">{spawnError}</p>{/if}
+      <form onsubmit={(event) => { event.preventDefault(); void spawnBot(); }}>
         <input bind:value={newBot} aria-label={t("newBotName")} placeholder={t("newBotName")} spellcheck="false" maxlength="16" />
-        <button disabled={busy || !newBot.trim()}>{t("spawn")}</button>
+        <button disabled={spawning || !newBot.trim()}>{t("spawn")}</button>
       </form>
-    </section>
-  </aside>
+    </div>
+  </div>
 
-  <div class="main">
-    {#if !target}
-      <section class="card"><p class="quiet">{t("targetPick")}</p></section>
+  <div class="detail">
+    <button class="back" onclick={() => navigate("bots")}>← {t("back")}</button>
+    {#if !selected}
+      <p class="empty">{t("botPick")}</p>
     {:else}
       <section class="card">
-        <div class="heading">
-          <h2>{target}</h2>
-          <button class="danger" disabled={busy} onclick={() => send("stop", target, {})}>{t("stopAll")}</button>
+        <div class="spread">
+          <h2>{selected}</h2>
+          {#if current}<span class="tag" class:online={isOnline}>{stateLabel(current.state)}</span>{/if}
         </div>
-        {#each info as line}<p class="quiet info">{line}</p>{/each}
+        <div class="row gap-top">
+          {#if isOnline}
+            <button onclick={() => controls?.send("despawn")}>{t("stopBot")}</button>
+            <button class="danger" onclick={() => controls?.send("stop")}>{t("stopAll")}</button>
+          {:else}
+            <button class="primary" onclick={() => controls?.send("resume")}>{t("startBot")}</button>
+          {/if}
+        </div>
       </section>
       <section class="card">
-        <div class="chips" role="group" aria-label={t("catGroup")}>
-          {#each CATEGORIES as item}
-            <button class:current={category === item.key} aria-pressed={category === item.key}
-                    onclick={() => pickCategory(item.key)}>{t(item.key)}</button>
-          {/each}
-        </div>
-        <div class="chips ops" role="group" aria-label={t("opGroup")}>
-          {#each CATEGORIES.find((item) => item.key === category)!.operations as op}
-            <button class:current={operation === op} aria-pressed={operation === op} onclick={() => choose(op)}>{op}</button>
-          {/each}
-        </div>
-        <form onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-          {#if shapes.length > 1}
-            <label class="field">{t("opForm")}
-              <select bind:value={variant} onchange={() => { fields = {}; }}>
-                {#each shapes as item, index}<option value={index}>{variantLabel(item)}</option>{/each}
-              </select>
-            </label>
-          {/if}
-          {#if shape}
-            {#each shape.positional as [name, spec]}
-              <label class="field">{name}
-                {#if spec.choices}
-                  <select bind:value={fields[name]} required>
-                    <option value={undefined}>—</option>
-                    {#each spec.choices as choice}<option value={choice}>{choice}</option>{/each}
-                  </select>
-                {:else}
-                  <input type={inputType(spec)} step="any" bind:value={fields[name]} required spellcheck="false" />
-                {/if}
-              </label>
-            {/each}
-            {#each Object.entries(shape.options).filter(([, spec]) => spec.type !== "area") as [name, spec]}
-              <label class="field">{name} <span class="quiet">{t("optional")}</span>
-                {#if spec.type === "boolean"}
-                  <input type="checkbox" bind:checked={fields[name]} />
-                {:else if spec.choices}
-                  <select bind:value={fields[name]}>
-                    <option value={undefined}>—</option>
-                    {#each spec.choices as choice}<option value={choice}>{choice}</option>{/each}
-                  </select>
-                {:else}
-                  <input type={inputType(spec)} step="any" bind:value={fields[name]} spellcheck="false" />
-                {/if}
-              </label>
-            {/each}
-          {/if}
-          <button class="primary" disabled={busy}>{t("opRun", { op: operation })}</button>
-        </form>
+        {#if !isOnline}
+          <p class="quiet">{t("botOffline")}</p>
+        {:else if detailProblem}
+          <p class="quiet">{detailProblem}</p>
+        {:else if !detail}
+          <p class="quiet">{t("loading")}</p>
+        {:else}
+          <dl class="facts">
+            <div><dt>{t("factPosition")}</dt><dd>{#if detail.position}{number(detail.position.x)}, {number(detail.position.y)}, {number(detail.position.z)}{:else}—{/if}</dd></div>
+            <div><dt>{t("factDimension")}</dt><dd>{detail.dimension ?? "—"}</dd></div>
+            <div><dt>{t("factHealth")}</dt><dd>{number(detail.health)}{detail.maxHealth ? ` / ${number(detail.maxHealth)}` : ""}</dd></div>
+            <div><dt>{t("factHunger")}</dt><dd>{number(detail.hunger)}</dd></div>
+            <div><dt>{t("factHeld")}</dt><dd>{held(detail.held)}</dd></div>
+            <div><dt>{t("factSlot")}</dt><dd>{detail.selectedSlot ?? "—"}</dd></div>
+            <div><dt>{t("factLook")}</dt><dd>{#if detail.look}{number(detail.look.yaw)} / {number(detail.look.pitch)}{:else}—{/if}</dd></div>
+            <div><dt>{t("factDoing")}</dt><dd>{doing(detail)}</dd></div>
+            {#if detail.mining?.active}
+              <div><dt>{t("factMining")}</dt><dd>{t("factMiningState", { state: detail.mining.state ?? "", count: detail.mining.blocksBroken ?? 0 })}</dd></div>
+            {/if}
+          </dl>
+        {/if}
       </section>
-    {/if}
-    {#if results.length}
-      <section class="card">
-        <h2>{t("results")}</h2>
-        <ul class="results">
-          {#each results as item}<li class:failed={item.failed}>{item.text}</li>{/each}
-        </ul>
-      </section>
+      {#key selected}
+        <Controls bind:this={controls} {connection} target={selected} onchanged={after} />
+      {/key}
     {/if}
   </div>
 </div>
-
-<style>
-  .layout { display: grid; gap: 1rem; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); align-items: start; }
-  @media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
-  .main { min-width: 0; }
-  .heading { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
-  .heading h2 { margin: 0; overflow-wrap: anywhere; }
-  .info { margin: .4rem 0 0; overflow-wrap: anywhere; }
-  .pick li { padding: 0; }
-  .pick button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: .5rem; border: 0; background: none; padding: .4rem .5rem; border-radius: .35rem; text-align: left; min-height: 2.75rem; }
-  .pick button.current { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-  .row { display: flex; gap: .5rem; }
-  .spawn { margin-top: .75rem; }
-  .spawn input { min-width: 0; flex: 1; }
-  .chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .6rem; }
-  .chips button { min-height: 2.5rem; padding: .3rem .8rem; }
-  .chips button.current { border-color: var(--accent); color: var(--accent); font-weight: 600; }
-  .chips.ops { padding-bottom: .6rem; border-bottom: 1px solid var(--line); }
-  .field { margin: 0 0 .6rem; }
-  .field input:not([type="checkbox"]), .field select { display: block; width: 100%; box-sizing: border-box; }
-  select { font: inherit; min-height: 2.75rem; padding: .4rem .6rem; border-radius: .45rem; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
-  .results li { display: block; overflow-wrap: anywhere; }
-  .results li.failed { color: var(--bad); }
-</style>

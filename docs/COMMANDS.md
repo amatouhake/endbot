@@ -274,6 +274,7 @@ authentication can do this, and only for themselves.
 /botweb link     a code for the Endbot web: 6 symbols, 5 minutes, one use
 /botweb status   whether this player has a web account, with its passkey and session counts (the default)
 /botweb unlink   delete this player's web account, passkeys and sessions
+/botweb help     this list
 ```
 
 A new code replaces an earlier one. Unlinking leaves the controller grant as it is. See [the web design](WEB.md).

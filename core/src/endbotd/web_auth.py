@@ -301,8 +301,11 @@ class WebAuth:
         })
         return token
 
-    def session(self, token: str | None) -> dict | None:
-        """The live session for this token, or None; an expired or orphaned one is deleted."""
+    def session(self, token: str | None, *, active: bool = True) -> dict | None:
+        """The live session for this token, or None; an expired or orphaned one is deleted.
+
+        ``active`` is off for checks nobody asked for, such as an open page's updates: a page left open is idle (S3).
+        """
         if not isinstance(token, str) or not token:
             return None
         session = self.store.find_session(_token_hash(token))
@@ -315,13 +318,13 @@ class WebAuth:
                 or session["created"] < account.get("sessionsFrom", 0)):
             self.end_session(session)
             return None
-        if now - session["lastSeen"] >= LAST_SEEN_SECONDS:
+        if active and now - session["lastSeen"] >= LAST_SEEN_SECONDS:
             self.store.update_session(session["hash"], lastSeen=now)
         return session
 
-    def principal(self, token: str | None, language: str = "en") -> Principal | None:
+    def principal(self, token: str | None, language: str = "en", *, active: bool = True) -> Principal | None:
         """The ``web`` principal for a request, checked again on every request (P5); None when refused."""
-        session = self.session(token)
+        session = self.session(token, active=active)
         if session is None:
             return None
         account = self.store.account(session["account"])

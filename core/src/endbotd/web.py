@@ -129,6 +129,8 @@ class WebService:
         """``/botweb`` from an allowed player; ``record`` is their presence record, not the plugin's word."""
         action = argv[0].lower() if argv else "status"
         xuid = record.get("xuid") or ""
+        if action == "help" and len(argv) == 1:
+            return [tr(language, "Web help: link (a code for the web page) | status | unlink (delete your web account) | help")]
         if len(argv) > 1 or action not in {"link", "unlink", "status"} or not _is_xuid(xuid):
             return [tr(language, "Use /botweb link, /botweb unlink or /botweb status")]
         if self.store is None:

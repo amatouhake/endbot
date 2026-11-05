@@ -169,6 +169,7 @@ The acknowledgement names the check's boundary; it does not certify world histor
 - [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)
 - [Compatibility and release gates](docs/COMPATIBILITY.md)
 - [Commands and operation](docs/COMMANDS.md)
+- [Deploying the web](docs/WEB_DEPLOY.md)
 - [Shared Groups](docs/GROUPS.md)
 - [Writing Bot scripts: a tutorial](docs/SCRIPTING_TUTORIAL.md)
 - [Luau scripting reference](docs/SCRIPTING.md)

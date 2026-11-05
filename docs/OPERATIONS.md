@@ -108,8 +108,8 @@ items only and takes effect on the next start. Someone else's private Bot or Gro
 resolves as not found), and `forget`, `rename` and `visibility` on someone else's Bot stay with its owner and the
 console even when it is shared (see [PERMISSIONS.md](PERMISSIONS.md)).
 
-`[web] enabled` is a boolean and defaults to false. The web itself is not finished yet ([WEB.md](WEB.md)); for now the
-setting keeps endbotd running when BDS exits (see the supervision policy in section 5a) and, with `[web] origin` set
+`[web] enabled` is a boolean and defaults to false; start with the [deployment guide](WEB_DEPLOY.md). The web has not
+been validated on Cloudflare yet ([WEB.md](WEB.md#steps)). The setting keeps endbotd running when BDS exits (see the supervision policy in section 5a) and, with `[web] origin` set
 (`https://host`, normally written by `endbot web deploy`), lets `/botweb link` issue codes and opens the outbound link
 when `state/secrets/web-link.key` exists. `[web] display-name` (empty by default) is shown on the sign-in page and is
 the one thing of yours Cloudflare keeps.
@@ -216,6 +216,8 @@ ends that player's web sessions at once and keeps the account and passkeys for a
 site, for a suspected key exposure ([P12](WEB.md#p12-trusted-external-site-optional-off-by-default)); `endbot doctor` checks that site's configuration.
 
 ### Deploying the web
+
+The [deployment guide](WEB_DEPLOY.md) is the walkthrough; this is the contract.
 
 `endbot web deploy --account-id <id>` uploads the prebuilt Worker to your own Cloudflare account through its API; no Node
 or Wrangler is needed. It creates the link key once, in `state/secrets/web-link.key`, and installs only its public half.

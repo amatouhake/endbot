@@ -96,9 +96,10 @@ export function loadOrCreatePersistentArtifact (filename, create, loadAndValidat
       // rather than replacing a concurrently published destination.
       fs.linkSync(temporary, filename)
     } catch (error) {
-      // Another process may remove this candidate after publishing its winner.
-      // In either case, a valid final artifact is the only acceptable outcome.
-      if (!['EEXIST', 'ENOENT'].includes(error.code)) throw error
+      // Another process may remove this candidate after publishing its winner,
+      // which Windows reports as EPERM while the deletion is pending. In every
+      // case, a valid final artifact is the only acceptable outcome.
+      if (!['EEXIST', 'ENOENT', 'EPERM'].includes(error.code)) throw error
       const winner = loadExistingArtifact(filename, description, loadAndValidate)
       if (!winner.exists) throw error
       cleanupTemporaryArtifacts(filename)
@@ -115,7 +116,12 @@ export function loadOrCreatePersistentArtifact (filename, create, loadAndValidat
       created: true
     }
   } finally {
-    fs.rmSync(temporary, { force: true })
+    try {
+      fs.rmSync(temporary, { force: true })
+    } catch {
+      // Another process may be deleting it too, which Windows refuses with EPERM. A leftover candidate
+      // is cleaned up by the next load, and must not turn a published artifact into a failure.
+    }
   }
 }
 

@@ -241,7 +241,7 @@
           [
             "target",
             {
-              "type": "string"
+              "type": "player"
             }
           ]
         ],
@@ -281,7 +281,7 @@
             "clause": "in"
           },
           "facing": {
-            "type": "string",
+            "type": "player",
             "clause": "facing"
           },
           "facingX": {

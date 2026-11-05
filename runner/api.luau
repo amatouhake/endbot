@@ -179,7 +179,7 @@ area = table.freeze({
 local function valid(value, spec)
     local kind, t = spec.type, type(value)
     local number = t == "number" and value == value and math.abs(value) < math.huge
-    local ok = (kind == "string" and t == "string") or (kind == "number" and number)
+    local ok = ((kind == "string" or kind == "player") and t == "string") or (kind == "number" and number)
         or (kind == "integer" and number and value % 1 == 0) or (kind == "boolean" and t == "boolean")
         or (kind == "coordinate" and (number or t == "string"))
         or (kind == "stringOrInteger" and (t == "string" or (number and value % 1 == 0)))

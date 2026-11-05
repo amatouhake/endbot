@@ -11,6 +11,7 @@ No script-supplied token can become another command or an untyped suffix.
 import json
 import math
 import re
+import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,6 +27,8 @@ ALIASES = {"teleport": "tp"}
 ROOT_OPERATIONS = {"list", "ping", "help"}
 # Options that only mean something together; a reading never holds part of one.
 GROUPS = (("yaw", "pitch"), ("facingX", "facingY", "facingZ"))
+# Words separated by single spaces, with nothing the command parser would read as quoting or as a relative coordinate.
+PLAYER_NAME = re.compile(r"""[^\s"'\\~]+(?: [^\s"'\\~]+)*""")
 # A Bot's name as the runtime allows it, or a Group, whose name may not start with a digit.
 TARGET = re.compile(r"[A-Za-z0-9_]{1,16}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
 
@@ -48,11 +51,15 @@ def scalar(value, spec):
         "boolean": type(value) is bool,
         "coordinate": number or (isinstance(value, str) and bool(re.fullmatch(r"~(?:-?\d+(?:\.\d+)?)?", value))),
         "stringOrInteger": isinstance(value, str) or (number and int(value) == value),
+        "player": isinstance(value, str) and PLAYER_NAME.fullmatch(value) is not None,
         "integerOrDefault": value == "default" or (number and int(value) == value),
         "area": False,  # never one token: operation_argv writes its clauses through area_argument
     }.get(kind, False)
     if not valid or ("choices" in spec and value not in spec["choices"]):
         raise ValueError("Invalid typed operation argument")
+    if kind == "player":
+        # A GamerTag may hold spaces: quoted as the in-game forms do it, and the parser reads one token back.
+        return shlex.quote(value) if " " in value else value
     if isinstance(value, str) and (not value or any(c.isspace() or c in "\"'\\" for c in value)):
         raise ValueError("Operation arguments must be single tokens")
     if type(value) is bool:
@@ -112,7 +119,12 @@ class Operation:
 def _value(token: str, spec):
     """The typed value of one canonical argv token; ValueError when it is not one."""
     kind = spec["type"]
-    if kind == "boolean" and token in {"on", "off"}:
+    if kind == "player":
+        parts = shlex.split(token)
+        if len(parts) != 1:
+            raise ValueError("Expected one player name")
+        value = parts[0]
+    elif kind == "boolean" and token in {"on", "off"}:
         value = token == "on"
     elif (kind == "string" or (kind == "coordinate" and token.startswith("~"))
           or (kind in {"stringOrInteger", "integerOrDefault"} and not re.fullmatch(r"-?\d+", token))):

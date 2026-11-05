@@ -27,6 +27,7 @@ SAMPLES = {
     "coordinate": (5, -1.5, "~", "~-1"),
     "boolean": (True, False),
     "stringOrInteger": (3, "dirt"),
+    "player": ("Alice", "Major Nelson"),
     "integerOrDefault": (8, "default"),
     "area": ("within 6", "within ~ ~-1 ~ 3 4 5 except 1 2 3 except 2 of ~ ~ ~"),
 }
@@ -63,6 +64,29 @@ def generated():
                         except ValueError:
                             continue
                         yield operation
+
+
+class PlayerNameTests(unittest.TestCase):
+    def test_a_gamertag_with_a_space_is_one_argument(self):
+        argv = operations.operation_argv("A", "tp", {"target": "Major Nelson"})
+        self.assertEqual(argv, ["A", "tp", "'Major Nelson'"])
+        self.assertEqual(parse_command(argv).parameters, {"target": "Major Nelson"})
+        self.assertEqual(operations.parse_operation(argv).params, {"target": "Major Nelson"})
+
+    def test_nothing_else_gets_past_as_one_name(self):
+        for name in ("~", "~~~", "~1", "A~", "", " ", " A", "A ", "A  B", "A\tB", "A\nB", "A'B", 'A"B', "A\\B",
+                     "A' 1 2 3 '"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                operations.operation_argv("A", "tp", {"target": name})
+
+    def test_facing_a_player_takes_the_same_names(self):
+        argv = operations.operation_argv("A", "tp", {"x": 1, "y": 2, "z": 3, "facing": "Major Nelson"})
+        self.assertEqual(argv[-2:], ["facing", "'Major Nelson'"])
+        self.assertEqual(parse_command(argv).parameters["facingTarget"], "Major Nelson")
+
+    def test_other_arguments_still_refuse_spaces(self):
+        with self.assertRaises(ValueError):
+            operations.operation_argv("A", "rename", {"name": "Major Nelson"})
 
 
 class BotNameTests(unittest.TestCase):

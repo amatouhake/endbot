@@ -353,6 +353,7 @@ test("a Bot's state is laid out, and operations ask only what the command needs"
   await panel.getByLabel(/^target/).fill("stone");
   await expect(panel.getByLabel(/^area/)).toBeVisible();
   await expect(panel.getByRole("button", { name: "Continuously" })).toHaveCount(0);
+  await expect(panel.getByLabel(/^ticks/)).toHaveCount(0);
   await panel.getByLabel(/^target/).fill("@nearest");
   await expect(panel.getByLabel(/^area/)).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Continuously" })).toBeVisible();
@@ -380,6 +381,15 @@ test("a Bot's state is laid out, and operations ask only what the command needs"
   await panel.getByRole("button", { name: "To my position" }).click();
   await tab(page, "History");
   await expect(page.getByText("tp me").locator("visible=true").first()).toBeVisible();
+  await tab(page, "Bots");
+
+  // A GamerTag may hold a space.
+  await pace();
+  await panel.getByRole("button", { name: "target", exact: true }).click();
+  await panel.getByLabel(/^target/).fill("Major Nelson");
+  await panel.getByRole("button", { name: "Run tp" }).click();
+  await tab(page, "History");
+  await expect(page.getByText("tp 'Major Nelson'").locator("visible=true").first()).toBeVisible();
   await tab(page, "Bots");
 
   // Forget is the one that asks first: declining sends nothing.

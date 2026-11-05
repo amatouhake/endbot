@@ -114,7 +114,7 @@ class WebApi:
         if name in WEB_REFUSED_OPERATIONS or name not in OPERATIONS or not isinstance(params, dict):
             return {"type": "result", "code": "invalid_argument"}
         # A reserved word as the target would be read as that root command instead ("help status").
-        if isinstance(target, str) and target in RESERVED_BOT_NAMES:
+        if isinstance(target, str) and target.casefold() in RESERVED_BOT_NAMES:
             return {"type": "result", "code": "invalid_argument"}
         try:
             argv = Operation(name, target if isinstance(target, str) else None, params).argv()
@@ -275,7 +275,7 @@ class WebApi:
     def _bot(self, principal: Principal, message: dict) -> dict:
         """One Bot's status as fields, for the page to lay out; it reads this itself, so history stays quiet."""
         name = message.get("name")
-        if not isinstance(name, str) or not BOT_NAME.fullmatch(name) or name in RESERVED_BOT_NAMES:
+        if not isinstance(name, str) or not BOT_NAME.fullmatch(name) or name.casefold() in RESERVED_BOT_NAMES:
             return {"type": "result", "code": "invalid_argument"}
         try:
             result = self._runner.call([name, "status"], principal, record=False)

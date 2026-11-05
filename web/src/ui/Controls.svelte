@@ -149,7 +149,9 @@
     }
     return [
       ...positional,
-      ...shownOptions(item).filter(([name]) => name !== "mode").map(([name, spec]) => ({ name, spec, required: false })),
+      // Repeating belongs to an entity: the grammar takes none of it with a block type.
+      ...(blockTarget(item) ? [] : shownOptions(item)).filter(([name]) => name !== "mode")
+        .map(([name, spec]): { name: string; spec: Spec; required: boolean } => ({ name, spec, required: false })),
       ...area,
     ];
   }
@@ -344,7 +346,8 @@
                 {:else}
                   <input type={inputType(spec)} step="any" bind:value={fields[name]} {required} spellcheck="false"
                          placeholder={name === "area" ? "within 6 except ~ ~-1 ~"
-                           : name === "target" && active === "interact" ? t("interactTargetHint") : undefined} />
+                           : name === "target" && active === "interact" ? t("interactTargetHint")
+                           : name === "target" && active === "attack" ? t("attackTargetHint") : undefined} />
                 {/if}
               </label>
             {/each}

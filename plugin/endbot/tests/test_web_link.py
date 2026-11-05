@@ -363,6 +363,16 @@ class KeepAliveTests(LinkCase):
         self.assertEqual(self.relay.next("msg")["conn"], "c1")
 
 
+    def test_a_busy_link_still_says_it_is_alive(self):
+        self.keep_alive = 0.1
+        self.up()
+        # Frames arriving faster than the keep-alive period: receiving must not put off the ping.
+        for index in range(40):
+            self.relay.http(f"b{index}", "/auth/info")
+            time.sleep(0.02)
+        self.assertGreaterEqual(self.relay.pings, 3)
+
+
 class ReconnectTests(LinkCase):
     def test_an_answer_for_an_old_link_is_not_sent_on_the_new_one(self):
         self.up()

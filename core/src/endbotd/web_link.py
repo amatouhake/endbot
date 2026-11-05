@@ -211,11 +211,15 @@ class WebLink:
                 self.problem = None
                 self._log("info", f"Web link up to {self.origin}")
                 self.publish_cache()
+                # On a clock: a page in use keeps frames coming in, and that must not silence the link.
+                next_ping = time.monotonic() + self._keep_alive
                 while not self._stop.is_set():
-                    try:
-                        raw = socket.recv(timeout=self._keep_alive)
-                    except TimeoutError:
+                    if time.monotonic() >= next_ping:
                         self._send_text(KEEP_ALIVE)
+                        next_ping = time.monotonic() + self._keep_alive
+                    try:
+                        raw = socket.recv(timeout=max(0.0, next_ping - time.monotonic()))
+                    except TimeoutError:
                         continue
                     if raw == KEEP_ALIVE_ANSWER:
                         continue

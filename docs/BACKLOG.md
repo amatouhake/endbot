@@ -1210,6 +1210,9 @@ Their next look (2026-11-05 JST) led to [S10, S11 and S12](WEB.md#settled-points
 Groups share one list, New is in one place, and operations are by category. Whether the move pad earns its place is left open,
 because this is the first time Bots could be moved this casually; it stays one click away and Recent shows whether it is used.
 
+Found meanwhile and still open: a Bot name starting with a digit is valid in game (`[A-Za-z0-9_]{1,16}` in the runtime), but an
+operation's target must not start with one, so such a Bot is listed on the web and cannot be operated there.
+
 Small, clear fixes:
 
 - `/botweb help` is missing, unlike `/bot`, `/botgroup` and `/botscript`.

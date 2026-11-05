@@ -201,6 +201,9 @@
             <button class="danger" onclick={() => controls?.send("stop")}>{t("stopAll")}</button>
           {:else}
             <button class="primary" onclick={() => controls?.send("resume")}>{t("startBot")}</button>
+            {#if current && current.state !== "offline"}
+              <button onclick={() => controls?.send("despawn")}>{t("stopBot")}</button>
+            {/if}
           {/if}
         </div>
       </section>
@@ -229,8 +232,8 @@
       </section>
       {/if}
       {#key selected}
-        <Controls bind:this={controls} {connection} target={selected} group={isGroup} online={isGroup || isOnline}
-                  gamertag={status?.gamertag ?? ""} onchanged={after} />
+        <Controls bind:this={controls} {connection} target={selected} group={isGroup}
+                  botState={isGroup ? "online" : current?.state ?? "offline"} onchanged={after} />
       {/key}
     {/if}
   </div>

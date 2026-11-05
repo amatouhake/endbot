@@ -6,12 +6,11 @@
   import { confirmDialog } from "./dialogs.svelte";
   import { fieldLabel, opLabel, t } from "./i18n";
 
-  let { connection, target, group = false, online = true, gamertag = "", onchanged }: {
+  let { connection, target, group = false, botState = "online", onchanged }: {
     connection: Connection;
     target: string;
     group?: boolean;
-    online?: boolean;
-    gamertag?: string;
+    botState?: string;
     onchanged: (op: string, fields: Record<string, unknown>) => void;
   } = $props();
 
@@ -40,8 +39,11 @@
   const CONFIRM = new Set(["forget"]);
   // The command refuses these for a Group: they need one Bot.
   const ONE_BOT_ONLY = new Set(["rename", "forget"]);
-  // What the in-game menu offers an offline Bot.
+  // What the in-game menu offers a Bot that is not online; one on its way in or out can also be taken out of that.
   const WHEN_OFFLINE = new Set(["spawn", "resume", "radius", "rename", "visibility", "forget"]);
+  const WHEN_BETWEEN = new Set([...WHEN_OFFLINE, "reconnect", "despawn", "status"]);
+  // The grammar takes these two together.
+  const PAIRED: Record<string, string> = { yaw: "pitch", pitch: "yaw" };
   // Left to the typed command, as in the in-game forms; an area has no input here yet.
   const COMMAND_ONLY = new Set(["facing", "facingX", "facingY", "facingZ"]);
   const CHOICES: Record<string, string[]> = { dimension: ["overworld", "nether", "end"] };
@@ -94,11 +96,11 @@
   const shape = $derived(variant !== null ? shapes[variant] : shapes[0] && hasFields(shapes[0]) ? shapes[0] : undefined);
   const toggle = $derived(shapes.length === 1 && shapes[0].positional.length === 1 && shapes[0].positional[0][1].type === "boolean");
   const inputs = $derived(toggle || !shape ? [] : inputsOf(shape));
-  const recentShown = $derived(recent.filter((op) => (op === "move" ? online : available(op))));
+  const recentShown = $derived(recent.filter((op) => (op === "move" ? botState === "online" : available(op))));
 
   function available(op: string): boolean {
     if (group) return !ONE_BOT_ONLY.has(op);
-    return online || WHEN_OFFLINE.has(op);
+    return botState === "online" || (botState === "offline" ? WHEN_OFFLINE : WHEN_BETWEEN).has(op);
   }
 
   function sectionOf(op: string): SectionKey | undefined {
@@ -264,6 +266,7 @@
         <input type="number" min="1" bind:value={ticks} />
         <small class="quiet">{t("ticksHint")}</small>
       </label>
+      <button disabled={busy} onclick={() => run("move", { direction: "stop" })}>{t("moveStop")}</button>
     </div>
   {/if}
 
@@ -277,9 +280,9 @@
 
   {#if active}
     <div class="op-panel">
-      {#if active === "tp" && gamertag}
+      {#if active === "tp"}
         <div class="choices">
-          <button disabled={busy} onclick={() => run("tp", { target: gamertag })}>{t("tpToMe")}</button>
+          <button disabled={busy} onclick={() => run("tp", { target: "me" })}>{t("tpToMe")}</button>
         </div>
       {/if}
       {#if toggle}
@@ -304,8 +307,9 @@
         {/if}
         {#if inputs.length}
           <form onsubmit={(event) => { event.preventDefault(); void run(active, parameters()); }}>
-            {#each inputs as { name, spec, required } (name)}
+            {#each inputs as { name, spec, required: always } (name)}
               {@const choices = spec.choices ?? CHOICES[name]}
+              {@const required = always || (name in PAIRED && !!fields[PAIRED[name]])}
               <label class="field">{fieldLabel(name)}
                 {#if !required}<span class="quiet">{t("optional")}</span>{/if}
                 {#if spec.type === "boolean"}

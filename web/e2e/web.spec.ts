@@ -1,7 +1,7 @@
 // Browser → real Worker and Durable Object in workerd → real endbotd, with a virtual authenticator (docs/WEB.md step 5).
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -266,7 +266,26 @@ test("the address keeps what was chosen, through a reload and the browser's Back
   await expect(page.getByRole("navigation").getByRole("link", { name: "History" })).toHaveAttribute("aria-current", "page");
 });
 
-test("a Bot's state is laid out, and every operation is two clicks away", async ({ page, context }) => {
+test("every operation in the registry is reachable from its category", async ({ page, context }) => {
+  await start(page, context);
+  await page.getByRole("link", { name: /Miner_01/ }).click();
+  const categories = page.getByRole("group", { name: "Categories" }).getByRole("button");
+  const reached = new Set<string>(["stop", "move"]);
+  for (let index = 0; index < await categories.count(); index += 1) {
+    await categories.nth(index).click();
+    await expect(categories.nth(index)).toHaveAttribute("aria-pressed", "true");
+    for (const name of await page.locator(".choices.operations button").allTextContents()) reached.add(name.trim());
+    if (await page.locator(".choices.operations").count() === 0) reached.add((await categories.nth(index).textContent())!.trim().toLowerCase());
+  }
+  // Look and Teleport are categories of one operation, whose panel opens by itself.
+  reached.add("tp");
+  reached.delete("teleport");
+  const registry = JSON.parse(readFileSync(resolve("../core/src/endbot_core/operations.json"), "utf-8"));
+  const left = Object.keys(registry.operations).filter((name) => !reached.has(name));
+  expect(left.sort()).toEqual(["help", "list", "menu", "owner", "ping"]);
+});
+
+test("a Bot's state is laid out, and operations ask only what the command needs", async ({ page, context }) => {
   await start(page, context);
   await page.getByRole("link", { name: /Miner_01/ }).click();
   await expect(page.getByText("12.5, 64, -3")).toBeVisible();
@@ -274,12 +293,18 @@ test("a Bot's state is laid out, and every operation is two clicks away", async 
   const category = (name: string) => page.getByRole("group", { name: "Categories" }).getByRole("button", { name, exact: true });
   const operations = page.locator(".choices.operations");
   const panel = page.locator(".op-panel");
+  // This test is far quicker than a person: each operation also reads the status twice, and endbotd allows a session
+  // 20 requests a second (docs/WEB.md P7), so it pauses between groups of operations.
+  const pace = () => page.waitForTimeout(1100);
+  await page.getByRole("button", { name: "Stop moving" }).click();
+  await expect.poll(async () => JSON.stringify(await ask("calls"))).toContain("stop");
   await page.getByRole("button", { name: "forward" }).click();
   await expect(page.getByRole("heading", { name: "Results" })).toBeVisible();
   await expect.poll(async () => JSON.stringify(await ask("calls"))).toContain("forward");
   await shot(page, "11-bot");
 
   // Modes are buttons: one with nothing to ask runs at once, as on the in-game menu.
+  await pace();
   await category("Act").click();
   await operations.getByRole("button", { name: "attack" }).click();
   await panel.getByRole("button", { name: "Stop", exact: true }).click();
@@ -299,6 +324,7 @@ test("a Bot's state is laid out, and every operation is two clicks away", async 
   await tab(page, "Bots");
 
   // What sent nothing but a form with a free-text box before.
+  await pace();
   await category("Move").click();
   await operations.getByRole("button", { name: "sprint" }).click();
   await panel.getByRole("button", { name: "On", exact: true }).click();
@@ -312,9 +338,14 @@ test("a Bot's state is laid out, and every operation is two clicks away", async 
   await expect(panel.getByLabel(/^dimension/).locator("option")).toHaveText(["—", "overworld", "nether", "end"]);
   // The in-game forms leave facing to the typed command.
   await expect(panel.getByLabel(/^facing/)).toHaveCount(0);
+  // The grammar takes yaw and pitch together, so filling one asks for the other.
+  await expect(panel.getByLabel(/^pitch/)).not.toHaveAttribute("required");
+  await panel.getByLabel(/^yaw/).fill("90");
+  await expect(panel.getByLabel(/^pitch/)).toHaveAttribute("required");
+  await pace();
   await panel.getByRole("button", { name: "To my position" }).click();
   await tab(page, "History");
-  await expect(page.getByText("tp Alice").locator("visible=true").first()).toBeVisible();
+  await expect(page.getByText("tp me").locator("visible=true").first()).toBeVisible();
   await tab(page, "Bots");
 
   // Forget is the one that asks first: declining sends nothing.
@@ -348,6 +379,14 @@ test("what was used comes back under Recent, the category is remembered, and an 
   await expect(page.getByRole("group", { name: "Categories" }).getByRole("button")).toHaveText(["Bot"]);
   await expect(page.locator(".choices.operations").getByRole("button", { name: "reconnect" })).toHaveCount(0);
   await shot(page, "20-offline");
+  // On its way in, it can still be taken out, as in the in-game menu.
+  await ask("state Farmer connecting");
+  const categories = page.getByRole("group", { name: "Categories" });
+  await expect(categories.getByRole("button", { name: "Info", exact: true })).toBeVisible({ timeout: 10_000 });
+  await categories.getByRole("button", { name: "Bot", exact: true }).click();
+  await expect(page.locator(".choices.operations").getByRole("button", { name: "despawn" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+  await ask("state Farmer offline");
 });
 
 test("the list can be searched and filtered, and follows what happens elsewhere by itself", async ({ page, context }) => {
@@ -506,6 +545,17 @@ test("a script is written, checked, saved, compared and run on one screen", asyn
   await expect(page.getByRole("navigation")).toBeInViewport();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("status")).toContainText("Saved");
+
+  // An action that reloads the script asks first, because what is typed would go with it.
+  await editor.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.insertText("-- kept\n");
+  await page.getByText("More ▾").click();
+  await page.getByRole("button", { name: /^(Share|Make\ private)$/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("unsaved changes")).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("unsaved changes")).toHaveCount(0);
 
   // What is typed survives looking elsewhere.
   await editor.click();

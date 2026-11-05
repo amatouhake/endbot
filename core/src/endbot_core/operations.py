@@ -27,8 +27,8 @@ ALIASES = {"teleport": "tp"}
 ROOT_OPERATIONS = {"list", "ping", "help"}
 # Options that only mean something together; a reading never holds part of one.
 GROUPS = (("yaw", "pitch"), ("facingX", "facingY", "facingZ"))
-# Words separated by single spaces, with nothing a shell or the command parser would read as quoting.
-PLAYER_NAME = re.compile(r"""[^\s"'\\]+(?: [^\s"'\\]+)*""")
+# Words separated by single spaces, with nothing the command parser would read as quoting or as a relative coordinate.
+PLAYER_NAME = re.compile(r"""[^\s"'\\~]+(?: [^\s"'\\~]+)*""")
 # A Bot's name as the runtime allows it, or a Group, whose name may not start with a digit.
 TARGET = re.compile(r"[A-Za-z0-9_]{1,16}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
 

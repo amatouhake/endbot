@@ -353,6 +353,7 @@ test("a Bot's state is laid out, and operations ask only what the command needs"
   await panel.getByLabel(/^target/).fill("stone");
   await expect(panel.getByLabel(/^area/)).toBeVisible();
   await expect(panel.getByRole("button", { name: "Continuously" })).toHaveCount(0);
+  await expect(panel.getByLabel(/^ticks/)).toHaveCount(0);
   await panel.getByLabel(/^target/).fill("@nearest");
   await expect(panel.getByLabel(/^area/)).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Continuously" })).toBeVisible();

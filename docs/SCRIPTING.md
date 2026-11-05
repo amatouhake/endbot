@@ -573,7 +573,7 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 | `:rename()` | name: string | none |
 | `:owner()` | gamertag: string | none |
 | `:tp()` | target: player | none |
-| `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: string, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
+| `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: player, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
 | `:move()` | direction: forward / backward / left / right / stop | ticks: integer |
 | `:look()` | yaw: number, pitch: number | none |
 | `:look()` | x: coordinate, y: coordinate, z: coordinate | none |

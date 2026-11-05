@@ -74,9 +74,15 @@ class PlayerNameTests(unittest.TestCase):
         self.assertEqual(operations.parse_operation(argv).params, {"target": "Major Nelson"})
 
     def test_nothing_else_gets_past_as_one_name(self):
-        for name in ("", " ", " A", "A ", "A  B", "A\tB", "A\nB", "A'B", 'A"B', "A\\B", "A' 1 2 3 '"):
+        for name in ("~", "~~~", "~1", "A~", "", " ", " A", "A ", "A  B", "A\tB", "A\nB", "A'B", 'A"B', "A\\B",
+                     "A' 1 2 3 '"):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 operations.operation_argv("A", "tp", {"target": name})
+
+    def test_facing_a_player_takes_the_same_names(self):
+        argv = operations.operation_argv("A", "tp", {"x": 1, "y": 2, "z": 3, "facing": "Major Nelson"})
+        self.assertEqual(argv[-2:], ["facing", "'Major Nelson'"])
+        self.assertEqual(parse_command(argv).parameters["facingTarget"], "Major Nelson")
 
     def test_other_arguments_still_refuse_spaces(self):
         with self.assertRaises(ValueError):

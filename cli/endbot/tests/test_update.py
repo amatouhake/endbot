@@ -20,7 +20,13 @@ from fakeinstance import build_bds_dir, simulate_bds_download
 
 from endbot_cli.instance import InstancePaths
 from endbot_cli.lock import load_lock
-from endbot_cli.updatecmd import run_doctor_subprocess, run_rollback, run_update
+from endbot_cli.updatecmd import (
+    read_web_token,
+    run_doctor_subprocess,
+    run_rollback,
+    run_update,
+    run_web_deploy_subprocess,
+)
 
 
 def make_bundle_zip(path: Path, version: str, *, launcher: str | None = "endbot.cmd", with_python: bool = True) -> Path:
@@ -331,7 +337,176 @@ class RefusalTests(UpdateTestCase):
         self.assertIn("endbot setup", err)
 
 
+class WebRedeployTests(UpdateTestCase):
+    """docs/WEB.md P9: the Worker follows the version now current, and never holds the update back."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.deploys: list[tuple[Path, Path, str]] = []
+        self.deploy_code = 0
+        self.token: str | None = "cf-token"
+        self.current_at_deploy: list[str] = []
+
+    def web_on(self) -> None:
+        with self.paths.endbot_toml.open("a", encoding="utf-8") as handle:
+            handle.write("[web]\nenabled = true\norigin = 'https://endbot.example'\naccount-id = 'a1'\n"
+                         "worker-name = 'endbot'\n")
+
+    def web_token(self) -> str | None:
+        return self.token
+
+    def web_deploy(self, python: Path, root: Path, token: str) -> int:
+        self.deploys.append((python, root, token))
+        self.current_at_deploy.append(self.paths.app_current.read_text(encoding="utf-8").strip())
+        return self.deploy_code
+
+    def archive_with_web(self) -> Path:
+        with zipfile.ZipFile(self.archive, "a") as bundle:
+            bundle.writestr("app/0.2.0/web/manifest.json", "{}")
+        return self.archive
+
+    def update(self, **kwargs) -> tuple[int, str, str]:
+        return self.run_update(self.archive_with_web(), web_token=self.web_token, web_deploy=self.web_deploy, **kwargs)
+
+    def rollback(self, *, with_web: bool) -> tuple[int, str]:
+        (self.root / "app" / "0.2.0").mkdir()
+        os.utime(self.root / "app" / "0.1.0", (2_000_000_000, 2_000_000_000))
+        os.utime(self.root / "app" / "0.2.0", (2_000_000_001, 2_000_000_001))
+        self.paths.app_current.write_text("0.2.0\n", encoding="utf-8")
+        if with_web:
+            (self.root / "app" / "0.1.0" / "web").mkdir()
+            (self.root / "app" / "0.1.0" / "web" / "manifest.json").write_text("{}", encoding="utf-8")
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = run_rollback(self.paths, True, web_token=self.web_token, web_deploy=self.web_deploy)
+        return code, stdout.getvalue()
+
+    def test_without_the_web_nothing_asks_for_a_token(self) -> None:
+        def refuse() -> None:
+            raise AssertionError("asked for a token")
+
+        code, _out, err = self.run_update(self.archive_with_web(), web_token=refuse, web_deploy=self.web_deploy)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.deploys, [])
+
+    def test_web_enabled_but_never_deployed_asks_nothing(self) -> None:
+        with self.paths.endbot_toml.open("a", encoding="utf-8") as handle:
+            handle.write("[web]\nenabled = true\n")
+        self.assertEqual(self.update()[0], 0)
+        self.assertEqual(self.deploys, [])
+
+    def test_an_update_redeploys_with_the_new_version_after_the_switch(self) -> None:
+        self.web_on()
+        code, out, err = self.update()
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.deploys, [(self.root / "app" / "0.2.0" / "python" / "python.exe", self.root, "cf-token")])
+        self.assertEqual(self.current_at_deploy, ["0.2.0"])
+        self.assertNotIn("cf-token", out + err)
+
+    def test_a_refused_update_redeploys_nothing(self) -> None:
+        self.web_on()
+        doctor = FakeDoctor((1, ["FAIL config: broken"]))
+        self.assertEqual(self.update(doctor=doctor)[0], 1)
+        self.assertEqual(self.deploys, [])
+
+    def test_no_token_completes_the_update_and_says_the_web_may_be_offline(self) -> None:
+        self.web_on()
+        self.token = None
+        code, out, _err = self.update()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.paths.app_current.read_text(encoding="utf-8"), "0.2.0\n")
+        self.assertEqual(self.deploys, [])
+        self.assertIn("offline until you run `endbot web deploy`", out)
+
+    def test_a_failed_deploy_completes_the_update_and_says_so(self) -> None:
+        self.web_on()
+        self.deploy_code = 1
+        code, out, _err = self.update()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.paths.app_current.read_text(encoding="utf-8"), "0.2.0\n")
+        self.assertIn("the deploy failed", out)
+
+    def test_a_deploy_that_cannot_start_completes_the_update(self) -> None:
+        self.web_on()
+
+        def broken(_python: Path, _root: Path, _token: str) -> int:
+            raise FileNotFoundError("python")
+
+        code, out, _err = self.run_update(self.archive_with_web(), web_token=self.web_token, web_deploy=broken)
+        self.assertEqual(code, 0)
+        self.assertIn("could not run the deploy", out)
+
+    def test_a_new_version_without_the_web_says_so_and_asks_nothing(self) -> None:
+        self.web_on()
+        code, out, _err = self.run_update(web_token=self.web_token, web_deploy=self.web_deploy)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.deploys, [])
+        self.assertIn("carries no web", out)
+
+    def test_a_rollback_redeploys_with_the_older_version(self) -> None:
+        self.web_on()
+        code, _out = self.rollback(with_web=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.deploys, [(self.root / "app" / "0.1.0" / "python" / "python.exe", self.root, "cf-token")])
+        self.assertEqual(self.current_at_deploy, ["0.1.0"])
+
+    def test_a_rollback_before_the_web_says_so(self) -> None:
+        self.web_on()
+        code, out = self.rollback(with_web=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.deploys, [])
+        self.assertIn("carries no web", out)
+
+    def test_a_rollback_with_no_token_still_switches(self) -> None:
+        self.web_on()
+        self.token = None
+        code, out = self.rollback(with_web=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.paths.app_current.read_text(encoding="utf-8"), "0.1.0\n")
+        self.assertIn("offline until", out)
+
+
+class WebTokenTests(unittest.TestCase):
+    def test_the_environment_needs_no_prompt(self) -> None:
+        def refuse(_prompt: str) -> str:
+            raise AssertionError("prompted")
+
+        self.assertEqual(read_web_token({"CLOUDFLARE_API_TOKEN": " t "}, refuse, False), "t")
+
+    def test_no_terminal_means_no_token_and_no_prompt(self) -> None:
+        def refuse(_prompt: str) -> str:
+            raise AssertionError("prompted")
+
+        self.assertIsNone(read_web_token({}, refuse, False))
+
+    def test_enter_skips(self) -> None:
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertIsNone(read_web_token({}, lambda _prompt: "  ", True))
+            self.assertEqual(read_web_token({}, lambda _prompt: "t\n", True), "t")
+
+    def test_an_interrupted_prompt_skips(self) -> None:
+        for error in (EOFError, KeyboardInterrupt):
+            def interrupted(_prompt: str, error: type[BaseException] = error) -> str:
+                raise error
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertIsNone(read_web_token({}, interrupted, True))
+
+
 class SubprocessTests(unittest.TestCase):
+    def test_the_web_deploy_gets_its_token_from_the_environment_never_argv(self) -> None:
+        seen = {}
+
+        def runner(command, **kwargs):
+            seen.update(command=command, **kwargs)
+            return SimpleNamespace(returncode=3)
+
+        code = run_web_deploy_subprocess(Path("py"), Path("root"), "secret-token", runner=runner)
+        self.assertEqual(code, 3)
+        self.assertEqual(seen["command"], ["py", "-m", "endbot_cli", "--instance", "root", "web", "deploy"])
+        self.assertEqual(seen["env"]["CLOUDFLARE_API_TOKEN"], "secret-token")
+        self.assertNotIn("secret-token", " ".join(seen["command"]))
+
     def test_doctor_subprocess_uses_the_exact_documented_command(self) -> None:
         class Runner:
             def __init__(self) -> None:

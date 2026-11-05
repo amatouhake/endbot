@@ -221,8 +221,8 @@ site, for a suspected key exposure ([P12](WEB.md#p12-trusted-external-site-optio
 or Wrangler is needed. It creates the link key once, in `state/secrets/web-link.key`, and installs only its public half.
 It writes `[web]` into `endbot.toml` and waits for the link. The API token comes from a hidden prompt or
 `CLOUDFLARE_API_TOKEN`, is never an argument and is never stored. `--domain <host> --zone-id <id>` uses a custom domain.
-Moving to another origin makes every passkey unusable, so it needs `--confirm-domain-change` and then deletes all
-passkeys and sessions. `endbot web rotate-key` replaces the link key. `endbot doctor --live` reports the link. A web
+Running it again with no `--domain` keeps a custom domain as it is. Moving to another origin makes every passkey
+unusable, so it needs `--confirm-domain-change` and then deletes all passkeys and sessions. `endbot web rotate-key` replaces the link key. `endbot doctor --live` reports the link. A web
 problem is a FAIL in `endbot doctor` but only a warning for `endbot start`: the broken part stays off, and the server runs.
 
 ### Runtime grants and revocations
@@ -440,6 +440,13 @@ update. If the new version locks a different BDS version (its doctor reports a `
 backup and preview before letting Endstone update BDS; any other doctor FAIL keeps the old version current and is
 reported. `endbot update --rollback` switches `app/current` back to the most recent previous version directory present
 in `app/`. Updates refuse to run while a supervisor is running.
+
+With the web deployed, both directions then redeploy the Worker of the version now current, so a Worker and the endbotd
+it talks to stay matched ([WEB.md](WEB.md#p9-the-cloudflare-api-token-is-entered-by-the-operator-and-never-stored)). The
+token comes from `CLOUDFLARE_API_TOKEN` or a hidden prompt; Enter skips it, and with no terminal and no variable it is
+skipped without asking. The app has already switched by then, so a skipped or failed deploy is a warning and the command
+still succeeds: the old Worker keeps serving, and if its web protocol differs from the new endbotd's, the web is offline
+until `endbot web deploy` runs. Rolling back to a version with no web leaves the Worker in place with nothing connected.
 
 Store layout ([ENDBOTD.md](ENDBOTD.md) P7). From the first endbotd version, Groups and stored scripts live in
 `state/groups.json` and `state/scripts.json`, and script files in `<instance>/scripts/`; `state/migrations.json`

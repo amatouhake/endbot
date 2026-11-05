@@ -31,7 +31,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
-from endbot_cli.config import load_config
+from endbot_cli.config import EndbotConfig, load_config
 from endbot_cli.configgen import generate_endbotd_config
 from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import InstancePaths
@@ -51,7 +51,10 @@ class DeployError(ValueError):
 
 
 def read_token(environ: Mapping[str, str], prompt: Callable[[str], str] = getpass.getpass) -> str:
-    token = environ.get(TOKEN_VARIABLE) or prompt("Cloudflare API token (input hidden): ")
+    try:
+        token = environ.get(TOKEN_VARIABLE) or prompt("Cloudflare API token (input hidden): ")
+    except EOFError:  # no terminal to ask on
+        token = ""
     token = token.strip()
     if not token:
         raise DeployError(f"no Cloudflare API token: enter it at the prompt or set {TOKEN_VARIABLE}")
@@ -329,6 +332,17 @@ def _route(api: CloudflareApi, worker: str, domain: str | None, zone_id: str | N
         api.set_subdomain(worker, enabled=True)
 
 
+def _keeps_custom_domain(config: EndbotConfig, account: str, worker: str, domain: str | None, confirmed: bool) -> bool:
+    """A plain redeploy, which `endbot update` also runs, leaves an attached custom domain as it is.
+
+    The zone id is not kept, and nothing about the route changes. Asking for workers.dev again takes
+    --confirm-domain-change, as any new origin does (P4).
+    """
+    web = config.web
+    return bool(web.origin) and not web.origin.endswith(".workers.dev") and not domain and not confirmed \
+        and account == web.account_id and worker == web.worker_name
+
+
 def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_name: str | None, domain: str | None,
            zone_id: str | None, confirm_domain_change: bool, bundle: Path | None, report: Callable[[str], None],
            request: Callable, opener: Callable = urllib.request.urlopen, clock: Callable[[], float] = time.monotonic,
@@ -347,7 +361,11 @@ def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_n
     manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
     files = read_assets(source)
     api = CloudflareApi(token, account, opener)
-    origin = f"https://{domain}" if domain else f"https://{worker}.{api.workers_subdomain()}.workers.dev"
+    keep_route = _keeps_custom_domain(config, account, worker, domain, confirm_domain_change)
+    if keep_route:
+        origin = config.web.origin
+    else:
+        origin = f"https://{domain}" if domain else f"https://{worker}.{api.workers_subdomain()}.workers.dev"
     previous = config.web.origin
     changed = bool(previous) and previous != origin
     if changed and not confirm_domain_change:
@@ -366,7 +384,10 @@ def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_n
         report(f"Uploading the Worker {worker} ({len(files)} assets) for {origin}")
         assets_token = api.upload_assets(worker, files)
         applied = api.migration_tag(worker)
-        if applied is not None:
+        if keep_route and applied is None:
+            raise DeployError(f"the Worker {worker} no longer exists on Cloudflare, so {origin} has to be attached "
+                              f"again: repeat with --domain {origin.removeprefix('https://')} --zone-id <id>")
+        if applied is not None and not keep_route:
             _route(api, worker, domain, zone_id)
         api.put_script(worker, worker_metadata(manifest, origin, secret, assets_token, applied),
                        (source / "worker" / "index.js").read_bytes())

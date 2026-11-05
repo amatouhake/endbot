@@ -15,6 +15,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fakeinstance import build_bds_dir, simulate_bds_download
 
@@ -478,6 +479,13 @@ class WebTokenTests(unittest.TestCase):
             raise AssertionError("prompted")
 
         self.assertIsNone(read_web_token({}, refuse, False))
+
+    def test_a_service_with_no_stdin_means_no_token(self) -> None:
+        closed = io.StringIO()
+        closed.close()
+        for stdin in (None, closed):
+            with self.subTest(stdin=stdin), patch("sys.stdin", stdin):
+                self.assertIsNone(read_web_token({}))
 
     def test_enter_skips(self) -> None:
         with contextlib.redirect_stdout(io.StringIO()):

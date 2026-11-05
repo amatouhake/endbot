@@ -433,6 +433,12 @@ def check_trusted_site(config: EndbotConfig, paths: InstancePaths) -> CheckResul
             parts = None
         if parts is None or parts.scheme != "https" or not parts.hostname:
             return CheckResult(FAIL, name, f"{key} must be an https:// URL")
+    issuer = site["issuer"]
+    if issuer != f"https://{urlsplit(issuer).netloc}" or issuer != issuer.lower() or "@" in issuer \
+            or issuer.endswith(":443"):
+        # What a browser sends as Origin; anything else would refuse every sign-in.
+        return CheckResult(FAIL, name, "issuer must be exactly the site's origin: lowercase, with no path or "
+                                       f"trailing slash, found {issuer!r}")
     entries = site.get("keys")
     if not isinstance(entries, list) or not 1 <= len(entries) <= 2:
         return CheckResult(FAIL, name, "keys must list 1 or 2 keys")

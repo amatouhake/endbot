@@ -272,6 +272,28 @@ class BotWebCommandTests(ServiceHarness):
         self.assertIsNotNone(web.store.account_for_xuid(OWNER))
         self.assertIsNone(web.codes.redeem(code))
 
+    def add_session(self, account):
+        self.service.web.store.add_session({"id": "s1", "account": account["id"], "hash": "abc", "via": "passkey",
+                                            "created": 1.0, "lastSeen": 1.0, "assertedAt": 1.0, "grantRevision": 0})
+
+    def test_a_start_ends_the_sessions_of_a_grant_removed_while_stopped(self):
+        web = self.service.web
+        account = web.store.ensure_account(OWNER, ALICE, "Alice")
+        self.add_session(account)
+        self.service.close()
+        self.start_service()
+        web = self.service.web
+        self.assertEqual(web.store.sessions(account["id"]), [])
+        self.assertIsNotNone(web.store.account_for_xuid(OWNER))
+
+    def test_a_start_keeps_the_sessions_of_a_valid_grant(self):
+        self.joined_alice()
+        account = self.service.web.store.ensure_account(OWNER, ALICE, "Alice")
+        self.add_session(account)
+        self.service.close()
+        self.start_service()
+        self.assertEqual(len(self.service.web.store.sessions(account["id"])), 1)
+
     def test_revoking_the_grant_voids_a_code_when_there_is_no_account_yet(self):
         link, alice = self.joined_alice()
         self.botweb(link, "link")

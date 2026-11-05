@@ -226,6 +226,8 @@ class TrustedSiteTests(DoctorTestCase):
     def test_invalid_settings_fail(self) -> None:
         self.write_key()
         for changes in ({"issuer": "'http://a.example'"}, {"issuer": "'https://['"}, {"start-url": "'https://'"},
+                        {"issuer": "'https://a.example/'"}, {"issuer": "'https://a.example/x'"},
+                        {"issuer": "'https://A.example'"}, {"issuer": "'https://a.example:443'"},
                         {"start-url": "'http://a.example/s'"}, {"mode": "'both'"},
                         {"name": "''"}, {"keys": "[]"},
                         {"keys": "[{kid='a', public-key-file='site/a.pem'}, {kid='a', public-key-file='site/a.pem'}]"},

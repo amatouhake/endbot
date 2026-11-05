@@ -24,6 +24,9 @@ endbotd opens `wss://<origin>/link`. Every frame is one JSON text message of at 
 | `close` | both | `conn`, `reason` |
 | `cache` | endbotd → DO | `displayName`, `bds` (`up` or `down`) |
 
+- **Keep-alive:** every 30 s, however busy the link is, endbotd sends the plain text `link-ping`. The Workers runtime answers
+  `link-pong` itself, without waking the Durable Object or storing anything, and records the time. With no answer time and no
+  opening within 90 s, `/api/display` reports `bds: down`, because a power cut sends no close.
 - `sig` is the base64url Ed25519 signature of `"endbot-link-v1\n" + origin + "\n" + nonce`. The Durable Object verifies it
   with the key in `ENDBOTD_LINK_KEY` and closes a link that does not prove itself within 5 s. It holds at most one
   unproven link. A newly proven link replaces the old one.

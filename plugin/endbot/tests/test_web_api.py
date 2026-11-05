@@ -219,7 +219,8 @@ class WebApiTests(unittest.TestCase):
         to = Principal("player", xuid=XUID, player_id=PLAYER)
         self.api.record_result(to, ["run", "deploy", "key=secret"], "botscript",
                                SimpleNamespace(messages=("started",), code="ok"))
-        self.api.record_result(to, ["show", "deploy"], "botscript", SimpleNamespace(messages=("secret source",), code="ok"))
+        self.api.record_result(to, ["show", "deploy"], "botscript",
+                               SimpleNamespace(messages=("secret source",), code="ok"))
         entries = [entry for entry in self.ask(type="query", what="log")["data"] if entry["kind"] == "command"]
         self.assertEqual([entry["command"] for entry in entries], ["/botscript run deploy"])
         self.assertNotIn("secret", str(entries))

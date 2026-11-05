@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 
 import { botChunkRadius, LOOPBACK_HOSTS, nethernetSignalling, serverTransport } from './config.js'
-import { attachDirectSignalling, DIRECT_SERVER_NETWORK_ID, directSignallingBase } from './direct-signalling.js'
+import { attachDirectSignalling, DIRECT_SERVER_NETWORK_ID, directSignallingBase, BdsNotReadyError } from './direct-signalling.js'
 import { discoverServer } from './discovery.js'
 import { InventoryObservation, INVENTORY_EVENT, sameItem } from './inventory-sync.js'
 import { dropPlan } from './inventory-drops.js'
@@ -182,16 +182,25 @@ export class BedrockSession extends EventEmitter {
     return await new Promise((resolve, reject) => {
       let settled = false
       // Upstream's connect timeout covers only the transport handshake. Once it
-      // is up, a BDS that never finishes the login (for example one still
-      // starting when direct signalling reached it) would leave this attempt
+      // is up, a BDS that never finishes the login would leave this attempt
       // waiting forever and the Bot stuck in reconnecting.
       const spawnTimeoutMs = this.options.spawnTimeoutMs ?? 60_000
       const spawnTimer = setTimeout(() => {
         this.#fail(new Error(`BDS did not finish the login within ${spawnTimeoutMs} ms`))
       }, spawnTimeoutMs)
+      // A BDS still starting opens its port several seconds before it answers anyone, and then never answers this
+      // attempt (BOT-033). Its first reply is quick when it is up, so the long wait above is only for a real login.
+      const firstReplyMs = this.options.firstReplyTimeoutMs ?? 8_000
+      const firstReplyTimer = direct
+        ? setTimeout(() => {
+          this.#fail(new BdsNotReadyError(`BDS did not answer the login within ${firstReplyMs} ms; it may still be starting`))
+        }, firstReplyMs)
+        : undefined
+      this.client.once('network_settings', () => clearTimeout(firstReplyTimer))
       const closed = reason => fail(this.terminalError ?? new Error(`Connection closed: ${reason || 'unknown reason'}`))
       const fail = error => {
         clearTimeout(spawnTimer)
+        clearTimeout(firstReplyTimer)
         if (!settled) {
           settled = true
           reject(error)
@@ -200,6 +209,7 @@ export class BedrockSession extends EventEmitter {
       this.client.once('close', closed)
       this.client.once('spawn', () => {
         clearTimeout(spawnTimer)
+        clearTimeout(firstReplyTimer)
         if (settled) return
         settled = true
         this.client.off('close', closed)

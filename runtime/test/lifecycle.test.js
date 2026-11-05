@@ -60,6 +60,43 @@ function fixture (options = {}) {
 const turn = () => new Promise(resolve => setImmediate(resolve))
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
+test('a Bot waits for a starting BDS without using up its attempts, and only for so long (BOT-033)', async () => {
+  const notReady = Object.assign(new Error('still starting'), { code: 'bds_not_ready' })
+  const failing = (limit) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'endbot-lifecycle-'))
+    test.after(() => fs.rmSync(directory, { recursive: true }))
+    const tries = []
+    const lifecycle = new BotLifecycle({
+      store: new ProfileStore(directory),
+      sessionFactory: profile => {
+        const session = new FakeSession(profile)
+        session.connect = async () => {
+          tries.push(Date.now())
+          if (tries.length <= 6) throw notReady
+        }
+        return session
+      },
+      reconnect: { initialDelayMs: 1, maximumDelayMs: 1, maximumAttempts: 2, sessionReplacementDelayMs: 0, notReadyDelayMs: 2, notReadyLimitMs: limit }
+    })
+    return { lifecycle, tries }
+  }
+
+  // Six tries against BDS with room for two attempts: it still gets there, and starts with its attempts unspent.
+  const patient = failing(60_000)
+  await patient.lifecycle.spawn('Alice')
+  for (let i = 0; i < 200 && patient.lifecycle.status('Alice').connectionState !== 'online'; i += 1) await wait(2)
+  assert.equal(patient.lifecycle.status('Alice').connectionState, 'online')
+  assert.equal(patient.tries.length, 7)
+  assert.equal(patient.lifecycle.status('Alice').reconnectAttempt, 0)
+
+  // Past the limit the ordinary attempts decide.
+  const limited = failing(0)
+  await limited.lifecycle.spawn('Alice')
+  for (let i = 0; i < 200 && limited.lifecycle.status('Alice').connectionState !== 'failed'; i += 1) await wait(2)
+  assert.equal(limited.lifecycle.status('Alice').connectionState, 'failed')
+  assert.equal(limited.tries.length, 3)
+})
+
 test('swap and hold require online sessions and validated control parameters', async () => {
   const { lifecycle, sessions } = fixture()
   await lifecycle.spawn('Alice')

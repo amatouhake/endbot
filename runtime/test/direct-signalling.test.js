@@ -18,6 +18,15 @@ function fakeFetch (status, body, calls = []) {
   }
 }
 
+test('a port that does not answer means BDS is not ready, and any other failure does not', async () => {
+  const refused = async () => { throw new TypeError('fetch failed') }
+  await assert.rejects(postOffer({ base: 'http://127.0.0.1:1', networkId: 9n, offer: 'a=candidate:1', fetch: refused }),
+    error => error.code === 'bds_not_ready' && /fetch failed/.test(error.message))
+  const missing = async () => new Response('nope', { status: 500 })
+  await assert.rejects(postOffer({ base: 'http://127.0.0.1:1', networkId: 9n, offer: 'a=candidate:1', fetch: missing }),
+    error => error.code === undefined && /returned 500/.test(error.message))
+})
+
 test('the signalling base names the configured loopback port', () => {
   assert.equal(directSignallingBase('127.0.0.1', 19132), 'http://127.0.0.1:19132')
   assert.equal(directSignallingBase('::1', 19134), 'http://[::1]:19134')

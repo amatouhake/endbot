@@ -25,6 +25,12 @@ export function directSignallingBase (host, port) {
   return `http://${host.includes(':') ? `[${host}]` : host}:${port}`
 }
 
+// BDS is not taking players yet: its port is closed, or it accepted the transport and does not answer the login.
+// A Bot waits for this briefly and cheaply; it is not a failure of the Bot (runtime/src/lifecycle.js).
+export class BdsNotReadyError extends Error {
+  code = 'bds_not_ready'
+}
+
 export async function postOffer ({ base, networkId, offer, timeoutMs = DEFAULT_SIGNALLING_TIMEOUT_MS, fetch = globalThis.fetch }) {
   if (!/^a=candidate:/m.test(offer)) throw new Error('NetherNet offer has no ICE candidates for direct signalling')
   const url = `${base}/v1/join/${networkId}`
@@ -37,7 +43,7 @@ export async function postOffer ({ base, networkId, offer, timeoutMs = DEFAULT_S
       signal: AbortSignal.timeout(timeoutMs)
     })
   } catch (error) {
-    throw new Error(`NetherNet direct signalling to ${url} failed: ${error.message}`, { cause: error })
+    throw new BdsNotReadyError(`NetherNet direct signalling to ${url} failed: ${error.message}`, { cause: error })
   }
   const answer = await response.text()
   if (!response.ok) {

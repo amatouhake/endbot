@@ -1,6 +1,7 @@
 // Browser → real Worker and Durable Object in workerd → real endbotd, with a virtual authenticator (docs/WEB.md step 5).
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,6 +13,39 @@ const PORT = 8787;
 const ORIGIN = `http://localhost:${PORT}`;
 const SHOTS = process.env.E2E_SCREENSHOTS;
 const PYTHON = process.env.E2E_PYTHON ?? "python";
+// The operator's own site: another site to the browser, as 127.0.0.1 and localhost are, so the real cross-site rules apply.
+const SITE_PORT = PORT + 1;
+const SITE = `http://127.0.0.1:${SITE_PORT}`;
+const siteKey = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
+const site: { key: KeyObject; sub: string; lastAssertion: string; server?: Server } = {
+  key: siteKey.privateKey, sub: "2535412345678901", lastAssertion: "",
+};
+
+function siteAssertion(nonce: string): string {
+  const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
+  const signed = `${part({ alg: "ES384", kid: "k1", typ: "endbot-site+jwt" })}.${part({
+    iss: SITE, aud: ORIGIN, sub: site.sub, gtg: "Alice", nonce, iat: now, exp: now + 60,
+  })}`;
+  const signature = createSign("SHA384").update(signed).sign({ key: site.key, dsaEncoding: "ieee-p1363" });
+  return `${signed}.${signature.toString("base64url")}`;
+}
+
+/** What docs/WEB_DEPLOY.md asks of a site: check `return`, then serve a form that submits itself. */
+function startSite(): void {
+  site.server = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", SITE);
+    if (url.pathname !== "/endbot/start" || url.searchParams.get("return") !== `${ORIGIN}/auth/site/return`) {
+      response.writeHead(400).end();
+      return;
+    }
+    site.lastAssertion = siteAssertion(url.searchParams.get("nonce") ?? "");
+    response.writeHead(200, { "Content-Type": "text/html" }).end(`<!doctype html>
+      <form method="post" action="${url.searchParams.get("return")}">
+        <input type="hidden" name="assertion" value="${site.lastAssertion}"></form>
+      <script>document.forms[0].submit();</script>`);
+  }).listen(SITE_PORT, "127.0.0.1");
+}
 
 let worker: ChildProcessWithoutNullStreams;
 let endbotd: ChildProcessWithoutNullStreams;
@@ -51,7 +85,10 @@ test.beforeAll(async () => {
   { cwd: resolve("."), shell: true, env: { ...process.env, WRANGLER_SEND_METRICS: "false", CI: "true" } });
   worker.stderr.on("data", (data) => process.stderr.write(data));
   await waitFor(`${ORIGIN}/api/display`);
-  endbotd = spawn(PYTHON, ["e2e/server.py", ORIGIN, join(state, "web-link.key")], { cwd: resolve(".") });
+  startSite();
+  const sitePublicKey = join(state, "site.pem");
+  writeFileSync(sitePublicKey, siteKey.publicKey.export({ type: "spki", format: "pem" }));
+  endbotd = spawn(PYTHON, ["e2e/server.py", ORIGIN, join(state, "web-link.key"), SITE, sitePublicKey], { cwd: resolve(".") });
   endbotd.stderr.on("data", (data) => process.stderr.write(data));
   answers = createInterface({ input: endbotd.stdout })[Symbol.asyncIterator]();
   expect(JSON.parse((await answers.next()).value).ready).toBe(true);
@@ -61,6 +98,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(() => {
+  site.server?.close();
   endbotd?.stdin.end();
   endbotd?.kill();
   if (worker?.pid) {
@@ -670,6 +708,82 @@ test("a script is written, checked, saved, compared and run on one screen", asyn
   await page.getByRole("button", { name: "Remove" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page).toHaveURL(/\/scripts$/);
+});
+
+test.describe("the trusted site", () => {
+  test.beforeEach(() => {
+    site.key = siteKey.privateKey;
+    site.sub = "2535412345678901";
+  });
+
+  const button = (page: Page) => page.getByRole("link", { name: /Test site/ });
+
+  test("in sign-in mode it signs a player in through a real cross-site form, with no passkey", async ({ page, context }) => {
+    await ask("site sign-in");
+    await page.goto("/");
+    await button(page).click();
+    await expect(signedIn(page)).toContainText("Alice");
+    await expect(page).not.toHaveURL(/site_/);
+    const cookies = await context.cookies();
+    const session = cookies.find((cookie) => cookie.name === "__Host-endbot_session")!;
+    expect([session.httpOnly, session.secure, session.sameSite]).toEqual([true, true, "Strict"]);
+    await page.reload();
+    await expect(signedIn(page)).toContainText("Alice");
+    await devices(page);
+    await expect(page.getByText("through the site")).toBeVisible();
+    await shot(page, "21-site-sign-in");
+  });
+
+  test("in link mode it replaces the code, and the passkey it registers signs in afterwards", async ({ page, context }) => {
+    await ask("site link");
+    await withAuthenticator(context, page);
+    await page.goto("/");
+    await button(page).click();
+    await expect(signedIn(page)).toContainText("Alice");
+    await signedIn(page).click();
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("button", { name: "Sign in with a passkey" }).click();
+    await expect(signedIn(page)).toContainText("Alice");
+  });
+
+  test("an assertion works once, in the browser that started the flow", async ({ browser, page, context }) => {
+    await ask("site sign-in");
+    await page.goto("/");
+    await button(page).click();
+    await expect(signedIn(page)).toContainText("Alice");
+    const copied = site.lastAssertion;
+    const send = (request: typeof page.request) => request.post(`${ORIGIN}/auth/site/return`, {
+      headers: { Origin: SITE }, form: { assertion: copied }, maxRedirects: 0,
+    });
+    expect((await send(context.request)).headers().location).toBe("/?site_error=site_expired");
+    const other = await browser.newContext({ baseURL: ORIGIN });
+    expect((await send(other.request)).headers().location).toBe("/?site_error=site_expired");
+    await other.close();
+  });
+
+  test("it can never vouch for an XUID with no grant, and its key and Origin are checked", async ({ page, context }) => {
+    await ask("site sign-in");
+    site.sub = "2535412345670000";
+    await page.goto("/");
+    await button(page).click();
+    await expect(page.getByRole("alert")).toContainText("no Endbot access");
+    expect(await context.cookies()).not.toContainEqual(expect.objectContaining({ name: "__Host-endbot_session" }));
+
+    site.sub = "2535412345678901";
+    site.key = generateKeyPairSync("ec", { namedCurve: "secp384r1" }).privateKey;
+    await button(page).click();
+    await expect(page.getByRole("alert")).toContainText("sign-in was refused");
+    site.key = siteKey.privateKey;
+
+    // The right cookie and a good assertion, from a page that is not the site.
+    const started = await context.request.get(`${ORIGIN}/auth/site/start`, { maxRedirects: 0 });
+    const nonce = new URL(started.headers().location).searchParams.get("nonce")!;
+    const refused = await context.request.post(`${ORIGIN}/auth/site/return`, {
+      headers: { Origin: "https://elsewhere.example" }, form: { assertion: siteAssertion(nonce) }, maxRedirects: 0,
+    });
+    expect(refused.headers().location).toBe("/?site_error=site_refused");
+    expect(await context.cookies()).not.toContainEqual(expect.objectContaining({ name: "__Host-endbot_session" }));
+  });
 });
 
 test("a wrong code says so", async ({ page, context }) => {

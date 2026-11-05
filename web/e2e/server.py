@@ -3,7 +3,8 @@
 Reads commands on stdin and answers on stdout, one JSON line each:
 ``code`` gives a link code for the test player, ``reset`` deletes every passkey and session,
 ``revoke`` removes their grant, ``log`` records a run log line, ``online NAME`` brings a Bot online,
-``state NAME STATE`` puts it in any other state, ``remove NAME`` takes away one the page created.
+``state NAME STATE`` puts it in any other state, ``remove NAME`` takes away one the page created,
+``site MODE`` turns on the trusted site served by the test (``reset`` turns it off).
 Never used outside tests.
 """
 
@@ -17,11 +18,17 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "core" / "src"))
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
-from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat  # noqa: E402
+from cryptography.hazmat.primitives.serialization import (  # noqa: E402
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    load_pem_public_key,
+)
 from endbot_core.events import Event  # noqa: E402
 from endbot_core.principal import Principal  # noqa: E402
 from endbotd.config import EndbotdConfig  # noqa: E402
 from endbotd.service import EndbotService  # noqa: E402
+from endbotd.web_site import SiteConfig, TrustedSite  # noqa: E402
 from endbotd.web_store import LinkIdentity  # noqa: E402
 
 XUID = "2535412345678901"
@@ -92,6 +99,15 @@ def main() -> None:
             elif command.startswith("online "):
                 control.states[command.split()[1]] = "online"
                 print(json.dumps({"ok": True}), flush=True)
+            elif command.startswith("site "):
+                # Built directly because the configuration asks for https://, and this site is on loopback.
+                issuer = sys.argv[3]
+                config = SiteConfig("Test site", command.split()[1], issuer, f"{issuer}/endbot/start",
+                                    {"k1": load_pem_public_key(Path(sys.argv[4]).read_bytes())})
+                service.web.site = TrustedSite(config, service.web.auth, service.web.store, service.authority,
+                                               log=lambda level, message: print(
+                                                   f"[{level}] {message}", file=sys.stderr, flush=True))
+                print(json.dumps({"ok": True}), flush=True)
             elif command.startswith("remove "):
                 control.states.pop(command.split()[1])
                 print(json.dumps({"ok": True}), flush=True)
@@ -100,6 +116,7 @@ def main() -> None:
                 print(json.dumps({"ok": True}), flush=True)
             elif command == "reset":
                 service.web.domain_changed()
+                service.web.site = None
                 print(json.dumps({"ok": True}), flush=True)
             elif command == "revoke":
                 service._cli_controllers({"operation": "remove", "target": "Alice"})

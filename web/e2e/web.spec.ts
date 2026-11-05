@@ -236,8 +236,9 @@ test("the page has its icon, choosing a tab moves nothing, and the page itself n
   const icon = await page.request.get(await page.locator('link[rel="icon"]').evaluate((link: HTMLLinkElement) => link.href));
   expect(icon.headers()["content-type"]).toContain("image/png");
   await link(page);
+  // The chosen tab differs by colour and underline only: the weight of its letters stays, so nothing looks shifted.
   const positions = async () => page.getByRole("navigation").getByRole("link").evaluateAll(
-    (links) => links.map((link) => { const box = link.getBoundingClientRect(); return [box.left, box.width]; }));
+    (links) => links.map((link) => { const box = link.getBoundingClientRect(); return [box.left, box.width, getComputedStyle(link).fontWeight]; }));
   const first = await positions();
   for (const name of ["Scripts", "Groups", "History", "Bots"]) {
     await tab(page, name);

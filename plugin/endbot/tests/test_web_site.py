@@ -90,6 +90,23 @@ class SiteCase(unittest.TestCase):
         self.assertEqual(self.store.accounts(), [])
 
 
+class GuideTests(SiteCase):
+    def test_the_guides_reference_signer_is_accepted(self):
+        guide = Path(__file__).resolve().parents[3] / "docs" / "WEB_DEPLOY.md"
+        block = guide.read_text(encoding="utf-8").split("<!-- reference-signer:", 1)[1]
+        source = block.split("```python\n", 1)[1].split("```", 1)[0]
+        namespace = {}
+        exec(source, namespace)  # noqa: S102 - the repository's own documentation
+        pem = self.key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                     serialization.NoEncryption())
+        cookie, nonce = self.begin()
+        with patch("time.time", return_value=NOW):
+            assertion = namespace["sign_assertion"](pem, "k1", ISSUER, ORIGIN, XUID, "Alice", nonce)
+        reply = self.finish(assertion, cookie)
+        self.assertEqual((reply["status"], reply["location"]), (303, "/"), reply)
+        self.assertEqual(self.auth.principal(reply["session"]).xuid, XUID)
+
+
 class ClaimTests(SiteCase):
     def test_a_good_assertion_signs_in(self):
         cookie, nonce = self.begin()

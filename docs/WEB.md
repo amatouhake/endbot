@@ -1,8 +1,9 @@
 # Web design (BOT-021)
 
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
-the answers to the former open points (see [settled points](#settled-points)). Steps 1 to 8 are implemented: the supervisor policy, accounts, passkeys, the trusted site, the relay, deploy and its
-redeploy during an update (checked against a fake API only), the screens, script editing and Bot control. Nothing has run on
+the answers to the former open points (see [settled points](#settled-points)). Steps 1 to 9 are implemented: the supervisor policy, accounts, passkeys, the trusted site, the relay, deploy and its
+redeploy during an update (checked against a fake API only), the screens, script editing, Bot control and the
+[deployment guide](WEB_DEPLOY.md). Nothing has run on
 Cloudflare or with a real authenticator yet (step 10).
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
@@ -430,7 +431,9 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
 9. **Documentation.** `docs/WEB_DEPLOY.md` (account, token permissions, `workers.dev` or custom domain, the
    domain-change warning, revocation, what Cloudflare stores, troubleshooting); SECURITY.md gains the web boundary.
    `WEB_DEPLOY.md` also covers the trusted site: key generation, the start/return contract, a reference signer and
-   rotation. The deployment guide is delegable; the SECURITY.md section and the site contract are Claude.
+   rotation. The deployment guide is delegable; the SECURITY.md section and the site contract are Claude. Done. A test
+   runs the guide's reference signer against the real verifier. The guide says it has not been validated on Cloudflare;
+   step 10 removes that note and corrects anything the real API shows.
 10. **Validation**, inside the combined release pass. Live deploy to the operator's Cloudflare account, the operator
     entering the token. Check: link on a phone and a PC, a second passkey from a second code, cross-device QR sign-in, revoke during an open
     session and during a run, domain change forcing re-registration, mismatched protocol refused, rate limits, BDS

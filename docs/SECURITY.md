@@ -141,6 +141,73 @@ single-use `jti`, and is bound to the Bot's client key (`cpk`), whose private ke
 able to take over BDS's loopback port already runs with privileges that can read the runtime's secrets directly, so
 host account isolation (above) is the control that matters.
 
+## The web
+
+The web is optional and off until an operator runs `endbot web deploy`
+([deployment guide](WEB_DEPLOY.md), [design](WEB.md)). It has not yet been validated on Cloudflare or with a real
+authenticator.
+
+**The boundary.** The Worker and its Durable Object in the operator's Cloudflare account are an untrusted relay. endbotd
+on the server PC is the authority: it issues and verifies passkey ceremonies, issues sessions, and authorizes every relayed
+request at execution time through the same permission path as the game, with the current grant revision. The Worker verifies
+no passkey, holds no account and makes no authorization decision. The server PC opens no inbound port: endbotd opens one
+outbound WebSocket and proves itself with an Ed25519 link key. The private key stays in `state/secrets/web-link.key` (mode
+`0600` on POSIX; on Windows it inherits the instance directory's ACL, so restrict that directory; a symlink is refused), and
+only the public half is on Cloudflare. TLS to the operator's own address
+authenticates the Worker to endbotd. `endbot web rotate-key` replaces the key.
+
+**What a compromised Worker or Cloudflare account can do.** It can read what passes through while it is compromised,
+including script source, logs and session cookies of browsers that visit it, and it can misuse those browsers' sessions
+within those players' own roles. It can serve a page that asks a visiting player to approve a passkey prompt for the same
+address. It cannot make an authenticator sign for another address or account, sign in as a player who does not visit, link a
+new XUID, widen a role, or reach grants, role changes, owner reassignment or BDS start and stop, none of which exist on the web.
+Keep the Cloudflare account protected accordingly.
+
+**Who can have an account.** Only an XUID that holds a controller grant bound by an Xbox-authenticated join. Linking uses a
+code issued in game to that player: 6 symbols, 5 minutes, one use, and code entry closes for 10 minutes after 10 wrong codes
+server-wide. A new passkey always starts in the game or at the trusted site, never from a signed-in browser. The web principal
+is never the console, even for the operator's own XUID.
+
+**Passkeys and sessions.** endbotd checks the challenge (single use, bound to its ceremony, 2 minutes), the origin and RP ID
+against its own configuration rather than anything the Worker sends, user presence and verification, the signature and the
+sign counter. A session token is 256 random bits, of which endbotd stores only the SHA-256. The cookie is `__Host-` prefixed,
+`Secure`, `HttpOnly` and `SameSite=Strict`, and sessions last 7 days idle and 30 days at most. Removing a passkey needs a recent
+assertion. A change of address deletes all passkeys and sessions and keeps the accounts.
+
+**Revocation.** Removing a controller grant ends that player's sessions and closes their connections at once, and because every
+request rechecks the grant revision, a lost close message does not extend access. A GamerTag removed from `endbot.toml` takes
+effect at the next start, which ends its sessions. `/botweb unlink` and `endbot web revoke`
+delete the account, its passkeys and its sessions. A role change applies to the next request.
+
+**Requests from browsers.** The Worker refuses non-GET requests and WebSocket upgrades whose `Origin` is not exactly the
+configured address, and state-changing HTTP calls need `Content-Type: application/json`. The one exception is the trusted
+site's form POST to `/auth/site/return`, which comes from the site's origin: the Worker requires an `Origin` and the site cookie
+and relays it, and endbotd compares that `Origin` with the configured issuer. The pages carry a strict
+Content-Security-Policy with no third-party scripts, `frame-ancestors 'none'`, `Referrer-Policy: no-referrer` and HSTS. The rate
+limits on the Worker keep floods off the link; the limits that protect anything are in endbotd.
+
+**What leaves the PC.** Cloudflare stores the Worker, the static page, the public link key, the address and a display cache
+(the display name and whether BDS was last up). The Worker logs no bodies, and deploy turns off Workers logs, logpush and preview addresses. Script
+source and logs pass through Worker memory while relayed. The Cloudflare API token is entered at a hidden prompt or through
+`CLOUDFLARE_API_TOKEN`, never as an argument, is never written to disk, and is removed from API errors.
+
+### The trusted external site
+
+The trusted site is off by default ([guide](WEB_DEPLOY.md#the-optional-trusted-site), [design](WEB.md#p12-trusted-external-site-optional-off-by-default)).
+Enabling it is an explicit trust decision: **whoever controls the site or its private key can sign in as any XUID that holds a
+controller grant.** It can never create or widen a grant or a role, because the XUID must already hold a grant bound by an
+Xbox-authenticated join, and that is checked again on every request.
+
+Assertions are compact JWS, ES384 only, audience-bound to the web address, at most 120 s long, single use, and bound by an
+endbotd nonce to the browser that started the flow, so an assertion copied from the site's logs is useless elsewhere. The nonce
+is consumed on the first attempt, valid or not, and dies with an endbotd restart, so no replay cache has to survive one. The
+private key stays on the site. Keys rotate by listing two and removing the old one, and removing a key refuses its assertions at
+once. After a suspected exposure, `endbot web revoke --site-sessions` deletes every session and passkey that came through the
+site.
+
+Keeping someone out means revoking their controller grant, not only their web account: with the site enabled it can vouch
+for them again at the next sign-in, and `endbot web revoke` says so.
+
 ## Reporting
 
 Do not include keys, tokens, XUIDs, world data, or credentials in a public report. Open a minimal private report to the

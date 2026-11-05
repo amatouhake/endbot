@@ -57,7 +57,7 @@ LOG_BYTES = 512 * 1024
 # The starter's chat shows at most this many log lines per window per run (events.CHAT_LOG_CHARS cuts each).
 CHAT_LOG_LINES = 10
 CHAT_LOG_SECONDS = 5
-SCRIPT_TARGET = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
+SCRIPT_TARGET = re.compile(r"[A-Za-z0-9_]{1,16}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
 
 
 class Declaration(NamedTuple):

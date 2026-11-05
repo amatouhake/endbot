@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
+import { WEB_PROTOCOL } from "../src/generated/protocol-version";
 
 const PORT = 8787;
 const ORIGIN = `http://localhost:${PORT}`;
@@ -323,6 +324,18 @@ test("a Bot's state is laid out, and operations ask only what the command needs"
   await expect(page.getByText("attack interval 40 for 80").locator("visible=true").first()).toBeVisible();
   await tab(page, "Bots");
 
+  // With a target the modes are the same buttons, and the target stays typed when the mode changes.
+  await pace();
+  await panel.getByRole("button", { name: "target", exact: true }).click();
+  await panel.getByLabel(/^target/).fill("@nearest");
+  await panel.getByRole("button", { name: "At intervals" }).click();
+  await expect(panel.getByLabel(/^target/)).toHaveValue("@nearest");
+  await panel.getByLabel(/^interval/).fill("30");
+  await panel.getByRole("button", { name: "Run attack" }).click();
+  await tab(page, "History");
+  await expect(page.getByText("attack @nearest interval 30").locator("visible=true").first()).toBeVisible();
+  await tab(page, "Bots");
+
   // What sent nothing but a form with a free-text box before.
   await pace();
   await category("Move").click();
@@ -403,6 +416,40 @@ test("the list can be searched and filtered, and follows what happens elsewhere 
   // Nobody touches this page: the Bot simply comes online.
   await ask("online Farmer");
   await expect(list.getByRole("link")).toHaveText([/Farmer/, /Miner_01/], { timeout: 10_000 });
+});
+
+test("a Bot whose name starts with a digit can be operated, and a refusal is in words", async ({ page, context }) => {
+  await start(page, context);
+  await page.locator(".list-tools").getByRole("button", { name: "New", exact: true }).locator("visible=true").click();
+  await page.getByRole("dialog").getByLabel("New Bot name").fill("2b");
+  await page.getByRole("dialog").getByRole("button", { name: "Spawn" }).click();
+  await expect(page).toHaveURL(/\/bots\/2b$/);
+  await expect(page.getByRole("heading", { name: "2b" })).toBeVisible();
+  await expect.poll(async () => JSON.stringify(await ask("calls"))).toContain('"name":"2b"');
+  // An address can name what no command accepts, and the answer says so in words.
+  await page.goto("/bots/a-b");
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.locator(".results li").first()).toContainText("Invalid Bot or Group name");
+  // An answer with no words of its own: another connection of this session keeps using up its requests per second.
+  await page.evaluate((version) => new Promise<void>((resolve) => {
+    const socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws`);
+    let id = 1;
+    socket.onmessage = (message) => {
+      if (JSON.parse(message.data).code === "rate_limited") resolve();
+    };
+    socket.onopen = () => {
+      const timer = setInterval(() => socket.send(JSON.stringify({ v: version, id: id++, type: "query", what: "status" })), 5);
+      (window as any).stopBurst = () => { clearInterval(timer); socket.close(); };
+    };
+  }), WEB_PROTOCOL);
+  await expect(async () => {
+    await page.getByRole("button", { name: "Start" }).click();
+    await expect(page.locator(".results li").first()).toContainText("Too many attempts", { timeout: 500 });
+  }).toPass({ timeout: 15_000 });
+  await expect(page.locator(".results li").first()).not.toContainText("rate_limited");
+  await page.evaluate(() => (window as any).stopBurst());
+  await page.waitForTimeout(1100);
+  await ask("remove 2b");
 });
 
 test("Groups follow the Bots in the list and offer only what a Group can do", async ({ page, context }) => {

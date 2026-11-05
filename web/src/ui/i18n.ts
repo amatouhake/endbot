@@ -192,6 +192,11 @@ const english = {
   error_passkey_refused: "That passkey was not accepted. If this is a new device, use a link code.",
   error_signed_out: "You have been signed out.",
   error_rate_limited: "Too many attempts. Wait a minute and try again.",
+  error_invalid_argument: "The server did not accept these values. Check them and try again.",
+  error_invalid_request: "The server did not accept this request. Reload the page and try again.",
+  error_not_found: "That no longer exists, or you cannot see it.",
+  error_conflict: "That cannot be done in the current state. Check the state and try again.",
+  error_unsupported: "This server does not support that yet.",
   error_busy: "The server is busy. Try again shortly.",
   error_unavailable: "The server cannot be reached right now.",
   error_timeout: "The server did not answer in time.",
@@ -397,6 +402,11 @@ const japanese: Messages = {
   error_passkey_refused: "このパスキーは受け付けられませんでした。新しいデバイスならリンクコードを使ってください。",
   error_signed_out: "サインアウトされました。",
   error_rate_limited: "試行回数が多すぎます。1 分待ってから試してください。",
+  error_invalid_argument: "サーバーがこの値を受け付けませんでした。確認してもう一度試してください。",
+  error_invalid_request: "サーバーがこの要求を受け付けませんでした。ページを再読み込みして試してください。",
+  error_not_found: "対象がもうないか、表示できません。",
+  error_conflict: "今の状態では実行できません。状態を確認してもう一度試してください。",
+  error_unsupported: "このサーバーはまだ対応していません。",
   error_busy: "サーバーが混み合っています。少し後で試してください。",
   error_unavailable: "今はサーバーに接続できません。",
   error_timeout: "サーバーから時間内に応答がありませんでした。",
@@ -417,6 +427,11 @@ export function t(key: keyof Messages, params: Record<string, string | number> =
 export function errorText(code: string): string {
   const key = `error_${code}` as keyof Messages;
   return key in messages ? messages[key] : messages.error_generic;
+}
+
+/** Why an answer with no words of its own was refused; a code the page has no words for still shows. */
+export function refusalText(code: string): string {
+  return `error_${code}` in messages ? errorText(code) : t("opFailed", { code });
 }
 
 export function formatDate(seconds: number): string {

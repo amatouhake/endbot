@@ -30,7 +30,8 @@ POLL_SECONDS = 2.0
 # Script commands worth a history line. The others answer with what a script holds, which belongs on its own screen.
 SCRIPT_HISTORY = frozenset({"copy", "delete", "private", "reload", "rename", "restore", "run", "save", "share", "stop",
                             "visibility"})
-TARGET_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}")
+GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}")
+BOT_NAME = re.compile(r"[A-Za-z0-9_]{1,16}")
 SCRIPT_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 # Not for the web: an in-game screen, chat help, and what stays with the console.
 WEB_REFUSED_OPERATIONS = frozenset({"menu", "help", "owner"})
@@ -261,12 +262,12 @@ class WebApi:
     def _group(self, principal: Principal, action: str, message: dict) -> dict:
         """Group management through /botgroup: the same rules, wording and history as in game."""
         name, bot = message.get("name"), message.get("bot")
-        if not isinstance(name, str) or not TARGET_NAME.fullmatch(name):
+        if not isinstance(name, str) or not GROUP_NAME.fullmatch(name):
             return {"type": "result", "code": "invalid_argument"}
         if action in {"create", "delete"}:
             return self._command(principal, [action, f"#{name}"], "botgroup")
         if action in {"add", "remove"}:
-            if not isinstance(bot, str) or not TARGET_NAME.fullmatch(bot):
+            if not isinstance(bot, str) or not BOT_NAME.fullmatch(bot):
                 return {"type": "result", "code": "invalid_argument"}
             return self._command(principal, [action, f"#{name}", bot], "botgroup")
         return {"type": "result", "code": "unsupported"}
@@ -274,7 +275,7 @@ class WebApi:
     def _bot(self, principal: Principal, message: dict) -> dict:
         """One Bot's status as fields, for the page to lay out; it reads this itself, so history stays quiet."""
         name = message.get("name")
-        if not isinstance(name, str) or not TARGET_NAME.fullmatch(name) or name in RESERVED_BOT_NAMES:
+        if not isinstance(name, str) or not BOT_NAME.fullmatch(name) or name in RESERVED_BOT_NAMES:
             return {"type": "result", "code": "invalid_argument"}
         try:
             result = self._runner.call([name, "status"], principal, record=False)

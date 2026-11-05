@@ -4,7 +4,7 @@
   import registry from "../../../core/src/endbot_core/operations.json";
   import type { Connection } from "./api";
   import { confirmDialog } from "./dialogs.svelte";
-  import { fieldLabel, opLabel, t } from "./i18n";
+  import { fieldLabel, opLabel, refusalText, t } from "./i18n";
 
   let { connection, target, group = false, botState = "online", onchanged }: {
     connection: Connection;
@@ -117,19 +117,20 @@
 
   /** The command's modes as buttons, as on the in-game menu's first screen. */
   function modesOf(item: Variant | undefined): Mode[] {
-    if (!item || item.positional.length || !item.options.mode?.choices) return [];
+    if (!item?.options.mode?.choices) return [];
     const named = item.options.mode.choices as Mode[];
     return item.options.interval ? [...named.filter((name) => name !== "stop"), "interval", "stop"] : named;
   }
 
   function inputsOf(item: Variant): { name: string; spec: Spec; required: boolean }[] {
+    const positional = item.positional.map(([name, spec]) => ({ name, spec, required: true }));
     if (modesOf(item).length) {
-      return mode === null ? [] : MODE_FIELDS[mode]
+      return [...positional, ...(mode === null ? [] : MODE_FIELDS[mode]
         .filter((name) => item.options[name])
-        .map((name) => ({ name, spec: item.options[name], required: name === "interval" }));
+        .map((name) => ({ name, spec: item.options[name], required: name === "interval" })))];
     }
     return [
-      ...item.positional.map(([name, spec]): { name: string; spec: Spec; required: boolean } => ({ name, spec, required: true })),
+      ...positional,
       ...shownOptions(item).map(([name, spec]) => ({ name, spec, required: false })),
     ];
   }
@@ -170,7 +171,7 @@
     const failed = answer.code !== "ok";
     // Replies already say which Bot they are about; only a reply with no words needs the label.
     const lines: string[] = answer.messages?.length ? answer.messages
-      : [`${target} ${opLabel(op)}: ${failed ? t("opFailed", { code: answer.code }) : t("opDone")}`];
+      : [`${target} ${opLabel(op)}: ${failed ? refusalText(answer.code) : t("opDone")}`];
     results = [...lines.map((text) => ({ text, failed })), ...results].slice(0, 40);
     if (!failed) onchanged(op, params);
     return answer;
@@ -222,7 +223,8 @@
 
   function chooseMode(name: Mode): void {
     mode = name;
-    fields = {};
+    // What names the target stays typed in; a clause of the previous mode may not belong to this one.
+    fields = Object.fromEntries((shape?.positional ?? []).map(([field]) => [field, fields[field]]));
     // A mode with no clauses of its own has nothing left to ask.
     if (shape && inputsOf(shape).length === 0) void run(active, { mode: name });
   }

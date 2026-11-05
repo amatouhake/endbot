@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Connection } from "./api";
   import { confirmDialog, createDialog } from "./dialogs.svelte";
-  import { t } from "./i18n";
+  import { refusalText, t } from "./i18n";
   import { href, navigate } from "./route.svelte";
 
   const NAME = /^[A-Za-z_][A-Za-z0-9_]{0,15}$/;
@@ -33,7 +33,7 @@
     const answer = await connection.request(type, fields);
     busy = false;
     if (answer.code !== "ok") {
-      error = answer.messages?.[0] ?? t("opFailed", { code: answer.code });
+      error = answer.messages?.[0] ?? refusalText(answer.code);
       return false;
     }
     onchanged();
@@ -46,7 +46,7 @@
     const name = await createDialog(t("groupNewTitle"), t("groupNew"), t("groupCreate"), 17, async (text) => {
       if (!NAME.test(bare(text))) return t("groupNameRule");
       const answer = await connection.request("group.create", { name: bare(text) });
-      return answer.code === "ok" ? null : answer.messages?.[0] ?? t("opFailed", { code: answer.code });
+      return answer.code === "ok" ? null : answer.messages?.[0] ?? refusalText(answer.code);
     });
     if (!name) return;
     error = "";

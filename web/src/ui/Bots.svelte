@@ -3,7 +3,7 @@
   import type { Connection } from "./api";
   import Controls from "./Controls.svelte";
   import { createDialog } from "./dialogs.svelte";
-  import { opLabel, stateLabel, t } from "./i18n";
+  import { opLabel, refusalText, stateLabel, t } from "./i18n";
   import { href, navigate } from "./route.svelte";
 
   const READ_EVERY_MS = 3000;
@@ -48,7 +48,7 @@
     const answer = await connection.request("query", { what: "bot", name });
     if (selected !== name) return;
     detail = answer.code === "ok" ? answer.data ?? null : null;
-    detailProblem = answer.code === "ok" ? "" : answer.messages?.[0] ?? t("opFailed", { code: answer.code });
+    detailProblem = answer.code === "ok" ? "" : answer.messages?.[0] ?? refusalText(answer.code);
   }
 
   // What it is doing changes on its own, so it is read again for as long as anyone is looking at it.
@@ -67,7 +67,7 @@
   async function spawnBot(): Promise<void> {
     const name = await createDialog(t("newBotTitle"), t("newBotName"), t("spawn"), 16, async (text) => {
       const answer = await connection.request("op", { operation: { op: "spawn", target: text, params: {} } });
-      return answer.code === "ok" ? null : answer.messages?.[0] ?? t("opFailed", { code: answer.code });
+      return answer.code === "ok" ? null : answer.messages?.[0] ?? refusalText(answer.code);
     });
     if (!name) return;
     onchanged();

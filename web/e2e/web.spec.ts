@@ -336,6 +336,27 @@ test("a Bot's state is laid out, and operations ask only what the command needs"
   await expect(page.getByText("attack @nearest interval 30").locator("visible=true").first()).toBeVisible();
   await tab(page, "Bots");
 
+  // An area is offered only where the grammar takes one.
+  await pace();
+  await operations.getByRole("button", { name: "destroy" }).click();
+  await expect(panel.getByLabel(/^area/)).toHaveCount(0);
+  await panel.getByRole("button", { name: "Continuously" }).click();
+  await panel.getByLabel(/^area/).fill("within 6 except ~ ~-1 ~");
+  await panel.getByRole("button", { name: "Run destroy" }).click();
+  await tab(page, "History");
+  await expect(page.getByText("destroy continuous within 6 except").locator("visible=true").first()).toBeVisible();
+  await tab(page, "Bots");
+
+  // Interact's target decides: an entity has modes, a block type an area.
+  await operations.getByRole("button", { name: "interact" }).click();
+  await panel.getByRole("button", { name: "target", exact: true }).click();
+  await panel.getByLabel(/^target/).fill("stone");
+  await expect(panel.getByLabel(/^area/)).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Continuously" })).toHaveCount(0);
+  await panel.getByLabel(/^target/).fill("@nearest");
+  await expect(panel.getByLabel(/^area/)).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Continuously" })).toBeVisible();
+
   // What sent nothing but a form with a free-text box before.
   await pace();
   await category("Move").click();

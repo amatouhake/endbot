@@ -141,6 +141,7 @@ const english = {
   opsCategories: "Categories",
   tpToMe: "To my position",
   moveStop: "Stop moving",
+  interactTargetHint: "@nearest, @zombie or a block type",
   switchOn: "On",
   switchOff: "Off",
   modeOnce: "Once",
@@ -351,6 +352,7 @@ const japanese: Messages = {
   opsCategories: "カテゴリ",
   tpToMe: "自分の位置へ",
   moveStop: "移動をやめる",
+  interactTargetHint: "@nearest、@zombie、またはブロックの種類",
   switchOn: "オン",
   switchOff: "オフ",
   modeOnce: "1 回",
@@ -449,7 +451,7 @@ const OPERATION_WORDS: Record<string, string> = {
 const FIELD_WORDS: Record<string, string> = {
   a: "スロット A", b: "スロット B", count: "回数", dimension: "ディメンション", direction: "方向", face: "面", facing: "向き",
   facingX: "向き X", facingY: "向き Y", facingZ: "向き Z", gamertag: "ゲーマータグ", hold: "押し続ける時間", interval: "間隔",
-  item: "アイテム", limit: "上限", mode: "モード", name: "名前", pitch: "ピッチ", selector: "セレクター", slot: "スロット",
+  area: "範囲", item: "アイテム", limit: "上限", mode: "モード", name: "名前", pitch: "ピッチ", selector: "セレクター", slot: "スロット",
   target: "対象", ticks: "時間 (tick)", topic: "項目", type: "種類", value: "値", visibility: "公開範囲", yaw: "ヨー",
 };
 const STATE_WORDS: Record<string, string> = {

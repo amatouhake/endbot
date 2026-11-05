@@ -44,7 +44,7 @@
   const WHEN_BETWEEN = new Set([...WHEN_OFFLINE, "reconnect", "despawn", "status"]);
   // The grammar takes these two together.
   const PAIRED: Record<string, string> = { yaw: "pitch", pitch: "yaw" };
-  // Left to the typed command, as in the in-game forms; an area has no input here yet.
+  // Left to the typed command, as in the in-game forms.
   const COMMAND_ONLY = new Set(["facing", "facingX", "facingY", "facingZ"]);
   const CHOICES: Record<string, string[]> = { dimension: ["overworld", "nether", "end"] };
   const TICK_FIELDS = new Set(["ticks", "hold", "interval"]);
@@ -96,6 +96,7 @@
   const shape = $derived(variant !== null ? shapes[variant] : shapes[0] && hasFields(shapes[0]) ? shapes[0] : undefined);
   const toggle = $derived(shapes.length === 1 && shapes[0].positional.length === 1 && shapes[0].positional[0][1].type === "boolean");
   const inputs = $derived(toggle || !shape ? [] : inputsOf(shape));
+  const entityTarget = $derived(String(fields.target ?? "").trim().startsWith("@"));
   const recentShown = $derived(recent.filter((op) => (op === "move" ? botState === "online" : available(op))));
 
   function available(op: string): boolean {
@@ -111,27 +112,45 @@
     return Object.entries(item.options).filter(([name, spec]) => spec.type !== "area" && !COMMAND_ONLY.has(name));
   }
 
+  /** Interact's one target is an entity or a block type: modes belong to the first and an area to the second. */
+  function blockTarget(item: Variant): boolean {
+    return active === "interact" && item.positional.some(([name]) => name === "target") && !entityTarget;
+  }
+
+  /** The grammar takes an area with a block type, or with continuous destroying. */
+  function areaOffered(item: Variant): boolean {
+    if (!item.options.area) return false;
+    return item.positional.length ? !entityTarget : modeOf(item) === "continuous";
+  }
+
+  function modeOf(item: Variant): Mode | null {
+    return mode && modesOf(item).includes(mode) ? mode : null;
+  }
+
   function hasFields(item: Variant): boolean {
     return item.positional.length > 0 || shownOptions(item).length > 0;
   }
 
   /** The command's modes as buttons, as on the in-game menu's first screen. */
   function modesOf(item: Variant | undefined): Mode[] {
-    if (!item?.options.mode?.choices) return [];
+    if (!item?.options.mode?.choices || blockTarget(item)) return [];
     const named = item.options.mode.choices as Mode[];
     return item.options.interval ? [...named.filter((name) => name !== "stop"), "interval", "stop"] : named;
   }
 
   function inputsOf(item: Variant): { name: string; spec: Spec; required: boolean }[] {
     const positional = item.positional.map(([name, spec]) => ({ name, spec, required: true }));
+    const area = areaOffered(item) ? [{ name: "area", spec: item.options.area, required: false }] : [];
+    const chosen = modeOf(item);
     if (modesOf(item).length) {
-      return [...positional, ...(mode === null ? [] : MODE_FIELDS[mode]
+      return [...positional, ...(chosen === null ? [] : MODE_FIELDS[chosen]
         .filter((name) => item.options[name])
-        .map((name) => ({ name, spec: item.options[name], required: name === "interval" })))];
+        .map((name) => ({ name, spec: item.options[name], required: name === "interval" }))), ...area];
     }
     return [
       ...positional,
-      ...shownOptions(item).map(([name, spec]) => ({ name, spec, required: false })),
+      ...shownOptions(item).filter(([name]) => name !== "mode").map(([name, spec]) => ({ name, spec, required: false })),
+      ...area,
     ];
   }
 
@@ -155,7 +174,8 @@
   }
 
   function parameters(): Record<string, unknown> {
-    const given: Record<string, unknown> = mode && mode !== "interval" ? { mode } : {};
+    const chosen = shape ? modeOf(shape) : null;
+    const given: Record<string, unknown> = chosen && chosen !== "interval" ? { mode: chosen } : {};
     for (const { name, spec } of inputs) {
       const value = fields[name];
       if (value === undefined || value === "" || (spec.type === "boolean" && value === false)) continue;
@@ -322,7 +342,9 @@
                     {#each choices as choice}<option value={choice}>{choice}</option>{/each}
                   </select>
                 {:else}
-                  <input type={inputType(spec)} step="any" bind:value={fields[name]} {required} spellcheck="false" />
+                  <input type={inputType(spec)} step="any" bind:value={fields[name]} {required} spellcheck="false"
+                         placeholder={name === "area" ? "within 6 except ~ ~-1 ~"
+                           : name === "target" && active === "interact" ? t("interactTargetHint") : undefined} />
                 {/if}
               </label>
             {/each}

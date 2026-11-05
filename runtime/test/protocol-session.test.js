@@ -819,6 +819,14 @@ async function entitySession (t, queued) {
 }
 
 const nextTick = () => new Promise(resolve => setTimeout(resolve, 80))
+// Ticks run on real timers and slow down when other test files are busy: wait for the result, not for a guess at the time.
+const until = async (condition, seconds = 10) => {
+  const deadline = Date.now() + seconds * 1000
+  while (!condition() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20))
+}
+const entityClicks = queued => queued.filter(entry => entry.name === 'inventory_transaction' &&
+  entry.packet.transaction.transaction_type === 'item_use_on_entity')
+  .map(entry => String(entry.packet.transaction.transaction_data.entity_runtime_id))
 
 test('nearby entities exclude players and stay sorted and bounded', async t => {
   const { session, client, add } = await entitySession(t, [])
@@ -985,11 +993,8 @@ test('a counted targeted interact alternates between matches and stops after the
   add(81n, 'minecraft:cow', { x: 0, y: 64, z: 3 })
   inputs.setAction('interact', 'interval', 2, undefined, undefined, { type: 'minecraft:cow' }, 3)
   session.applyInputs(inputs)
-  await new Promise(resolve => setTimeout(resolve, 1400))
-  const clicks = queued.filter(entry => entry.name === 'inventory_transaction' &&
-    entry.packet.transaction.transaction_type === 'item_use_on_entity')
-    .map(entry => String(entry.packet.transaction.transaction_data.entity_runtime_id))
-  assert.deepEqual(clicks, ['80', '81', '80'])
+  await until(() => inputs.snapshot().actions.interact === undefined)
+  assert.deepEqual(entityClicks(queued), ['80', '81', '80'])
   assert.equal(inputs.snapshot().actions.interact, undefined)
 })
 
@@ -1001,11 +1006,8 @@ test('a counted targeted interact clicks a different entity each time while fres
   add(82n, 'minecraft:cow', { x: 0, y: 64, z: 4 })
   inputs.setAction('interact', 'continuous', undefined, undefined, undefined, { type: 'minecraft:cow' }, 3)
   session.applyInputs(inputs)
-  await new Promise(resolve => setTimeout(resolve, 1400))
-  const clicks = queued.filter(entry => entry.name === 'inventory_transaction' &&
-    entry.packet.transaction.transaction_type === 'item_use_on_entity')
-    .map(entry => String(entry.packet.transaction.transaction_data.entity_runtime_id))
-  assert.deepEqual(clicks, ['80', '81', '82'])
+  await until(() => inputs.snapshot().actions.interact === undefined)
+  assert.deepEqual(entityClicks(queued), ['80', '81', '82'])
 })
 
 test('a repeated entity click waits for BDS to report the held item it changed', async t => {
@@ -1019,7 +1021,7 @@ test('a repeated entity click waits for BDS to report the held item it changed',
   await new Promise(resolve => setTimeout(resolve, 200))
   assert.equal(clicks(), 1)  // the stale held item would make BDS reject a second click now
   client.emit('inventory_slot', { window_id: 'inventory', slot: 0, item: { network_id: 7, count: 4, metadata: 0 } })
-  await new Promise(resolve => setTimeout(resolve, 150))
+  await until(() => clicks() === 2)
   assert.equal(clicks(), 2)
 })
 
@@ -1029,7 +1031,7 @@ test('a repeated targeted click carries its own aim in the same tick input', asy
   add(80n, 'minecraft:cow', { x: 2, y: 64, z: 0 })
   inputs.setAction('interact', 'continuous', undefined, undefined, undefined, { type: 'minecraft:cow' }, 1)
   session.applyInputs(inputs)
-  await new Promise(resolve => setTimeout(resolve, 200))
+  await until(() => entityClicks(queued).length > 0)
   const click = queued.findIndex(entry => entry.packet?.transaction?.transaction_type === 'item_use_on_entity')
   const input = queued.slice(0, click).findLast(entry => entry.name === 'player_auth_input')
   assert.ok(Math.abs(((input.packet.yaw % 360) + 360) % 360 - 270) < 1, `yaw ${input.packet.yaw}`)
@@ -1065,7 +1067,7 @@ test('targeted attack continuous re-aims and skips triggers with nothing in reac
   await new Promise(resolve => setTimeout(resolve, 200))
   assert.equal(queued.some(entry => entry.packet?.transaction?.transaction_type === 'item_use_on_entity'), false)
   add(90n, 'minecraft:zombie', { x: 0, y: 64, z: 2 })
-  await new Promise(resolve => setTimeout(resolve, 300))
+  await until(() => entityClicks(queued).length > 0)
   const attack = queued.find(entry => entry.packet?.transaction?.transaction_type === 'item_use_on_entity')
   assert.equal(attack.packet.transaction.transaction_data.action_type, 'attack')
   assert.throws(() => inputs.setAction('interact', 'continuous'), /entity target/)

@@ -141,6 +141,16 @@
     navigate("scripts");
   }
 
+  /** The name typed so far stays; only the source is replaced, and an edited one is asked about first. */
+  async function useTemplate(event: Event): Promise<void> {
+    const list = event.currentTarget as HTMLSelectElement;
+    const source = templates[list.value];
+    list.value = "";
+    if (source === undefined || !open || !(await leaveOk())) return;
+    open = { ...open, source };
+    draft = source;
+  }
+
   async function goBack(): Promise<void> {
     if (!(await leaveOk())) return;
     latest += 1;
@@ -332,15 +342,19 @@
     <div class="list-tools">
       <div class="row">
         <input class="grow" type="search" bind:value={search} placeholder={t("search")} aria-label={t("search")} />
-        {#if canAuthor}<button onclick={() => startNew()}>{t("scriptNew")}</button>{/if}
+        {#if canAuthor}<button onclick={() => startNew()}>{t("new")}</button>{/if}
       </div>
     </div>
     <div class="list-scroll">
+      {#if creating}
+        <!-- Nothing exists until it is saved, and the list says so. -->
+        <div class="item current"><span class="name">{t("scriptDraft")}</span></div>
+      {/if}
       {#if unavailable}
         <p class="empty">{unavailable}</p>
-      {:else if scripts.length === 0}
+      {:else if scripts.length === 0 && !creating}
         <p class="empty">{t("noScripts")}</p>
-      {:else if shown.length === 0}
+      {:else if shown.length === 0 && !creating}
         <p class="empty">{t("noMatches")}</p>
       {:else}
         {#each shown as script (script.name)}
@@ -358,27 +372,17 @@
         {/each}
       {/if}
     </div>
-    {#if runs.length || (canAuthor && Object.keys(templates).length)}
+    {#if runs.length}
       <div class="list-foot">
-        {#if runs.length}
-          <h3>{t("runs")}</h3>
-          <ul class="members">
-            {#each runs as item (item.id)}
-              <li>
-                <span>{item.name} <code>{item.id}</code></span>
-                <button class="danger" onclick={() => stop(item.id)}>{t("stop")}</button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        {#if canAuthor && Object.keys(templates).length}
-          <details>
-            <summary class="quiet">{t("scriptTemplates")}</summary>
-            {#each Object.entries(templates) as [title, source]}
-              <button class="item" onclick={() => startNew(source)}>{title}</button>
-            {/each}
-          </details>
-        {/if}
+        <h3>{t("runs")}</h3>
+        <ul class="members">
+          {#each runs as item (item.id)}
+            <li>
+              <span>{item.name} <code>{item.id}</code></span>
+              <button class="danger" onclick={() => stop(item.id)}>{t("stop")}</button>
+            </li>
+          {/each}
+        </ul>
       </div>
     {/if}
   </div>
@@ -397,6 +401,12 @@
             <label class="inline">{t("scriptName")}
               <input bind:value={name} spellcheck="false" maxlength="64" placeholder="my_script" />
             </label>
+            {#if Object.keys(templates).length}
+              <select aria-label={t("scriptTemplates")} onchange={useTemplate}>
+                <option value="">{t("scriptTemplates")}</option>
+                {#each Object.keys(templates) as title}<option value={title}>{title}</option>{/each}
+              </select>
+            {/if}
           {:else}
             <h2>{open.name}</h2>
           {/if}
@@ -404,10 +414,12 @@
         </div>
         <div class="row">
           {#if open.canEdit}
-            <button class="primary" disabled={busy || (!dirty && !creating)} onclick={save}>{t("save")}</button>
+            <button class="primary" disabled={busy || (!dirty && !creating)} onclick={save}>{creating ? t("scriptCreate") : t("save")}</button>
             <button disabled={busy} onclick={check}>{t("compile")}</button>
           {/if}
-          {#if !creating}
+          {#if creating}
+            <button disabled={busy} onclick={goBack}>{t("cancel")}</button>
+          {:else}
             <button disabled={busy} onclick={prepareRun}>{t("run")}</button>
             <details class="more" bind:this={moreMenu}>
               <summary class="button">{t("more")} ▾</summary>

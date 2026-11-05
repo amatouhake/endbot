@@ -2,7 +2,9 @@
 export interface Request {
   title: string;
   message?: string;
-  input?: { label: string; value: string };
+  input?: { label: string; value: string; maxlength?: number };
+  /** Runs on the answer with the dialog still open; a returned message stays on show, so nothing typed is lost. */
+  attempt?: (text: string) => Promise<string | null>;
   confirm: string;
   danger?: boolean;
   resolve: (answer: string | boolean | null) => void;
@@ -28,6 +30,17 @@ export function promptDialog(title: string, label: string, value: string, confir
   return new Promise((resolve) => {
     dialogs.current = {
       title, confirm, input: { label, value },
+      resolve: (answer) => resolve(typeof answer === "string" ? answer : null),
+    };
+  });
+}
+
+/** Asks for a name and creates the thing before closing: a name refused is corrected right there. */
+export function createDialog(title: string, label: string, confirm: string, maxlength: number,
+  attempt: (text: string) => Promise<string | null>): Promise<string | null> {
+  return new Promise((resolve) => {
+    dialogs.current = {
+      title, confirm, input: { label, value: "", maxlength }, attempt,
       resolve: (answer) => resolve(typeof answer === "string" ? answer : null),
     };
   });

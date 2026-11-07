@@ -26,10 +26,13 @@ endbotd opens `wss://<origin>/link`. Every frame is one JSON text message of at 
 
 - **Keep-alive:** every 30 s, however busy the link is, endbotd sends the plain text `link-ping`. The Workers runtime answers
   `link-pong` itself, without waking the Durable Object or storing anything, and records the time. With no answer time and no
-  opening within 90 s, `/api/display` reports `bds: down`, because a power cut sends no close.
+  opening within 90 s, the Durable Object retires the link (close code 4005) and closes its browsers, because a power cut
+  sends no close; `/api/display` then reports `bds: down`. endbotd likewise drops a link that has received nothing, not
+  even `link-pong`, for 90 s.
 - `sig` is the base64url Ed25519 signature of `"endbot-link-v1\n" + origin + "\n" + nonce`. The Durable Object verifies it
-  with the key in `ENDBOTD_LINK_KEY` and closes a link that does not prove itself within 5 s. It holds at most one
-  unproven link. A newly proven link replaces the old one.
+  with the key in `ENDBOTD_LINK_KEY` and closes a link that does not prove itself within 5 s (4002) or proves wrongly
+  (4003). It holds at most one unproven link. A newly proven link replaces every other (4004). A retired link is never
+  used again, even while the runtime still lists its socket as open.
 - endbotd checks that `challenge.origin` is its own configured origin before signing, so a proof is useless elsewhere.
 - `conn` is a string chosen by the Durable Object, unique for the life of the link.
 - `session` is the token from the `__Host-endbot_session` cookie, or null; `siteCookie` the value of `__Host-endbot_site`,

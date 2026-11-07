@@ -27,12 +27,19 @@ from websockets.sync.client import connect as websocket_connect
 WEB_PROTOCOL = json.loads((Path(__file__).parent / "web_protocol.schema.json").read_text(encoding="utf-8"))["version"]
 MAX_FRAME_BYTES = 1024 * 1024
 CHALLENGE_SECONDS = 10.0
-# The Durable Object stops vouching for a link silent for 90 s (docs/WEB_PROTOCOL.md), and its runtime answers this alone.
+# The Durable Object retires a link silent for 90 s (docs/WEB_PROTOCOL.md), and its runtime answers this alone.
 KEEP_ALIVE_SECONDS = 30.0
 KEEP_ALIVE = "link-ping"
 KEEP_ALIVE_ANSWER = "link-pong"
+# The same 90 s from this side: a link that hears nothing back, not even the pong, is gone (a lost route sends
+# no close).
+SILENT_SECONDS = 90.0
 RETRY_INITIAL = 1.0
 RETRY_MAX = 60.0
+# Cloudflare takes a while to hand a rotated key to the Durable Object; until then a good proof is refused.
+KEY_SETTLING_SECONDS = 120.0
+KEY_SETTLING_RETRY = 5.0
+PROOF_REFUSED = 4003
 MAX_SESSION_CONNECTIONS = 4
 MAX_SESSION_REQUESTS_PER_SECOND = 20
 MAX_REQUEST_WORKERS = 8
@@ -110,6 +117,10 @@ class LinkProtocolMismatch(Exception):
     pass
 
 
+class ProofRefused(OSError):
+    """The Worker closed the link over the proof: a wrong key, or a rotated one not yet in place."""
+
+
 class WebLink:
     """One background thread holding the link, reconnecting with a capped backoff."""
 
@@ -120,7 +131,8 @@ class WebLink:
                  log: Callable[[str, str], None] | None = None,
                  connect: Callable | None = None, clock: Callable[[], float] = time.monotonic,
                  retry: tuple[float, float] = (RETRY_INITIAL, RETRY_MAX),
-                 keep_alive: float = KEEP_ALIVE_SECONDS) -> None:
+                 keep_alive: float = KEEP_ALIVE_SECONDS, silent: float = SILENT_SECONDS,
+                 settling: tuple[float, float] = (KEY_SETTLING_SECONDS, KEY_SETTLING_RETRY)) -> None:
         self._web = web
         self.origin = origin
         self._key = key
@@ -137,6 +149,9 @@ class WebLink:
         self._thread: threading.Thread | None = None
         self._socket = None
         self._keep_alive = keep_alive
+        self._silent = silent
+        self._settling = settling
+        self._started = 0.0
         self._send_lock = threading.Lock()
         self._lock = threading.RLock()
         self._connections: dict[str, _Connection] = {}
@@ -175,12 +190,17 @@ class WebLink:
 
     def _run(self) -> None:
         delay = self._retry[0]
+        self._started = time.monotonic()
         while not self._stop.is_set():
             self._proved = False
+            refused = False
             try:
                 self._serve_once()
             except LinkProtocolMismatch as error:
                 self._down(str(error), "error")
+            except ProofRefused as error:
+                refused = True
+                self._down(f"web link failed: {type(error).__name__}: {error}", "warning")
             except (OSError, ValueError, TimeoutError, WebSocketException) as error:
                 self._down(f"web link failed: {type(error).__name__}: {error}", "warning")
             except Exception as error:  # noqa: BLE001 - this thread must outlive anything the relay sends
@@ -189,6 +209,9 @@ class WebLink:
             # A link that came up was healthy, whatever ended it: the next try starts from the shortest delay.
             if self._proved:
                 delay = self._retry[0]
+            # Just after a deploy or rotation the key may still be on its way to the Durable Object: keep trying often.
+            if refused and time.monotonic() - self._started < self._settling[0]:
+                delay = min(delay, self._settling[1])
             if self._stop.wait(delay):
                 return
             delay = min(delay * 2, self._retry[1])
@@ -213,14 +236,18 @@ class WebLink:
                 self.publish_cache()
                 # On a clock: a page in use keeps frames coming in, and that must not silence the link.
                 next_ping = time.monotonic() + self._keep_alive
+                heard = time.monotonic()
                 while not self._stop.is_set():
+                    if time.monotonic() - heard >= self._silent:
+                        raise OSError(f"no answer from the Worker for {self._silent:g} s")
                     if time.monotonic() >= next_ping:
                         self._send_text(KEEP_ALIVE)
                         next_ping = time.monotonic() + self._keep_alive
                     try:
-                        raw = socket.recv(timeout=max(0.0, next_ping - time.monotonic()))
+                        raw = socket.recv(timeout=max(0.0, min(next_ping, heard + self._silent) - time.monotonic()))
                     except TimeoutError:
                         continue
+                    heard = time.monotonic()
                     if raw == KEEP_ALIVE_ANSWER:
                         continue
                     try:
@@ -228,7 +255,9 @@ class WebLink:
                     except Exception as error:  # noqa: BLE001 - one bad frame must not end the link
                         self._log("warning", f"Web link: a frame was ignored: {type(error).__name__}: {error}")
             except ConnectionClosed as error:
-                raise OSError(f"the Worker closed the link ({error.rcvd.code if error.rcvd else 'no code'})") from None
+                code = error.rcvd.code if error.rcvd else None
+                kind = ProofRefused if code == PROOF_REFUSED and not self._proved else OSError
+                raise kind(f"the Worker closed the link ({code if code is not None else 'no code'})") from None
             finally:
                 self._socket = None
                 self.connected.clear()

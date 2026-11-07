@@ -476,15 +476,26 @@ class RotateTests(DeployCase):
         secret = json.loads(self.api.call("/secrets")[2])
         self.assertEqual(secret["name"], "ENDBOTD_LINK_KEY")
         self.assertEqual(secret["text"], link_key_secret(ensure_link_key(self.paths)))
-        # Once the new link is up the old key goes.
         self.assertFalse((path.with_name("web-link.key.old")).exists())
 
-    def test_the_old_key_stays_until_the_new_link_is_up(self) -> None:
+    def test_the_old_private_key_is_gone_even_when_the_link_is_slow_or_endbot_is_stopped(self) -> None:
+        # The Worker no longer accepts it, and after a suspected exposure it must not stay on disk (step 10).
         self.deploy()
+        leftover = self.paths.state_secrets / "web-link.key.old"
+        leftover.write_text("left by an earlier version", encoding="utf-8")
         self.running()
         self.linked = False
         self.assertFalse(self.rotate())
-        self.assertTrue((self.paths.state_secrets / "web-link.key.old").exists())
+        self.assertFalse(leftover.exists())
+        self.assertFalse((self.paths.state_secrets / "web-link.key.new").exists())
+        (self.paths.state_run / "supervisor.pid").unlink()
+        self.assertTrue(self.rotate())
+        self.assertEqual(sorted(path.name for path in self.paths.state_secrets.glob("web-link.key*")), ["web-link.key"])
+
+    def test_rotation_waits_long_enough_for_cloudflare_to_hand_over_the_key(self) -> None:
+        import inspect
+
+        self.assertGreaterEqual(inspect.signature(rotate_key).parameters["wait"].default, 120.0)
 
     def test_a_refused_secret_keeps_the_current_key(self) -> None:
         self.deploy()

@@ -111,6 +111,13 @@ function post(path: string, body: unknown = {}, headers: Record<string, string> 
 
 const relayStub = () => (env as any).RELAY.get((env as any).RELAY.idFromName("server"));
 
+/** How long a proven link may stay unheard; tests shorten it and put it back. */
+async function silentAfter(ms: number): Promise<void> {
+  await (runInDurableObject as any)(relayStub(), async (instance: any) => {
+    instance.linkSilentMs = ms;
+  });
+}
+
 // One Durable Object per server means one per test run here: start each test from a clean one.
 beforeEach(async () => {
   await installKey();
@@ -118,6 +125,8 @@ beforeEach(async () => {
     for (const socket of state.getWebSockets()) socket.close(1000, "next test");
     instance.buckets.clear();
     instance.pending.clear();
+    instance.linkSilentMs = 90_000;
+    await state.storage.deleteAlarm();
     await state.storage.deleteAll();
   });
 });
@@ -498,23 +507,37 @@ describe("the display cache", () => {
     expect(await (await SELF.fetch(`${ORIGIN}/api/display`)).json()).toMatchObject({ displayName: "Mine" });
   });
 
-  it("stops vouching for a link that goes silent with no close, and trusts it again when it answers", async () => {
+  it("keeps vouching for a link that answers its pings", async () => {
     const link = await provenLink();
     link.send({ t: "cache", displayName: "Mine", bds: "up" });
     const bds = async () => ((await (await SELF.fetch(`${ORIGIN}/api/display`)).json()) as any).bds;
     await expect.poll(bds).toBe("up");
-    await (runInDurableObject as any)(relayStub(), async (instance: any) => {
-      instance.linkSilentMs = 200;
-    });
-    await expect.poll(bds).toBe("down");
+    await silentAfter(400);
+    for (let index = 0; index < 5; index += 1) {
+      link.socket.send("link-ping");
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(await bds()).toBe("up");
+    }
     expect(link.closed).toBeNull();
-    link.socket.send("link-ping");
-    await expect.poll(() => link.pongs).toBe(1);
-    expect(await bds()).toBe("up");
+    await silentAfter(90_000);
+  });
+
+  it("retires a link that goes silent with no close, and says the server is down", async () => {
+    const link = await provenLink();
+    link.send({ t: "cache", displayName: "Mine", bds: "up" });
+    const bds = async () => ((await (await SELF.fetch(`${ORIGIN}/api/display`)).json()) as any).bds;
+    await expect.poll(bds).toBe("up");
+    await silentAfter(200);
     await expect.poll(bds).toBe("down");
-    await (runInDurableObject as any)(relayStub(), async (instance: any) => {
-      instance.linkSilentMs = 90_000;
-    });
+    expect((await link.whenClosed()).code).toBe(4005);
+    // Once retired it stays out, even if it speaks again.
+    try {
+      link.send({ t: "cache", displayName: "Back", bds: "up" });
+    } catch {
+      // Closed on this side, which proves the same thing.
+    }
+    await silentAfter(90_000);
+    expect(await (await SELF.fetch(`${ORIGIN}/api/display`)).json()).toMatchObject({ displayName: "Mine", bds: "down" });
   });
 
   it("does not take a cache from an unproven link", async () => {
@@ -523,5 +546,58 @@ describe("the display cache", () => {
     link.send({ t: "cache", displayName: "Forged", bds: "up" });
     expect((await link.whenClosed()).code).toBe(4003);
     expect(await (await SELF.fetch(`${ORIGIN}/api/display`)).json()).toEqual({ bds: "down" });
+  });
+});
+
+describe("a link that went quiet", () => {
+  it("is found by the alarm, which closes its browsers so that pages stop showing a live server", async () => {
+    const link = await provenLink();
+    const response = await upgrade("/ws", { Origin: ORIGIN, Cookie: "__Host-endbot_session=tok" });
+    const page = new Messages(response.webSocket!);
+    await link.next((message) => message.t === "open");
+    await silentAfter(200);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await (runInDurableObject as any)(relayStub(), async (instance: any) => {
+      await instance.alarm();
+    });
+    expect((await page.whenClosed()).code).toBe(1013);
+    expect((await link.whenClosed()).code).toBe(4005);
+    await silentAfter(90_000);
+  });
+
+  it("answers requests at once instead of waiting on it", async () => {
+    await provenLink();
+    await silentAfter(200);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const started = Date.now();
+    expect((await post("/auth/info")).status).toBe(503);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect((await upgrade("/ws", { Origin: ORIGIN, Cookie: "__Host-endbot_session=tok" })).status).toBe(503);
+    await silentAfter(90_000);
+  });
+
+  it("is replaced by a new link, which then carries every request", async () => {
+    const old = await provenLink();
+    await silentAfter(200);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await silentAfter(90_000);
+    const fresh = await provenLink();
+    const request = post("/auth/info");
+    await answerNext(fresh, { status: 200, body: { from: "fresh" } });
+    expect(await (await request).json()).toEqual({ from: "fresh" });
+    expect(old.received.filter((frame) => frame.t === "open")).toEqual([]);
+  });
+
+  it("keeps the alarm set while a proven link is up, and clears it once none is", async () => {
+    const link = await provenLink();
+    const alarm = () => (runInDurableObject as any)(relayStub(), (_instance: any, state: DurableObjectState) =>
+      state.storage.getAlarm());
+    expect(await alarm()).not.toBeNull();
+    link.socket.close(1000, "stopping");
+    await link.whenClosed();
+    await (runInDurableObject as any)(relayStub(), async (instance: any) => {
+      await instance.alarm();
+    });
+    expect(await alarm()).toBeNull();
   });
 });

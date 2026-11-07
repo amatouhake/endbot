@@ -72,6 +72,11 @@ class CloudflareApi:
 
     def _call(self, method: str, url: str, *, body: bytes | None = None, content_type: str | None = None,
               bearer: str | None = None) -> dict:
+        result = self._request(method, url, body=body, content_type=content_type, bearer=bearer)
+        return result if isinstance(result, dict) else {}
+
+    def _request(self, method: str, url: str, *, body: bytes | None = None, content_type: str | None = None,
+                 bearer: str | None = None) -> object:
         request = urllib.request.Request(url, data=body, method=method)
         request.add_header("Authorization", f"Bearer {bearer or self._token}")
         if content_type:
@@ -91,8 +96,7 @@ class CloudflareApi:
             raise DeployError(f"Cloudflare API {method} answered something that is not JSON") from None
         if not isinstance(answer, dict) or answer.get("success") is False:
             raise DeployError(self._scrub(f"Cloudflare API {method} refused: {self._errors(data)}"))
-        result = answer.get("result")
-        return result if isinstance(result, dict) else {}
+        return answer.get("result")
 
     @staticmethod
     def _errors(data: bytes) -> str:
@@ -116,14 +120,16 @@ class CloudflareApi:
                               "dashboard, or use --domain")
         return subdomain
 
-    def migration_tag(self, worker: str) -> str | None:
-        """The Worker's applied migration; None for a Worker that does not exist yet."""
-        try:
-            return self._call("GET", self._account_url(f"/workers/scripts/{worker}/settings")).get("migration_tag")
-        except DeployError as error:
-            if "(404)" in str(error):
-                return None
-            raise
+    def find_worker(self, worker: str) -> dict | None:
+        """That Worker's entry in the account's list, or None. A Worker with no Durable Objects has no migration tag.
+
+        An answer that cannot be read stops the deploy: it must never pass for "no such Worker", which would let the
+        deploy replace one.
+        """
+        scripts = self._request("GET", self._account_url("/workers/scripts"))
+        if not isinstance(scripts, list):
+            raise DeployError("Cloudflare did not return the account's list of Workers")
+        return next((script for script in scripts if isinstance(script, dict) and script.get("id") == worker), None)
 
     def upload_assets(self, worker: str, files: dict[str, bytes]) -> str:
         """The three-step direct upload; returns the completion token for the script's metadata."""
@@ -345,8 +351,9 @@ def _keeps_custom_domain(config: EndbotConfig, account: str, worker: str, domain
 
 def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_name: str | None, domain: str | None,
            zone_id: str | None, confirm_domain_change: bool, bundle: Path | None, report: Callable[[str], None],
-           request: Callable, opener: Callable = urllib.request.urlopen, clock: Callable[[], float] = time.monotonic,
-           sleep: Callable[[float], None] = time.sleep, wait: float = LINK_WAIT_SECONDS) -> bool:
+           request: Callable, replace_worker: bool = False, opener: Callable = urllib.request.urlopen,
+           clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep,
+           wait: float = LINK_WAIT_SECONDS) -> bool:
     config = load_config(paths.endbot_toml)
     account = account_id or config.web.account_id
     worker = worker_name or config.web.worker_name or "endbot"
@@ -372,6 +379,16 @@ def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_n
         raise DeployError(f"the origin would change from {previous} to {origin}, which makes every registered passkey "
                           "unusable, so each player must run /botweb link again. Repeat with --confirm-domain-change "
                           "to do that.")
+    # Uploading replaces a Worker's code and bindings outright, and an account usually holds other Workers (P9).
+    existing = api.find_worker(worker)
+    ours = account == config.web.account_id and worker == config.web.worker_name
+    if existing is not None and not ours and not replace_worker:
+        raise DeployError(f"a Worker named {worker} already exists in this account and this instance did not deploy "
+                          "it. Deploying would replace its code and settings. Choose another name with --worker-name, "
+                          "or repeat with --replace-worker if it is yours to replace.")
+    if keep_route and existing is None:
+        raise DeployError(f"the Worker {worker} no longer exists on Cloudflare, so {origin} has to be attached "
+                          f"again: repeat with --domain {origin.removeprefix('https://')} --zone-id <id>")
     key = ensure_link_key(paths)
     secret = link_key_secret(key)
     # The settings first, because they are what can fail here without touching anything remote; undone below if
@@ -383,15 +400,12 @@ def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_n
         _regenerate(paths)
         report(f"Uploading the Worker {worker} ({len(files)} assets) for {origin}")
         assets_token = api.upload_assets(worker, files)
-        applied = api.migration_tag(worker)
-        if keep_route and applied is None:
-            raise DeployError(f"the Worker {worker} no longer exists on Cloudflare, so {origin} has to be attached "
-                              f"again: repeat with --domain {origin.removeprefix('https://')} --zone-id <id>")
-        if applied is not None and not keep_route:
+        if existing is not None and not keep_route:
             _route(api, worker, domain, zone_id)
+        applied = existing.get("migration_tag") if existing is not None else None
         api.put_script(worker, worker_metadata(manifest, origin, secret, assets_token, applied),
                        (source / "worker" / "index.js").read_bytes())
-        if applied is None:
+        if existing is None:
             _route(api, worker, domain, zone_id)
     except (OSError, ValueError):
         atomic_write_text(paths.endbot_toml, before)

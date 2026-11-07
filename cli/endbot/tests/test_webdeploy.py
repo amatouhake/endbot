@@ -513,6 +513,24 @@ class RotateTests(DeployCase):
         # Step 10 on rc.2: the key took about 2 minutes, and a 2-minute wait missed the link by 3 s.
         self.assertGreaterEqual(inspect.signature(rotate_key).parameters["wait"].default, 180.0)
 
+    def test_a_still_refused_proof_says_the_link_comes_by_itself(self) -> None:
+        # Step 10 on rc.3: the key took over 3 minutes, and the bare 4003 read like a failure.
+        self.deploy()
+        self.running()
+        self.linked = False
+        refused = "link down: web link failed: ProofRefused: the Worker closed the link (4003)"
+        self.request = lambda operation: (self.requests.append(operation)
+                                          or {"ok": True, "linked": False, "messages": [refused]})
+        self.assertFalse(self.rotate())
+        self.assertTrue(any("come up by itself" in line for line in self.reports))
+
+    def test_another_reason_gets_no_such_promise(self) -> None:
+        self.deploy()
+        self.running()
+        self.linked = False
+        self.assertFalse(self.rotate())
+        self.assertFalse(any("come up by itself" in line for line in self.reports))
+
     def test_a_refused_secret_keeps_the_current_key(self) -> None:
         self.deploy()
         path = self.paths.state_secrets / "web-link.key"

@@ -65,10 +65,12 @@ class FakeWeb:
 class FakeDurableObject:
     """Plays the Durable Object's side of the link."""
 
-    def __init__(self, *, protocol=None, origin="ws://placeholder", accept=True):
+    def __init__(self, *, protocol=None, origin="ws://placeholder", accept=True, answer=True):
         self.protocol = WEB_PROTOCOL if protocol is None else protocol
         self.frames = queue.Queue()
         self.accept = accept
+        # False plays a route that stopped carrying anything back, with no close.
+        self.answer = answer
         self.proofs = []
         self.pings = 0
         self.socket = None
@@ -84,7 +86,7 @@ class FakeDurableObject:
             proof = json.loads(socket.recv(timeout=5))
             self.proofs.append(proof)
             if not self.accept:
-                socket.close()
+                socket.close(4003, "proof refused")
                 return
             socket.send(json.dumps({"t": "ready"}))
             self.socket = socket
@@ -93,7 +95,8 @@ class FakeDurableObject:
                 if raw == "link-ping":
                     # As the Workers runtime answers it, with the Durable Object asleep.
                     self.pings += 1
-                    socket.send("link-pong")
+                    if self.answer:
+                        socket.send("link-pong")
                 else:
                     self.frames.put(json.loads(raw))
         except Exception:  # noqa: BLE001, S110 - a closed test socket
@@ -121,6 +124,20 @@ class FakeDurableObject:
         self.server.shutdown()
 
 
+class RecordingEvent(threading.Event):
+    """The link's stop event, noting each retry delay and waiting only briefly, so tests need no wall clock."""
+
+    def __init__(self, delays):
+        super().__init__()
+        self.delays = delays
+
+    def wait(self, timeout=None):
+        if timeout is not None:
+            self.delays.append(timeout)
+            timeout = min(timeout, 0.01)
+        return super().wait(timeout)
+
+
 @unittest.skipUnless(HAS_LIBRARIES, "the web libraries are not installed")
 class LinkCase(unittest.TestCase):
     def setUp(self):
@@ -143,8 +160,11 @@ class LinkCase(unittest.TestCase):
         self.link = WebLink(self.web, origin, self.key, "0.7.0", ws_handler=self.handler,
                             cache=lambda: {"displayName": "Mine", "bds": "up"},
                             on_connection_closed=self.closed_conns.append,
-                            log=lambda level, message: self.logs.append((level, message)), retry=(0.05, 0.2),
-                            keep_alive=getattr(self, "keep_alive", 30.0))
+                            log=lambda level, message: self.logs.append((level, message)),
+                            retry=getattr(self, "retry", (0.05, 0.2)), keep_alive=getattr(self, "keep_alive", 30.0),
+                            silent=getattr(self, "silent", 90.0), settling=getattr(self, "settling", (120.0, 5.0)))
+        if hasattr(self, "delays"):
+            self.link._stop = RecordingEvent(self.delays)
         self.link.start()
         self.addCleanup(self.link.stop)
         return self.link
@@ -185,6 +205,31 @@ class HandshakeTests(LinkCase):
         self.assertTrue(wait(lambda: len(self.relay.proofs) >= 2, timeout=20))
         self.assertFalse(self.link.connected.is_set())
         self.assertEqual(len({message for _, message in self.logs}), len([m for _, m in self.logs]))
+        self.assertIn("(4003)", self.link.problem)
+
+    def test_a_refused_proof_soon_after_start_is_retried_often_while_a_new_key_settles(self):
+        self.retry = (0.5, 60.0)
+        self.settling = (30.0, 0.05)
+        self.delays = []
+        self.start(accept=False)
+        self.assertTrue(wait(lambda: len(self.relay.proofs) >= 3, timeout=30))
+        self.assertTrue(self.delays and all(delay <= 0.05 for delay in self.delays), self.delays)
+
+    def test_once_the_key_has_had_time_to_settle_a_refusal_backs_off_as_before(self):
+        self.retry = (0.5, 60.0)
+        self.settling = (0.0, 0.05)
+        self.delays = []
+        self.start(accept=False)
+        self.assertTrue(wait(lambda: len(self.delays) >= 3, timeout=30))
+        self.assertEqual(self.delays[:3], [0.5, 1.0, 2.0])
+
+    def test_other_failures_back_off_as_before_even_just_after_start(self):
+        self.retry = (0.5, 60.0)
+        self.settling = (30.0, 0.05)
+        self.delays = []
+        self.start(origin="https://evil.example")
+        self.assertTrue(wait(lambda: len(self.delays) >= 3, timeout=30))
+        self.assertEqual(self.delays[:3], [0.5, 1.0, 2.0])
 
 
 class HttpTests(LinkCase):
@@ -371,6 +416,22 @@ class KeepAliveTests(LinkCase):
             self.relay.http(f"b{index}", "/auth/info")
             time.sleep(0.02)
         self.assertGreaterEqual(self.relay.pings, 3)
+
+
+    def test_a_link_that_hears_nothing_back_is_dropped_and_made_again(self):
+        self.keep_alive = 0.05
+        self.silent = 0.4
+        self.start(answer=False)
+        self.assertTrue(wait(lambda: len(self.relay.proofs) >= 2, timeout=10))
+        self.assertTrue(any("no answer from the Worker" in message for _, message in self.logs), self.logs)
+
+    def test_an_answered_ping_keeps_a_quiet_link(self):
+        self.keep_alive = 0.05
+        self.silent = 0.4
+        self.up()
+        time.sleep(1.2)
+        self.assertEqual(len(self.relay.proofs), 1)
+        self.assertTrue(self.link.connected.is_set())
 
 
 class ReconnectTests(LinkCase):

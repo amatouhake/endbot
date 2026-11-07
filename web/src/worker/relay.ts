@@ -8,6 +8,7 @@ import type { Env } from "./index";
 export const MAX_FRAME_BYTES = 1024 * 1024;
 export const PROVE_MS = 5_000;
 // endbotd says `link-ping` every 30 s, answered by the runtime with no wake-up of this object and nothing stored.
+// A proven link heard from neither way for this long is retired: a PC that lost power or network sends no close.
 export const LINK_SILENT_MS = 90_000;
 const LINK_PING = "link-ping";
 const LINK_PONG = "link-pong";
@@ -24,9 +25,8 @@ const SITE_COOKIE = "__Host-endbot_site";
 const SESSION_MAX_AGE = 30 * 86_400;
 const SITE_MAX_AGE = 120;
 
-type Attachment =
-  | { role: "link"; proven: boolean; nonce: string; opened: number }
-  | { role: "browser"; conn: string; authenticated: boolean; next: number };
+type LinkAttachment = { role: "link"; proven: boolean; nonce: string; opened: number; retired?: boolean };
+type Attachment = LinkAttachment | { role: "browser"; conn: string; authenticated: boolean; next: number };
 
 interface Pending {
   resolve: (answer: RelayAnswer | null) => void;
@@ -105,21 +105,66 @@ export class Relay extends DurableObject<Env> {
 
   // -- endbotd's link ---------------------------------------------------------------
 
+  /** The links still in play. A closed socket can stay listed as open, for good when its peer vanished. */
   private links(): WebSocket[] {
-    // A socket we just closed can still be listed until the close completes.
-    return this.ctx.getWebSockets("link").filter((socket) => socket.readyState === WebSocket.OPEN);
+    return this.ctx.getWebSockets("link").filter((socket) => socket.readyState === WebSocket.OPEN
+      && !(socket.deserializeAttachment() as LinkAttachment | null)?.retired);
   }
 
+  /** Out of play at once, whether or not the close ever completes. */
+  private retire(socket: WebSocket, code: number, reason: string): void {
+    const attachment = socket.deserializeAttachment() as LinkAttachment | null;
+    socket.serializeAttachment({ ...attachment, retired: true });
+    try {
+      socket.close(code, reason);
+    } catch {
+      // Already closing: it is out of play all the same.
+    }
+  }
+
+  private heardAt(socket: WebSocket, attachment: LinkAttachment): number {
+    return Math.max(attachment.opened, this.ctx.getWebSocketAutoResponseTimestamp(socket)?.getTime() ?? 0);
+  }
+
+  /** The link that speaks for the server: proven and heard from lately. Finding a silent one retires it. */
   private provenLink(): WebSocket | null {
-    return this.links().find((socket) => (socket.deserializeAttachment() as Attachment | null)?.role === "link"
-      && (socket.deserializeAttachment() as { proven: boolean }).proven) ?? null;
+    let current: WebSocket | null = null;
+    let newest = -1;
+    let silenced = false;
+    for (const socket of this.links()) {
+      const attachment = socket.deserializeAttachment() as LinkAttachment | null;
+      if (!attachment?.proven) continue;
+      if (Date.now() - this.heardAt(socket, attachment) >= this.linkSilentMs) {
+        this.retire(socket, 4005, "silent");
+        silenced = true;
+      } else if (attachment.opened > newest) {
+        current = socket;
+        newest = attachment.opened;
+      }
+    }
+    // Its browsers were talking to an endbotd that is gone: they must reconnect rather than wait.
+    if (silenced && !current) this.linkLost();
+    return current;
+  }
+
+  /** One alarm serves both deadlines: an unproven link's proof and a proven link's silence. */
+  private async scheduleAlarm(): Promise<void> {
+    let next = Number.POSITIVE_INFINITY;
+    for (const socket of this.links()) {
+      const attachment = socket.deserializeAttachment() as LinkAttachment | null;
+      if (!attachment) continue;
+      next = Math.min(next, attachment.proven ? this.heardAt(socket, attachment) + this.linkSilentMs
+        : attachment.opened + PROVE_MS);
+    }
+    if (next === Number.POSITIVE_INFINITY) await this.ctx.storage.deleteAlarm();
+    else await this.ctx.storage.setAlarm(Math.max(next, Date.now() + 1_000));
   }
 
   private async acceptLink(): Promise<Response> {
     // At most one unproven link at a time (P1).
     for (const socket of this.links()) {
-      const attachment = socket.deserializeAttachment() as { proven: boolean } | null;
-      if (!attachment?.proven) socket.close(4001, "replaced");
+      const attachment = socket.deserializeAttachment() as LinkAttachment | null;
+      if (!attachment?.proven) this.retire(socket, 4001, "replaced");
     }
     const pair = new WebSocketPair();
     const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(24))))
@@ -128,17 +173,20 @@ export class Relay extends DurableObject<Env> {
     const attachment: Attachment = { role: "link", proven: false, nonce, opened: Date.now() };
     pair[1].serializeAttachment(attachment);
     pair[1].send(JSON.stringify({ t: "challenge", protocol: WEB_PROTOCOL, nonce, origin: this.env.ENDBOT_ORIGIN }));
-    await this.ctx.storage.setAlarm(Date.now() + PROVE_MS);
+    await this.scheduleAlarm();
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
   override async alarm(): Promise<void> {
     for (const socket of this.links()) {
-      const attachment = socket.deserializeAttachment() as { proven: boolean; opened: number } | null;
+      const attachment = socket.deserializeAttachment() as LinkAttachment | null;
       if (!attachment?.proven && Date.now() - (attachment?.opened ?? 0) >= PROVE_MS) {
-        socket.close(4002, "not proven");
+        this.retire(socket, 4002, "not proven");
       }
     }
+    // With nobody asking, this is what tells open pages that the PC went quiet.
+    this.provenLink();
+    await this.scheduleAlarm();
   }
 
   private async verifyProof(frame: Record<string, unknown>, nonce: string): Promise<boolean> {
@@ -155,8 +203,8 @@ export class Relay extends DurableObject<Env> {
     }
   }
 
-  private async onLinkFrame(socket: WebSocket, attachment: Extract<Attachment, { role: "link" }>, raw: string):
-    Promise<void> {
+  private async onLinkFrame(socket: WebSocket, attachment: LinkAttachment, raw: string): Promise<void> {
+    if (attachment.retired) return;
     let frame: Record<string, unknown>;
     try {
       frame = JSON.parse(raw) as Record<string, unknown>;
@@ -167,41 +215,36 @@ export class Relay extends DurableObject<Env> {
     if (!attachment.proven) {
       const proven = await this.verifyProof(frame, attachment.nonce);
       // The check yields: this socket may have been replaced or timed out meanwhile, and then it decides nothing.
-      if (socket.readyState !== WebSocket.OPEN) return;
+      if (!this.inPlay(socket)) return;
       if (!proven) {
-        socket.close(4003, "proof refused");
+        this.retire(socket, 4003, "proof refused");
         return;
       }
-      // A newly proven link replaces the old one (P1). endbotd's table of browsers went with it, so they go too.
-      const previous = this.provenLink();
+      // A newly proven link replaces every other (P1). endbotd's table of browsers went with them, so they go too.
+      const others = this.links().filter((other) => other !== socket);
+      const replaced = others.some((other) => (other.deserializeAttachment() as LinkAttachment | null)?.proven);
       socket.serializeAttachment({ ...attachment, proven: true });
-      if (previous) {
-        previous.close(4004, "replaced by a newer link");
-        this.linkLost();
-      }
+      for (const other of others) this.retire(other, 4004, "replaced by a newer link");
+      if (replaced) this.linkLost();
       socket.send(JSON.stringify({ t: "ready" }));
+      await this.scheduleAlarm();
       return;
     }
     // Replaced while this frame was on its way: it no longer speaks for the server.
-    if (socket.readyState !== WebSocket.OPEN) return;
+    if (!this.inPlay(socket)) return;
     if (frame.t === "cache") await this.storeDisplay(frame);
     else if (frame.t === "msg") this.onLinkMessage(frame);
     else if (frame.t === "close") this.onLinkClose(frame);
   }
 
-  /** A power cut sends no close: a link is only trusted while it keeps answering. */
-  private linkAlive(): boolean {
-    const link = this.provenLink();
-    if (!link) return false;
-    const opened = (link.deserializeAttachment() as { opened: number }).opened;
-    const pinged = this.ctx.getWebSocketAutoResponseTimestamp(link)?.getTime() ?? 0;
-    return Date.now() - Math.max(opened, pinged) < this.linkSilentMs;
+  private inPlay(socket: WebSocket): boolean {
+    return socket.readyState === WebSocket.OPEN && !(socket.deserializeAttachment() as LinkAttachment | null)?.retired;
   }
 
   /** The cache is what endbotd last said: with no live link, nothing vouches that the server is still up. */
   private async display(): Promise<Record<string, unknown>> {
     const stored = (await this.ctx.storage.get<Record<string, unknown>>("display")) ?? {};
-    return this.linkAlive() ? { bds: "down", ...stored } : { ...stored, bds: "down" };
+    return this.provenLink() ? { bds: "down", ...stored } : { ...stored, bds: "down" };
   }
 
   private async storeDisplay(frame: Record<string, unknown>): Promise<void> {
@@ -306,7 +349,8 @@ export class Relay extends DurableObject<Env> {
       this.sendToLink({ t: "close", conn: attachment.conn, reason: "browser" });
       return;
     }
-    if (attachment?.role === "link" && attachment.proven && !this.provenLink()) this.linkLost();
+    // A retired link was dealt with when it was retired.
+    if (attachment?.role === "link" && attachment.proven && !attachment.retired && !this.provenLink()) this.linkLost();
   }
 
   override async webSocketError(socket: WebSocket): Promise<void> {

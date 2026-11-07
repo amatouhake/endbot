@@ -42,6 +42,8 @@ API = "https://api.cloudflare.com/client/v4"
 KEY_FILE = "web-link.key"
 MIGRATION_TAG = "v1"
 LINK_WAIT_SECONDS = 30.0
+# A rotated key reaches the Durable Object a while after the API accepts it; endbotd retries often meanwhile.
+ROTATE_WAIT_SECONDS = 120.0
 TOKEN_VARIABLE = "CLOUDFLARE_API_TOKEN"
 _HOSTNAME = re.compile(r"(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+")
 
@@ -419,27 +421,23 @@ def deploy(paths: InstancePaths, *, token: str, account_id: str | None, worker_n
 
 def rotate_key(paths: InstancePaths, *, token: str, report: Callable[[str], None], request: Callable,
                opener: Callable = urllib.request.urlopen, clock: Callable[[], float] = time.monotonic,
-               sleep: Callable[[float], None] = time.sleep, wait: float = LINK_WAIT_SECONDS) -> bool:
+               sleep: Callable[[float], None] = time.sleep, wait: float = ROTATE_WAIT_SECONDS) -> bool:
     """One mechanism for routine rotation and suspected exposure (P1)."""
     config = load_config(paths.endbot_toml)
     if not config.web.account_id or not config.web.worker_name:
         raise DeployError("nothing is deployed yet; run `endbot web deploy` first")
     path = paths.state_secrets / KEY_FILE
-    old = path.with_name(f"{KEY_FILE}.old")
     new_key = Ed25519PrivateKey.generate()
     pending = path.with_name(f"{KEY_FILE}.new")
     # On disk before the secret changes: a crash in between must not lose the key the Worker now expects.
     _write_key(pending, new_key)
     CloudflareApi(token, config.web.account_id, opener).put_secret(
         config.web.worker_name, "ENDBOTD_LINK_KEY", link_key_secret(new_key))
-    if path.exists():
-        os.replace(path, old)
+    # The Worker no longer accepts the old key, so nothing needs it: on a suspected exposure it must not stay on disk.
     os.replace(pending, path)
-    report("The Worker now expects the new key")
-    up = _announce_link(paths, request, report, clock, sleep, wait)
-    if up and old.exists() and inspect_supervisor(paths.state_run).status == RUNNING:
-        old.unlink()
-    return up
+    path.with_name(f"{KEY_FILE}.old").unlink(missing_ok=True)  # left by earlier versions
+    report("The Worker now expects the new key; Cloudflare can take a minute to start using it")
+    return _announce_link(paths, request, report, clock, sleep, wait)
 
 
 __all__ = ["DeployError", "deploy", "read_token", "rotate_key"]

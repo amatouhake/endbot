@@ -72,11 +72,22 @@ leaves the PC (S1).
 `{t: "challenge", protocol, nonce, origin}`; endbotd answers
 `{t: "prove", protocol, endbotdVersion, keyId, sig}` with `sig = Ed25519("endbot-link-v1\n" + origin + "\n" + nonce)`.
 A link that does not prove itself within 5 s is closed; at most one unproven link is held at a time. A newly proven
-link replaces the old one. TLS to the operator's own domain authenticates the Worker to endbotd.
+link replaces every other. TLS to the operator's own domain authenticates the Worker to endbotd.
 
-**Rotation** is `endbot web rotate-key`: a new key pair, the secret replaced through the API, the old key file kept
-until the new link is up, then deleted. One mechanism serves routine rotation and suspected exposure. Because the
-secret is set only through the operator's Cloudflare account, rotation needs an API token (P9).
+**A link that goes quiet is retired from both ends.** A PC that loses power or network sends no close, and the
+Durable Object can go on listing such a socket as open even after closing it, so a replaced or silent link is marked
+retired and never used again. The Durable Object retires a proven link it has not heard from for 90 s, found by an alarm
+set for that moment or by the next request, and closes that link's browsers so that open pages stop showing a live
+server. Requests meanwhile answer `unavailable` at once. endbotd drops a link that has heard nothing back, not even the
+keep-alive answer, for 90 s and connects again. (Found in step 10: after a network loss the relay kept routing to the
+dead link, and the web stayed down after the PC came back.)
+
+**Rotation** is `endbot web rotate-key`: a new key pair, the secret replaced through the API, then the key file
+replaced. The old private key is deleted at once, because the Worker no longer accepts it. One mechanism serves routine
+rotation and suspected exposure. Because the secret is set only through the operator's Cloudflare account, rotation
+needs an API token (P9). Cloudflare takes up to a minute or so to hand the new secret to the Durable Object, and a good
+proof is refused until then, so for 2 minutes after it starts endbotd retries a refused proof every 5 s instead of
+backing off, and the command waits up to 2 minutes for the link.
 
 ### P2. One relay protocol, versioned with the bundle
 
@@ -194,7 +205,8 @@ Because every request rechecks the grant revision, a revoke takes effect even if
 - Static UI and the Worker code; the secret `ENDBOTD_LINK_KEY` (a public key) and `ENDBOT_ORIGIN`.
 - Durable Object storage: the display cache only, `{displayName, bds, since}`, shown on the sign-in page. With no proven
   link, or one silent for 90 s, it reports `bds: down`, since nothing vouches for the last value. endbotd's keep-alive
-  costs no storage or wake-up: the Workers runtime answers it and records the time.
+  costs no storage or wake-up: the Workers runtime answers it and records the time. While a link is up, one alarm per
+  minute or so checks that it is still heard from; each is billed as a Durable Object request.
   `displayName` is `[web] display-name`, empty by default.
 - Nothing else: no account, passkey, session, script source, Outcome or log. The Worker logs no request or response
   body; deploy sets Workers observability and logpush off, and disables version preview URLs so the UI is served from

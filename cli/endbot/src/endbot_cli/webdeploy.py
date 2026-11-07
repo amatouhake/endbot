@@ -42,8 +42,9 @@ API = "https://api.cloudflare.com/client/v4"
 KEY_FILE = "web-link.key"
 MIGRATION_TAG = "v1"
 LINK_WAIT_SECONDS = 30.0
-# A rotated key reaches the Durable Object a while after the API accepts it; endbotd retries often meanwhile.
-ROTATE_WAIT_SECONDS = 120.0
+# A rotated key reached the Durable Object about 2 minutes after the API accepted it in step 10; endbotd retries every
+# 10 s meanwhile, for as long as this waits.
+ROTATE_WAIT_SECONDS = 180.0
 TOKEN_VARIABLE = "CLOUDFLARE_API_TOKEN"
 _HOSTNAME = re.compile(r"(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+")
 

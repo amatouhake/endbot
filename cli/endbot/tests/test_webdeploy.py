@@ -510,7 +510,8 @@ class RotateTests(DeployCase):
     def test_rotation_waits_long_enough_for_cloudflare_to_hand_over_the_key(self) -> None:
         import inspect
 
-        self.assertGreaterEqual(inspect.signature(rotate_key).parameters["wait"].default, 120.0)
+        # Step 10 on rc.2: the key took about 2 minutes, and a 2-minute wait missed the link by 3 s.
+        self.assertGreaterEqual(inspect.signature(rotate_key).parameters["wait"].default, 180.0)
 
     def test_a_refused_secret_keeps_the_current_key(self) -> None:
         self.deploy()

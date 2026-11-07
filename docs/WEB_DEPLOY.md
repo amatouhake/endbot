@@ -4,9 +4,10 @@ The web lets your controllers sign in from a phone or a PC to see the server, ed
 Cloudflare Worker in **your own** Cloudflare account, and your server PC opens no inbound port. The design and its
 reasons are in [WEB.md](WEB.md); the security boundary is in [SECURITY.md](SECURITY.md#the-web).
 
-> **Not validated yet.** The deploy has only run against a fake Cloudflare API, and passkeys only against a software
-> authenticator. The real check is [step 10](WEB.md#steps) of the design. If the Cloudflare API behaves differently from
-> what is written here, trust what you see and report it.
+> **Partly validated.** A `workers.dev` deploy, redeploy, `rotate-key`, an update's redeploy and real passkeys on a
+> phone and a PC were checked on Cloudflare in [step 10](WEB.md#steps); see the [validation record](WEB_VALIDATION.md).
+> A custom domain, a domain change, `endbot update --rollback` and the trusted site have not been checked yet. If
+> Cloudflare behaves differently from what is written here, trust what you see and report it.
 
 ## What you need
 

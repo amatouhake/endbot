@@ -194,6 +194,7 @@ the Worker, so protect that account with its own strong sign-in ([what that risk
 | `the origin would change from ...` | You asked for another address. Read [changing the domain](#changing-the-domain) first |
 | `the Worker ... no longer exists on Cloudflare` | It was deleted, so the custom domain must be attached again. Repeat with `--domain` and `--zone-id` |
 | `The link is not up yet: ...` | The message names the reason. Check that the PC can reach the address over HTTPS, then run `endbot doctor --live` |
+| `The link is not up yet: ... ProofRefused ... (4003)` after `rotate-key` or a deploy | Cloudflare has not started using the new key yet; it took over 3 minutes once. endbotd keeps trying every 10 s for 10 minutes, so wait and check with `endbot doctor --live` |
 | `FAIL web: [web] origin ...` or `web-link.key is missing` | Run `endbot web deploy`. `endbot start` still runs, with the web off |
 | The sign-in page says "Server stopped" | BDS is stopped, endbotd is stopped, or the link is down, for up to 90 s after a power cut. Run `endbot doctor --live` on the PC |
 | The browser does not offer the passkey | The passkey was made for another address, or removed. Run `/botweb link` for a new one |

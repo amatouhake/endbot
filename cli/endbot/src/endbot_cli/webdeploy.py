@@ -336,6 +336,10 @@ def _announce_link(paths: InstancePaths, request: Callable, report: Callable[[st
             return True
         sleep(1.0)
     report(f"The link is not up yet: {last}")
+    if "ProofRefused" in last:
+        # The new key just has not reached Cloudflare's Durable Object; endbotd keeps trying (step 10, rc.3).
+        report("Cloudflare can take several minutes to start using a new key. endbotd keeps trying every 10 s for "
+               "10 minutes, so the link should come up by itself; `endbot doctor --live` shows when it does")
     return False
 
 

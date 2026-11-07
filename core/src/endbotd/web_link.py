@@ -37,9 +37,10 @@ SILENT_SECONDS = 90.0
 RETRY_INITIAL = 1.0
 # Short enough that a PC whose network comes back is on the web again within about half a minute (step 10).
 RETRY_MAX = 30.0
-# Cloudflare took about 2 minutes in step 10 to hand a rotated key to the Durable Object; until then a good proof is
-# refused. The retry stays under the Durable Object's 10 link openings a minute per address, or it answers 429.
-KEY_SETTLING_SECONDS = 180.0
+# Cloudflare took about 2 minutes on rc.2 and over 3 on rc.3 (step 10) to hand a rotated key to the Durable Object;
+# until then a good proof is refused. The window leaves room for that spread, and the retry stays under the Durable
+# Object's 10 link openings a minute per address, or it answers 429.
+KEY_SETTLING_SECONDS = 600.0
 KEY_SETTLING_RETRY = 10.0
 PROOF_REFUSED = 4003
 TOO_MANY = 429

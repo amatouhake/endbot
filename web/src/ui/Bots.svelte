@@ -23,9 +23,11 @@
   let detailProblem = $state("");
   let controls = $state<Controls>();
 
+  // With the server stopped nothing here can be listed or operated, Groups included (step 10).
+  const stopped = $derived(status?.bots === null);
   const bots = $derived<any[]>(status?.bots ?? []);
   const online = $derived(bots.filter((bot) => bot.state === "online").length);
-  const groups = $derived<any[]>(status?.groups ?? []);
+  const groups = $derived<any[]>(stopped ? [] : status?.groups ?? []);
   const typed = $derived(search.trim().toLowerCase().replace(/^#/, ""));
   const shownGroups = $derived(filter === "all" || filter === "groups"
     ? groups.filter((group) => group.name.toLowerCase().includes(typed)).toSorted((a, b) => a.name.localeCompare(b.name))
@@ -152,6 +154,8 @@
     <button class="back" onclick={() => navigate("bots")}>← {t("back")}</button>
     {#if !selected}
       <p class="empty">{t("botPick")}</p>
+    {:else if stopped}
+      <p class="empty">{t("stoppedNoOps")}</p>
     {:else if isGroup && !currentGroup}
       <p class="empty">{t("groupMissing")}</p>
     {:else}

@@ -102,10 +102,14 @@
           <h2>#{selected}</h2>
           <button class="danger" disabled={busy} onclick={remove}>{t("groupDelete")}</button>
         </div>
-        <p class="gap-top">
-          <a href={href("bots", `#${selected}`)}
-             onclick={(event) => { event.preventDefault(); navigate("bots", `#${selected}`); }}>{t("groupOperate")}</a>
-        </p>
+        {#if status?.bots === null}
+          <p class="gap-top quiet">{t("stoppedNoOps")}</p>
+        {:else}
+          <p class="gap-top">
+            <a href={href("bots", `#${selected}`)}
+               onclick={(event) => { event.preventDefault(); navigate("bots", `#${selected}`); }}>{t("groupOperate")}</a>
+          </p>
+        {/if}
       </section>
       <section class="card">
         <h2>{t("groupMembers")}</h2>
@@ -127,13 +131,15 @@
             {/each}
           </ul>
         {/if}
-        <form class="row gap-top" onsubmit={(event) => { event.preventDefault(); void add(); }}>
-          <select bind:value={addition} aria-label={t("groupAddLabel")}>
-            <option value="">{t("groupAddLabel")}</option>
-            {#each outside as name}<option value={name}>{name}</option>{/each}
-          </select>
-          <button disabled={busy || !addition}>{t("groupAdd")}</button>
-        </form>
+        {#if status?.bots !== null}
+          <form class="row gap-top" onsubmit={(event) => { event.preventDefault(); void add(); }}>
+            <select bind:value={addition} aria-label={t("groupAddLabel")}>
+              <option value="">{t("groupAddLabel")}</option>
+              {#each outside as name}<option value={name}>{name}</option>{/each}
+            </select>
+            <button disabled={busy || !addition}>{t("groupAdd")}</button>
+          </form>
+        {/if}
       </section>
     {/if}
   </div>

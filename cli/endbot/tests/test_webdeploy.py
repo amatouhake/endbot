@@ -250,6 +250,21 @@ class DeployTests(DeployCase):
         self.assertTrue(self.deploy(replace_worker=True))
         self.assertNotIn("migrations", self.metadata())
 
+    def test_a_failure_names_the_call_but_not_the_account(self) -> None:
+        self.api.fail["/assets-upload-session"] = (403, "Authentication error")
+        with self.assertRaises(DeployError) as raised:
+            self.deploy()
+        message = str(raised.exception)
+        self.assertIn("POST /workers/scripts/endbot/assets-upload-session failed (403)", message)
+        self.assertNotIn(ACCOUNT, message)
+
+    def test_a_token_that_cannot_read_the_subdomain_is_told_which_permission_to_add(self) -> None:
+        # Step 10: a token scoped to chosen Workers got a bare "GET failed (403)" here.
+        self.api.fail["/workers/subdomain"] = (403, "Authentication error")
+        with self.assertRaisesRegex(DeployError, r"GET /workers/subdomain failed \(403\).*account-wide Workers read"):
+            self.deploy()
+        self.assertEqual([call for call in self.api.calls if call[0] != "GET"], [])
+
     def test_a_list_that_cannot_be_read_stops_the_deploy(self) -> None:
         self.api.script_list = {"unexpected": True}
         with self.assertRaisesRegex(DeployError, "list of Workers"):

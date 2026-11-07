@@ -348,6 +348,13 @@ class BotWebCommandTests(ServiceHarness):
         self.message(alice, "A passkey was added to your web account")
         self.service._passkey_added({"xuid": "2535400000000002"})
 
+    def test_the_passkey_notice_speaks_the_players_language(self):
+        # Step 10: the notice came in English right after a Japanese /botweb link.
+        link, alice = self.joined_alice()
+        self.submit(link, Principal("player", player_id=ALICE, language="ja"), "botweb", "status")
+        self.service._passkey_added({"xuid": OWNER})
+        self.message(alice, "Web アカウントにパスキーが追加されました")
+
     def test_status_says_the_link_is_off_without_a_key(self):
         result = self.service._cli_web({"operation": "status"})
         self.assertEqual((result["ok"], result["linked"]), (True, False))

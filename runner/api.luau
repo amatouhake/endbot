@@ -108,7 +108,9 @@ function params(schema)
     end
     return args
 end
-local function ready() assert(declared, "declare params{} before running") end
+local function ready()
+  assert(declared, "declare params{} before running: a script with no arguments starts with params {}")
+end
 function wait(ticks)
     ready()
     assert(type(ticks) == "number" and ticks % 1 == 0 and ticks >= 0, "invalid wait ticks")

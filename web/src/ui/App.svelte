@@ -16,6 +16,8 @@
   ];
   const RETRY_FIRST_MS = 3000;
   const RETRY_LONGEST_MS = 30_000;
+  // Each read is one Worker request; often enough to see a server start or stop without reloading (step 10).
+  const DISPLAY_EVERY_MS = 30_000;
 
   let view = $state<"loading" | "signedOut" | "signedIn">("loading");
   let display = $state<{ displayName?: string; bds?: string }>({});
@@ -38,6 +40,18 @@
   $effect(() => {
     chosen[route.section] = route.item;
     visited[route.section] = true;
+  });
+
+  // The sign-in page asks again now and then, while anyone can see it, instead of keeping what it saw on opening.
+  $effect(() => {
+    if (view !== "signedOut") return;
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      void fetch("/api/display").then((response) => response.json()).then((value) => {
+        if (view === "signedOut") display = value;
+      }).catch(() => {});
+    }, DISPLAY_EVERY_MS);
+    return () => clearInterval(timer);
   });
 
   function explain(failure: unknown): string {

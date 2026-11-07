@@ -83,21 +83,23 @@ class CloudflareApi:
         request.add_header("Authorization", f"Bearer {bearer or self._token}")
         if content_type:
             request.add_header("Content-Type", content_type)
+        # Which call failed tells the operator which permission is missing (step 10); the account id is left out.
+        call = f"{method} {url.removeprefix(API).replace(f'/accounts/{self._account}', '', 1).split('?', 1)[0]}"
         try:
             with self._open(request, timeout=60) as response:
                 data = response.read()
         except urllib.error.HTTPError as error:
             data = error.read()
-            raise DeployError(self._scrub(f"Cloudflare API {method} failed ({error.code}): "
+            raise DeployError(self._scrub(f"Cloudflare API {call} failed ({error.code}): "
                                           f"{self._errors(data)}")) from None
         except OSError as error:
-            raise DeployError(self._scrub(f"Cloudflare API {method} failed: {type(error).__name__}")) from None
+            raise DeployError(self._scrub(f"Cloudflare API {call} failed: {type(error).__name__}")) from None
         try:
             answer = json.loads(data)
         except ValueError:
-            raise DeployError(f"Cloudflare API {method} answered something that is not JSON") from None
+            raise DeployError(f"Cloudflare API {call} answered something that is not JSON") from None
         if not isinstance(answer, dict) or answer.get("success") is False:
-            raise DeployError(self._scrub(f"Cloudflare API {method} refused: {self._errors(data)}"))
+            raise DeployError(self._scrub(f"Cloudflare API {call} refused: {self._errors(data)}"))
         return answer.get("result")
 
     @staticmethod
@@ -116,7 +118,15 @@ class CloudflareApi:
                           content_type="application/json")
 
     def workers_subdomain(self) -> str:
-        subdomain = self._call("GET", self._account_url("/workers/subdomain")).get("subdomain")
+        try:
+            subdomain = self._call("GET", self._account_url("/workers/subdomain")).get("subdomain")
+        except DeployError as error:
+            # A token scoped to chosen Workers cannot read this account-wide setting on its own (step 10).
+            if "(403)" in str(error):
+                raise DeployError(f"{error}. The token cannot read the account's workers.dev subdomain: add an "
+                                  "account-wide Workers read permission (docs/WEB_DEPLOY.md), or use --domain"
+                                  ) from None
+            raise
         if not isinstance(subdomain, str) or not subdomain:
             raise DeployError("this account has no workers.dev subdomain; open Workers once in the Cloudflare "
                               "dashboard, or use --domain")

@@ -93,6 +93,7 @@ class EndbotService:
         except ValueError as error:
             self._language_setting = DEFAULT_LANGUAGE_SETTING
             self._log("warning", f"{error}; using {DEFAULT_LANGUAGE_SETTING}")
+        self._languages: dict[str, str] = {}  # XUID -> language of that player's last command
         try:
             limits = BotLimits.from_config(config.limits)
         except ValueError as error:
@@ -383,6 +384,9 @@ class EndbotService:
             if not allowed:
                 self.deliver(to, [f"Endbot: {tr(principal.language, 'you do not have Bot control permission')}"])
                 return {"accepted": False, "code": "unauthorized"}
+            # Presence carries no language: what a player last used is what a later notice to them speaks.
+            if record.get("xuid"):
+                self._languages[record["xuid"]] = principal.language
         if submission.root == "botcontrollers":
             if not principal.console:
                 self.deliver(to, ["Endbot: controller management is available only from the server console"])
@@ -420,8 +424,10 @@ class EndbotService:
         record = next((record for record in self.link.presence.online() if record.get("xuid") == account["xuid"]),
                       None)
         if record is not None:
-            # Presence carries no language; "auto" falls back to English here.
-            language = "en" if self._language_setting == DEFAULT_LANGUAGE_SETTING else self._language_setting
+            # The language of the player's last command, such as the /botweb link just before: the plugin already
+            # applied [ui] language to it. With none since endbotd started, "auto" falls back to English.
+            language = self._languages.get(account["xuid"]) or (
+                "en" if self._language_setting == DEFAULT_LANGUAGE_SETTING else self._language_setting)
             line = tr(language, "A passkey was added to your web account")
             self.deliver(record["playerId"], [f"Endbot: {line}"])
 

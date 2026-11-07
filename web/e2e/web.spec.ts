@@ -637,7 +637,7 @@ test("a script is written, checked, saved, compared and run on one screen", asyn
   await page.keyboard.type('params {\n\n"not valid"');
   const before = await place();
   await page.getByRole("button", { name: "Check" }).click();
-  await expect(page.locator(".output").getByRole("alert")).toBeVisible();
+  await expect(page.locator(".script-status").getByRole("alert")).toBeVisible();
   // A result has its own place: the editor stays where it was.
   expect(await place()).toEqual(before);
   await shot(page, "13-script-error");

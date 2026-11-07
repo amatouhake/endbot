@@ -20,12 +20,27 @@ No Node, npm or Wrangler is needed on the server PC.
 
 ## Create the API token
 
-In the Cloudflare dashboard, create a custom API token with these permissions:
+Your account may hold other Workers, so give the token as little as it needs. Cloudflare can limit an account API token
+to chosen Workers, but such a token cannot create a Worker, so create the Worker first:
 
-| Deployment | Permission |
-|---|---|
-| Always | Account → Workers Scripts: Edit |
-| Custom domain only | Zone → Workers Routes: Edit, and Zone → DNS: Edit, on that zone |
+1. In the dashboard, create a Worker from the Hello World template, named as Endbot's Worker will be (`endbot` unless you
+   pass `--worker-name`). Endbot replaces it on the first deploy.
+2. Under **Manage Account → Account API Tokens**, create a token with two policies and an expiry date:
+
+   | Scope | Role | Why |
+   |---|---|---|
+   | Specified Workers: the Worker from step 1 | Editor | Upload the Worker, set its secret and route |
+   | All of the account's Workers | Metadata Read-Only | Read the account's `workers.dev` subdomain and its list of Workers; no code |
+
+3. On the first deploy, add `--replace-worker` (see [Deploy](#deploy)), because the Worker exists but this instance did
+   not create it.
+
+This was checked on Cloudflare in step 10: deploy, redeploy and `rotate-key` all worked with it. A token without the
+second policy fails with `GET /workers/subdomain failed (403)`. Instead of both policies, the Admin role on all Workers
+also works and can create the Worker itself, but it can change or delete every Worker in the account.
+
+For a custom domain the token also needs access to that zone. This path is not validated yet; expect Zone → Workers Routes:
+Edit and Zone → DNS: Edit, and report what Cloudflare actually asks for.
 
 Endbot never stores the token and never takes it as an argument. It reads the token from a hidden prompt or from
 `CLOUDFLARE_API_TOKEN`. You need it for `endbot web deploy`, `endbot web rotate-key` and to redeploy during
@@ -66,7 +81,11 @@ that is yours to replace, such as this instance's own Worker after `endbot.toml`
 and settings. Cloudflare may still refuse a Worker that has Durable Objects of its own, and then you can delete it in the
 dashboard first.
 
-The token can edit every Worker in the account, not only this one, so keep it for these commands and delete it afterwards.
+With the token from [Create the API token](#create-the-api-token), the first deploy is:
+
+```bash
+./endbot web deploy --account-id <account-id> --replace-worker
+```
 
 The command:
 
@@ -167,7 +186,8 @@ the Worker, so protect that account with its own strong sign-in ([what that risk
 |---|---|
 | `Worker speaks web protocol N, endbotd expects M` in the log or `doctor --live` | The Worker and endbotd are from different versions. Run `endbot web deploy` |
 | `no Cloudflare API token` | The prompt had no terminal. Set `CLOUDFLARE_API_TOKEN` |
-| `Cloudflare API ... failed (403)` | The token lacks a permission from the table above, or it belongs to another account |
+| `Cloudflare API GET /workers/subdomain failed (403)` | The token lacks the Metadata Read-Only policy from [Create the API token](#create-the-api-token), or use `--domain` |
+| `Cloudflare API ... failed (403)` | The message names the call. The token lacks a permission from [Create the API token](#create-the-api-token), it does not cover this Worker's name, or it belongs to another account |
 | `this account has no workers.dev subdomain` | Open Workers once in the dashboard, or use `--domain` |
 | `the prebuilt Worker was not found` | This install's bundle has no web. Reinstall from a release, or pass `--bundle` |
 | `a Worker named ... already exists` | Another Worker has that name, or a first deploy stopped partway. Choose another `--worker-name`, or see [Deploy](#deploy) for `--replace-worker` |

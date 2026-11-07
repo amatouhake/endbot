@@ -445,19 +445,26 @@
 
       <Editor value={draft} readOnly={!open.canEdit} {problem} onchange={(text) => { draft = text; }} />
 
-      <div class="output">
-        {#if problem}
-          <div class="line error-line" role="alert">{problem.line ? `${t("atLine", { line: problem.line })} ` : ""}{problem.message}</div>
+      <!-- What the last action said stays apart from the run log, which only lists lines with their time. -->
+      <div class="output-area">
+        {#if problem || notice}
+          <div class="script-status">
+            {#if problem}
+              <p class="error" role="alert">{problem.line ? `${t("atLine", { line: problem.line })} ` : ""}{problem.message}</p>
+            {/if}
+            {#if notice}<p class="good" role="status">{notice}</p>{/if}
+          </div>
         {/if}
-        {#if notice}<div class="line good-line" role="status">{notice}</div>{/if}
-        {#if open.file}<div class="line quiet">{t("scriptFileNote")}</div>{/if}
-        {#if !open.canEdit && !open.file}<div class="line quiet">{t("scriptReadOnly")}</div>{/if}
-        {#each output as entry}
-          {#each entry.lines as text}
-            <div class="line" class:error-line={entry.level !== "info"}><time>{formatDate(entry.time)}</time>{text}</div>
+        <div class="output" aria-label={t("outputLabel")}>
+          {#if open.file}<div class="line quiet">{t("scriptFileNote")}</div>{/if}
+          {#if !open.canEdit && !open.file}<div class="line quiet">{t("scriptReadOnly")}</div>{/if}
+          {#each output as entry}
+            {#each entry.lines as text}
+              <div class="line" class:error-line={entry.level !== "info"}><time>{formatDate(entry.time)}</time>{text}</div>
+            {/each}
           {/each}
-        {/each}
-        {#if !problem && !notice && !output.length && open.canEdit}<div class="line quiet">{t("outputEmpty")}</div>{/if}
+          {#if !output.length && open.canEdit}<div class="line quiet">{t("outputEmpty")}</div>{/if}
+        </div>
       </div>
     </div>
   {/if}

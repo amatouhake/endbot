@@ -139,10 +139,29 @@ button.primary.danger-fill { background: var(--bad); border-color: var(--bad); }
 .pad button { padding: 0; min-height: 0; }
 .quick { display: flex; flex-wrap: wrap; gap: 1.1rem; align-items: flex-start; margin-top: .6rem; }
 .choices { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
-.choices.recent { margin-bottom: .5rem; }
-.choices.recent .quiet { font-size: .85rem; margin-right: .2rem; }
-.choices.categories { padding-bottom: .5rem; border-bottom: 1px solid var(--line); }
+/* Recent is a shortcut back to an operation, not a level of the menu: small chips beside the card's title. */
+.card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .1rem .8rem; }
+.card-head h2 { margin: 0; }
+.recent { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
+.recent .quiet { font-size: .78rem; }
+.recent button {
+  min-height: 0; padding: .05rem .5rem; font-size: .78rem; border-radius: 1rem; color: var(--quiet);
+  background: var(--bg); border: 0;
+}
+.recent button:hover:not(:disabled) { color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+/* A category is the level above an operation, so it wears the navigation's tab shape rather than a button. */
+.choices.categories { gap: .1rem; padding-bottom: 0; border-bottom: 1px solid var(--line); margin-top: .25rem; }
+.choices.categories button {
+  border: 0; border-radius: 0; background: none; color: var(--quiet); padding: .35rem .7rem;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.choices.categories button:hover:not(:disabled) { color: var(--text); }
+.choices.categories button[aria-pressed="true"] {
+  background: none; color: var(--text); border-color: transparent; border-bottom-color: var(--accent);
+}
 .choices.operations { margin-top: .6rem; }
+/* The chosen operation's shape and mode sit under it: quieter than the operation row itself. */
+.op-panel .choices button { min-height: 2rem; padding: .2rem .6rem; font-size: .85rem; }
 .choices button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .op-panel { display: grid; gap: .5rem; margin-top: .6rem; }
 /* Fields side by side, so that Run stays on screen beside them. */

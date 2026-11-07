@@ -261,15 +261,17 @@
 </script>
 
 <section class="card">
-  <h2>{t("opsTitle")}</h2>
-  {#if recentShown.length}
-    <div class="choices recent" role="group" aria-label={t("opsRecent")}>
-      <span class="quiet">{t("opsRecent")}</span>
-      {#each recentShown as op (op)}
-        <button disabled={busy} onclick={() => chooseRecent(op)}>{opLabel(op)}</button>
-      {/each}
-    </div>
-  {/if}
+  <div class="card-head">
+    <h2>{t("opsTitle")}</h2>
+    {#if recentShown.length}
+      <div class="recent" role="group" aria-label={t("opsRecent")}>
+        <span class="quiet">{t("opsRecent")}</span>
+        {#each recentShown as op (op)}
+          <button disabled={busy} onclick={() => chooseRecent(op)}>{opLabel(op)}</button>
+        {/each}
+      </div>
+    {/if}
+  </div>
   <div class="choices categories" role="group" aria-label={t("opsCategories")}>
     {#each sections as item (item.key)}
       <button aria-pressed={section?.key === item.key} onclick={() => chooseCategory(item.key)}>{t(item.key)}</button>

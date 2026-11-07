@@ -65,7 +65,7 @@ class FakeWeb:
 class FakeDurableObject:
     """Plays the Durable Object's side of the link."""
 
-    def __init__(self, *, protocol=None, origin="ws://placeholder", accept=True, answer=True):
+    def __init__(self, *, protocol=None, origin="ws://placeholder", accept=True, answer=True, busy=False):
         self.protocol = WEB_PROTOCOL if protocol is None else protocol
         self.frames = queue.Queue()
         self.accept = accept
@@ -75,10 +75,16 @@ class FakeDurableObject:
         self.pings = 0
         self.socket = None
         self.connected = threading.Event()
-        self.server = serve(self._handler, "127.0.0.1", 0)
+        self.turned_away = 0
+        # True plays the Durable Object's rate limit on link openings, which answers the upgrade with 429.
+        self.server = serve(self._handler, "127.0.0.1", 0, process_request=self._busy if busy else None)
         self.port = self.server.socket.getsockname()[1]
         self.origin = f"http://localhost:{self.port}" if origin == "ws://placeholder" else origin
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def _busy(self, connection, request):
+        self.turned_away += 1
+        return connection.respond(429, "rate_limited")
 
     def _handler(self, socket):
         socket.send(json.dumps({"t": "challenge", "protocol": self.protocol, "nonce": NONCE, "origin": self.origin}))
@@ -222,6 +228,16 @@ class HandshakeTests(LinkCase):
         self.start(accept=False)
         self.assertTrue(wait(lambda: len(self.delays) >= 3, timeout=30))
         self.assertEqual(self.delays[:3], [0.5, 1.0, 2.0])
+
+    def test_being_turned_away_for_trying_too_often_while_a_key_settles_does_not_back_off(self):
+        # Step 10 on rc.2: a retry every 5 s hit the Durable Object's 10 openings a minute, and its 429 backed off.
+        self.retry = (0.5, 60.0)
+        self.settling = (30.0, 0.05)
+        self.delays = []
+        self.start(busy=True)
+        self.assertTrue(wait(lambda: self.relay.turned_away >= 3, timeout=30))
+        self.assertTrue(self.delays and all(delay <= 0.05 for delay in self.delays), self.delays)
+        self.assertIn("429", self.link.problem)
 
     def test_other_failures_back_off_as_before_even_just_after_start(self):
         self.retry = (0.5, 60.0)

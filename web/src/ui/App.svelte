@@ -244,9 +244,10 @@
   <div class="shell">
     <header class="topbar">
       <div class="brand">
-        <span class="dot" class:up={status?.bds === "up"}></span>
+        <!-- While reconnecting, the last state heard is no longer known to be true (step 10). -->
+        <span class="dot" class:up={!offline && status?.bds === "up"}></span>
         <h1>{status?.displayName || t("title")}</h1>
-        <small class="quiet">{status?.bds === "up" ? t("serverUp") : t("serverDown")}</small>
+        <small class="quiet">{offline ? t("serverUnknown") : status?.bds === "up" ? t("serverUp") : t("serverDown")}</small>
       </div>
       <nav class="tabs">
         {#each TABS as [section, label]}

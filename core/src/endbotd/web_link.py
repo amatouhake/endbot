@@ -21,7 +21,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, load_pem_private_key
-from websockets.exceptions import ConnectionClosed, WebSocketException
+from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketException
 from websockets.sync.client import connect as websocket_connect
 
 WEB_PROTOCOL = json.loads((Path(__file__).parent / "web_protocol.schema.json").read_text(encoding="utf-8"))["version"]
@@ -35,11 +35,14 @@ KEEP_ALIVE_ANSWER = "link-pong"
 # no close).
 SILENT_SECONDS = 90.0
 RETRY_INITIAL = 1.0
-RETRY_MAX = 60.0
-# Cloudflare takes a while to hand a rotated key to the Durable Object; until then a good proof is refused.
-KEY_SETTLING_SECONDS = 120.0
-KEY_SETTLING_RETRY = 5.0
+# Short enough that a PC whose network comes back is on the web again within about half a minute (step 10).
+RETRY_MAX = 30.0
+# Cloudflare took about 2 minutes in step 10 to hand a rotated key to the Durable Object; until then a good proof is
+# refused. The retry stays under the Durable Object's 10 link openings a minute per address, or it answers 429.
+KEY_SETTLING_SECONDS = 180.0
+KEY_SETTLING_RETRY = 10.0
 PROOF_REFUSED = 4003
+TOO_MANY = 429
 MAX_SESSION_CONNECTIONS = 4
 MAX_SESSION_REQUESTS_PER_SECOND = 20
 MAX_REQUEST_WORKERS = 8
@@ -202,6 +205,8 @@ class WebLink:
                 refused = True
                 self._down(f"web link failed: {type(error).__name__}: {error}", "warning")
             except (OSError, ValueError, TimeoutError, WebSocketException) as error:
+                # Turned away for trying too often while the key settles: still the key's wait, so no backing off.
+                refused = isinstance(error, InvalidStatus) and getattr(error.response, "status_code", None) == TOO_MANY
                 self._down(f"web link failed: {type(error).__name__}: {error}", "warning")
             except Exception as error:  # noqa: BLE001 - this thread must outlive anything the relay sends
                 self._down(f"web link failed unexpectedly: {type(error).__name__}: {error}", "error")

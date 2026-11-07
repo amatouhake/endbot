@@ -163,7 +163,7 @@ dashboard if you no longer want them.
 | Keep someone out of Endbot and the web | `endbot controllers remove <GamerTag>` | Their sessions end at once. The account and passkeys stay for a later regrant, but do nothing until then. Joining the game is separate: this does not edit the BDS allow-list |
 | Remove someone's web account only | `endbot web revoke <GamerTag>` (or `xuid:<id>`) | Account, passkeys and sessions are deleted. The grant stays, so they can link again |
 | Let a player remove their own | `/botweb unlink` in the game, or the device list on the web | The account, or that one passkey or session, is deleted |
-| Respond to a suspected link key exposure | `endbot web rotate-key` | A new key pair replaces the old one on the PC and on Cloudflare |
+| Respond to a suspected link key exposure | `endbot web rotate-key` | A new key pair replaces the old one on the PC and on Cloudflare. The web is offline for about 2 minutes while Cloudflare starts using it, and the command waits up to 3 |
 | Respond to a suspected site key exposure | Remove the key, restart, then `endbot web revoke --site-sessions` | See [rotating keys](#rotating-keys) |
 
 `endbot web revoke` needs Endbot running. To take the web down altogether, set `[web] enabled = false` in `endbot.toml`,

@@ -85,9 +85,12 @@ dead link, and the web stayed down after the PC came back.)
 **Rotation** is `endbot web rotate-key`: a new key pair, the secret replaced through the API, then the key file
 replaced. The old private key is deleted at once, because the Worker no longer accepts it. One mechanism serves routine
 rotation and suspected exposure. Because the secret is set only through the operator's Cloudflare account, rotation
-needs an API token (P9). Cloudflare takes up to a minute or so to hand the new secret to the Durable Object, and a good
-proof is refused until then, so for 2 minutes after it starts endbotd retries a refused proof every 5 s instead of
-backing off, and the command waits up to 2 minutes for the link.
+needs an API token (P9). Cloudflare took about 2 minutes in step 10 to hand the new secret to the Durable Object, and a
+good proof is refused until then, so the web is offline for about that long. For 3 minutes after it starts endbotd
+retries a refused proof every 10 s instead of backing off, staying under the Durable Object's 10 link openings a minute
+(a faster retry was answered 429 on rc.2, which then counts the same), and the command waits up to 3 minutes for the
+link. Otherwise endbotd's retry backs off to at most 30 s, so a PC whose network comes back is linked again within
+about half a minute.
 
 ### P2. One relay protocol, versioned with the bundle
 

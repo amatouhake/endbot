@@ -60,6 +60,14 @@ Or, for a custom domain:
 The domain must be lowercase with no port or path. On Windows, use `endbot.cmd`.
 `--worker-name <name>` changes the Worker's name, which is `endbot` by default and is part of a `workers.dev` address.
 
+**Each instance needs its own Worker name.** If your account already has a Worker of that name that this instance did not
+deploy, the command refuses before it changes anything. Choose another name. `--replace-worker` is only for a Worker
+that is yours to replace, such as this instance's own Worker after `endbot.toml` was lost: it replaces that Worker's code
+and settings. Cloudflare may still refuse a Worker that has Durable Objects of its own, and then you can delete it in the
+dashboard first.
+
+The token can edit every Worker in the account, not only this one, so keep it for these commands and delete it afterwards.
+
 The command:
 
 1. creates the link key once, in `state/secrets/web-link.key`, and installs only its public half on Cloudflare;
@@ -162,6 +170,7 @@ the Worker, so protect that account with its own strong sign-in ([what that risk
 | `Cloudflare API ... failed (403)` | The token lacks a permission from the table above, or it belongs to another account |
 | `this account has no workers.dev subdomain` | Open Workers once in the dashboard, or use `--domain` |
 | `the prebuilt Worker was not found` | This install's bundle has no web. Reinstall from a release, or pass `--bundle` |
+| `a Worker named ... already exists` | Another Worker has that name, or a first deploy stopped partway. Choose another `--worker-name`, or see [Deploy](#deploy) for `--replace-worker` |
 | `the origin would change from ...` | You asked for another address. Read [changing the domain](#changing-the-domain) first |
 | `the Worker ... no longer exists on Cloudflare` | It was deleted, so the custom domain must be attached again. Repeat with `--domain` and `--zone-id` |
 | `The link is not up yet: ...` | The message names the reason. Check that the PC can reach the address over HTTPS, then run `endbot doctor --live` |

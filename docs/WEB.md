@@ -218,6 +218,10 @@ Because every request rechecks the grant revision, a revoke takes effect even if
   the route, so with no `--domain` the origin, the attached domain and the routes stay as they are. Going back to
   `workers.dev` takes `--confirm-domain-change`, as any new origin does (P4). If the Worker was deleted on Cloudflare, the
   deploy refuses and asks for `--domain` and `--zone-id` again.
+- **A deploy never replaces a Worker it did not make.** An account often holds other Workers, and an upload replaces a
+  Worker's code and bindings outright. So the deploy reads the account's list of Workers first. A Worker of that name
+  that this instance's `endbot.toml` does not record is refused before anything changes, unless the operator passes
+  `--replace-worker`. A list that cannot be read also stops the deploy.
 
 ### P10. endbotd keeps running while BDS is stopped
 

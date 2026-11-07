@@ -94,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="accept that a new origin deletes every passkey and session",
     )
+    deploy.add_argument(
+        "--replace-worker",
+        action="store_true",
+        help="replace an existing Worker of that name that this instance did not deploy",
+    )
     deploy.add_argument("--bundle", type=Path, help="a prebuilt web bundle (default: the installed one)")
     web_subcommands.add_parser("rotate-key", help="replace the link key; the token is prompted, never an argument")
     setup = subcommands.add_parser("setup", help="create or adopt an instance; prints the full plan first (section 6)")
@@ -185,7 +190,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "web" and args.web_command == "deploy":
         return run_web_deploy(paths, account_id=args.account_id, worker_name=args.worker_name, domain=args.domain,
                               zone_id=args.zone_id, confirm_domain_change=args.confirm_domain_change,
-                              bundle=args.bundle)
+                              replace_worker=args.replace_worker, bundle=args.bundle)
     if args.command == "web" and args.web_command == "rotate-key":
         return run_web_rotate_key(paths)
     if args.command == "web":

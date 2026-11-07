@@ -49,10 +49,16 @@ class FakeResponse:
         return self.data
 
 
+def metadata_of(body: bytes) -> dict:
+    start = body.index(b"\r\n\r\n", body.index(b'name="metadata"')) + 4
+    return json.loads(body[start:body.index(b"\r\n--endbot", start)])
+
+
 class FakeApi:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, object, str]] = []
-        self.migration = None
+        self.workers: dict[str, str | None] = {}  # name -> applied migration tag, as an upload leaves it
+        self.script_list: object = None  # set to answer the list with something else
         self.buckets = "all"
         self.fail: dict[str, tuple[int, str]] = {}
 
@@ -67,13 +73,18 @@ class FakeApi:
                 raise urllib.error.HTTPError(url, code, "no", {}, io.BytesIO(body))
         return FakeResponse(json.dumps({"success": True, "result": self._result(request, path)}).encode())
 
-    def _result(self, request, path: str) -> dict:
+    def _result(self, request, path: str) -> object:
         if path == "/workers/subdomain":
             return {"subdomain": "alice"}
-        if path.endswith("/settings"):
-            if self.migration is None:
-                raise urllib.error.HTTPError(path, 404, "no", {}, io.BytesIO(b'{"errors":[{"message":"none"}]}'))
-            return {"migration_tag": self.migration}
+        if path == "/workers/scripts":
+            if self.script_list is not None:
+                return self.script_list
+            return [{"id": name, **({"migration_tag": tag} if tag else {})} for name, tag in self.workers.items()]
+        if request.get_method() == "PUT" and path.count("/") == 3 and path.startswith("/workers/scripts/"):
+            name = path.rsplit("/", 1)[1]
+            migrations = metadata_of(request.data).get("migrations") or {}
+            self.workers[name] = migrations.get("new_tag") or self.workers.get(name)
+            return {}
         if path.endswith("/assets-upload-session"):
             manifest = json.loads(request.data)["manifest"]
             self.manifest = manifest
@@ -128,9 +139,11 @@ class DeployCase(unittest.TestCase):
 
     def metadata(self) -> dict:
         put = next(call for call in self.api.calls if call[0] == "PUT" and call[1] == "/workers/scripts/endbot")
-        body = put[2]
-        start = body.index(b"\r\n\r\n", body.index(b'name="metadata"')) + 4
-        return json.loads(body[start:body.index(b"\r\n--endbot", start)])
+        return metadata_of(put[2])
+
+    def uploaded(self) -> bool:
+        return any(call[0] == "PUT" and call[1].count("/") == 3 and call[1].startswith("/workers/scripts/")
+                   for call in self.api.calls)
 
 
 class DeployTests(DeployCase):
@@ -200,9 +213,55 @@ class DeployTests(DeployCase):
         self.deploy()
         self.assertEqual(self.metadata()["migrations"], {"new_tag": "v1", "new_sqlite_classes": ["Relay"]})
         self.api.calls.clear()
-        self.api.migration = "v1"
         self.deploy()
         self.assertNotIn("migrations", self.metadata())
+
+    def test_an_existing_worker_this_instance_did_not_deploy_is_refused(self) -> None:
+        self.api.workers["endbot"] = None  # no Durable Objects, so no migration tag: it still exists
+        before = self.paths.endbot_toml.read_text(encoding="utf-8")
+        with self.assertRaisesRegex(DeployError, "already exists.*--worker-name.*--replace-worker"):
+            self.deploy()
+        self.assertEqual([call for call in self.api.calls if call[0] != "GET"], [])
+        self.assertEqual(self.paths.endbot_toml.read_text(encoding="utf-8"), before)
+        self.assertFalse((self.paths.state_secrets / "web-link.key").exists())
+
+    def test_a_new_name_is_also_checked_after_a_deploy(self) -> None:
+        self.deploy()
+        self.api.workers["mine"] = "v7"
+        self.api.calls.clear()
+        with self.assertRaisesRegex(DeployError, "named mine already exists"):
+            self.deploy(worker_name="mine", confirm_domain_change=True)
+        self.assertFalse(self.uploaded())
+
+    def test_a_free_name_beside_other_workers_is_a_first_deploy(self) -> None:
+        self.api.workers["mine"] = "v7"
+        self.assertTrue(self.deploy())
+        self.assertEqual(self.api.workers["mine"], "v7")
+        self.assertEqual(self.metadata()["migrations"]["new_tag"], "v1")
+
+    def test_replacing_a_worker_takes_the_flag(self) -> None:
+        self.api.workers["endbot"] = None
+        self.assertTrue(self.deploy(replace_worker=True))
+        self.assertEqual(self.metadata()["migrations"]["new_tag"], "v1")
+        self.assertIn("/workers/scripts/endbot/subdomain", self.api.paths())
+
+    def test_replacing_our_own_worker_after_losing_the_settings_keeps_its_migration(self) -> None:
+        self.api.workers["endbot"] = "v1"
+        self.assertTrue(self.deploy(replace_worker=True))
+        self.assertNotIn("migrations", self.metadata())
+
+    def test_a_list_that_cannot_be_read_stops_the_deploy(self) -> None:
+        self.api.script_list = {"unexpected": True}
+        with self.assertRaisesRegex(DeployError, "list of Workers"):
+            self.deploy()
+        self.assertEqual([call for call in self.api.calls if call[0] != "GET"], [])
+
+    def test_the_flag_reaches_the_deploy(self) -> None:
+        from unittest.mock import patch
+
+        with patch("endbot_cli.__main__.run_web_deploy", return_value=0) as run:
+            main(["--instance", str(self.root), "web", "deploy", "--replace-worker"])
+        self.assertIs(run.call_args.kwargs["replace_worker"], True)
 
     def test_the_link_key_is_created_once_and_owner_only(self) -> None:
         self.deploy()
@@ -236,7 +295,6 @@ class DeployTests(DeployCase):
 
     def test_a_refused_domain_leaves_a_serving_worker_and_the_settings_alone(self) -> None:
         self.deploy()
-        self.api.migration = "v1"
         self.api.calls.clear()
         before = self.paths.endbot_toml.read_text(encoding="utf-8")
         self.api.fail["/workers/domains"] = (403, "no zone permission")
@@ -281,7 +339,6 @@ class DeployTests(DeployCase):
 
     def test_a_plain_redeploy_leaves_a_custom_domain_as_it_is(self) -> None:
         self.deploy(domain="endbot.example", zone_id="zone1")
-        self.api.migration = "v1"
         self.api.calls.clear()
         self.assertTrue(self.deploy(account_id=None))
         self.assertEqual(load_config(self.paths.endbot_toml).web.origin, "https://endbot.example")
@@ -292,6 +349,7 @@ class DeployTests(DeployCase):
 
     def test_a_plain_redeploy_of_a_vanished_worker_says_to_attach_the_domain_again(self) -> None:
         self.deploy(domain="endbot.example", zone_id="zone1")
+        self.api.workers.clear()
         self.api.calls.clear()
         before = self.paths.endbot_toml.read_text(encoding="utf-8")
         with self.assertRaisesRegex(DeployError, "--domain endbot.example --zone-id"):
@@ -301,7 +359,6 @@ class DeployTests(DeployCase):
 
     def test_leaving_a_custom_domain_still_needs_confirmation(self) -> None:
         self.deploy(domain="endbot.example", zone_id="zone1")
-        self.api.migration = "v1"
         with self.assertRaisesRegex(DeployError, "confirm-domain-change"):
             self.deploy(worker_name="other")
         self.assertTrue(self.deploy(confirm_domain_change=True))

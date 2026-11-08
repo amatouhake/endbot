@@ -194,6 +194,8 @@ class EndbotService:
             max_triggers=getattr(limits, "max_triggers_per_controller", DEFAULT_MAX_TRIGGERS), log=self._log)
         # The /botscript trigger commands and forms call this engine; it is None outside endbotd.
         self.scripts.triggers = self.triggers
+        # A stored trigger change reaches open pages that subscribed to it (BOT-022 step 7a).
+        self.triggers.on_changed = self._trigger_changed
         if scripts is not None and script_config.enabled:
             # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
             try:
@@ -265,7 +267,7 @@ class EndbotService:
         from endbotd.web_api import WebApi
 
         self.web_api = WebApi(self.web.auth, runner=self.runner, commands=self.commands, scripts=self.scripts,
-                              control=self._runtime_control,
+                              control=self._runtime_control, triggers=self.triggers,
                               bds_up=lambda: self.link.connected, display_name=lambda: self.web.display_name)
         self.web_api.start()
         self.web_link = WebLink(self.web, self.web.origin, key, __version__, ws_handler=self.web_api.handle,
@@ -279,6 +281,11 @@ class EndbotService:
         self.runtime_kinds.on_event(event)
         if self.web_api is not None:
             self.web_api.record(event)
+
+    def _trigger_changed(self, trigger) -> None:
+        """A stored trigger changed: push it to subscribed pages (docs/EVENTS.md E10)."""
+        if self.web_api is not None:
+            self.web_api.trigger_changed(trigger)
 
     def _web_result(self, source, arguments, root, result) -> None:
         if self.web_api is not None:

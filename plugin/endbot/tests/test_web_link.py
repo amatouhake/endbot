@@ -322,6 +322,13 @@ class WebSocketTests(LinkCase):
         self.assertEqual(self.relay.next("msg")["body"], {"type": "reload"})
         self.assertEqual(self.handled, [])
 
+    def test_an_old_browser_protocol_asks_the_page_to_reload(self):
+        self.up()
+        self.relay.ws("w1")
+        self.relay.send({"t": "msg", "conn": "w1", "id": 7, "body": {"v": WEB_PROTOCOL - 1, "id": 3, "type": "query"}})
+        self.assertEqual(self.relay.next("msg")["body"], {"type": "reload"})
+        self.assertEqual(self.handled, [])
+
     def test_pushes_reach_the_connection(self):
         self.up()
         self.relay.ws("w1")
@@ -540,14 +547,18 @@ class KeyFileTests(unittest.TestCase):
         self.assertNotIn("SECRET-LOOKING", str(raised.exception))
 
 
+@unittest.skipUnless(HAS_LIBRARIES, "the web libraries are not installed")
 class ProtocolExampleTests(unittest.TestCase):
     def test_the_schema_version_is_the_protocol_version(self):
         root = Path(__file__).resolve().parents[3]
         schema = json.loads((root / "core/src/endbotd/web_protocol.schema.json").read_text(encoding="utf-8"))
-        self.assertEqual(schema["version"], 1)
+        # A literal: bumping the protocol must be deliberate, and a forgotten bump must fail here.
+        self.assertEqual((schema["version"], WEB_PROTOCOL), (2, 2))
         examples = json.loads((root / "web/protocol-examples.json").read_text(encoding="utf-8"))
-        kinds = {example["t"] for example in examples["valid"]}
+        kinds = {example["t"] for example in examples["valid"] if "t" in example}
         self.assertEqual(kinds, {"challenge", "prove", "ready", "open", "msg", "close", "cache"})
+        messages = {example["type"] for example in examples["valid"] if "type" in example}
+        self.assertEqual(messages, {"trigger.create"})
 
 
 if __name__ == "__main__":

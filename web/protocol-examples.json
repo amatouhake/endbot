@@ -1,7 +1,7 @@
 {
   "valid": [
-    { "t": "challenge", "protocol": 1, "nonce": "AAAAAAAAAAAAAAAAAAAAAA", "origin": "https://endbot.example" },
-    { "t": "prove", "protocol": 1, "endbotdVersion": "0.7.0", "keyId": "abc123", "sig": "c2lnbmF0dXJl" },
+    { "t": "challenge", "protocol": 2, "nonce": "AAAAAAAAAAAAAAAAAAAAAA", "origin": "https://endbot.example" },
+    { "t": "prove", "protocol": 2, "endbotdVersion": "0.7.0", "keyId": "abc123", "sig": "c2lnbmF0dXJl" },
     { "t": "ready" },
     { "t": "open", "conn": "c1", "kind": "http", "path": "/auth/login/options", "origin": "https://endbot.example",
       "session": null, "siteCookie": null, "ipBucket": "b1" },
@@ -10,18 +10,23 @@
     { "t": "msg", "conn": "c1", "id": 1, "body": {} },
     { "t": "msg", "conn": "c1", "id": 1, "body": { "status": 200, "body": { "gamertag": "Alice" }, "session": "token" } },
     { "t": "close", "conn": "c1", "reason": "done" },
-    { "t": "cache", "displayName": "", "bds": "up" }
+    { "t": "cache", "displayName": "", "bds": "up" },
+    { "v": 2, "id": 4, "type": "trigger.create", "script": "guard", "kind": "block.change",
+      "filter": { "area": "within 0 64 0 3 65 3" }, "arguments": [], "visibility": "private",
+      "policy": { "concurrency": "skip" } }
   ],
   "invalid": [
     { "t": "unknown" },
-    { "t": "challenge", "protocol": 1, "nonce": "short", "origin": "https://endbot.example" },
-    { "t": "prove", "protocol": 1, "endbotdVersion": "0.7.0", "keyId": "", "sig": "x" },
+    { "t": "challenge", "protocol": 2, "nonce": "short", "origin": "https://endbot.example" },
+    { "t": "prove", "protocol": 2, "endbotdVersion": "0.7.0", "keyId": "", "sig": "x" },
     { "t": "open", "conn": "c1", "kind": "tcp", "path": "/", "origin": null, "session": null, "siteCookie": null, "ipBucket": "b" },
     { "t": "open", "conn": "c1", "kind": "http", "path": "/" },
     { "t": "msg", "conn": "c1", "id": "1", "body": {} },
     { "t": "msg", "conn": "c1", "id": 1 },
     { "t": "close", "conn": "c1" },
     { "t": "cache", "displayName": "", "bds": "sideways" },
-    { "t": "ready", "extra": true }
+    { "t": "ready", "extra": true },
+    { "v": 2, "id": 5, "type": "trigger.create", "script": "guard", "kind": "block.change",
+      "filter": { "area": "within 0 64 0 3 65 3" }, "arguments": [5] }
   ]
 }

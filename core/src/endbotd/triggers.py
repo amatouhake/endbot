@@ -38,6 +38,8 @@ from endbot_core.trigger_store import Trigger, policy_from
 from endbot_core.watches import check_kind, validate_filter
 
 DEFAULT_MAX_TRIGGERS = 8
+# Change notices waiting for a slow listener; beyond this they are dropped (the page re-reads on its next list).
+MAX_NOTICES = 256
 TICK_SECONDS = 0.25
 
 
@@ -81,9 +83,13 @@ class TriggerEngine:
         # Held from the last check before a start to the start, and by every state change: no start after a
         # disable, remove or pause has returned.
         self._state = threading.RLock()
+        self._notices: queue.Queue = queue.Queue()
+        self._notifier: threading.Thread | None = None
         self._work: queue.Queue = queue.Queue()
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
+        # Called outside every lock after a state or stats change is stored (the web's trigger subscription).
+        self.on_changed: Callable[[Trigger], None] | None = None
 
     # -- lifecycle -------------------------------------------------------
 
@@ -100,6 +106,7 @@ class TriggerEngine:
                 self.disable_for(_key(trigger), "owner revoked", notify=False)
                 continue
             self.store.update(trigger.owner, trigger.name, stats={**trigger.stats, "lastGap": now})
+            self._changed(self.store.get(trigger.owner, trigger.name))
             try:
                 self._arm(self.store.get(trigger.owner, trigger.name))
             except LocalizedError as error:
@@ -113,10 +120,43 @@ class TriggerEngine:
     def close(self) -> None:
         self._closed.set()
         self._work.put(None)
+        self._notices.put(None)
         with self._lock:
             armed, self._armed = self._armed, {}
         for entry in armed.values():
             self.hub.unsubscribe(entry["subscription"])
+
+    def _changed(self, trigger: Trigger | None, *, removed: bool = False) -> None:
+        """Queue a notice of a stored change for the listener (the web); never waits for it."""
+        if self.on_changed is None or trigger is None:
+            return
+        if self._notices.qsize() >= MAX_NOTICES:
+            return  # a listener that cannot keep up loses notices, never the engine's time
+        self._notices.put((trigger, removed))
+        with self._lock:
+            if self._notifier is None or not self._notifier.is_alive():
+                self._notifier = threading.Thread(target=self._notify_loop, name="endbotd-trigger-notices",
+                                                  daemon=True)
+                self._notifier.start()
+
+    def _notify_loop(self) -> None:
+        while True:
+            item = self._notices.get()
+            if item is None:
+                return
+            trigger, removed = item
+            callback = self.on_changed
+            try:
+                if callback is not None:
+                    callback(trigger, removed=removed)
+            except Exception as error:  # noqa: BLE001 - a listener's failure is logged, not raised into the engine
+                self._log("warning", f"trigger change listener failed: {type(error).__name__}: {error}")
+            finally:
+                self._notices.task_done()
+
+    def flush_notices(self) -> None:
+        """Wait until every queued change notice was handed to the listener (tests and shutdown)."""
+        self._notices.join()
 
     def _arm(self, trigger: Trigger) -> None:
         key = _key(trigger)
@@ -173,12 +213,12 @@ class TriggerEngine:
     def _stat(self, key: tuple, **changes) -> None:
         trigger = self.store.get(*key)
         if trigger is not None:
-            self.store.update(*key, stats={**trigger.stats, **changes})
+            self._changed(self.store.update(*key, stats={**trigger.stats, **changes}))
 
     def _bump(self, key: tuple, name: str, count: int = 1) -> None:
         trigger = self.store.get(*key)
         if trigger is not None and count:
-            self.store.update(*key, stats={**trigger.stats, name: trigger.stats.get(name, 0) + count})
+            self._changed(self.store.update(*key, stats={**trigger.stats, name: trigger.stats.get(name, 0) + count}))
 
     def _occurrence(self, key: tuple, item: dict, generation: int) -> None:
         with self._lock:
@@ -297,8 +337,9 @@ class TriggerEngine:
                 self._bump(key, "skipped")
                 return
             entry["policy"].started(self._monotonic())
-            self.store.update(*key, stats={**current.stats, "starts": current.stats.get("starts", 0) + 1,
-                                           "lastStart": self._wall(), "lastError": None})
+            updated = self.store.update(*key, stats={**current.stats, "starts": current.stats.get("starts", 0) + 1,
+                                                     "lastStart": self._wall(), "lastError": None})
+        self._changed(updated)
 
     def _declaration(self, key: tuple, script, principal):
         """The script's declaration at its current revision, inspected once per revision."""
@@ -318,9 +359,11 @@ class TriggerEngine:
     def pause_for(self, key: tuple, reason: str) -> None:
         with self._state:
             self._disarm(key)
-            if self.store.get(*key) is not None:
-                self.store.update(*key, status="paused", reason=reason)
-                self._log("info", f"trigger {key[1]} of {key[0]} paused: {reason}")
+            if self.store.get(*key) is None:
+                return
+            updated = self.store.update(*key, status="paused", reason=reason)
+            self._log("info", f"trigger {key[1]} of {key[0]} paused: {reason}")
+        self._changed(updated)
 
     def disable_for(self, key: tuple, reason: str, *, notify: bool) -> None:
         with self._state:
@@ -328,7 +371,8 @@ class TriggerEngine:
             trigger = self.store.get(*key)
             if trigger is None:
                 return
-            self.store.update(*key, status="disabled", reason=reason)
+            updated = self.store.update(*key, status="disabled", reason=reason)
+        self._changed(updated)
         self._log("warning", f"trigger {trigger.name} of {trigger.owner_name or trigger.owner} disabled: {reason}")
         if notify:
             self._notify(trigger, reason)
@@ -386,6 +430,10 @@ class TriggerEngine:
     def list(self, principal: Principal) -> list[Trigger]:
         return [trigger for trigger in self.store.list() if self._visible(trigger, principal)]
 
+    def visible(self, trigger: Trigger, principal: Principal) -> bool:
+        """Whether ``principal`` may see this trigger (the same rule ``get`` and ``list`` use)."""
+        return self._visible(trigger, principal)
+
     def get(self, owner: str | None, name: str, principal: Principal) -> Trigger:
         trigger = self.store.get(owner or _owner(principal), name)
         if trigger is None or not self._visible(trigger, principal):
@@ -414,7 +462,9 @@ class TriggerEngine:
         except BaseException:
             self.store.remove(owner, trigger.name)
             raise
-        return self.store.get(owner, trigger.name)
+        created = self.store.get(owner, trigger.name)
+        self._changed(created)
+        return created
 
     def enable(self, principal: Principal, name: str, owner: str | None = None) -> Trigger:
         """Arm again; this re-approves the script's current declaration and parameters (E7).
@@ -442,13 +492,16 @@ class TriggerEngine:
         with self._state:
             trigger = self.store.update(trigger.owner, name, status="armed", reason=None, approved=approved)
             self._arm(trigger)
+        self._changed(trigger)
         return trigger
 
     def disable(self, principal: Principal, name: str, owner: str | None = None) -> Trigger:
         trigger = self._own(owner, name, principal)
         with self._state:
             self._disarm(_key(trigger))
-            return self.store.update(trigger.owner, name, status="disabled", reason="disabled by its owner")
+            trigger = self.store.update(trigger.owner, name, status="disabled", reason="disabled by its owner")
+        self._changed(trigger)
+        return trigger
 
     def remove(self, principal: Principal, name: str, owner: str | None = None) -> None:
         trigger = self._own(owner, name, principal)
@@ -457,6 +510,7 @@ class TriggerEngine:
             self.store.remove(trigger.owner, name)
             with self._lock:
                 self._policies.pop(_key(trigger), None)
+        self._changed(trigger, removed=True)
 
     def set_policy(self, principal: Principal, name: str, values: dict, owner: str | None = None) -> Trigger:
         trigger = self._own(owner, name, principal)
@@ -465,9 +519,12 @@ class TriggerEngine:
             trigger = self.store.update(trigger.owner, name, policy=policy)
             if trigger.status == "armed":
                 self._arm(trigger)
+        self._changed(trigger)
         return trigger
 
     def set_visibility(self, principal: Principal, name: str, visibility: str, owner: str | None = None) -> Trigger:
         trigger = self._own(owner, name, principal)
-        return self.store.update(trigger.owner, name, visibility=visibility)
+        trigger = self.store.update(trigger.owner, name, visibility=visibility)
+        self._changed(trigger)
+        return trigger
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "EndbotWebProtocol",
   "description": "docs/WEB_PROTOCOL.md. version is web-protocol, compiled into the Worker bundle and endbotd.",
-  "version": 1,
+  "version": 2,
   "oneOf": [
     { "$ref": "#/$defs/Challenge" },
     { "$ref": "#/$defs/Prove" },
@@ -10,7 +10,17 @@
     { "$ref": "#/$defs/Open" },
     { "$ref": "#/$defs/Msg" },
     { "$ref": "#/$defs/Close" },
-    { "$ref": "#/$defs/Cache" }
+    { "$ref": "#/$defs/Cache" },
+    { "$ref": "#/$defs/EventKinds" },
+    { "$ref": "#/$defs/TriggerList" },
+    { "$ref": "#/$defs/TriggerGet" },
+    { "$ref": "#/$defs/TriggerCreate" },
+    { "$ref": "#/$defs/TriggerUpdate" },
+    { "$ref": "#/$defs/TriggerEnable" },
+    { "$ref": "#/$defs/TriggerDisable" },
+    { "$ref": "#/$defs/TriggerRemove" },
+    { "$ref": "#/$defs/Subscribe" },
+    { "$ref": "#/$defs/Unsubscribe" }
   ],
   "$defs": {
     "Challenge": {
@@ -86,6 +96,164 @@
         "t": { "const": "cache" },
         "displayName": { "type": "string", "maxLength": 64 },
         "bds": { "enum": ["up", "down"] }
+      }
+    },
+    "EventKinds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "event.kinds" }
+      }
+    },
+    "TriggerList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "trigger.list" }
+      }
+    },
+    "TriggerGet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "name"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "trigger.get" },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,32}$" },
+        "owner": { "$ref": "#/$defs/OwnerKey" }
+      }
+    },
+    "TriggerCreate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "script", "kind", "filter", "arguments"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "trigger.create" },
+        "script": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+        "kind": { "type": "string", "pattern": "^[a-z]+\\.[a-z][a-z_]*$" },
+        "filter": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+          "additionalProperties": { "type": ["string", "integer"] }
+        },
+        "arguments": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "type": "string", "maxLength": 256 }
+        },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,32}$" },
+        "visibility": { "enum": ["private", "shared"] },
+        "policy": { "$ref": "#/$defs/TriggerPolicy" }
+      }
+    },
+    "TriggerUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "name"],
+      "anyOf": [{ "required": ["policy"] }, { "required": ["visibility"] }],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "trigger.update" },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,32}$" },
+        "owner": { "$ref": "#/$defs/OwnerKey" },
+        "policy": { "$ref": "#/$defs/TriggerPolicy" },
+        "visibility": { "enum": ["private", "shared"] }
+      }
+    },
+    "TriggerEnable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "name"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "trigger.enable" },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,32}$" },
+        "owner": { "$ref": "#/$defs/OwnerKey" }
+      }
+    },
+    "TriggerDisable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "name"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "trigger.disable" },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,32}$" },
+        "owner": { "$ref": "#/$defs/OwnerKey" }
+      }
+    },
+    "TriggerRemove": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "name"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "trigger.remove" },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,32}$" },
+        "owner": { "$ref": "#/$defs/OwnerKey" }
+      }
+    },
+    "Subscribe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "topic"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "subscribe" },
+        "topic": { "$ref": "#/$defs/Topic" }
+      }
+    },
+    "Unsubscribe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "topic"],
+      "properties": {
+        "v": { "type": "integer" },
+        "id": { "type": "integer" },
+        "lang": { "enum": ["en", "ja"] },
+        "type": { "const": "unsubscribe" },
+        "topic": { "$ref": "#/$defs/Topic" }
+      }
+    },
+    "OwnerKey": {
+      "type": "string",
+      "pattern": "^(?:console|xuid:[0-9]{1,20}|player:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})$"
+    },
+    "Topic": {
+      "type": "string",
+      "pattern": "^(?:status|log|trigger:(?:console|xuid:[0-9]{1,20}|player:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})/[A-Za-z0-9_-]{1,32})$"
+    },
+    "TriggerPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "concurrency": { "enum": ["skip", "queue", "parallel"] },
+        "cooldown": { "type": "integer", "minimum": 0, "maximum": 72000 },
+        "startsPerMinute": { "type": "integer", "minimum": 1, "maximum": 60 },
+        "queue": { "type": "integer", "minimum": 1, "maximum": 16 }
       }
     }
   }

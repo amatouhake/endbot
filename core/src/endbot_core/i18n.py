@@ -1186,6 +1186,14 @@ JA.update({
     "Unknown or closed watch": "その watch はないか、閉じられています",
     "Trigger {name} was disabled: {reason}; /botscript trigger enable {name} arms it again":
         "トリガー {name} は無効になりました: {reason}。/botscript trigger enable {name} で再び有効にできます",
+    "Triggers are unavailable": "トリガーは利用できません",
+    "Triggers are turned off on this server": "このサーバーではトリガーが無効です",
+    "A controller may have at most {limit} armed triggers": "コントローラーが持てる有効なトリガーは最大 {limit} 個です",
+    "Trigger {name} does not exist": "トリガー {name} はありません",
+    "Only the owner {owner} may change trigger {name}":
+        "トリガー {name} を変更できるのは持ち主の {owner} だけです",
+    "Script {name} has no param.event, so a trigger cannot start it":
+        "スクリプト {name} には param.event がないため、トリガーから開始できません",
     "rate limit": "開始回数の上限",
     "The owner {owner} of trigger {name} no longer holds a controller grant":
         "トリガー {name} の所有者 {owner} はもうコントローラー権限を持っていません",

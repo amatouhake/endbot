@@ -24,6 +24,7 @@ from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, tr
 from endbot_core.limits import BotLimits
 from endbot_core.link import LinkError, LinkServer, Submission, load_token
+from endbot_core.operations import REGISTRY
 from endbot_core.ownership import FILE_NAME as OWNERSHIP_FILE
 from endbot_core.ownership import VISIBILITIES, OwnershipStore
 from endbot_core.principal import Principal
@@ -36,6 +37,7 @@ from endbotd import __version__
 from endbotd.authority import Authority
 from endbotd.config import EndbotdConfig
 from endbotd.journal import RunJournal
+from endbotd.occurrences import DEFAULT_MAX_WATCHED_BLOCKS, MAX_WATCHED_BLOCKS, OccurrenceHub
 from endbotd.web import WebService
 
 LOGGER = logging.getLogger("endbotd")
@@ -112,10 +114,14 @@ class EndbotService:
             # A permissions typo must not take /bot down with it; new items stay shared.
             self._log("warning", f"Invalid [permissions] config: {error}; using shared")
             bots_default = groups_default = "shared"
+        self.occurrences = OccurrenceHub(
+            REGISTRY.get("events", {}), lambda interest: self.link.send_interest(interest),
+            max_watched_blocks=self._max_watched_blocks(config.events), log=self._log)
         self.link = LinkServer(
             config.link_host, config.link_port, load_token(config.link_token_file), version=__version__,
             config={"language": self._language_setting, "hotbar": dict(config.hotbar)},
-            on_submit=self._submit, on_presence=self._presence, grant_revision=self._grant_revision,
+            on_submit=self._submit, on_presence=self._presence, on_events=self.occurrences.accept,
+            on_link=self.occurrences.link_changed, grant_revision=self._grant_revision,
             role=self._role, log=self._log, world_timeout=world_timeout,
             cli_handlers={"controllers": self._cli_controllers, "web": self._cli_web},
         )
@@ -184,6 +190,15 @@ class EndbotService:
         )
 
     # -- lifecycle -----------------------------------------------------------
+
+    def _max_watched_blocks(self, section: dict) -> int:
+        """``[events] max-watched-blocks``: positions the server watches for every watch and trigger together."""
+        value = section.get("max-watched-blocks", DEFAULT_MAX_WATCHED_BLOCKS)
+        if type(value) is not int or not 0 <= value <= MAX_WATCHED_BLOCKS:
+            self._log("warning", f"Invalid [events] max-watched-blocks; it must be an integer from 0 to "
+                                 f"{MAX_WATCHED_BLOCKS}; using {DEFAULT_MAX_WATCHED_BLOCKS}")
+            return DEFAULT_MAX_WATCHED_BLOCKS
+        return value
 
     def _ownership_defaults(self, section: dict) -> tuple[str, str]:
         """The ``[permissions]`` defaults; an invalid value raises ``ValueError`` for the caller to report."""

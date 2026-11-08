@@ -13,6 +13,12 @@ sent. Each side handles the other's requests in arrival order on one thread,
 except types it declares concurrent (the plugin's ``world`` calls), so
 presence reports and commands reach endbotd in the order they happened (P4).
 
+Events (BOT-022, EVENTS.md E4): endbotd sends ``interest``, the whole set of
+positions and event kinds it wants reported, after every hello and on every
+change; the plugin answers with one ``events`` frame per tick holding at most
+``MAX_EVENT_ITEMS`` occurrences and the count it had to drop. Neither carries
+an owner: endbotd maps occurrences to watches and triggers itself.
+
 Bounds: loopback only on both ends, a 1 MiB frame limit, the token compared in
 constant time and never logged, a deadline on every request, and explicit
 error codes. A protocol or registry-hash mismatch refuses the link.
@@ -43,8 +49,10 @@ from endbot_core.i18n import LocalizedError
 from endbot_core.operations import REGISTRY
 from endbot_core.principal import Principal
 
-PROTOCOL = 2
+PROTOCOL = 3
 MAX_FRAME_BYTES = 1024 * 1024
+# One tick's occurrences in one ``events`` frame; the rest are counted in ``dropped`` (EVENTS.md E4).
+MAX_EVENT_ITEMS = 256
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 HANDSHAKE_SECONDS = 10.0
 REQUEST_SECONDS = 10.0
@@ -339,6 +347,8 @@ class LinkConnection:
         # Request ids already received, when the peer must never reuse one (CLI connections).
         self._seen: set[int] | None = set() if unique_ids else None
         self.close_reason: str | None = None
+        # The plugin's epoch for a plugin link (set by endbotd's handshake), so a late close names its link.
+        self.epoch: str | None = None
 
     def start(self) -> LinkConnection:
         for target in (self._read_loop, self._write_loop, self._ordered_loop):
@@ -620,6 +630,26 @@ def _player_record(player: object) -> dict:
             "locale": player.get("locale") if isinstance(player.get("locale"), str) else None}
 
 
+def parse_events(body: dict) -> dict:
+    """Validate one ``events`` frame from the plugin; the items keep their payload as sent."""
+    revision, epoch, tick, items, dropped = (body.get(key) for key in ("revision", "epoch", "tick", "items",
+                                                                        "dropped"))
+    if type(revision) is not int or revision < 0:
+        raise LinkError("invalid", "events need a revision")
+    if not isinstance(epoch, str) or not epoch:
+        raise LinkError("invalid", "events need an epoch")
+    if type(tick) is not int or tick < 0:
+        raise LinkError("invalid", "events need a tick")
+    if type(dropped) is not int or dropped < 0:
+        raise LinkError("invalid", "events need a dropped count")
+    if not isinstance(items, list) or len(items) > MAX_EVENT_ITEMS:
+        raise LinkError("invalid", f"events carry a list of at most {MAX_EVENT_ITEMS} items")
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("kind"), str):
+            raise LinkError("invalid", "every event item needs a kind")
+    return {"revision": revision, "epoch": epoch, "tick": tick, "items": items, "dropped": dropped}
+
+
 @dataclass(frozen=True, slots=True)
 class Submission:
     """A command line or form reply the plugin forwarded, with the principal
@@ -650,6 +680,8 @@ class LinkServer:
         config: dict,
         on_submit: Callable[[Submission], object],
         on_presence: Callable[[str, list[dict]], None] | None = None,
+        on_events: Callable[[dict], None] | None = None,
+        on_link: Callable[..., None] | None = None,
         grant_revision: Callable[[str], int] | None = None,
         role: Callable[[str], str] | None = None,
         log: Callable[[str, str], None] | None = None,
@@ -667,6 +699,10 @@ class LinkServer:
         self._config = config
         self._on_submit = on_submit
         self._on_presence = on_presence
+        self._on_events = on_events
+        # Called with the new epoch after a plugin links, and with (None, its epoch) after that link goes away
+        # (EVENTS.md E4 gaps); a close that names an older epoch than the current link is stale.
+        self._on_link = on_link
         self._grant_revision = grant_revision or (lambda player_id: 0)
         # A player's role by XUID, read for each command (S5); without one every player is a scripter.
         self._role = role or (lambda xuid: None)
@@ -777,8 +813,9 @@ class LinkServer:
                     pass
             sock.close()
             return
-        handlers = {"presence": self._presence, "submit": self._submit}
+        handlers = {"presence": self._presence, "submit": self._submit, "events": self._events}
         connection = LinkConnection(sock, reader, handlers, on_close=self._closed)
+        connection.epoch = epoch
         with self._lock:
             if self._stopped:
                 sock.close()
@@ -791,6 +828,8 @@ class LinkServer:
         if previous is not None:
             previous.close("replaced by a newer plugin link")
         self._log("info", f"Endbot plugin {body.get('pluginVersion')} linked")
+        if self._on_link is not None:
+            self._on_link(epoch)
 
     def _accept_cli(self, sock: socket.socket, reader: FrameReader) -> None:
         """Run one CLI connection beside the plugin link; it never replaces the link."""
@@ -816,12 +855,22 @@ class LinkServer:
             self._link = None
             self.presence.reset(None)
         self._log("warning", f"Endbot plugin link closed: {reason}")
+        if self._on_link is not None:
+            self._on_link(None, connection.epoch)
 
     def _presence(self, body: dict) -> dict:
         records = self.presence.apply(body)
         if self._on_presence is not None:
             self._on_presence(body["kind"], records)
         return {"epoch": self.presence.epoch}
+
+    def _events(self, body: dict) -> dict:
+        events = parse_events(body)
+        if events["epoch"] != self.presence.epoch:
+            raise LinkError("invalid", "events from another epoch")
+        if self._on_events is not None:
+            self._on_events(events)
+        return {}
 
     def _submit(self, body: dict):
         root = body.get("root")
@@ -872,6 +921,21 @@ class LinkServer:
         if view is not None:
             body["view"] = view
         return bool(self.request("deliver", body, timeout).get("delivered"))
+
+    def send_interest(self, interest: dict) -> bool:
+        """Replace the plugin's interest set; False when no plugin is linked (the next hello resends it)."""
+        with self._lock:
+            link = self._link
+        if link is None:
+            return False
+
+        def failed(future) -> None:
+            error = future.exception()
+            if error is not None and getattr(error, "code", None) != "unavailable":
+                self._log("warning", f"the Endbot plugin refused the event interest set: {error}")
+
+        link.send("interest", interest).add_done_callback(failed)
+        return True
 
     def permission(self, player_id: str, allowed: bool, timeout: float = REQUEST_SECONDS) -> bool:
         """Set one player's control attachment; False when the player is not online."""

@@ -181,7 +181,8 @@ class EndbotService:
         # Triggers (BOT-022): stored in state/triggers.json, which a version without them ignores.
         self.triggers = TriggerEngine(
             TriggerStore(stores / TRIGGERS_FILE), self.occurrences, self.scripts,
-            authorize=self.authority.authorize, role=self._role, linked=lambda: self.link.connected,
+            authorize=self.authority.authorize, role=self._role, grant_revision=self._grant_revision,
+            linked=lambda: self.link.connected,
             publish=lambda event: self.scripts.publish(event) if self.scripts.publish else None,
             max_triggers=getattr(limits, "max_triggers_per_controller", DEFAULT_MAX_TRIGGERS), log=self._log)
         if scripts is not None and script_config.enabled:

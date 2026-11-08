@@ -286,6 +286,7 @@ def _trigger_json(trigger: Trigger) -> dict:
             "revision": trigger.approved["revision"],
             "declaration": list(trigger.approved["declaration"]),
             "paramsHash": trigger.approved["paramsHash"],
+            **{field: trigger.approved[field] for field in sorted(_APPROVED_OPTIONAL) if field in trigger.approved},
         },
         "status": trigger.status,
         "reason": trigger.reason,

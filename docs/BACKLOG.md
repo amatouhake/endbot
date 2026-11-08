@@ -926,9 +926,12 @@ UI from endbotd without Cloudflare ([other hosts](DIRECTION.md#other-hosts)); ot
 
 ## BOT-022: Events, watches and triggers
 
-Status: **Planned; framework agreed in [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)**
-(2026-10-28 JST), detailed design in [EVENTS.md](EVENTS.md) (2026-10-29 JST); the next release after 0.6.0,
-together with BOT-021 (updated 2026-11-03 JST).
+Status: **Steps 1 to 7 on `main`** (2026-11-08 JST, #234 to #247): event kinds in the registry, `block.change`,
+watches, triggers with commands, forms and the web, presence and opt-in public chat, runtime and server kinds,
+`schedule` and `world.time`. The Bot-only live smoke passed ([record](EVENTS_VALIDATION.md#bot-only-live-smoke));
+the human checks (EVENTS.md step 8) are part of the next release's validation pass with BOT-021. Framework agreed in
+[Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
+(2026-10-28 JST), design in [EVENTS.md](EVENTS.md) (2026-10-29 JST).
 
 Event kinds in the operation registry (`category.action`, filters, payload, source, guarantee, visibility); a generic
 `watch(kind, filter)` with `w:wait{timeout=}`; observation only, never cancel or modify; triggers as separate bindings

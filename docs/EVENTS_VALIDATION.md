@@ -17,9 +17,9 @@ BOT-022 release pass (EVENTS.md step 8) on the locked Endstone/BDS pair.
 - `job.finished`: raised when the command service publishes a `job.ended` Event. `bot` is the Event's Bot name,
   `job` the job kind (the only job Events published today are mining jobs, reported as `mining`), and `reason` the
   Event's reason rendered in English.
-- `server.started`: raised on the first plugin `hello` whose `boot` differs from the last boot endbotd saw. The
-  plugin makes one boot id per enable, so a reconnect of the same BDS process raises nothing, while a restarted BDS
-  (a new plugin process) raises once.
+- `server.started`: raised on the first link of a plugin process: the plugin makes one boot id per enable and says
+  in its `hello` whether this is that process's first link, so a reconnect, or endbotd restarting under a running
+  BDS, raises nothing, while a restarted BDS (a new plugin process) raises once.
 
 ### Not yet run
 
@@ -47,3 +47,31 @@ The live checks for these two kinds belong to the combined BOT-021/BOT-022 relea
 have not been run yet. They cover: `every` firing at its interval and `at` at its local minute while a watch and a
 trigger are open; a `schedule` trigger being skipped and counted while BDS is stopped; and `world.time` reporting
 each phase change within 20 ticks across a full day cycle.
+
+## Bot-only live smoke
+
+Run 2026-11-08 JST on Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, Windows 11, NetherNet with direct
+signalling, in the disposable sandbox world, with Bots only (EVENTS.md S9): `scripts/raknet_spike.py --events`
+(`scripts/events_probe.py`). Both runs below completed the whole smoke (`ok: true`).
+
+| Check | Result |
+| --- | --- |
+| A Bot breaks a block a run watches | delivered once: `minecraft:dirt` to `minecraft:air`, `cause=player-break`, `bot` the Bot's name, `missed=0`; the next wait timed out |
+| 81 cells change at once while the run sleeps | the watch kept the 64 newest and reported `missed=17` |
+| The plugin's link drops and comes back | the waiting run got `ok=false, code=unavailable, reason=source restarted` once, then the next change after the relink |
+| A watched area of 729 blocks | refused before anything was watched: `A watched area may hold at most 512 blocks; this one holds 729` |
+| A console trigger on a watched block, a Bot breaks it | the script started with `a.event.to=minecraft:air`, `cause=player-break`, `missed=0` |
+| endbotd killed and restarted | the trigger came back `armed` with its stats and started again for the next change (`cause=poll`) |
+| `startsPerMinute=2`, `cooldown=0`, parallel, four changes in a few seconds | disabled with `rate limit`, logged for its owner |
+| enable, remove, list | re-armed, removed, `No triggers` |
+
+Evidence: `build/2026-11-08-events-2` (watches) and `build/2026-11-08-triggers-2` (watches and triggers) in the
+worktrees that ran them; raw logs stay out of the repository.
+
+Not covered by the Bot-only smoke and left for the release pass (step 8): a human breaking and placing, human
+`player.join`, `player.leave` and public `player.chat` (Bots cannot chat; a `/tell` must never be delivered), a
+player-owned trigger and its revocation and regrant, a shared script growing its declaration under someone else's
+trigger, the trigger forms and their declaration confirm in the Windows client, the disable notice in a player's chat,
+the web trigger editor from a phone, `bot.online`/`bot.offline`/`bot.died`/`job.finished`/`server.started`,
+`schedule` and `world.time` live, BDS restarted with watches open, update and rollback with `state/triggers.json`, and
+achievement history.

@@ -10,6 +10,7 @@
   import { href, navigate, route, type Section } from "./route.svelte";
   import Scripts from "./Scripts.svelte";
   import SignIn from "./SignIn.svelte";
+  import Triggers from "./Triggers.svelte";
 
   const TABS: [Section, "tabBots" | "tabScripts" | "tabGroups" | "tabHistory"][] = [
     ["bots", "tabBots"], ["scripts", "tabScripts"], ["groups", "tabGroups"], ["history", "tabHistory"],
@@ -213,6 +214,11 @@
     navigate(section, item);
   }
 
+  /** Triggers are part of the Scripts tab: its underline stays on screen while a trigger is open. */
+  function current(section: Section): boolean {
+    return route.section === section || (section === "scripts" && route.section === "triggers");
+  }
+
   async function start(): Promise<void> {
     const params = new URLSearchParams(location.search);
     const siteError = params.get("site_error");
@@ -251,7 +257,7 @@
       </div>
       <nav class="tabs">
         {#each TABS as [section, label]}
-          <a href={href(section, chosen[section] ?? null)} aria-current={route.section === section ? "page" : undefined}
+          <a href={href(section, chosen[section] ?? null)} aria-current={current(section) ? "page" : undefined}
              onclick={(event) => follow(event, section, chosen[section] ?? null)}>
             {t(label)}
           </a>
@@ -285,6 +291,11 @@
         <div class="view" hidden={route.section !== "scripts"}>
           <Scripts {connection} {log} runs={status?.runs ?? []} selected={chosen.scripts ?? null}
                    active={route.section === "scripts"} onchanged={refreshStatus} />
+        </div>
+      {/if}
+      {#if visited.triggers}
+        <div class="view" hidden={route.section !== "triggers"}>
+          <Triggers {connection} selected={chosen.triggers ?? null} active={route.section === "triggers"} />
         </div>
       {/if}
       {#if visited.groups}

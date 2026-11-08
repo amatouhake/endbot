@@ -54,8 +54,15 @@ export class Connection {
   private socket!: WebSocket;
   private next = 1;
   private readonly waiting = new Map<number, (answer: any) => void>();
+  private readonly listeners = new Set<Listener>();
 
   constructor(private readonly onEvent: Listener, private readonly onClose: (signedOut: boolean) => void) {}
+
+  /** A screen listens for the topics it subscribed to; the returned function stops it. */
+  listen(listener: Listener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
 
   open(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -78,6 +85,13 @@ export class Connection {
     }
     if (message.type === "event") {
       this.onEvent(message);
+      for (const listener of this.listeners) {
+        try {
+          listener(message);
+        } catch {
+          // One screen's failure must not keep the event from the others.
+        }
+      }
       return;
     }
     const waiter = this.waiting.get(message.id);

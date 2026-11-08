@@ -710,6 +710,60 @@ test("a script is written, checked, saved, compared and run on one screen", asyn
   await expect(page).toHaveURL(/\/scripts$/);
 });
 
+test("a trigger is created and armed after its declaration, then disabled and removed, and a shared one stays read-only", async ({ page, context }) => {
+  await start(page, context);
+  await ask("trigger-seed");
+  await tab(page, "Scripts");
+  await page.getByRole("link", { name: "Triggers", exact: true }).click();
+  await expect(page).toHaveURL(/\/triggers$/);
+  const list = page.locator(".list-scroll").locator("visible=true");
+  await expect(list.getByRole("link", { name: /shared_bob/ })).toBeVisible();
+
+  // Someone else's shared trigger: seen, with its state and stats, but nothing to change.
+  await list.getByRole("link", { name: /shared_bob/ }).click();
+  await expect(page.getByRole("heading", { name: "shared_bob" })).toBeVisible();
+  await expect(page.getByText("Shared by Bob")).toBeVisible();
+  await expect(page.locator(".detail").getByText("Disabled", { exact: true })).toBeVisible();
+  await expect(page.locator(".detail").getByText("disabled by its owner")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Enable|Disable|Remove trigger)$/ })).toHaveCount(0);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/triggers$/);
+
+  // New: a script the user may run, a kind, then the generated filter and the script's parameters.
+  await page.locator(".list-tools").getByRole("button", { name: "New", exact: true }).click();
+  await expect(page).toHaveURL(/\/triggers\/new$/);
+  // A select inside its label is named by the label and its chosen option ("Script —"): match the label's start.
+  await page.getByRole("combobox", { name: /^Script/ }).selectOption("guard");
+  await expect(page.getByText("This script asks for: observe.chat")).toBeVisible();
+  await page.getByRole("combobox", { name: /^Event kind/ }).selectOption("block.change");
+  await page.getByLabel(/^area/).fill("0 64 0 2 65 2");
+  await page.getByLabel(/^except/).fill("1 64 1");
+  await expect(page.getByLabel(/^dimension/).locator("option")).toHaveText(["—", "overworld", "nether", "end"]);
+  await expect(page.getByLabel(/^from/)).toBeVisible();
+  await page.getByLabel(/^count/).fill("7");
+  // The page is quicker than a person: pace the requests as the other tests do (docs/WEB.md P7).
+  await page.waitForTimeout(1100);
+  await page.getByRole("button", { name: "Arm", exact: true }).click();
+  const confirmation = page.getByRole("dialog");
+  await expect(confirmation).toContainText("This script asks for: observe.chat");
+  await confirmation.getByRole("button", { name: "Arm", exact: true }).click();
+  await expect(page).toHaveURL(/\/triggers\/.+/);
+  await expect(page.getByRole("heading", { name: "guard" })).toBeVisible();
+  await expect(page.locator(".detail").getByText("Armed", { exact: true })).toBeVisible();
+  await expect(list.getByRole("link", { name: /^guard/ })).toBeVisible();
+
+  // Disable and remove it: the shared one stays.
+  await page.waitForTimeout(1100);
+  await page.getByRole("button", { name: "Disable", exact: true }).click();
+  await expect(page.locator(".detail").getByText("Disabled", { exact: true })).toBeVisible();
+  await page.waitForTimeout(1100);
+  await page.getByRole("button", { name: "Remove trigger", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page).toHaveURL(/\/triggers$/);
+  await expect(list.getByRole("link", { name: /^guard/ })).toHaveCount(0);
+  await expect(list.getByRole("link", { name: /shared_bob/ })).toBeVisible();
+});
+
 test.describe("the trusted site", () => {
   test.beforeEach(() => {
     site.key = siteKey.privateKey;

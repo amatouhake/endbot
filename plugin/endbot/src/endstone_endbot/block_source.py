@@ -1,6 +1,6 @@
-"""The plugin's ``block.change`` source (BOT-022 step 3b, EVENTS.md E3).
+"""The plugin's ``block.change`` and ``bot.died`` source (BOT-022 steps 3b and 6b, EVENTS.md E3, E4).
 
-endbotd sends the positions it wants watched (the interest set). This source,
+endbotd sends the positions and kinds it wants watched (the interest set). This source,
 on the server thread only:
 
 - reads every watched position once every ``POLL_TICKS`` ticks, a quarter of
@@ -15,7 +15,9 @@ on the server thread only:
 - never reports a newly watched position as changed: its first read, in its
   own quarter, is the baseline, so a large new interest set costs no more per
   tick than the poll does; a player action there before that read is still
-  reported, from the block the event saw.
+  reported, from the block the event saw;
+- when ``bot.died`` is wanted, reports a death of a player without an XUID (a
+  Bot) with its death message key. A human's death is never reported.
 
 Occurrences carry no owner and no human player's name (S1): ``bot`` is set
 only when a Bot did it. One tick's occurrences go out as one ``events`` frame.
@@ -31,6 +33,7 @@ from endbot_core.commands import strip_colors
 
 POLL_TICKS = 4
 KIND = "block.change"
+DEATH_KIND = "bot.died"
 # Endstone dimension names to the registry's dimension values.
 DIMENSION_VALUES = {"Overworld": "overworld", "Nether": "nether", "TheEnd": "end"}
 ENDSTONE_DIMENSIONS = {value: name for name, value in DIMENSION_VALUES.items()}
@@ -41,12 +44,14 @@ CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
 class BlockChangeSource:
-    """Polls watched positions and confirms player actions; every method runs on the server thread."""
+    """Polls watched positions, confirms player actions and reports Bot deaths; server thread only."""
 
     def __init__(self, server, report: Callable[[int, list[dict], int], object]) -> None:
         self._server = server
         self._report = report
         self.tick = 0
+        # The interest set's kinds: block.change drives the poll, bot.died the death listener.
+        self._kinds: set[str] = set()
         # (dimension value, x, y, z) -> (runtime id, block type) or None while its chunk has not been read.
         self._baseline: dict[tuple, tuple | None] = {}
         self._phases: list[list[tuple]] = [[] for _ in range(POLL_TICKS)]
@@ -54,16 +59,18 @@ class BlockChangeSource:
         self._pending: list[dict] = []
         self._dropped = 0
         self._dimensions: set[str] = set()
-        self._kinds: frozenset = frozenset()
 
     @property
     def watched(self) -> int:
         return len(self._baseline)
 
     def apply_interest(self, interest: dict) -> None:
-        """Replace the watched positions; new ones take a baseline, removed ones are forgotten."""
+        """Replace the watched positions and kinds; new positions take a baseline, removed ones are forgotten."""
+        kinds = interest.get("kinds") or ()
+        self._kinds = {kind for kind in kinds if isinstance(kind, str)}
+        # Occurrences of kinds nobody asks for any more are not sent (block changes are checked by position).
+        self._pending = [item for item in self._pending if item.get("kind") == KIND or item.get("kind") in self._kinds]
         cells = set()
-        self._kinds = frozenset(kind for kind in interest.get("kinds") or () if isinstance(kind, str))
         if KIND in self._kinds:
             for group in interest.get("block") or ():
                 dimension = group.get("dimension")
@@ -107,6 +114,16 @@ class BlockChangeSource:
         if kind == "player.chat":
             item["message"] = strip_colors(CONTROL.sub(" ", str(message or "")))[:CHAT_LIMIT]
         self._pending.append(item)
+
+    def player_died(self, player, message: str) -> None:
+        """A PlayerDeathEvent at MONITOR priority: report it only for a Bot and only when bot.died is wanted."""
+        if DEATH_KIND not in self._kinds or player is None:
+            return
+        if str(getattr(player, "xuid", "") or ""):
+            return  # A human's death is never reported (BLOCK_EVENTS_SPIKE.md#presence-chat-and-death).
+        name = str(getattr(player, "name", "") or "")
+        if name:
+            self._pending.append({"kind": DEATH_KIND, "bot": name, "message": str(message)})
 
     def on_tick(self) -> None:
         self.tick += 1

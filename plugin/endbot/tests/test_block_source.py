@@ -3,7 +3,7 @@
 import unittest
 from types import SimpleNamespace
 
-from endstone_endbot.block_source import KIND, POLL_TICKS, BlockChangeSource
+from endstone_endbot.block_source import DEATH_KIND, KIND, POLL_TICKS, BlockChangeSource
 
 TYPES = {"minecraft:air": 1, "minecraft:stone": 2, "minecraft:dirt": 3, "minecraft:wooden_door": 4,
          "minecraft:wooden_door[open]": 5}
@@ -170,6 +170,30 @@ class BlockChangeSourceTests(unittest.TestCase):
         nether.blocks[(0, 64, 0)] = "minecraft:stone"
         self.run_ticks(POLL_TICKS)
         self.assertEqual([item["dimension"] for item in self.items()], ["nether"])
+
+    def test_a_bots_death_is_reported_only_with_interest_and_only_without_an_xuid(self):
+        self.source.apply_interest(interest(kinds=(KIND, DEATH_KIND)))
+        bot = SimpleNamespace(name="Miner", xuid="")
+        human = SimpleNamespace(name="Alice", xuid="2535400000000000")
+        self.source.player_died(bot, "death.attack.generic")
+        self.source.player_died(human, "death.attack.generic")
+        self.run_ticks(1)
+        self.assertEqual(self.items(), [{"kind": DEATH_KIND, "bot": "Miner", "message": "death.attack.generic"}])
+        self.assertNotIn("Alice", repr(self.reports))
+
+    def test_a_death_is_reported_without_block_interest_on_the_same_tick_report(self):
+        self.source.apply_interest({"revision": 1, "block": [], "kinds": [DEATH_KIND]})
+        self.source.player_died(SimpleNamespace(name="Miner", xuid=""), "death.attack.drown")
+        self.run_ticks(1)
+        self.assertEqual(self.reports, [(1, [{"kind": DEATH_KIND, "bot": "Miner",
+                                              "message": "death.attack.drown"}], 0)])
+
+    def test_a_death_is_dropped_when_interest_no_longer_names_it(self):
+        self.source.apply_interest(interest(kinds=(KIND, DEATH_KIND)))
+        self.source.player_died(SimpleNamespace(name="Miner", xuid=""), "death.attack.generic")
+        self.source.apply_interest(interest(kinds=(KIND,)))
+        self.run_ticks(1)
+        self.assertEqual(self.reports, [])
 
 
 

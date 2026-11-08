@@ -345,6 +345,38 @@ class EventRegistryTests(unittest.TestCase):
                          ("persist", 4, ["player-break", "player-place"], "BLOCK_EVENTS_SPIKE.md#result"))
         self.assertEqual(EVENTS["block.change"]["filters"]["area"], {"type": "area", "maxBlocks": 512})
 
+    def test_the_runtime_and_server_kinds_are_listed_with_their_guarantees(self):
+        self.assertLessEqual({"block.change", "bot.online", "bot.offline", "bot.died", "job.finished",
+                              "server.started"}, set(EVENTS))
+        record = "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+        for kind in ("job.finished", "server.started"):
+            with self.subTest(kind=kind):
+                spec = EVENTS[kind]
+                self.assertEqual((spec["source"], spec["capability"], spec["visibility"], spec["require"]),
+                                 ("endbotd", "read.world", "public", []))
+                self.assertEqual(spec["guarantee"],
+                                 {"class": "each", "ticks": None, "each": [], "record": record})
+        for kind in ("bot.online", "bot.offline"):  # a one-second sample of the runtime, not a feed
+            with self.subTest(kind=kind):
+                spec = EVENTS[kind]
+                self.assertEqual(spec["source"], "runtime")
+                self.assertEqual(spec["guarantee"], {"class": "persist", "ticks": 40, "each": [], "record": record})
+        self.assertEqual(EVENTS["bot.online"]["filters"], {"bot": {"type": "bot"}})
+        self.assertEqual(EVENTS["bot.online"]["payload"], {"bot": "string"})
+        self.assertEqual(EVENTS["bot.offline"]["payload"], {"bot": "string", "reason": "string?"})
+        self.assertEqual(EVENTS["job.finished"]["filters"],
+                         {"bot": {"type": "bot"}, "job": {"type": "string"}})
+        self.assertEqual(EVENTS["job.finished"]["payload"],
+                         {"bot": "string", "job": "string", "reason": "string"})
+        self.assertEqual((EVENTS["server.started"]["filters"], EVENTS["server.started"]["payload"]), ({}, {}))
+        died = EVENTS["bot.died"]
+        self.assertEqual((died["source"], died["capability"], died["visibility"], died["require"]),
+                         ("plugin", "read.world", "public", []))
+        self.assertEqual(died["filters"], {"bot": {"type": "bot"}})
+        self.assertEqual(died["payload"], {"bot": "string", "message": "string"})
+        self.assertEqual(died["guarantee"], {"class": "each", "ticks": None, "each": [],
+                                             "record": "BLOCK_EVENTS_SPIKE.md#presence-chat-and-death"})
+
     def test_the_registry_requires_an_events_table(self):
         registry = {key: value for key, value in operations.REGISTRY.items() if key != "events"}
         with self.assertRaises(AssertionError):

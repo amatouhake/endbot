@@ -57,7 +57,6 @@ class BlockChangeSource:
         self._pending: list[dict] = []
         self._dropped = 0
         self._dimensions: set[str] = set()
-        self._kinds: frozenset = frozenset()
 
     @property
     def watched(self) -> int:

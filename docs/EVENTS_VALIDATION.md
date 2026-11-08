@@ -12,6 +12,10 @@ BOT-022 release pass (EVENTS.md step 8) on the locked Endstone/BDS pair.
   `bot.online` or `bot.offline`. The first poll after interest appears is the baseline; a Bot whose
   `connectionState` becomes `online` raises one occurrence. No occurrence is replayed for a transition that
   happened while nobody was watching.
+  The kind is a sample, not a feed: `guarantee` is `persist` for 40 ticks (a state that lasts two seconds is
+  delivered, a shorter connect and disconnect may be missed), and a watch or trigger made after the last sample
+  does not receive a change that may predate it. A failed poll is a gap (`source restarted`) for every
+  `bot.online` and `bot.offline` watch and trigger.
 - `bot.offline`: the same poll, when a Bot that was `online` is no longer `online`. `reason` is the new
   `connectionState` (`offline`, `connecting`, `reconnecting`, ...), or `removed` when the profile is gone.
 - `job.finished`: raised when the command service publishes a `job.ended` Event. `bot` is the Event's Bot name,

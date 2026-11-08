@@ -993,7 +993,7 @@
       }
     },
     "bot.online": {
-      "source": "endbotd",
+      "source": "runtime",
       "capability": "read.world",
       "visibility": "public",
       "filters": {
@@ -1006,14 +1006,14 @@
         "bot": "string"
       },
       "guarantee": {
-        "class": "each",
-        "ticks": null,
+        "class": "persist",
+        "ticks": 40,
         "each": [],
         "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
       }
     },
     "bot.offline": {
-      "source": "endbotd",
+      "source": "runtime",
       "capability": "read.world",
       "visibility": "public",
       "filters": {
@@ -1027,8 +1027,8 @@
         "reason": "string?"
       },
       "guarantee": {
-        "class": "each",
-        "ticks": null,
+        "class": "persist",
+        "ticks": 40,
         "each": [],
         "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
       }

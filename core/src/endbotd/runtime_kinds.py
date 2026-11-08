@@ -16,6 +16,7 @@ all four are ``endbotd``-sourced.
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 
 from endbot_core.control import bot_profiles
@@ -46,6 +47,7 @@ class RuntimeKinds:
         self._profiles: dict[str, tuple[str, str]] | None = None
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
+        self._sampled: float | None = None
         self._failure: str | None = None
 
     def start(self) -> RuntimeKinds:
@@ -75,12 +77,16 @@ class RuntimeKinds:
         """One profile poll; False when no watch or trigger wants the runtime kinds."""
         if not self._hub.has_interest(*RUNTIME_KINDS):
             return False
+        sampled = time.perf_counter()  # the same clock as Subscription.created
         try:
             current = self._snapshot(bot_profiles(self._control))
         except Exception as error:  # noqa: BLE001 - a runtime hiccup must not stop the monitor
             failure = f"{type(error).__name__}: {error}"
             if failure != self._failure:
                 self._log("warning", f"Bot presence poll failed: {failure}")
+                if self._failure is None:
+                    # Changes during the outage are not reconstructed (S4): watches and triggers learn of the gap.
+                    self._hub.gap("runtime", "source restarted")
                 self._failure = failure
             with self._lock:
                 # The next successful poll is a baseline, not a burst of offline reports for a runtime restart.
@@ -89,8 +95,9 @@ class RuntimeKinds:
         self._failure = None
         with self._lock:
             previous, self._profiles = self._profiles, current
+            since, self._sampled = self._sampled, sampled
         if previous is not None:
-            self._transitions(previous, current)
+            self._transitions(previous, current, since)
         return True
 
     @staticmethod
@@ -107,19 +114,27 @@ class RuntimeKinds:
             current[key] = (name, state)
         return current
 
-    def _transitions(self, previous: dict[str, tuple[str, str]], current: dict[str, tuple[str, str]]) -> None:
+    def _transitions(self, previous: dict[str, tuple[str, str]], current: dict[str, tuple[str, str]],
+                     since: float | None) -> None:
+        """Raise each change between two samples; a watch or trigger made after the earlier sample is skipped,
+        since the change may predate it."""
+        def raise_(item):
+            if since is not None:
+                item["_since"] = since
+            self._hub.raise_occurrence("runtime", item)
+
         for key, (name, state) in current.items():
             before = previous.get(key)
             if state == "online" and (before is None or before[1] != "online"):
-                self._hub.raise_occurrence("endbotd", {"kind": "bot.online", "bot": name})
+                raise_({"kind": "bot.online", "bot": name})
         for key, (name, state) in previous.items():
             if state != "online":
                 continue
             now = current.get(key)
             if now is None:
-                self._hub.raise_occurrence("endbotd", {"kind": "bot.offline", "bot": name, "reason": "removed"})
+                raise_({"kind": "bot.offline", "bot": name, "reason": "removed"})
             elif now[1] != "online":
-                self._hub.raise_occurrence("endbotd", {"kind": "bot.offline", "bot": now[0], "reason": now[1]})
+                raise_({"kind": "bot.offline", "bot": now[0], "reason": now[1]})
 
     def on_event(self, event: Event) -> None:
         """The service's Event hook: one job.ended Event becomes one job.finished occurrence."""

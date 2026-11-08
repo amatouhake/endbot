@@ -87,7 +87,7 @@ The plugin connects out to endbotd; the plugin never listens. Over that one conn
 replies, newline-delimited JSON, each with an id:
 
 ```text
-hello      plugin → endbotd   {protocol, pluginVersion, registryHash, epoch}
+hello      plugin → endbotd   {protocol, pluginVersion, registryHash, epoch, boot, firstLink}
            endbotd → plugin   {protocol, endbotdVersion, config: {language, hotbar...}}
 presence   plugin → endbotd   snapshot | join | quit | locale   (see P4)
 submit     plugin → endbotd   {root: bot|botgroup|botscript|botcontrollers, argv | operation, sender, guard?}

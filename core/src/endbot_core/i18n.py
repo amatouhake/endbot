@@ -1154,6 +1154,9 @@ JA.update({
     "Watch filter {field} must be a whole number": "watch のフィルタ {field} には整数を指定してください",
     "Watch filter {field} must be text": "watch のフィルタ {field} には文字列を指定してください",
     "Watch filter {field} has an unknown type": "watch のフィルタ {field} の型が不明です",
+    "Watch filter {field} is too long": "watch のフィルタ {field} が長すぎます",
+    "Watch filter {field} may remove at most {limit} areas":
+        "watch のフィルタ {field} で除外できる範囲は最大 {limit} 個です",
     "Unknown event kind {kind}; known kinds: {known}": "イベント種別 {kind} はありません。使える種別: {known}",
     "Watching {kind} needs {capability} in requires {{}}":
         "{kind} を watch するには requires {{}} に {capability} が必要です",

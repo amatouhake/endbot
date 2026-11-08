@@ -123,6 +123,7 @@ class HostTests(unittest.TestCase):
         self.interests = []
         self.hub = OccurrenceHub(__import__("endbot_core.operations", fromlist=["EVENTS"]).EVENTS,
                                  self.interests.append, max_watched_blocks=600)
+        self.hub.link_changed("epoch-1")
         self.host.occurrences = self.hub
 
     def outcome(self):

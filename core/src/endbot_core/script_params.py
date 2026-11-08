@@ -10,8 +10,8 @@ NAMED = re.compile(r"([A-Za-z_][A-Za-z0-9_]{0,31})=(.*)", re.DOTALL)
 # Every script may operate Bots, read the world, wait and log (S8); naming these in requires {} changes nothing.
 # Fixed here, not derived from the registry, so a new capability never becomes basic by being used there.
 BASIC_CAPABILITIES = frozenset({"act.bot", "read.world", "wait", "log"})
-# Capabilities a script must declare (PERMISSIONS.md); none exist until events add observe.* (BOT-022).
-DECLARED_CAPABILITIES = frozenset()
+# Capabilities a script must declare (PERMISSIONS.md); event kinds name these and their watch code arrives later.
+DECLARED_CAPABILITIES = frozenset({"observe.chat", "observe.presence"})
 
 
 def required(names):

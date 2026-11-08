@@ -614,6 +614,14 @@ handles. Root list/ping/help retain their root semantics. A script `menu()` retu
 crosshair operation right after it uses the new view; if BDS does not report it within about 0.5 s (10 ticks at 20 TPS) the result has
 `code="timeout"`.
 
+## Event kinds
+
+The event kinds a script may watch come from the same registry; watches and triggers arrive later in BOT-022.
+
+<!-- BEGIN GENERATED EVENTS -->
+No event kinds are listed yet.
+<!-- END GENERATED EVENTS -->
+
 ## Lifetime, boundaries and unverified gates
 
 All operations enter the existing ordered command service with the invoker's authority and normal command

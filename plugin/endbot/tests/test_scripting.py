@@ -179,16 +179,16 @@ class ConfigStorageParamsTests(unittest.TestCase):
             ([1], "requires expects a list"),
             (["wait", "wait"], "requires expects a list"),
             (["wait"] * 33, "requires expects a list"),
-            (["observe.chat"], "Unknown capability"),
+            (["observe.unknown"], "Unknown capability"),
             (["act.everything"], "Unknown capability"),
         ):
             with self.subTest(names=names), self.assertRaisesRegex(LocalizedError, message) as caught:
                 required(names)
             self.assertNotEqual(localize_error(caught.exception, "ja"), caught.exception.template)
         # Order does not make a different declaration.
-        with patch("endbot_core.script_params.DECLARED_CAPABILITIES", frozenset({"observe.chat", "observe.presence"})):
-            self.assertEqual(required(["observe.presence", "wait", "observe.chat"]),
-                             required(["observe.chat", "observe.presence"]))
+        self.assertEqual(required(["observe.presence", "wait", "observe.chat"]),
+                         required(["observe.chat", "observe.presence"]))
+        self.assertEqual(required(["observe.presence", "observe.chat"]), ("observe.chat", "observe.presence"))
 
     def test_the_basic_set_is_fixed_and_covers_what_the_registry_names(self):
         # S8: the basic set is these four. The registry may only use them, so a capability it gains is never basic
@@ -660,7 +660,7 @@ class LifecycleTests(unittest.TestCase):
         # The basic set needs no declaration, so naming it declares nothing beyond it.
         self.assertEqual(declaration, Declaration([], ()))
         self.runner = FakeRunner([])
-        self.runner.events.queue[0]["requires"] = ["observe.chat"]
+        self.runner.events.queue[0]["requires"] = ["observe.unknown"]
         with self.assertRaises(LocalizedError) as raised:
             self.host.inspect(Script("draft", "params {}", "r1"), self.source)
         self.assertEqual(raised.exception.template, "Unknown capability in requires: {name}")

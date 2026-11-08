@@ -57,6 +57,7 @@ def _load_usages():
     event.PlayerDeathEvent = type("PlayerDeathEvent", (), {})
     event.BlockBreakEvent = type("BlockBreakEvent", (), {})
     event.BlockPlaceEvent = type("BlockPlaceEvent", (), {})
+    event.PlayerChatEvent = type("PlayerChatEvent", (), {})
     event.EventPriority = type("EventPriority", (), {"MONITOR": 5})
     event.event_handler = lambda function=None, **options: function or (lambda inner: inner)
     level.Location = type("Location", (), {})

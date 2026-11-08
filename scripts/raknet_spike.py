@@ -878,6 +878,25 @@ def exercise(
                     lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
                     lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
                 )
+                from events_probe import exercise_triggers
+
+                def kill_events_endbotd():
+                    terminate_owned_tree(endbotd)
+                    if endbotd.poll() is None:
+                        raise ConsumerError("endbotd did not stop after the hard kill")
+
+                def restart_events_endbotd():
+                    nonlocal endbotd
+                    endbotd, ready = start_endbotd()
+                    wait_for("endbotd ready", ready.is_set, 30, endbotd)
+                    return endbotd
+
+                exercise_triggers(
+                    output, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
+                    kill_events_endbotd, restart_events_endbotd,
+                )
             if inventory_stack:
                 from inventory_stack_probe import exercise_inventory_stack
 

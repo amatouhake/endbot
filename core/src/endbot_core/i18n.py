@@ -1039,11 +1039,13 @@ JA.update({
     "Script {name} ({run}) ended: {reason}": "スクリプト {name} ({run}) が終了: {reason}",
     "Script help: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> | delete <name> "
     "| copy <name> <new> | visibility <name> shared|private | owner <name> <GamerTag> | history <name> "
-    "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | reload | menu":
+    "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | reload "
+    "| trigger add|list|show|enable|disable|remove|set|visibility | menu":
         "スクリプト: list | show <name> [page] | run <name> [args...] | runs | stop <id|name|all> "
         "| delete <name> | copy <name> <new> | visibility <name> shared|private | owner <name> <GamerTag> "
         "| history <name> "
-        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | reload | menu",
+        "| restore <name> <n> | rename <name> <new> | import <name> | export <name> [overwrite] | reload "
+        "| trigger add|list|show|enable|disable|remove|set|visibility | menu",
     "Loaded {count} script files from {folder}": "{folder} からスクリプトファイルを {count} 件読み込みました",
     "Script {name} comes from a file; edit the file, then /botscript reload":
         "スクリプト {name} はファイルから読み込んだものです。"
@@ -1158,6 +1160,9 @@ JA.update({
     "Watch filter {field} must be a time of day as HH:MM, from 00:00 to 23:59":
         "watch のフィルタ {field} には HH:MM の時刻 (00:00 から 23:59) を指定してください",
     "Watch filter {field} has an unknown type": "watch のフィルタ {field} の型が不明です",
+    "Watch filter {field} is too long": "watch のフィルタ {field} が長すぎます",
+    "Watch filter {field} may remove at most {limit} areas":
+        "watch のフィルタ {field} で除外できる範囲は最大 {limit} 個です",
     "Unknown event kind {kind}; known kinds: {known}": "イベント種別 {kind} はありません。使える種別: {known}",
     "Watching {kind} needs {capability} in requires {{}}":
         "{kind} を watch するには requires {{}} に {capability} が必要です",
@@ -1181,6 +1186,87 @@ JA.update({
         "トリガー {name} は無効になりました: {reason}。/botscript trigger enable {name} で再び有効にできます",
     "rate limit": "開始回数の上限",
     "owner revoked": "所有者の権限が取り消されました",
+})
+
+# Triggers: commands and forms (BOT-022 step 5c).
+JA.update({
+    "Triggers need endbotd; they are not available here": "トリガーには endbotd が必要です。ここでは使えません",
+    "Use /botscript trigger add|list|show|enable|disable|remove|set|visibility ...":
+        "/botscript trigger add|list|show|enable|disable|remove|set|visibility ... を使ってください",
+    "Use /botscript trigger show <name>": "/botscript trigger show <name> を使ってください",
+    "Use /botscript trigger set <name> <policy>=<value> ...":
+        "/botscript trigger set <name> <policy>=<value> ... を使ってください",
+    "Use /botscript trigger add <script> <kind> [field=value ...] [-- <args>]":
+        "/botscript trigger add <script> <kind> [field=value ...] [-- <args>] を使ってください",
+    "Trigger {name} armed for {kind}": "トリガー {name} を {kind} で有効にしました",
+    "Trigger {name} armed; it runs {script} with: {declaration}":
+        "トリガー {name} を有効にしました。{script} を次で実行します: {declaration}",
+    "basic only": "基本機能のみ",
+    "Trigger {name} disabled": "トリガー {name} を無効にしました",
+    "Trigger {name} removed": "トリガー {name} を削除しました",
+    "Trigger {name}: {policy}": "トリガー {name}: {policy}",
+    "Trigger {name} is now {visibility}": "トリガー {name} は {visibility} になりました",
+    "Trigger visibility must be shared or private": "トリガーの公開範囲は shared か private で指定してください",
+    "Trigger filter {field}: {reason}": "トリガーのフィルタ {field}: {reason}",
+    "Trigger filter {field} must be a whole number": "トリガーのフィルタ {field} には整数を指定してください",
+    "Trigger policy concurrency must be skip, queue or parallel":
+        "トリガーの concurrency は skip、queue、parallel のいずれかです",
+    "Trigger policy {field} must be an integer": "トリガーの {field} には整数を指定してください",
+    "Unknown trigger policy {field}; policies: concurrency, cooldown, startsPerMinute, queue":
+        "不明なトリガーポリシー {field} です。指定できる項目: concurrency、cooldown、startsPerMinute、queue",
+    "Trigger {name} does not exist": "トリガー {name} は存在しません",
+    "Only the owner {owner} may change trigger {name}":
+        "トリガー {name} を変更できるのは所有者 {owner} だけです",
+    "A controller may have at most {limit} armed triggers":
+        "1 人のコントローラーが持てる有効なトリガーは最大 {limit} 個です",
+    "Triggers are turned off on this server": "このサーバーではトリガーは無効です",
+    "Script {name} has no param.event, so a trigger cannot start it":
+        "スクリプト {name} には param.event がないため、トリガーで開始できません",
+    "armed": "作動中",
+    "paused": "一時停止",
+    "disabled": "無効",
+    "declaration grew": "宣言が広がりました",
+    "arguments no longer valid": "引数が無効になりました",
+    "script unavailable": "スクリプトを利用できません",
+    "kind unavailable": "イベント種別を利用できません",
+    "disabled by its owner": "所有者が無効にしました",
+    "No triggers": "トリガーはありません",
+    "{name}: {kind} -> {script} ({status})": "{name}: {kind} -> {script} ({status})",
+    "{name} ({owner}) {kind} -> {script}: {status}": "{name} ({owner}) {kind} -> {script}: {status}",
+    "{name} ({owner}) {kind} -> {script}: {status} ({reason})":
+        "{name} ({owner}) {kind} -> {script}: {status} ({reason})",
+    "concurrency {concurrency}, cooldown {cooldown}, startsPerMinute {startsPerMinute}, queue {queue}":
+        "concurrency {concurrency}、cooldown {cooldown}、startsPerMinute {startsPerMinute}、queue {queue}",
+    "none": "なし",
+    "never": "なし",
+    "Status: {status}": "状態: {status}",
+    "Status: {status} ({reason})": "状態: {status} ({reason})",
+    "{starts} starts, {missed} missed, {skipped} skipped, last start {last}":
+        "開始 {starts} 回、取りこぼし {missed} 回、スキップ {skipped} 回、最終開始 {last}",
+    "Trigger {name}": "トリガー {name}",
+    "Owner: {owner}": "所有者: {owner}",
+    "Kind: {kind}": "種別: {kind}",
+    "Filter: {filter}": "フィルタ: {filter}",
+    "Script: {script}": "スクリプト: {script}",
+    "Arguments: {arguments}": "引数: {arguments}",
+    "Policy: {policy}": "ポリシー: {policy}",
+    "Stats: {stats}": "統計: {stats}",
+    "Triggers...": "トリガー...",
+    "+ New trigger...": "+ 新しいトリガー...",
+    "Back to scripts": "スクリプトに戻る",
+    "Pick a trigger.": "トリガーを選んでください。",
+    "Enable": "有効にする",
+    "Disable": "無効にする",
+    "Remove trigger": "トリガーを削除",
+    "Remove trigger {name}?": "トリガー {name} を削除しますか?",
+    "Back to triggers": "トリガーに戻る",
+    "Endbot: triggers": "Endbot: トリガー",
+    "Pick a script for a new trigger.": "新しいトリガーで実行するスクリプトを選んでください。",
+    "{name}: new trigger": "{name}: 新しいトリガー",
+    "Event kind": "イベント種別",
+    "Choose": "選ぶ",
+    "Add trigger": "トリガーを追加",
+    "{name}: {kind} trigger": "{name}: {kind} のトリガー",
 })
 
 CATALOGS: dict[str, dict[str, str]] = {"ja": JA}

@@ -79,8 +79,8 @@ everywhere.
 The grammar is already consistent (`once`, `continuous`, `interval`, `stop`, with `for`, `hold`, `count`). The nouns for
 what a continuing operation leaves running are not: docs say mining *job*, *loop* and, once, a finished mining *run*.
 Decision: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (see the glossary). *Run* is reserved
-for scripts. *Loop* stays an internal word only. Trigger (BOT-022) is added when it exists: a persistent binding from an
-event to a script that starts runs.
+for scripts. *Loop* stays an internal word only. Trigger (BOT-022) is added: a persistent binding from an event kind
+and filter to a script that starts runs, managed under `/botscript trigger ...`.
 
 ### D2. The shape of waits in Luau
 
@@ -98,7 +98,7 @@ Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is 
 ### D3. Command roots
 
 Rule: `/bot` makes Bots do things (single Bots or Groups); `/bot<noun>` manages that noun: `/botgroup` group
-definitions, `/botscript` scripts and runs. Triggers will be managed under `/botscript`.
+definitions, `/botscript` scripts and runs. Triggers are managed under `/botscript trigger ...`.
 
 Existing exceptions, kept: `/bot list`, `/bot help`, `/bot ping` and `/bot menu` are root words. `list`, `ping` and
 `menu` win only as the whole command, so a Bot named `list` is still reached with `/bot list status` or `/bot list menu`.

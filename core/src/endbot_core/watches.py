@@ -17,6 +17,7 @@ with ``block()``.
 
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
@@ -30,9 +31,13 @@ from endbot_core.script_params import BASIC_CAPABILITIES
 
 BUFFER_LIMIT = 64
 MAX_WATCHES_PER_RUN = 16
-DIMENSIONS = ("overworld", "nether", "the_end")
+DIMENSIONS = ("overworld", "nether", "end")
 BLOCK = re.compile(r"(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+")
 NAME = re.compile(r"[A-Za-z0-9_ ]{1,32}")
+# Every occurrence is tested against every shape of a watched area on the link thread, so the shapes are bounded
+# as well as the cells (maxBlocks): one within and at most this many except clauses, in at most this much text.
+MAX_AREA_EXCEPTS = 16
+MAX_AREA_TEXT = 1024
 # ``schedule`` filters: an integer with a unit, and a local time of day (BOT-022 6c).
 DURATION = re.compile(r"([0-9]+)([smh])")
 TIME = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
@@ -74,10 +79,16 @@ def _value(name: str, field: dict, value):
         if not isinstance(value, str) or not value.startswith("within "):
             raise LocalizedError("Watch filter {field} must be an area (area.cell, area.box or area.sphere)",
                                  field=name)
+        if len(value) > MAX_AREA_TEXT:
+            raise LocalizedError("Watch filter {field} is too long", field=name)
         try:
-            return areas.parse_area(value)
+            area = areas.parse_area(value)
         except LocalizedError as error:
             raise LocalizedError("Watch filter {field}: {reason}", field=name, reason=str(error)) from None
+        if len(area.get("except") or ()) > MAX_AREA_EXCEPTS:
+            raise LocalizedError("Watch filter {field} may remove at most {limit} areas", field=name,
+                                 limit=MAX_AREA_EXCEPTS)
+        return area
     if kind == "block":
         block = _block(value)
         if block is None:
@@ -93,7 +104,8 @@ def _value(name: str, field: dict, value):
             raise LocalizedError("Watch filter {field} must be a name", field=name)
         return value
     if kind == "integer":
-        if type(value) not in (int, float) or value != int(value) or abs(value) > 2147483647:
+        if (type(value) not in (int, float) or not math.isfinite(value) or value != int(value)
+                or abs(value) > 2147483647):
             raise LocalizedError("Watch filter {field} must be a whole number", field=name)
         return int(value)
     if kind == "string":

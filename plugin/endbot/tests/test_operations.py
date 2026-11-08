@@ -337,14 +337,17 @@ class EventRegistryTests(unittest.TestCase):
             self.assertIn(message, str(caught.exception))
 
     def test_block_change_is_listed_with_the_measured_guarantee(self):
+        self.assertLessEqual({"block.change", "player.join", "player.leave", "player.chat"}, set(EVENTS))
+        self.assertEqual(EVENTS["player.chat"]["capability"], "observe.chat")
+        self.assertEqual(EVENTS["player.join"]["capability"], "observe.presence")
         guarantee = EVENTS["block.change"]["guarantee"]
         self.assertEqual((guarantee["class"], guarantee["ticks"], guarantee["each"], guarantee["record"]),
                          ("persist", 4, ["player-break", "player-place"], "BLOCK_EVENTS_SPIKE.md#result"))
         self.assertEqual(EVENTS["block.change"]["filters"]["area"], {"type": "area", "maxBlocks": 512})
 
     def test_the_runtime_and_server_kinds_are_listed_with_their_guarantees(self):
-        self.assertEqual(set(EVENTS), {"block.change", "bot.online", "bot.offline", "bot.died", "job.finished",
-                                       "server.started", "schedule", "world.time"})
+        self.assertLessEqual({"block.change", "bot.online", "bot.offline", "bot.died", "job.finished",
+                              "server.started", "schedule", "world.time"}, set(EVENTS))
         record = "EVENTS_VALIDATION.md#runtime-and-server-kinds"
         for kind in ("bot.online", "bot.offline", "job.finished", "server.started"):
             with self.subTest(kind=kind):

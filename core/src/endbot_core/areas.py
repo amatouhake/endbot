@@ -160,6 +160,21 @@ def parse_area(text: str, *, chain: bool = True) -> dict:
     return area
 
 
+def clause_from_value(value: str) -> str:
+    """An ``area=`` filter value as the ``within ...`` clause text ``validate_filter`` expects.
+
+    The value is the area's values as ``within`` takes them (``"0 64 0"``, ``"0 64 0 3 65 3"``,
+    ``"5 of 0 64 0"``), optionally followed by ``except <values>``; a value already written with
+    ``within`` is kept as it is. The shape is validated later, with the filter.
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise AreaError("An area must be built with area.cell, area.box or area.sphere")
+    text = value.strip()
+    if text.lower() == "within" or text.lower().startswith("within "):
+        return text
+    return f"within {text}"
+
+
 def _format(value) -> str:
     if isinstance(value, (list, tuple)):
         offset = float(value[1])

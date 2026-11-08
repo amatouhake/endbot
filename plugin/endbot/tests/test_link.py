@@ -251,6 +251,16 @@ class HandshakeTests(LinkHarness):
             sock.sendall(encode({"id": 0, "type": "submit", "body": {"root": "bot"}}))
             self.assertIn(b'"code":"protocol"', sock.makefile("rb").readline())
 
+    def test_hello_without_a_boot_id_is_refused(self):
+        hello = {"protocol": PROTOCOL, "pluginVersion": "0.4.0", "registryHash": registry_hash(),
+                 "epoch": "e", "token": TOKEN}
+        with socket.create_connection(self.endbotd.address, 2) as sock:
+            sock.sendall(encode({"id": 0, "type": "hello", "body": hello}))
+            reply = sock.makefile("rb").readline()
+        self.assertIn(b'"code":"invalid"', reply)
+        self.assertIn(b"boot", reply)
+        self.assertFalse(self.endbotd.connected)
+
     def test_both_ends_reject_non_loopback_hosts(self):
         with self.assertRaises(ValueError):
             LinkServer("0.0.0.0", 0, TOKEN, version="0", config={}, on_submit=lambda submission: None)
@@ -456,13 +466,17 @@ class EventDeliveryTests(LinkHarness):
         self.endbotd.stop()
         self.events = []
         self.links = []
-        self.endbotd = self.start_endbotd(on_events=self.events.append, on_link=lambda *args: self.links.append(args))
+
+        def record_link(epoch, closed=None, **options):
+            self.links.append((epoch, options.get("boot"), closed))
+
+        self.endbotd = self.start_endbotd(on_events=self.events.append, on_link=record_link)
         self.interests = []
 
     def test_interest_reaches_the_plugin_and_events_reach_endbotd_with_the_epoch(self):
         link = self.start_plugin(on_interest=self.interests.append)
         self.assertTrue(wait_for(lambda: link.connected and self.endbotd.connected))
-        self.assertTrue(wait_for(lambda: self.links == [(link.epoch,)]))
+        self.assertTrue(wait_for(lambda: self.links == [(link.epoch, link.boot, None)]))
         interest = {"revision": 3, "block": [{"dimension": "overworld", "cells": [[1, 2, 3]]}],
                     "kinds": ["block.change"]}
         self.assertTrue(self.endbotd.send_interest(interest))
@@ -475,13 +489,33 @@ class EventDeliveryTests(LinkHarness):
         self.assertEqual((self.events[0]["revision"], self.events[0]["tick"]), (3, 40))
         self.assertEqual((len(self.events[0]["items"]), self.events[0]["dropped"]), (MAX_EVENT_ITEMS, 2))
 
+    def test_the_boot_id_crosses_the_hello_and_stays_for_a_reconnect(self):
+        link = self.start_plugin()
+        self.assertTrue(wait_for(lambda: link.connected and self.endbotd.connected))
+        self.assertRegex(link.boot, r"^[0-9a-f]{32}$")
+        self.assertTrue(wait_for(lambda: self.links == [(link.epoch, link.boot, None)]))
+        first_epoch, first_boot = link.epoch, link.boot
+
+        self.endbotd.drop_link("test")
+        self.assertTrue(wait_for(lambda: link.connected and link.epoch != first_epoch and self.endbotd.connected))
+        self.assertEqual(link.boot, first_boot)  # the same plugin process reconnects with the same boot id
+        # Only a process's first link carries its boot to the hub, so a reconnect raises no server.started.
+        self.assertTrue(wait_for(lambda: self.links[-1] == (link.epoch, None, None)))
+
+        link.stop()
+        second = self.start_plugin()  # a new plugin process: a new boot id
+        self.assertTrue(wait_for(lambda: second.connected and self.endbotd.connected))
+        self.assertNotEqual(second.boot, first_boot)
+        self.assertTrue(wait_for(lambda: self.links[-1] == (second.epoch, second.boot, None)))
+
     def test_a_link_drop_and_relink_are_reported_and_without_a_link_nothing_is_sent(self):
         link = self.linked()
-        self.assertTrue(wait_for(lambda: self.links == [(link.epoch,)]))
+        self.assertTrue(wait_for(lambda: self.links == [(link.epoch, link.boot, None)]))
         first = link.epoch
         self.endbotd.drop_link("test")
         self.assertTrue(wait_for(lambda: link.connected and link.epoch != first))
-        self.assertTrue(wait_for(lambda: self.links == [(first,), (None, first), (link.epoch,)]))
+        self.assertTrue(wait_for(lambda: self.links == [
+            (first, link.boot, None), (None, None, first), (link.epoch, None, None)]))
         link.stop()
         self.assertFalse(self.on_server_thread(lambda: link.report_events(1, [{"kind": "block.change"}])))
         self.assertTrue(wait_for(lambda: self.links[-1][0] is None))

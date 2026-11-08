@@ -1,9 +1,18 @@
-"""The plugin's block.change source (BOT-022 step 3b): poll phases, confirms, unloaded chunks, Bot attribution."""
+"""The plugin's block.change, bot.died and world.time source (BOT-022 steps 3b, 6b, 6c): poll phases,
+confirms, unloaded chunks, Bot attribution and the day-cycle phase poll."""
 
 import unittest
 from types import SimpleNamespace
 
-from endstone_endbot.block_source import KIND, POLL_TICKS, BlockChangeSource
+from endstone_endbot.block_source import (
+    DEATH_KIND,
+    KIND,
+    POLL_TICKS,
+    TIME_KIND,
+    TIME_POLL_TICKS,
+    BlockChangeSource,
+    phase_at,
+)
 
 TYPES = {"minecraft:air": 1, "minecraft:stone": 2, "minecraft:dirt": 3, "minecraft:wooden_door": 4,
          "minecraft:wooden_door[open]": 5}
@@ -27,10 +36,31 @@ class FakeDimension:
                                x=x, y=y, z=z, dimension=self)
 
 
+class FakeLevel:
+    """A level whose ``time`` counts reads, so a test can prove the poll only runs with interest."""
+
+    def __init__(self, dimensions):
+        self._dimensions = dimensions
+        self._time = 0
+        self.time_reads = 0
+
+    @property
+    def time(self):
+        self.time_reads += 1
+        return self._time
+
+    @time.setter
+    def time(self, value):
+        self._time = value
+
+    def get_dimension(self, name):
+        return self._dimensions[name]
+
+
 class FakeServer:
     def __init__(self):
         self.dimensions = {"Overworld": FakeDimension("Overworld"), "Nether": FakeDimension("Nether")}
-        self.level = SimpleNamespace(get_dimension=self.dimensions.__getitem__)
+        self.level = FakeLevel(self.dimensions)
 
 
 def interest(*cells, dimension="overworld", kinds=(KIND,)):
@@ -75,6 +105,7 @@ class BlockChangeSourceTests(unittest.TestCase):
     def test_a_state_change_with_the_same_type_is_reported(self):
         self.world.blocks[(0, 64, 0)] = "minecraft:wooden_door"
         self.source.apply_interest(interest((0, 64, 0)))
+        self.run_ticks(POLL_TICKS)  # the first read is the baseline
         self.world.blocks[(0, 64, 0)] = "minecraft:wooden_door[open]"
         self.run_ticks(POLL_TICKS)
         self.assertEqual([(item["from"], item["to"]) for item in self.items()],
@@ -82,7 +113,7 @@ class BlockChangeSourceTests(unittest.TestCase):
 
     def test_player_actions_are_confirmed_on_the_next_tick_and_name_only_bots(self):
         self.source.apply_interest(interest((0, 64, 0), (1, 64, 0), (2, 64, 0)))
-        self.run_ticks(2)
+        self.run_ticks(POLL_TICKS)
         bot = SimpleNamespace(name="Miner", xuid="")
         human = SimpleNamespace(name="Alice", xuid="2535400000000000")
         self.world.blocks[(0, 64, 0)] = "minecraft:dirt"
@@ -127,13 +158,183 @@ class BlockChangeSourceTests(unittest.TestCase):
         self.run_ticks(POLL_TICKS)
         self.assertEqual(self.reports, [])
 
+    def test_a_large_new_set_is_read_a_quarter_per_tick_and_a_resent_set_changes_nothing(self):
+        cells = [(x, 64, 0) for x in range(8)]
+        self.source.apply_interest(interest(*cells))
+        self.assertEqual(self.world.reads, 0)  # no read on the tick the set arrives
+        self.run_ticks(1)
+        self.assertEqual(self.world.reads, 2)
+        self.run_ticks(POLL_TICKS - 1)
+        self.world.blocks[(0, 64, 0)] = "minecraft:stone"
+        self.source.apply_interest(interest(*cells))  # a relink resends the same set: baselines kept
+        self.run_ticks(POLL_TICKS)
+        self.assertEqual([(item["x"], item["to"]) for item in self.items()], [(0, "minecraft:stone")])
+
+    def test_a_player_action_before_the_first_read_is_reported_from_what_the_event_saw(self):
+        self.source.apply_interest(interest((5, 64, 0)))
+        bot = SimpleNamespace(name="Miner", xuid="")
+        self.world.blocks[(5, 64, 0)] = "minecraft:stone"
+        block = self.world.get_block_at(5, 64, 0)  # the event's block, before the break
+        self.world.blocks[(5, 64, 0)] = "minecraft:air"
+        self.source.player_changed(block, bot, "player-break")
+        self.run_ticks(1)
+        self.assertEqual([(item["from"], item["to"], item["cause"]) for item in self.items()],
+                         [("minecraft:stone", "minecraft:air", "player-break")])
+
+    def test_ticks_without_reads_do_not_scan_chunks(self):
+        scans = []
+        world = self.world
+        original = type(world).loaded_chunks
+        type(world).loaded_chunks = property(lambda dimension: scans.append(1) or original.fget(dimension))
+        try:
+            self.source.apply_interest(interest((0, 64, 0)))  # one cell: three of four ticks read nothing
+            self.run_ticks(POLL_TICKS)
+        finally:
+            type(world).loaded_chunks = original
+        self.assertEqual(len(scans), 1)
+
     def test_the_nether_is_polled_with_its_own_dimension(self):
         nether = self.server.dimensions["Nether"]
         self.source.apply_interest(interest((0, 64, 0), dimension="nether"))
+        self.run_ticks(POLL_TICKS)
         nether.blocks[(0, 64, 0)] = "minecraft:stone"
         self.run_ticks(POLL_TICKS)
         self.assertEqual([item["dimension"] for item in self.items()], ["nether"])
 
+    def test_a_bots_death_is_reported_only_with_interest_and_only_without_an_xuid(self):
+        self.source.apply_interest(interest(kinds=(KIND, DEATH_KIND)))
+        bot = SimpleNamespace(name="Miner", xuid="")
+        human = SimpleNamespace(name="Alice", xuid="2535400000000000")
+        self.source.player_died(bot, "death.attack.generic")
+        self.source.player_died(human, "death.attack.generic")
+        self.run_ticks(1)
+        self.assertEqual(self.items(), [{"kind": DEATH_KIND, "bot": "Miner", "message": "death.attack.generic"}])
+        self.assertNotIn("Alice", repr(self.reports))
+
+    def test_a_death_is_reported_without_block_interest_on_the_same_tick_report(self):
+        self.source.apply_interest({"revision": 1, "block": [], "kinds": [DEATH_KIND]})
+        self.source.player_died(SimpleNamespace(name="Miner", xuid=""), "death.attack.drown")
+        self.run_ticks(1)
+        self.assertEqual(self.reports, [(1, [{"kind": DEATH_KIND, "bot": "Miner",
+                                              "message": "death.attack.drown"}], 0)])
+
+    def test_a_death_is_dropped_when_interest_no_longer_names_it(self):
+        self.source.apply_interest(interest(kinds=(KIND, DEATH_KIND)))
+        self.source.player_died(SimpleNamespace(name="Miner", xuid=""), "death.attack.generic")
+        self.source.apply_interest(interest(kinds=(KIND,)))
+        self.run_ticks(1)
+        self.assertEqual(self.reports, [])
+
+
+class WorldTimeTests(unittest.TestCase):
+    def setUp(self):
+        self.server = FakeServer()
+        self.reports = []
+        self.source = BlockChangeSource(self.server, lambda tick, items, dropped: self.reports.append(
+            (tick, items, dropped)))
+
+    def items(self):
+        return [item for _, items, _ in self.reports for item in items]
+
+    def run_ticks(self, count):
+        for _ in range(count):
+            self.source.on_tick()
+
+    def watch_time(self, revision=1, kinds=(TIME_KIND,)):
+        self.source.apply_interest({"revision": revision, "block": [], "kinds": list(kinds)})
+
+    def test_phases_cover_the_whole_day_cycle(self):
+        for time_of_day, phase in ((0, "day"), (11999, "day"), (12000, "sunset"), (12999, "sunset"),
+                                   (13000, "night"), (22999, "night"), (23000, "sunrise"),
+                                   (23999, "sunrise")):
+            with self.subTest(time_of_day=time_of_day):
+                self.assertEqual(phase_at(time_of_day), phase)
+
+    def test_only_phase_changes_after_the_first_read_are_reported(self):
+        self.watch_time()
+        self.server.level.time = 0
+        self.run_ticks(TIME_POLL_TICKS)
+        self.assertEqual(self.reports, [])  # the first read is the baseline
+        self.server.level.time = 5000
+        self.run_ticks(TIME_POLL_TICKS)
+        self.assertEqual(self.reports, [])  # still day: nothing between changes
+        self.server.level.time = 12000
+        self.run_ticks(TIME_POLL_TICKS)
+        self.assertEqual(self.items(), [{"kind": TIME_KIND, "phase": "sunset", "time": 12000}])
+        self.run_ticks(TIME_POLL_TICKS * 3)
+        self.assertEqual(len(self.items()), 1)
+        self.server.level.time = 13000
+        self.run_ticks(TIME_POLL_TICKS)
+        self.assertEqual(self.items()[-1], {"kind": TIME_KIND, "phase": "night", "time": 13000})
+        self.assertEqual(len(self.items()), 2)
+
+    def test_the_time_of_day_is_the_level_time_modulo_24000(self):
+        self.watch_time()
+        self.server.level.time = 24000
+        self.run_ticks(TIME_POLL_TICKS)  # baseline: day
+        self.server.level.time = 48000 + 23000
+        self.run_ticks(TIME_POLL_TICKS)
+        self.assertEqual(self.items(), [{"kind": TIME_KIND, "phase": "sunrise", "time": 23000}])
+
+    def test_the_level_is_read_every_twenty_ticks_and_only_with_interest(self):
+        self.server.level.time = 13000
+        self.run_ticks(TIME_POLL_TICKS * 2)
+        self.assertEqual((self.server.level.time_reads, self.reports), (0, []))
+        self.watch_time()
+        self.run_ticks(TIME_POLL_TICKS - 1)
+        self.assertEqual(self.server.level.time_reads, 0)
+        self.run_ticks(1)
+        self.assertEqual(self.server.level.time_reads, 1)  # the baseline
+        self.assertEqual(self.reports, [])
+        self.run_ticks(TIME_POLL_TICKS)
+        self.assertEqual(self.server.level.time_reads, 2)
+        self.watch_time(revision=2, kinds=())
+        self.run_ticks(TIME_POLL_TICKS * 2)
+        self.assertEqual((self.server.level.time_reads, self.reports), (2, []))
+
+    def test_a_new_interest_is_a_new_baseline(self):
+        self.watch_time()
+        self.server.level.time = 0
+        self.run_ticks(TIME_POLL_TICKS)
+        self.watch_time(revision=2, kinds=(KIND,))  # world.time leaves the interest set
+        self.server.level.time = 13000
+        self.run_ticks(TIME_POLL_TICKS)
+        self.watch_time(revision=3)  # and returns: the night read is the new baseline
+        self.run_ticks(TIME_POLL_TICKS)
+        self.assertEqual(self.reports, [])
+        self.server.level.time = 12000
+        self.run_ticks(TIME_POLL_TICKS)
+        self.assertEqual(self.items(), [{"kind": TIME_KIND, "phase": "sunset", "time": 12000}])
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PresenceTests(unittest.TestCase):
+    """Step 6a: human joins, leaves and public chat, only while endbotd asks for them."""
+
+    def setUp(self):
+        self.reports = []
+        self.source = BlockChangeSource(FakeServer(), lambda tick, items, dropped: self.reports.append(items))
+        self.alice = SimpleNamespace(name="Alice", xuid="2535400000000001")
+        self.bot = SimpleNamespace(name="Miner", xuid="")
+
+    def items(self):
+        return [item for items in self.reports for item in items]
+
+    def test_only_kinds_in_the_interest_set_and_only_humans_are_reported(self):
+        self.source.player_presence("player.join", self.alice)
+        self.source.on_tick()
+        self.assertEqual(self.reports, [])
+        self.source.apply_interest({"revision": 1, "block": [], "kinds": ["player.join", "player.chat"]})
+        self.source.player_presence("player.join", self.alice)
+        self.source.player_presence("player.join", self.bot)
+        self.source.player_presence("player.leave", self.alice)  # not asked for
+        self.source.player_presence("player.chat", self.alice, "hi\x1b[31m there" + "x" * 400)
+        self.source.on_tick()
+        items = self.items()
+        self.assertEqual(items[0], {"kind": "player.join", "player": "Alice"})
+        self.assertEqual([item["kind"] for item in items], ["player.join", "player.chat"])
+        self.assertEqual(len(items[1]["message"]), 256)
+        self.assertNotIn("\x1b", items[1]["message"])

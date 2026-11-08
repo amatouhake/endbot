@@ -17,6 +17,7 @@ with ``block()``.
 
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
@@ -30,9 +31,38 @@ from endbot_core.script_params import BASIC_CAPABILITIES
 
 BUFFER_LIMIT = 64
 MAX_WATCHES_PER_RUN = 16
-DIMENSIONS = ("overworld", "nether", "the_end")
+DIMENSIONS = ("overworld", "nether", "end")
 BLOCK = re.compile(r"(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+")
 NAME = re.compile(r"[A-Za-z0-9_ ]{1,32}")
+# Every occurrence is tested against every shape of a watched area on the link thread, so the shapes are bounded
+# as well as the cells (maxBlocks): one within and at most this many except clauses, in at most this much text.
+MAX_AREA_EXCEPTS = 16
+MAX_AREA_TEXT = 1024
+# ``schedule`` filters: an integer with a unit, and a local time of day (BOT-022 6c).
+DURATION = re.compile(r"([0-9]+)([smh])")
+TIME = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
+DURATION_SECONDS = {"s": 1, "m": 60, "h": 3600}
+MIN_DURATION_SECONDS = 10
+MAX_DURATION_SECONDS = 24 * 60 * 60
+
+
+def parse_duration(value: object) -> int:
+    """The seconds a duration filter value names: an integer and s, m or h, from 10s to 24h."""
+    match = DURATION.fullmatch(value) if isinstance(value, str) else None
+    if match is None:
+        raise ValueError("a duration is an integer followed by s, m or h")
+    seconds = int(match[1]) * DURATION_SECONDS[match[2]]
+    if not MIN_DURATION_SECONDS <= seconds <= MAX_DURATION_SECONDS:
+        raise ValueError("a duration is from 10s to 24h")
+    return seconds
+
+
+def parse_time(value: object) -> tuple[int, int]:
+    """The (hour, minute) a time filter value names: HH:MM in endbotd's local time."""
+    match = TIME.fullmatch(value) if isinstance(value, str) else None
+    if match is None:
+        raise ValueError("a time is HH:MM")
+    return int(match[1]), int(match[2])
 
 
 def _block(value) -> str | None:
@@ -49,10 +79,16 @@ def _value(name: str, field: dict, value):
         if not isinstance(value, str) or not value.startswith("within "):
             raise LocalizedError("Watch filter {field} must be an area (area.cell, area.box or area.sphere)",
                                  field=name)
+        if len(value) > MAX_AREA_TEXT:
+            raise LocalizedError("Watch filter {field} is too long", field=name)
         try:
-            return areas.parse_area(value)
+            area = areas.parse_area(value)
         except LocalizedError as error:
             raise LocalizedError("Watch filter {field}: {reason}", field=name, reason=str(error)) from None
+        if len(area.get("except") or ()) > MAX_AREA_EXCEPTS:
+            raise LocalizedError("Watch filter {field} may remove at most {limit} areas", field=name,
+                                 limit=MAX_AREA_EXCEPTS)
+        return area
     if kind == "block":
         block = _block(value)
         if block is None:
@@ -68,12 +104,33 @@ def _value(name: str, field: dict, value):
             raise LocalizedError("Watch filter {field} must be a name", field=name)
         return value
     if kind == "integer":
-        if type(value) not in (int, float) or value != int(value) or abs(value) > 2147483647:
+        if (type(value) not in (int, float) or not math.isfinite(value) or value != int(value)
+                or abs(value) > 2147483647):
             raise LocalizedError("Watch filter {field} must be a whole number", field=name)
         return int(value)
-    if kind in ("string", "duration", "time"):
+    if kind == "string":
         if not isinstance(value, str) or not 0 < len(value) <= 64:
             raise LocalizedError("Watch filter {field} must be text", field=name)
+        choices = field.get("choices")
+        if choices and value not in choices:
+            raise LocalizedError("Watch filter {field} must be one of {choices}", field=name,
+                                 choices=", ".join(choices))
+        return value
+    if kind == "duration":
+        try:
+            parse_duration(value)
+        except ValueError:
+            raise LocalizedError(
+                "Watch filter {field} must be a duration from 10s to 24h (such as 30s, 5m or 2h)",
+                field=name) from None
+        return value
+    if kind == "time":
+        try:
+            parse_time(value)
+        except ValueError:
+            raise LocalizedError(
+                "Watch filter {field} must be a time of day as HH:MM, from 00:00 to 23:59",
+                field=name) from None
         return value
     raise LocalizedError("Watch filter {field} has an unknown type", field=name)
 

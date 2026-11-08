@@ -91,12 +91,15 @@ class TriggerCommandTests(unittest.TestCase):
         self.assertEqual(trigger.filter["to"], "minecraft:air")
 
     def test_area_except_arguments_and_a_name(self):
+        # The stored arguments are checked against the script's parameters when the trigger is armed.
+        self.declaration = Declaration([*EVENT_SCHEMA, {"name": "n", "type": "number"},
+                                        {"name": "label", "type": "string"}], ())
         result = self.command("trigger", "add", "guard", "block.change", 'area="0 64 0 except 5 0 0"',
-                          "name=watch", "--", "n=3", '"x y z"')
+                          "name=watch", "--", "3", '"x y z"')
         self.assertTrue(result.accepted)
         trigger = self.stored("watch")
         self.assertEqual(areas.area_text(trigger.filter["area"]), "within 0 64 0 except 5 0 0")
-        self.assertEqual(trigger.arguments, ["n=3", "x y z"])
+        self.assertEqual(trigger.arguments, ["3", "x y z"])
 
     def test_list_and_show_state_the_fields_the_screen_states(self):
         self.assertEqual(self.messages(self.command("trigger", "list")), ("Endbot: No triggers",))

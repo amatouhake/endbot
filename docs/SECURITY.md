@@ -96,6 +96,27 @@ bootstrap binding on the next load; an explicit runtime grant remains until revo
 whoever currently holds a pending GamerTag could claim it, so
 operators should join once right after setup; `endbot doctor` lists pending entries.
 
+### Events, watches and triggers
+
+Event kinds are observation only: nothing a script receives can cancel or change what happened ([EVENTS.md](EVENTS.md)).
+Every listed kind is public in the PERMISSIONS sense, and the registry test refuses any other visibility. `block.change`
+names a Bot that changed a block but never a human player, because a name next to a coordinate would reveal where that
+player is. Kinds beyond the basic set (`observe.chat`, `observe.presence`) need the capability in the script's
+`requires {}`, which every form shows before a run or a trigger is armed.
+
+The plugin reports only what endbotd's interest set asks for, and endbotd matches occurrences to watches and triggers
+itself; occurrences carry no owner. Bounds keep a script from loading the server thread: a watched area holds at most
+512 blocks, the whole server at most `[events] max-watched-blocks` (default 2048, at most 16384), read a quarter per tick;
+a run holds at most 16 watches and a controller `[limits] max-watches-per-controller` (32).
+
+A trigger starts runs as its owner, never as whoever caused the occurrence. Arming (creating or enabling) records the
+script revision, its declaration, a hash of its parameters and the owner's grant revision. Each start checks that the
+owner still holds that grant (a revoke disables the trigger and a regrant does not re-arm it), that the owner may still
+run the script, that its declaration has not grown and its parameters have not changed (otherwise the trigger pauses
+until the owner enables it again, which re-approves). Runs count toward the owner's concurrent-run limit, at most
+`[limits] max-triggers-per-controller` (8) triggers are armed per controller, and the per-minute start cap disables a
+trigger that feeds itself, telling the owner. No trigger starts while the plugin is not linked.
+
 ### Operators and achievements
 
 From Endstone `v0.11.13`, permissions alone decide who may run a command: upstream marks every command as not

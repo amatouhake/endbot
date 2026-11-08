@@ -90,8 +90,8 @@ def _value(name: str, field: dict, value):
     raise LocalizedError("Watch filter {field} has an unknown type", field=name)
 
 
-def validate_filter(kind: object, filter_: object, requires, kinds: dict | None = None) -> tuple[str, dict]:
-    """The canonical (kind, filter) for a watch or trigger; LocalizedError names what is wrong."""
+def check_kind(kind: object, requires, kinds: dict | None = None) -> dict:
+    """The registry entry of ``kind``, refused when unknown or when its capability is not declared."""
     kinds = EVENTS if kinds is None else kinds
     if not isinstance(kind, str) or kind not in kinds:
         raise LocalizedError("Unknown event kind {kind}; known kinds: {known}", kind=str(kind)[:64],
@@ -100,6 +100,12 @@ def validate_filter(kind: object, filter_: object, requires, kinds: dict | None 
     capability = spec["capability"]
     if capability not in BASIC_CAPABILITIES and capability not in (requires or ()):
         raise LocalizedError("Watching {kind} needs {capability} in requires {{}}", kind=kind, capability=capability)
+    return spec
+
+
+def validate_filter(kind: object, filter_: object, requires, kinds: dict | None = None) -> tuple[str, dict]:
+    """The canonical (kind, filter) for a watch or trigger; LocalizedError names what is wrong."""
+    spec = check_kind(kind, requires, kinds)
     if filter_ is None:
         filter_ = {}
     if not isinstance(filter_, dict):

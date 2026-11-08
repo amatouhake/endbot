@@ -18,6 +18,10 @@ for _, kind in {"group", "bot", "pos", "number", "boolean", "string"} do
     end
 end
 -- One of fixed strings: `param.choice("mode", {"once", "continuous"}, "once")`; forms show a dropdown.
+-- Filled by a trigger with the occurrence that started the run (`a.event`); nil in a manual run.
+param.event = function(parameterName)
+    return table.freeze({name = parameterName, type = "event"})
+end
 param.choice = function(parameterName, choices, default)
     local descriptor = {name = parameterName, type = "choice", choices = choices}
     if type(choices) == "table" then descriptor.choices = table.freeze(table.clone(choices)) end
@@ -25,7 +29,7 @@ param.choice = function(parameterName, choices, default)
     return table.freeze(descriptor)
 end
 table.freeze(param)
-local KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice"}
+local KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice", "event"}
 -- Capabilities beyond the basic set: `requires { "observe.chat" }`, once, before params{}.
 -- The host checks the names; this only fixes the shape and the order.
 local required = nil

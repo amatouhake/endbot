@@ -140,6 +140,10 @@ class OccurrenceHub:
         self._epoch: str | None = None
         self._unknown: set[str] = set()
 
+    @property
+    def kinds(self) -> dict:
+        return self._kinds
+
     # -- subscriptions ---------------------------------------------------
 
     def subscribe(self, kind: str, filter_: dict, on_item: Callable[[dict], None],

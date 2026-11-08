@@ -5,7 +5,8 @@ import re
 
 from endbot_core.i18n import LocalizedError
 
-KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice"}
+# "event" is filled by a trigger with the occurrence (BOT-022, EVENTS.md E6); a manual run gets nil.
+KINDS = {"group", "bot", "pos", "number", "boolean", "string", "choice", "event"}
 NAMED = re.compile(r"([A-Za-z_][A-Za-z0-9_]{0,31})=(.*)", re.DOTALL)
 # Every script may operate Bots, read the world, wait and log (S8); naming these in requires {} changes nothing.
 # Fixed here, not derived from the registry, so a new capability never becomes basic by being used there.
@@ -56,6 +57,9 @@ def declarations(schema):
                     or any(not isinstance(choice, str) or not 1 <= len(choice) <= 64 for choice in choices)
                     or len(set(choices)) != len(choices)):
                 raise LocalizedError("Invalid script parameter declarations")
+        if spec["type"] == "event" and ("default" in spec or any(
+                other["type"] == "event" for other in result.values())):
+            raise LocalizedError("Invalid script parameter declarations")
         if "default" in spec:
             default, kind = spec["default"], spec["type"]
             valid = (
@@ -68,6 +72,16 @@ def declarations(schema):
                 raise LocalizedError("Invalid script parameter default")
         result[name] = spec
     return result
+
+
+def inputs(schema):
+    """The parameters a person supplies: every declared one except the trigger's ``event``."""
+    return {name: spec for name, spec in declarations(schema).items() if spec["type"] != "event"}
+
+
+def event_parameter(schema):
+    """The name of the ``param.event`` parameter, or None."""
+    return next((name for name, spec in declarations(schema).items() if spec["type"] == "event"), None)
 
 
 def split_named(schema, values):
@@ -91,8 +105,9 @@ def split_named(schema, values):
     return {**dict(zip(schema, positional)), **named}
 
 
-def arguments(schema, supplied, *, groups, bots, origin=None):
-    schema = declarations(schema)
+def arguments(schema, supplied, *, groups, bots, origin=None, event=None):
+    event_name = event_parameter(schema)
+    schema = inputs(schema)
     if isinstance(supplied, (list, tuple)):
         supplied = split_named(schema, supplied)
     if not isinstance(supplied, dict) or supplied.keys() - schema.keys():
@@ -145,4 +160,6 @@ def arguments(schema, supplied, *, groups, bots, origin=None):
         except (ValueError, TypeError, StopIteration, AttributeError) as error:
             raise LocalizedError("Invalid script argument: {name} ({kind})", name=name, kind=kind) from error
         result[name] = value
+    if event_name is not None:
+        result[event_name] = event
     return result

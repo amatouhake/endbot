@@ -101,6 +101,11 @@ class ScriptRun:
     declared: tuple = ()
     watches: dict = field(default_factory=dict)
     next_watch: int = 0
+    # A run a trigger started (BOT-022): the trigger's name, the occurrence for param.event, and who to tell
+    # when it ends.
+    trigger: str | None = None
+    event: dict | None = None
+    on_end: object = None
 
 
 class ScriptService:
@@ -395,7 +400,7 @@ class ScriptService:
             return
         raise LocalizedError("Script {name} already exists", name=name)
 
-    def start(self, script, values, source, targets=None, requires=None):
+    def start(self, script, values, source, targets=None, requires=None, *, event=None, trigger=None, on_end=None):
         self._enabled()
         self._check(source)
         if len(script.source.encode("utf-8")) > self.config.max_script_bytes:
@@ -411,6 +416,9 @@ class ScriptService:
                 deadline=time.monotonic() + self.config.wall_seconds if self.config.wall_seconds else None,
                 parameter_targets=dict(targets or {}),
                 requires=requires,
+                trigger=trigger,
+                event=event,
+                on_end=on_end,
             )
             self._runs[identity] = run
             run.thread = threading.Thread(
@@ -420,6 +428,11 @@ class ScriptService:
         if self.on_runs_changed:
             self.on_runs_changed()
         return identity
+
+    def check_arguments(self, schema, values, source):
+        """Refuse stored arguments the schema does not accept, as a form run would (a trigger's approval)."""
+        groups = self.service._store(source) if self.service.groups is not None else None
+        arguments(schema, values, groups=groups, bots=bot_profiles(self.inputs), origin=None)
 
     def _prepare(self, run, schema, values):
         self._alive(run)
@@ -435,7 +448,7 @@ class ScriptService:
             if not matches:
                 raise LocalizedError("Script parameter target changed; reopen the menu")
         groups = self.service._store(run.source) if self.service.groups is not None else None
-        result = arguments(schema, values, groups=groups, bots=bots, origin=run.source.origin)
+        result = arguments(schema, values, groups=groups, bots=bots, origin=run.source.origin, event=run.event)
         # Pin declared groups now; later membership/name reuse cannot retarget the run.
         for name, spec in declarations(schema).items():
             if spec["type"] == "group":
@@ -825,6 +838,11 @@ class ScriptService:
                 self.on_runs_changed()
             if self.publish:
                 self.publish(ended)
+            if run.on_end is not None:
+                try:
+                    run.on_end(run, outcome)
+                except Exception:  # noqa: BLE001, S110 - a trigger's bookkeeping must not break run cleanup
+                    pass
 
     def _chat_log(self, run) -> bool:
         """Whether the chat of the player who started the run shows this log line.

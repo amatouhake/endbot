@@ -207,6 +207,62 @@ class EngineTests(unittest.TestCase):
         self.hub.raise_occurrence("plugin", change())  # within the restored 10 s cooldown: missed
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["missed"] == 1))
 
+    def test_a_player_trigger_starts_as_a_run_of_its_owner_and_survives_a_reload(self):
+        seen = []
+        self.engine = self.make_engine(authorize=lambda source: seen.append(source) or self.allowed(source))
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
+        reloaded = TriggerStore(self.trigger_store.path).get(trigger.owner, "guard")
+        self.assertEqual((reloaded.approved["grantRevision"], reloaded.approved["playerId"]),
+                         (3, OWNER.player_id))
+        principal = self.engine._principal(reloaded)
+        self.assertEqual((principal.kind, principal.player_id, principal.console), ("run", OWNER.player_id, False))
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
+
+    def test_queued_occurrences_wait_while_unlinked_and_a_queued_cap_disables(self):
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
+                                     policy={"concurrency": "queue", "cooldown": 100, "startsPerMinute": 1})
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
+        self.hub.raise_occurrence("plugin", change())  # queued: in cooldown
+        time.sleep(0.3)
+        self.linked = False
+        self.clock.advance(6)
+        time.sleep(0.6)
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats["starts"], 1)
+        self.linked = True  # the queued start is now over the cap of one per minute: disabled, not started
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").status == "disabled"))
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").reason, "rate limit")
+
+    def test_changing_the_policy_keeps_the_start_window_and_ignores_the_old_subscription(self):
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
+                                     policy={"cooldown": 0, "startsPerMinute": 1})
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
+        self.engine.set_policy(OWNER, "guard", {"cooldown": 0})
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").status == "disabled"))
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats["starts"], 1)
+
+    def test_a_limit_of_zero_arms_nothing_and_enable_respects_the_owners_limit(self):
+        self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
+        self.engine.close()
+        off = self.make_engine(max_triggers=0)
+        off.start()
+        self.assertEqual(off._armed, {})
+        with self.assertRaisesRegex(LocalizedError, "turned off"):
+            off.enable(Principal("console"), "guard", self.engine.list(OWNER)[0].owner)
+
+    def test_arguments_are_checked_when_the_trigger_is_armed(self):
+        self.declaration = Declaration([*EVENT_SCHEMA, {"name": "n", "type": "number"}], ())
+        with self.assertRaisesRegex(LocalizedError, "Invalid script argument"):
+            self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA, arguments=["not-a-number"])
+        self.assertEqual(self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
+                                            arguments=["4"]).status, "armed")
+
     def test_visibility_and_ownership_of_operations(self):
         self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
         self.assertEqual(self.engine.list(OTHER), [])

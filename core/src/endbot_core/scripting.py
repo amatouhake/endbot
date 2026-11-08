@@ -431,6 +431,11 @@ class ScriptService:
             self.on_runs_changed()
         return identity
 
+    def check_arguments(self, schema, values, source):
+        """Refuse stored arguments the schema does not accept, as a form run would (a trigger's approval)."""
+        groups = self.service._store(source) if self.service.groups is not None else None
+        arguments(schema, values, groups=groups, bots=bot_profiles(self.inputs), origin=None)
+
     def _prepare(self, run, schema, values):
         self._alive(run)
         with self.inputs.scope(run.identity, lambda: self._alive(run)):

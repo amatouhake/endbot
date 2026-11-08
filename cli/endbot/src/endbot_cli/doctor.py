@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -630,6 +631,160 @@ def check_ownership(paths: InstancePaths) -> CheckResult:
     return CheckResult(PASS, name, f"{path} records {count}")
 
 
+def _valid_trigger_owner(value) -> bool:
+    """Mirror ``endbot_core.trigger_store`` so the CLI stays independent of the core package."""
+
+    if not isinstance(value, str) or not 0 < len(value) <= 128:
+        return False
+    if value == "console":
+        return True
+    if value.startswith("xuid:"):
+        return value[5:].isascii() and value[5:].isdecimal()
+    if value.startswith("player:"):
+        try:
+            from uuid import UUID
+
+            UUID(value[7:])
+        except (TypeError, ValueError):
+            return False
+        return True
+    return False
+
+
+def _trigger_json_safe(value) -> bool:
+    if value is None or type(value) in (bool, int, str):
+        return True
+    if type(value) is float:
+        return math.isfinite(value)
+    if isinstance(value, list):
+        return all(_trigger_json_safe(item) for item in value)
+    if isinstance(value, dict):
+        return all(isinstance(key, str) and _trigger_json_safe(item) for key, item in value.items())
+    return False
+
+
+def _independent_trigger_statuses(path: Path) -> list[str]:
+    """Read ``triggers.json`` without the core package, applying the store's rules."""
+
+    if path.is_symlink():
+        raise ValueError("the file must not be a symlink")
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise ValueError("the file is not an object")  # noqa: TRY004 - persisted JSON schema validation
+    if set(document) - {"schemaVersion", "triggers"}:
+        raise ValueError("the file has an unknown field")
+    if type(document.get("schemaVersion")) is not int or document["schemaVersion"] != 1:
+        raise ValueError("schemaVersion must be 1")
+    rows = document.get("triggers")
+    if not isinstance(rows, list):
+        raise ValueError("triggers must be a list")  # noqa: TRY004 - persisted JSON schema validation
+    fields = {
+        "name", "owner", "ownerName", "visibility", "kind", "filter", "script", "arguments",
+        "approved", "status", "reason", "policy", "stats",
+    }
+    policy_fields = {"concurrency": ("skip", "queue", "parallel"), "cooldown": (0, 72000),
+                     "startsPerMinute": (1, 60), "queue": (1, 16)}
+    stats_fields = {"starts", "missed", "skipped", "lastStart", "lastGap", "lastError"}
+    statuses: list[str] = []
+    keys = set()
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or set(row) != fields:
+            raise ValueError(f"trigger {index} has missing or unknown fields")
+        name, owner = row["name"], row["owner"]
+        if not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,32}", name) is None:
+            raise ValueError(f"trigger {index} has an invalid name")
+        if not _valid_trigger_owner(owner):
+            raise ValueError(f"trigger {index} has an invalid owner")
+        owner_name = row["ownerName"]
+        if owner_name is not None and (not isinstance(owner_name, str) or len(owner_name) > 64):
+            raise ValueError(f"trigger {index} has an invalid ownerName")
+        if row["visibility"] not in ("private", "shared"):
+            raise ValueError(f"trigger {index} has an invalid visibility")
+        kind = row["kind"]
+        if not isinstance(kind, str) or re.fullmatch(r"[a-z]+\.[a-z][a-z_]*", kind) is None:
+            raise ValueError(f"trigger {index} has an invalid kind")
+        if not isinstance(row["filter"], dict) or not _trigger_json_safe(row["filter"]):
+            raise ValueError(f"trigger {index} has an invalid filter")
+        script = row["script"]
+        if not isinstance(script, str) or not 1 <= len(script) <= 32:
+            raise ValueError(f"trigger {index} has an invalid script")
+        arguments = row["arguments"]
+        if (
+            not isinstance(arguments, list)
+            or len(arguments) > 32
+            or any(not isinstance(item, str) or len(item) > 256 for item in arguments)
+        ):
+            raise ValueError(f"trigger {index} has invalid arguments")
+        approved = row["approved"]
+        if (
+            not isinstance(approved, dict)
+            or set(approved) != {"revision", "declaration", "paramsHash"}
+            or not isinstance(approved.get("revision"), str)
+            or not isinstance(approved.get("declaration"), list)
+            or any(not isinstance(item, str) for item in approved.get("declaration", []))
+            or not isinstance(approved.get("paramsHash"), str)
+        ):
+            raise ValueError(f"trigger {index} has an invalid approved declaration")
+        status = row["status"]
+        if status not in ("armed", "paused", "disabled"):
+            raise ValueError(f"trigger {index} has an invalid status")
+        reason = row["reason"]
+        if reason is not None and (not isinstance(reason, str) or len(reason) > 128):
+            raise ValueError(f"trigger {index} has an invalid reason")
+        if status == "armed" and reason is not None:
+            raise ValueError(f"trigger {index} has a reason while armed")
+        policy = row["policy"]
+        if not isinstance(policy, dict) or set(policy) != set(policy_fields):
+            raise ValueError(f"trigger {index} has an invalid policy")
+        if policy["concurrency"] not in policy_fields["concurrency"]:
+            raise ValueError(f"trigger {index} has an invalid policy concurrency")
+        for key in ("cooldown", "startsPerMinute", "queue"):
+            low, high = policy_fields[key]
+            if type(policy[key]) is not int or not low <= policy[key] <= high:
+                raise ValueError(f"trigger {index} has an invalid policy {key}")
+        stats = row["stats"]
+        if not isinstance(stats, dict) or set(stats) != stats_fields:
+            raise ValueError(f"trigger {index} has invalid stats")
+        for key in ("starts", "missed", "skipped"):
+            if type(stats[key]) is not int or stats[key] < 0:
+                raise ValueError(f"trigger {index} has invalid stats {key}")
+        for key in ("lastStart", "lastGap"):
+            value = stats[key]
+            if value is not None and (type(value) not in (int, float) or not math.isfinite(value)):
+                raise ValueError(f"trigger {index} has invalid stats {key}")
+        last_error = stats["lastError"]
+        if last_error is not None and (not isinstance(last_error, str) or len(last_error) > 256):
+            raise ValueError(f"trigger {index} has an invalid stats lastError")
+        key = (owner, name)
+        if key in keys:
+            raise ValueError(f"duplicate trigger {owner}/{name}")
+        keys.add(key)
+        statuses.append(status)
+    return statuses
+
+
+def check_triggers(paths: InstancePaths) -> CheckResult:
+    """``state/triggers.json`` (EVENTS E6); endbotd refuses to start when it is corrupt."""
+
+    name = "triggers"
+    path = paths.state_controllers.parent / "triggers.json"
+    remedy = "endbotd will not start; stop Endbot and fix or delete it, which removes every trigger"
+    if not path.exists() and not path.is_symlink():
+        return CheckResult(PASS, name, "no triggers recorded")
+    try:
+        try:
+            from endbot_core.trigger_store import load_triggers
+        except ImportError:
+            statuses = _independent_trigger_statuses(path)
+        else:
+            statuses = [trigger.status for trigger in load_triggers(path)]
+    except (OSError, UnicodeDecodeError, TypeError, ValueError) as error:
+        return CheckResult(FAIL, name, f"{path} cannot be read as a triggers file ({error}); {remedy}")
+    count = len(statuses)
+    armed = statuses.count("armed")
+    return CheckResult(PASS, name, f"{path} records {count} trigger{'s' if count != 1 else ''}, {armed} armed")
+
+
 def check_stores(paths: InstancePaths, server: Path | None) -> CheckResult:
     """Which store layout is authoritative (docs/ENDBOTD.md P7): the marker and both layouts."""
 
@@ -1057,6 +1212,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
     results.append(check_grant_revisions(paths))
     results.append(check_controller_roles(paths))
     results.append(check_ownership(paths))
+    results.append(check_triggers(paths))
     results.append(check_stores(paths, server))
 
     if server is None:

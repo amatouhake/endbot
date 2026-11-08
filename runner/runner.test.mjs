@@ -3,7 +3,21 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { startRun, executable, mockOperations, parameters } from './host.mjs';
-import { reference } from './api-reference.mjs';
+import { events, guaranteeText, reference } from './api-reference.mjs';
+
+// The same synthetic kind and sentence plugin/endbot/tests/test_operations.py pins for guarantee_text.
+const EVENT_FIXTURE = {
+  source: 'plugin',
+  capability: 'read.world',
+  visibility: 'public',
+  filters: { cause: { type: 'string' }, box: { type: 'area', maxBlocks: 512 },
+    dimension: { type: 'dimension', default: 'overworld' } },
+  require: [['cause'], ['box']],
+  payload: { cause: 'string', bot: 'string?' },
+  guarantee: { class: 'persist', ticks: 4, each: ['player-break', 'player-place'], record: 'EVENTS.md#target' },
+};
+const GUARANTEE_FIXTURE = 'At most once, after the fact, in source order. A change that lasts at least 4 ticks is '
+  + 'delivered; player-break and player-place are delivered individually.';
 
 test('declares parameters before body, interleaves two bots, waits explicitly', { timeout: 10000 }, async () => {
   const source = await readFile(new URL('./examples/interleaved.luau', import.meta.url), 'utf8');
@@ -299,6 +313,27 @@ test('operator API reference matches the operation table shipped in the plugin',
   const guide = (await readFile(new URL('../docs/SCRIPTING.md', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
   const section = guide.split('<!-- BEGIN GENERATED OPERATIONS -->\n')[1].split('<!-- END GENERATED OPERATIONS -->')[0];
   assert.equal(section, reference(mockOperations));
+});
+
+test('event reference states the guarantee and matches the generated section in the guide', async () => {
+  // Windows CI checks files out with CRLF line endings.
+  const guide = (await readFile(new URL('../docs/SCRIPTING.md', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
+  const registry = JSON.parse(await readFile(new URL('../core/src/endbot_core/operations.json', import.meta.url), 'utf8'));
+  const section = guide.split('<!-- BEGIN GENERATED EVENTS -->\n')[1].split('<!-- END GENERATED EVENTS -->')[0];
+  assert.equal(section, events(registry.events));
+  assert.equal(events({}), 'No event kinds are listed yet.\n');
+});
+
+test('event guarantee text is the same sentence the Python operation reference states', () => {
+  assert.equal(guaranteeText(EVENT_FIXTURE), GUARANTEE_FIXTURE);
+  assert.equal(guaranteeText(EVENT_FIXTURE.guarantee), GUARANTEE_FIXTURE);
+  const row = events({ 'block.change': EVENT_FIXTURE }).split('\n')[2];
+  assert.equal(row, '| `block.change` | cause: string or box: area (max 512 blocks) | cause: string, bot: string? | '
+    + GUARANTEE_FIXTURE + ' |');
+  const each = { class: 'each', ticks: null, each: [], record: 'EVENTS.md#target' };
+  assert.equal(guaranteeText({ guarantee: each }),
+    'At most once, after the fact, in source order. '
+    + 'Every occurrence is delivered while the source is connected.');
 });
 
 test('all menu templates compile and execute with the real generated API', async () => {

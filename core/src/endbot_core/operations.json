@@ -882,6 +882,7 @@
     "members": "read.world",
     "operation": "operation"
   },
+  "events": {},
   "reservedBotNames": [
     "help",
     "list",

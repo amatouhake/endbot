@@ -51,6 +51,9 @@ class FilterTests(unittest.TestCase):
             ("block.change", {"area": "within 1 2"}, "filter area:"),
             ("block.change", {"area": AREA, "to": "not a block!"}, "filter to must be a block name"),
             ("block.change", {"area": AREA, "dimension": "moon"}, "filter dimension must be one of"),
+            ("block.change", {"area": "within 0 64 0 3 67 3" + " except 100 100 100" * 17},
+             "may remove at most 16 areas"),
+            ("block.change", {"area": "within 0 64 0 3 67 3" + " except 100 100 100" * 60}, "too long"),
             ("block.change", ["area"], "must be a table"),
         ):
             with self.subTest(kind=kind, filter=filter_), self.assertRaises(LocalizedError) as raised:
@@ -188,6 +191,11 @@ class HostTests(unittest.TestCase):
         self.host.occurrences = None
         self.run_script([{"type": "watch", "id": 2, "kind": "block.change", "filter": {"area": AREA}}])
         self.assertIn("Watches need endbotd", self.outcome())
+
+    def test_a_refused_subscribe_leaves_no_owner_entry(self):
+        self.run_script([{"type": "watch", "id": 2, "kind": "block.change",
+                          "filter": {"area": "within 0 0 0 9 9 9"}}])
+        self.assertEqual(self.host._watch_owners, {})
 
     def test_buffer_limit_is_sixty_four(self):
         self.assertEqual(BUFFER_LIMIT, 64)

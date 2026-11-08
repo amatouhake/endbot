@@ -632,8 +632,8 @@ w:close()                          -- optional; a watch ends with its run
 - `watch(kind, filter)` checks the kind, every filter name and value, the required filters and the kind's capability
   against `requires {}` before it returns; a mistake stops the run with a message naming the field. Block names may
   omit `minecraft:`.
-- `block.change` takes an `area` built with `area.cell`, `area.box` or `area.sphere` (with `:minus`), of at most 512
-  blocks. A watch has no Bot to resolve against, so `~` and the sphere around the Bot are refused: build the area from
+- `block.change` takes an `area` built with `area.cell`, `area.box` or `area.sphere` (with at most 16 `:minus`), of at
+  most 512 blocks. A watch has no Bot to resolve against, so `~` and the sphere around the Bot are refused: build the area from
   a position, such as a Bot's `status()` coordinates. Optional filters: `dimension` (default `overworld`), `from` and
   `to`.
 - Buffering starts at `watch()`, so nothing is lost between waits. A watch keeps the 64 newest occurrences; `missed`

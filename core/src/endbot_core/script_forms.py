@@ -1,10 +1,13 @@
 """Endstone-free script menus. Save capabilities exist only on edit forms."""
 
+import shlex
 import time
 from dataclasses import dataclass
 
+from endbot_core import areas
 from endbot_core import forms as f
 from endbot_core.i18n import tr
+from endbot_core.operations import EVENTS
 from endbot_core.script_params import inputs
 
 
@@ -111,12 +114,14 @@ def _capped_view(source, lang, name=None):
     return source_view(source)
 
 
-def list_screen(scripts, lang="en", own=lambda script: False, author=True, whole_editor=False):
+def list_screen(scripts, lang="en", own=lambda script: False, author=True, whole_editor=False, triggers=False):
     """``author`` False (a controller, S10) leaves out creating scripts; the server refuses it as well."""
     items = [f.Button(label(s, own(s), lang), run("menu", s.name, guard=ScriptGuard(s.revision, s.name)))
              for s in scripts]
     if author:
         items.append(_new_script_button(lang, whole_editor))
+    if triggers:
+        items.append(f.Button(tr(lang, "Triggers..."), run("trigger", "menu")))
     items.append(f.Button(tr(lang, "Reload script files"), run("reload")))
     items.append(f.Button(tr(lang, "Back to Bot list"), f.run(f.menu_argv())))
     return f.ActionScreen(tr(lang, "Endbot: scripts"), tr(lang, "Pick a script."), tuple(items))
@@ -459,12 +464,9 @@ def parameter_choices(schema, groups, bots):
     return schema, choices
 
 
-def run_screen(script, schema, groups, bots, origin, lang="en", requires=()):
-    schema, choices = parameter_choices(schema, groups, bots)
+def _parameter_controls(schema, choices, groups, bots, origin, lang):
+    """One control per parameter a person supplies; the trigger's ``event`` parameter is not one."""
     controls = []
-    if requires:
-        # The declaration belongs on the form other controllers read before running a shared script.
-        controls.append(f.Label(tr(lang, "This script also uses: {names}", names=", ".join(requires))))
     for name, spec in schema.items():
         kind, default = spec["type"], spec.get("default", "")
         label = tr(lang, "{name} ({kind})", name=name, kind=kind)
@@ -477,6 +479,32 @@ def run_screen(script, schema, groups, bots, origin, lang="en", requires=()):
             if kind == "pos" and origin is not None and default in {"", "~ ~ ~"}:
                 default = " ".join(str(origin[axis]) for axis in ("x", "y", "z"))
             controls.append(f.TextInput(label, default_value=str(default)))
+    return controls
+
+
+def _parameter_values(schema, choices, groups, bots, response):
+    """The values and pinned targets a form's parameter responses describe."""
+    values, targets = {}, {}
+    for (name, spec), value in zip(schema.items(), response, strict=True):
+        if name in choices:
+            value = f._option(choices[name], value)
+            if spec["type"] == "group":
+                selected = next(group for group in groups if "#" + group.name == value)
+                targets[name] = ("group", value, selected.identity, selected.members)
+            elif spec["type"] == "bot":
+                selected = next(bot for bot in bots if bot["name"] == value)
+                targets[name] = ("bot", value, selected["identityId"])
+        values[name] = value
+    return values, targets
+
+
+def run_screen(script, schema, groups, bots, origin, lang="en", requires=()):
+    schema, choices = parameter_choices(schema, groups, bots)
+    controls = []
+    if requires:
+        # The declaration belongs on the form other controllers read before running a shared script.
+        controls.append(f.Label(tr(lang, "This script also uses: {names}", names=", ".join(requires))))
+    controls.extend(_parameter_controls(schema, choices, groups, bots, origin, lang))
     values, targets = {}, {}
     guard = ScriptGuard(script.revision, script.name, values=values, targets=targets, requires=tuple(requires))
 
@@ -484,21 +512,180 @@ def run_screen(script, schema, groups, bots, origin, lang="en", requires=()):
         values.clear()
         targets.clear()
         # modal_commands keeps one value per control, so the leading label has an entry to skip.
-        for (name, spec), value in zip(schema.items(), response[1:] if requires else response):
-            if name in choices:
-                value = f._option(choices[name], value)
-                if spec["type"] == "group":
-                    selected = next(group for group in groups if "#" + group.name == value)
-                    targets[name] = ("group", value, selected.identity, selected.members)
-                elif spec["type"] == "bot":
-                    selected = next(bot for bot in bots if bot["name"] == value)
-                    targets[name] = ("bot", value, selected["identityId"])
-            values[name] = value
+        found, found_targets = _parameter_values(schema, choices, groups, bots,
+                                                 response[1:] if requires else response)
+        values.update(found)
+        targets.update(found_targets)
         # The run uses `values` from the guard; the `name=value` words make the echoed command one a player
         # could type to do the same.
         return (("run", script.name, *(_typed_argument(name, value) for name, value in values.items())),)
 
     return f.ModalScreen(script.name, tuple(controls), build, submit=tr(lang, "Run"), command="botscript", guard=guard)
+
+
+def trigger_label(trigger, lang="en"):
+    """``name: kind -> script (status)`` as the trigger list shows it."""
+    return tr(lang, "{name}: {kind} -> {script} ({status})", name=trigger.name, kind=trigger.kind,
+              script=trigger.script, status=tr(lang, trigger.status))
+
+
+def trigger_line(trigger, lang="en"):
+    """``name (owner) kind -> script: status[ (reason)]`` as `/botscript trigger list` shows it."""
+    owner = trigger.owner_name or trigger.owner
+    status = tr(lang, trigger.status)
+    if trigger.reason:
+        return tr(lang, "{name} ({owner}) {kind} -> {script}: {status} ({reason})", name=trigger.name,
+                  owner=owner, kind=trigger.kind, script=trigger.script, status=status,
+                  reason=tr(lang, trigger.reason))
+    return tr(lang, "{name} ({owner}) {kind} -> {script}: {status}", name=trigger.name, owner=owner,
+              kind=trigger.kind, script=trigger.script, status=status)
+
+
+def policy_text(policy, lang="en"):
+    """The trigger's four policies, as `/botscript trigger show` and `set` state them."""
+    return tr(lang, "concurrency {concurrency}, cooldown {cooldown}, startsPerMinute {startsPerMinute}, queue {queue}",
+              concurrency=policy["concurrency"], cooldown=policy["cooldown"],
+              startsPerMinute=policy["startsPerMinute"], queue=policy["queue"])
+
+
+def _filter_text(trigger, lang):
+    spec = EVENTS.get(trigger.kind, {}).get("filters", {})
+    parts = []
+    for name, value in trigger.filter.items():
+        field = spec.get(name)
+        if field is not None and field["type"] == "area" and isinstance(value, dict):
+            text = areas.area_text(value)
+        else:
+            text = str(value)
+        parts.append(f"{name} {text}")
+    return ", ".join(parts) or tr(lang, "none")
+
+
+def _last_start(value, lang):
+    if value is None:
+        return tr(lang, "never")
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(value))
+
+
+def trigger_lines(trigger, lang="en"):
+    """The fields `/botscript trigger show` and the trigger screen show."""
+    owner = trigger.owner_name or trigger.owner
+    stats = trigger.stats or {}
+    status = tr(lang, trigger.status)
+    if trigger.reason:
+        status_line = tr(lang, "Status: {status} ({reason})", status=status, reason=tr(lang, trigger.reason))
+    else:
+        status_line = tr(lang, "Status: {status}", status=status)
+    summary = tr(lang, "{starts} starts, {missed} missed, {skipped} skipped, last start {last}",
+                 starts=stats.get("starts", 0), missed=stats.get("missed", 0),
+                 skipped=stats.get("skipped", 0), last=_last_start(stats.get("lastStart"), lang))
+    arguments = shlex.join(trigger.arguments) if trigger.arguments else tr(lang, "none")
+    return (
+        tr(lang, "Trigger {name}", name=trigger.name),
+        tr(lang, "Owner: {owner}", owner=owner),
+        tr(lang, "Kind: {kind}", kind=trigger.kind),
+        tr(lang, "Filter: {filter}", filter=_filter_text(trigger, lang)),
+        tr(lang, "Script: {script}", script=trigger.script),
+        tr(lang, "Arguments: {arguments}", arguments=arguments),
+        status_line,
+        tr(lang, "Policy: {policy}", policy=policy_text(trigger.policy, lang)),
+        tr(lang, "Stats: {stats}", stats=summary),
+    )
+
+
+def trigger_list_screen(triggers, lang="en"):
+    """One button per visible trigger, plus New and Back."""
+    items = [f.Button(trigger_label(trigger, lang), f.Show(trigger_screen(trigger, lang)))
+             for trigger in triggers]
+    items.append(f.Button(tr(lang, "+ New trigger..."), run("trigger", "new")))
+    items.append(f.Button(tr(lang, "Back to scripts"), run("menu")))
+    content = tr(lang, "Pick a trigger.") if triggers else tr(lang, "No triggers")
+    return f.ActionScreen(tr(lang, "Endbot: triggers"), content, tuple(items))
+
+
+def trigger_screen(trigger, lang="en"):
+    """The trigger's fields, with Enable / Disable / Remove for its owner (or the console)."""
+    items = []
+    if getattr(trigger, "can_manage", False):
+        ref = trigger.ref
+        items += [
+            f.Button(tr(lang, "Enable"), run("trigger", "enable", ref)),
+            f.Button(tr(lang, "Disable"), run("trigger", "disable", ref)),
+            f.Button(tr(lang, "Remove"), f.Show(f.ConfirmScreen(
+                tr(lang, "Remove trigger"),
+                tr(lang, "Remove trigger {name}?", name=trigger.name),
+                tr(lang, "Remove"), tr(lang, "Cancel"),
+                run("trigger", "remove", ref)))),
+        ]
+    items.append(f.Button(tr(lang, "Back to triggers"), run("trigger", "menu")))
+    return f.ActionScreen(tr(lang, "Trigger {name}", name=trigger.name),
+                          "\n".join(trigger_lines(trigger, lang)), tuple(items))
+
+
+def trigger_scripts_screen(scripts, lang="en"):
+    """Pick the script a new trigger will run."""
+    items = [f.Button(label(script, script.own, lang),
+                      run("trigger", "new", script.name, guard=ScriptGuard(script.revision, script.name)))
+             for script in scripts]
+    items.append(f.Button(tr(lang, "Back to triggers"), run("trigger", "menu")))
+    return f.ActionScreen(tr(lang, "Endbot: triggers"), tr(lang, "Pick a script for a new trigger."), tuple(items))
+
+
+def trigger_kinds_screen(script, lang="en"):
+    """Choose the event kind first; the next form then asks for that kind's filters."""
+    def build(values):
+        return (("trigger", "new", script.name, f._option(tuple(EVENTS), values[0])),)
+
+    return f.ModalScreen(tr(lang, "{name}: new trigger", name=script.name),
+                         (f.Dropdown(tr(lang, "Event kind"), tuple(EVENTS)),),
+                         build, submit=tr(lang, "Choose"), command="botscript",
+                         guard=ScriptGuard(script.revision, script.name))
+
+
+def _filter_hint(field):
+    kind = field["type"]
+    if kind == "area":
+        return "0 64 0"
+    if kind == "block":
+        return "stone"
+    if kind == "dimension":
+        return "overworld"
+    return ""
+
+
+def trigger_filter_screen(script, kind, filters, schema, groups, bots, origin, lang="en", requires=()):
+    """The filters of ``kind`` and the script's parameters; the declaration is approved by Add."""
+    schema, choices = parameter_choices(schema, groups, bots)
+    controls = []
+    if requires:
+        controls.append(f.Label(tr(lang, "This script also uses: {names}", names=", ".join(requires))))
+    filter_names = tuple(filters)
+    for name, field in filters.items():
+        controls.append(f.TextInput(tr(lang, "{name} ({kind})", name=name, kind=field["type"]),
+                                    _filter_hint(field), str(field.get("default", ""))))
+    controls.extend(_parameter_controls(schema, choices, groups, bots, origin, lang))
+
+    def build(response):
+        index = 1 if requires else 0
+        filter_values = response[index:index + len(filter_names)]
+        found, _ = _parameter_values(schema, choices, groups, bots, response[index + len(filter_names):])
+        words = []
+        for name, value in zip(filter_names, filter_values, strict=True):
+            text = f._text(value)
+            if not text:
+                continue
+            if filters[name]["type"] == "area":
+                text = areas.clause_from_value(text)
+            words.append(_typed_argument(name, text))
+        command = ["trigger", "add", script.name, kind, *words]
+        arguments = [_typed_argument(name, value) for name, value in found.items()]
+        if arguments:
+            command += ["--", *arguments]
+        return (tuple(command),)
+
+    return f.ModalScreen(tr(lang, "{name}: {kind} trigger", name=script.name, kind=kind), tuple(controls),
+                         build, submit=tr(lang, "Add trigger"), command="botscript",
+                         guard=ScriptGuard(script.revision, script.name))
 
 
 def source_pages(script):

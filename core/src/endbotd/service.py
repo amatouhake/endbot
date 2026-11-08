@@ -31,9 +31,9 @@ from endbot_core.principal import Principal
 from endbot_core.script_config import ScriptConfig
 from endbot_core.script_inputs import OwnedInputs
 from endbot_core.script_store import ScriptStore
+from endbot_core.scripting import ScriptService
 from endbot_core.trigger_store import FILE_NAME as TRIGGERS_FILE
 from endbot_core.trigger_store import TriggerStore
-from endbot_core.scripting import ScriptService
 from endbot_core.wire_views import decode_view, encode_view
 from endbotd import __version__
 from endbotd.authority import Authority
@@ -184,6 +184,8 @@ class EndbotService:
             authorize=self.authority.authorize, role=self._role, linked=lambda: self.link.connected,
             publish=lambda event: self.scripts.publish(event) if self.scripts.publish else None,
             max_triggers=getattr(limits, "max_triggers_per_controller", DEFAULT_MAX_TRIGGERS), log=self._log)
+        # The /botscript trigger commands and forms call this engine; it is None outside endbotd.
+        self.scripts.triggers = self.triggers
         if scripts is not None and script_config.enabled:
             # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
             try:

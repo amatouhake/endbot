@@ -1,7 +1,8 @@
 # Events, watches and triggers design (BOT-022)
 
-Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals and the recommended answers to
-the former open points (see [settled points](#settled-points)). Nothing here is implemented yet.
+Status: **Design agreed** (2026-10-29 JST, amended 2026-11-08 JST by S6 to S9): the operator accepted the proposals
+and the recommended answers to the former open points (see [settled points](#settled-points)). Implementation
+started 2026-11-08 JST.
 
 This document turns [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
 into a registry format, a delivery path, watch and trigger semantics, and a step plan. It builds on endbotd
@@ -63,12 +64,11 @@ field:
   "capability": "read.world",
   "visibility": "public",
   "filters": {
-    "x": {"type": "coordinate"}, "y": {"type": "coordinate"}, "z": {"type": "coordinate"},
-    "area": {"type": "box", "maxBlocks": 512},
+    "area": {"type": "area", "maxBlocks": 512},
     "dimension": {"type": "dimension", "default": "overworld"},
     "from": {"type": "block"}, "to": {"type": "block"}
   },
-  "require": [["x", "y", "z"], ["area"]],
+  "require": [["area"]],
   "payload": {"x": "integer", "y": "integer", "z": "integer", "dimension": "string",
               "from": "block", "to": "block", "cause": "string", "bot": "string?"},
   "guarantee": {"class": "persist", "ticks": null, "each": [], "record": "BLOCK_EVENTS_SPIKE.md#result"}
@@ -119,7 +119,7 @@ that, `guarantee.class` is one of:
   it with the last value it saw. A difference is reported with cause `poll`.
 - **Unloaded chunks** are skipped by the poll. When the chunk is loaded again a difference is reported late, with
   cause `poll`; the spike confirms that reading an unloaded position is detectable rather than a default block.
-- **Bounds**: a watch or trigger filter covers one position or a box of at most `maxBlocks` (512); the server watches
+- **Bounds**: a watch or trigger filter is a BOT-027 area (S7) of at most `maxBlocks` (512) cells; the server watches
   at most `[events] max-watched-blocks` positions in total (default from step 1's cost measurement, 4096 assumed).
   A watch that would exceed it fails at creation with the limit named.
 - **Who did it** (S1): `cause` is `player-break`, `player-place`, another measured cause, or `poll`; `bot` is set
@@ -127,7 +127,7 @@ that, `guarantee.class` is one of:
 
 ### E4. Delivery through the link
 
-Two link messages, and `PROTOCOL = 2`:
+Two link messages, and `PROTOCOL = 3` (S8):
 
 ```text
 interest   endbotd → plugin   {revision, block: [{dimension, x, y, z} | {dimension, from, to}], kinds: [...]}
@@ -148,7 +148,7 @@ events     plugin → endbotd   {revision, epoch, tick, items: [{kind, ...payloa
 ### E5. Watches
 
 ```lua
-local w = watch("block.change", {x = 100, y = 64, z = 200, to = "minecraft:air"})
+local w = watch("block.change", {area = area.cell(100, 64, 200), to = "minecraft:air"})
 local r = w:wait{timeout = 1200}   -- {ok, code, reason, data, missed}
 w:close()                          -- optional; a watch ends with its run
 ```
@@ -266,6 +266,19 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
   the exact source would pause every trigger on every edit, including fixes to one's own script, and would require
   the store to keep old revisions runnable.
 
+Decided 2026-11-08 JST, before implementation started:
+
+- **S6. All of steps 1 to 7 ship in the next release** with BOT-021; step 8 is part of the combined human pass.
+- **S7. Area filters use the BOT-027 area value.** `block.change` takes one `area` filter (cell, box, sphere and
+  `except`, as `within`/`except` and Luau `area.*`), refused when its resolved cells exceed `maxBlocks` (512). A watch
+  or trigger has no Bot to resolve against, so `~` and the Bot-centred sphere are refused with a message saying to
+  build the area from a position (`area.box(...)` with a Bot's coordinates); the stored and reported area is always
+  absolute. One cell replaces the former `x`/`y`/`z` filter.
+- **S8. The link becomes `PROTOCOL = 3`.** Areas (BOT-027) already moved it to 2, which this document predates.
+- **S9. Step 1 measures with Bots, not a human.** A Bot's break and place are real player actions on BDS and raise
+  the same events; the spike record says "measured with Bots", and human break and place are checked in the release
+  pass. Validation uses NetherNet Bots only (RakNet was removed in 0.5.0).
+
 ## Steps
 
 Each step is split into PRs that keep main releasable. **Claude** marks protocol, threading, security boundaries and
@@ -285,7 +298,7 @@ BOT-021 and BOT-022 ship together in one release; no release is cut between them
      `public`, `record` anchor exists, `persist` needs `ticks`), and `api.luau`/docs generation of kind and guarantee
      text. No kind listed yet. Can land now. *DeepSeek.*
 3. **Delivery** (E3, E4). After BOT-020 3c; tests run through the step-2 link harness.
-   - **3a. Link `interest` and `events`, `PROTOCOL = 2`, and endbotd fan-out with gap tracking.** *Claude.*
+   - **3a. Link `interest` and `events`, `PROTOCOL = 3`, and endbotd fan-out with gap tracking.** *Claude.*
    - **3b. The plugin's `block.change` source**: listeners for the measured causes with the next-tick confirm, the
      batched poll, baselines, unloaded-chunk handling, `dropped`; and the `block.change` registry entry with step 1's
      numbers. *Claude* (server-thread work).
@@ -313,7 +326,8 @@ BOT-021 and BOT-022 ship together in one release; no release is cut between them
 
 ### Validation in the release pass
 
-Live RakNet smoke on the locked pair (`scripts/raknet_spike.py` gains an `--events` case set):
+Live Bot-only NetherNet smoke on the locked pair (`scripts/raknet_spike.py`, which despite its name runs over
+NetherNet, gains an `--events` case set):
 
 - `block.change` for every cause step 1 listed as `each`, and a change held for `guarantee.ticks` delivered by the
   poll; a change shorter than that is allowed to be missed but never reported twice.

@@ -8,7 +8,7 @@ against it. endbotd keeps no schema validator: its parser treats every field as 
 One integer, `web-protocol`, covers every layer. It is compiled into the Worker bundle and into endbotd. A mismatch is
 refused: endbotd logs `Worker speaks web protocol N, endbotd expects M: run "endbot web deploy"`.
 
-Current version: **1**.
+Current version: **2**.
 
 ## Link: endbotd to the Durable Object
 
@@ -70,7 +70,7 @@ the page reloads. Every request is authorized again at execution time with the `
 |---|---|---|
 | `query` | `what`: `status`, `bots`, `groups`, `runs`, `log` | `{id, type: "result", code, data}` |
 | `query` | `what`: `bot`, `name` | the Bot's status as fields in `data`; it stays out of the history |
-| `subscribe` | `topic`: `status`, `log` | `{id, type: "result", code}`, then `{type: "event", topic, data}` |
+| `subscribe` | `topic`: `status`, `log`, or `trigger:<owner>/<name>` | `{id, type: "result", code}`, then `{type: "event", topic, data}` |
 | `unsubscribe` | `topic` | `{id, type: "result", code}` |
 | `op` | `operation`: `{op, target, params}`, one registry operation | `{id, type: "result", code, messages, data}` |
 | `group.create`, `group.delete` | `name`, without `#` | `code`, `messages` |
@@ -84,6 +84,20 @@ the page reloads. Every request is authorized again at execution time with the `
 | `script.copy`, `script.rename` | `name`, `new`, `revision` | `code`, `messages` |
 | `script.visibility` | `name`, `visibility`, `revision` | `code`, `messages` |
 | `script.restore` | `name`, `index`, `revision` | `code`, `messages` |
+| `event.kinds` | none | `{id, type: "result", code, data}`; `data.kinds` is the registry `events` object |
+| `trigger.list` | none | `data`: `{triggers, canArm, limit}` |
+| `trigger.get` | `name`, optional `owner` | `data`: `{trigger, requires}` |
+| `trigger.create` | `script`, `kind`, `filter`, `arguments` (list of strings), optional `name`, `visibility`, `policy` | `code`, `data`: `{trigger}`, `messages` |
+| `trigger.update` | `name`, optional `owner`, `policy` and/or `visibility` | `code`, `data`: `{trigger}` |
+| `trigger.enable`, `trigger.disable`, `trigger.remove` | `name`, optional `owner` | `code`, `data`, `messages` |
+
+A trigger in `data` is a plain JSON object: `name`, `owner` (the owner key), `ownerName`, `visibility`, `kind`, `filter`
+(areas as their clause text), `script`, `arguments`, `status`, `reason`, `policy`, `stats`, `approved.declaration`, and
+`own` (whether the principal owns it). `approved.playerId` and `approved.grantRevision` are never sent. A `trigger.get`
+also carries the script's current declaration as `requires`, for the confirmation before enabling.
+
+A `trigger:<owner>/<name>` subscription pushes `{type: "event", topic, data: {trigger}}` after every stored state or
+stats change of that trigger, to pages whose current principal may still see it; a revoked session gets nothing.
 
 endbotd also pushes `{type: "event", topic: "account", data: {kind: "passkey_added"}}` to every open page of an account
 that subscribed to anything, so a passkey added elsewhere is seen at once.

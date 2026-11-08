@@ -1,29 +1,59 @@
 """What a signed-in browser can ask, with the real authority and ownership rules (docs/WEB.md P11)."""
 
 import importlib.util
+import json
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 from endbot_core.control import RuntimeControlError
 from endbot_core.events import Event
+from endbot_core.groups import GroupCommandService, GroupStore
+from endbot_core.i18n import LocalizedError
 from endbot_core.link import Presence
+from endbot_core.operations import EVENTS
 from endbot_core.ownership import OwnershipStore
 from endbot_core.principal import Principal
+from endbot_core.script_config import ScriptConfig
+from endbot_core.script_inputs import OwnedInputs
+from endbot_core.script_store import ScriptStore
+from endbot_core.scripting import Declaration, ScriptService
+from endbot_core.trigger_store import TriggerStore
 from endbotd.authority import Authority
+from endbotd.occurrences import OccurrenceHub
+from endbotd.triggers import TriggerEngine
+from endbotd.web_api import LOG_LINES, WebApi
 from endbotd.web_store import LinkCodes, WebStore
+from test_command_service import FakeControl as FakeRuntimeControl
+from test_scripting import FakeRunner
 
 HAS_LIBRARIES = importlib.util.find_spec("webauthn") is not None
 if HAS_LIBRARIES:
-    from endbotd.web_api import LOG_LINES, WebApi
     from endbotd.web_auth import WebAuth
 
 XUID = "2535412345678901"
 PLAYER = "00000000-0000-4000-8000-0000000000a1"
 OTHER_XUID = "2535400000000002"
+OTHER_PLAYER = "00000000-0000-4000-8000-0000000000b2"
 BOT_A = "00000000-0000-4000-8000-00000000000a"
 BOT_B = "00000000-0000-4000-8000-00000000000b"
+
+
+class FakeAuth:
+    """The session side of the web handshake, without WebAuthn: a token maps to its current principal."""
+
+    def __init__(self):
+        self.principals = {}
+
+    def add(self, token, principal):
+        self.principals[token] = principal
+
+    def principal(self, token, language="en", active=True):
+        principal = self.principals.get(token)
+        return replace(principal, language=language) if principal is not None else None
 
 
 class FakeControl:
@@ -243,6 +273,210 @@ class WebApiTests(unittest.TestCase):
         for name in ("a b", "help", 5, None):
             with self.subTest(name=name):
                 self.assertEqual(self.ask(type="query", what="bot", name=name)["code"], "invalid_argument")
+
+    def test_triggers_are_unavailable_without_an_engine(self):
+        answer = self.ask(type="trigger.list")
+        self.assertEqual((answer["code"], answer["messages"]), ("unavailable", ["Triggers are unavailable"]))
+
+
+class TriggerWebApiTests(unittest.TestCase):
+    """The trigger and event-kind messages, through a real engine and its own ownership rules."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        self.auth = FakeAuth()
+        self.token, self.bob_token = "alice", "bob"
+        self.auth.add(self.token, Principal("web", name="Alice", xuid=XUID, player_id=PLAYER,
+                                            grant_revision=1, role="controller"))
+        self.auth.add(self.bob_token, Principal("web", name="Bob", xuid=OTHER_XUID, player_id=OTHER_PLAYER,
+                                                grant_revision=1, role="controller"))
+        self.alice = Principal("player", name="Alice", xuid=XUID, player_id=PLAYER,
+                               grant_revision=1, role="controller")
+
+        self.config = ScriptConfig(enabled=True, wall_seconds=5)
+        self.inputs = OwnedInputs(FakeRuntimeControl())
+        groups = GroupStore(root / "groups.json")
+        self.commands = GroupCommandService(self.inputs, None, groups, lambda source: True)
+        self.script_store = ScriptStore(root / "scripts.json", self.config)
+        self.declaration = Declaration([{"name": "event", "type": "event"}], ())
+        self.scripts = ScriptService(self.config, self.script_store, self.commands, self.inputs, root,
+                                     lambda source: True,
+                                     process_factory=lambda *args: FakeRunner([{"type": "done"}],
+                                                                              schema=self.declaration.schema),
+                                     bootstrap="trusted")
+        self.scripts.inspect = lambda script, source: self.declaration
+        self.worker = ThreadPoolExecutor(max_workers=1)
+        self.addCleanup(self.worker.shutdown)
+        self.scripts.ordered = lambda callback: self.worker.submit(callback).result(timeout=3)
+        self.scripts.notify = lambda *args, **kwargs: None
+        self.scripts.publish = lambda event: None
+        self.script_store.save("guard", "params { param.event('event') }", None,
+                               owner=f"xuid:{XUID}", owner_name="Alice")
+
+        self.hub = OccurrenceHub(EVENTS, lambda interest: None)
+        self.hub.link_changed("epoch-1")
+        self.trigger_store = TriggerStore(root / "triggers.json")
+        self.clock = [1_000_000.0]
+        self.engine = TriggerEngine(self.trigger_store, self.hub, self.scripts,
+                                    authorize=lambda source: True, linked=lambda: True,
+                                    monotonic=lambda: self.clock[0], wall=lambda: self.clock[0])
+        self.addCleanup(self.engine.close)
+        self.engine.start()
+        self.api = WebApi(self.auth, commands=self.commands, scripts=self.scripts,
+                          control=FakeRuntimeControl(), bds_up=lambda: True, display_name=lambda: "Mine",
+                          triggers=self.engine)
+        self.engine.on_changed = self.api.trigger_changed
+        self.pushed, self.bob_pushed = [], []
+
+    def ask(self, **message):
+        return self.api.handle(self.token, "c1", message, self.pushed.append)
+
+    def ask_bob(self, **message):
+        return self.api.handle(self.bob_token, "c2", message, self.bob_pushed.append)
+
+    def create(self, **fields):
+        message = {"type": "trigger.create", "script": "guard", "kind": "block.change",
+                   "filter": {"area": "within 0 64 0 2 65 2"}, "arguments": [], "name": "guard"}
+        message.update(fields)
+        answer = self.ask(**message)
+        self.assertEqual(answer["code"], "ok", answer)
+        return answer["data"]["trigger"]
+
+    def bob(self):
+        return self.auth.principal(self.bob_token, active=False)
+
+    def test_event_kinds_is_the_registry_object(self):
+        answer = self.ask(type="event.kinds")
+        self.assertEqual((answer["code"], answer["data"]), ("ok", {"kinds": EVENTS}))
+
+    def test_create_lists_and_gets_a_trigger_as_a_plain_object(self):
+        self.declaration = Declaration([{"name": "event", "type": "event"}], ("observe.chat",))
+        trigger = self.create(visibility="shared", policy={"cooldown": 0})
+        self.assertEqual((trigger["name"], trigger["owner"], trigger["ownerName"]),
+                         ("guard", f"xuid:{XUID}", "Alice"))
+        self.assertEqual(trigger["filter"], {"area": "within 0 64 0 2 65 2"})
+        self.assertEqual(trigger["approved"], {"declaration": ["observe.chat"]})
+        self.assertTrue(trigger["own"])
+        self.assertNotIn("playerId", json.dumps(trigger))
+        self.assertNotIn("grantRevision", json.dumps(trigger))
+        listed = self.ask(type="trigger.list")
+        self.assertEqual(listed["data"], {"triggers": [trigger], "canArm": True, "limit": 8})
+        got = self.ask(type="trigger.get", name="guard")
+        self.assertEqual(got["data"], {"trigger": trigger, "requires": ["observe.chat"]})
+
+    def test_update_enable_disable_and_remove_call_the_engine(self):
+        self.create()
+        updated = self.ask(type="trigger.update", name="guard", visibility="shared",
+                           policy={"concurrency": "queue", "cooldown": 0, "queue": 2})
+        self.assertEqual(updated["code"], "ok", updated)
+        self.assertEqual(updated["data"]["trigger"]["visibility"], "shared")
+        self.assertEqual(updated["data"]["trigger"]["policy"],
+                         {"concurrency": "queue", "cooldown": 0, "startsPerMinute": 10, "queue": 2})
+        self.assertEqual(self.ask(type="trigger.disable", name="guard")["data"]["trigger"]["status"], "disabled")
+        self.assertEqual(self.ask(type="trigger.enable", name="guard")["data"]["trigger"]["status"], "armed")
+        removed = self.ask(type="trigger.remove", name="guard")
+        self.assertEqual((removed["code"], removed["data"]),
+                         ("ok", {"name": "guard", "owner": f"xuid:{XUID}"}))
+        self.assertEqual(self.ask(type="trigger.list")["data"]["triggers"], [])
+
+    def test_a_filter_area_round_trips_as_its_clause_text(self):
+        for text in ("within 0 64 0", "within 0 64 0 3 65 3", "within 0 64 0 3 65 3 except 0 64 0"):
+            with self.subTest(text=text):
+                trigger = self.create(name="area", filter={"area": text})
+                self.assertEqual(trigger["filter"], {"area": text})
+                self.assertEqual(self.ask(type="trigger.get", name="area")["data"]["trigger"]["filter"],
+                                 {"area": text})
+                self.ask(type="trigger.remove", name="area")
+
+    def test_someone_elses_private_trigger_is_refused_with_the_engines_words(self):
+        self.create()
+        self.assertEqual(self.ask_bob(type="trigger.list")["data"]["triggers"], [])
+        with self.assertRaises(LocalizedError) as caught:
+            self.engine.enable(self.bob(), "guard", f"xuid:{XUID}")
+        answer = self.ask_bob(type="trigger.enable", name="guard", owner=f"xuid:{XUID}")
+        self.assertEqual((answer["code"], answer["messages"]), ("invalid_argument", [str(caught.exception)]))
+        self.assertEqual(self.ask_bob(type="trigger.get", name="guard", owner=f"xuid:{XUID}")["messages"],
+                         [str(caught.exception)])
+        self.assertEqual(self.ask_bob(type="subscribe", topic=f"trigger:xuid:{XUID}/guard")["messages"],
+                         [str(caught.exception)])
+
+    def test_a_shared_trigger_is_visible_and_only_its_owner_may_change_it(self):
+        self.create()
+        self.ask(type="trigger.update", name="guard", visibility="shared")
+        listed = self.ask_bob(type="trigger.list")["data"]["triggers"]
+        self.assertEqual([(trigger["name"], trigger["own"]) for trigger in listed], [("guard", False)])
+        with self.assertRaises(LocalizedError) as caught:
+            self.engine.disable(self.bob(), "guard", f"xuid:{XUID}")
+        answer = self.ask_bob(type="trigger.disable", name="guard", owner=f"xuid:{XUID}")
+        self.assertEqual((answer["code"], answer["messages"]), ("invalid_argument", [str(caught.exception)]))
+
+    def test_a_subscription_hears_state_changes_until_it_unsubscribes(self):
+        self.create()
+        topic = f"trigger:xuid:{XUID}/guard"
+        self.assertEqual(self.ask(type="subscribe", topic=topic)["code"], "ok")
+        self.ask(type="trigger.disable", name="guard")
+        self.assertEqual(len(self.pushed), 1)
+        self.assertEqual((self.pushed[0]["type"], self.pushed[0]["topic"]), ("event", topic))
+        self.assertEqual(self.pushed[0]["data"]["trigger"]["status"], "disabled")
+        self.ask(type="unsubscribe", topic=topic)
+        self.ask(type="trigger.enable", name="guard")
+        self.assertEqual(len(self.pushed), 1)
+
+    def test_a_subscription_does_not_hear_a_trigger_it_may_not_see(self):
+        self.create(visibility="shared")
+        topic = f"trigger:xuid:{XUID}/guard"
+        self.assertEqual(self.ask_bob(type="subscribe", topic=topic)["code"], "ok")
+        self.ask(type="trigger.disable", name="guard")
+        self.assertEqual(len(self.bob_pushed), 1)
+        self.ask(type="trigger.enable", name="guard")
+        self.assertEqual(len(self.bob_pushed), 2)
+        self.ask(type="trigger.update", name="guard", visibility="private")
+        self.assertEqual(len(self.bob_pushed), 2)
+        self.ask(type="trigger.disable", name="guard")
+        self.assertEqual(len(self.bob_pushed), 2)
+        refused = self.ask_bob(type="subscribe", topic=topic)
+        self.assertEqual((refused["code"], refused["messages"]),
+                         ("invalid_argument", ["Trigger guard does not exist"]))
+
+    def test_a_revoked_session_stops_hearing_trigger_changes(self):
+        self.create()
+        topic = f"trigger:xuid:{XUID}/guard"
+        self.ask(type="subscribe", topic=topic)
+        del self.auth.principals[self.token]
+        self.engine.disable(self.alice, "guard")
+        self.assertEqual(self.pushed, [])
+        self.assertEqual(self.api._subscribers, {})
+
+    def test_triggers_turned_off_are_unavailable(self):
+        self.engine.max_triggers = 0
+        answer = self.ask(type="trigger.list")
+        self.assertEqual((answer["code"], answer["messages"]),
+                         ("unavailable", ["Triggers are turned off on this server"]))
+
+    def test_checked_names_owners_and_fields(self):
+        for message in (
+                {"type": "trigger.get"}, {"type": "trigger.get", "name": "a b"},
+                {"type": "trigger.get", "name": "guard", "owner": "xuid:oops"},
+                {"type": "trigger.create"}, {"type": "trigger.create", "script": "guard", "kind": "Bad",
+                                             "filter": {}, "arguments": []},
+                {"type": "trigger.create", "script": "guard", "kind": "block.change", "filter": [], "arguments": []},
+                {"type": "trigger.create", "script": "guard", "kind": "block.change", "filter": {},
+                 "arguments": [5]},
+                {"type": "trigger.create", "script": "guard", "kind": "block.change", "filter": {},
+                 "arguments": [], "name": "a b"},
+                {"type": "trigger.create", "script": "guard", "kind": "block.change", "filter": {},
+                 "arguments": [], "visibility": "public"},
+                {"type": "trigger.create", "script": "guard", "kind": "block.change", "filter": {},
+                 "arguments": [], "policy": []},
+                {"type": "trigger.update", "name": "guard"},
+                {"type": "trigger.update", "name": "guard", "visibility": "public"},
+                {"type": "trigger.nope", "name": "guard"},
+                {"type": "subscribe", "topic": "trigger:not-a-key/guard"}):
+            with self.subTest(message=message):
+                self.assertEqual(self.ask(**message)["code"],
+                                 "unsupported" if message["type"] == "trigger.nope" else "invalid_argument")
 
 
 if __name__ == "__main__":

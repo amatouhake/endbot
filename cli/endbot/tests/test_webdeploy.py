@@ -111,7 +111,7 @@ class DeployCase(unittest.TestCase):
         self.bundle = self.root / "web-bundle"
         (self.bundle / "worker").mkdir(parents=True)
         (self.bundle / "assets" / "sub").mkdir(parents=True)
-        (self.bundle / "manifest.json").write_text(json.dumps({"compatibilityDate": "2026-08-01", "protocol": 1}))
+        (self.bundle / "manifest.json").write_text(json.dumps({"compatibilityDate": "2026-08-01", "protocol": 2}))
         (self.bundle / "worker" / "index.js").write_text("export default {};")
         (self.bundle / "assets" / "index.html").write_text("<html></html>")
         (self.bundle / "assets" / "sub" / "a.js").write_text("console.log(1);")

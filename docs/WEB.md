@@ -264,6 +264,7 @@ The supervisor policy change ENDBOTD S2 deferred to BOT-021:
   Diagnostics come from endbotd's compile.
 - **Bot control:** every operation the in-game command offers to that principal, built from the registry, with the
   same wording from the message catalog (principle 1). Running a script shows its declaration first.
+- **Triggers:** managed from the web as in game, with the declaration shown before enabling (BOT-022 step 7b).
 - **Never on the web:** grants, revocations, role changes, owner reassignment, BDS start and stop, `endbot` CLI
   operations. The web principal is never the console, even for the operator's own XUID.
 

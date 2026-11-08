@@ -17,11 +17,13 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+from endbot_core import areas
 from endbot_core.commands import error_code, strip_colors
 from endbot_core.control import RuntimeControlError, bot_profiles
 from endbot_core.events import Event, render
 from endbot_core.i18n import localize_error, tr
-from endbot_core.operations import OPERATIONS, RESERVED_BOT_NAMES, Operation
+from endbot_core.operations import EVENTS, OPERATIONS, RESERVED_BOT_NAMES, Operation
+from endbot_core.ownership import owner_key
 from endbot_core.principal import Principal
 from endbot_core.script_forms import TEMPLATES, ScriptGuard
 
@@ -33,6 +35,15 @@ SCRIPT_HISTORY = frozenset({"copy", "delete", "private", "reload", "rename", "re
 GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}")
 BOT_NAME = re.compile(r"[A-Za-z0-9_]{1,16}")
 SCRIPT_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
+TRIGGER_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
+TRIGGER_KIND = re.compile(r"[a-z]+\.[a-z][a-z_]*")
+OWNER_KEY = re.compile(r"(?:console|xuid:[0-9]{1,20}|player:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+                       r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})")
+FILTER_FIELD = re.compile(r"[a-z][a-z0-9_]{0,31}")
+MAX_TRIGGER_ARGUMENTS = 32
+MAX_TRIGGER_ARGUMENT = 256
+MAX_FILTER_TEXT = 512
+MAX_TOPIC = 200
 # Not for the web: an in-game screen, chat help, and what stays with the console.
 WEB_REFUSED_OPERATIONS = frozenset({"menu", "help", "owner"})
 _LINE = re.compile(r"(?:^|\s)script:(\d+):")
@@ -57,7 +68,8 @@ class _Subscriber:
 
 class WebApi:
     def __init__(self, auth, *, commands, scripts, control, bds_up: Callable[[], bool],
-                 display_name: Callable[[], str], clock: Callable[[], float] = time.time, runner=None) -> None:
+                 display_name: Callable[[], str], clock: Callable[[], float] = time.time, runner=None,
+                 triggers=None) -> None:
         self._auth = auth
         self._runner = runner
         self._commands = commands
@@ -66,6 +78,7 @@ class WebApi:
         self._bds_up = bds_up
         self._display_name = display_name
         self._clock = clock
+        self._triggers = triggers
         self._lock = threading.Lock()
         self._logs: dict[str, deque] = {}
         # conn -> what a push needs: dropped when the connection closes, or when its session has ended.
@@ -86,22 +99,31 @@ class WebApi:
         if not isinstance(message, dict):
             return {"type": "result", "code": "invalid_request"}
         kind = message.get("type")
+        if kind == "event.kinds":
+            return {"type": "result", "code": "ok", "data": {"kinds": EVENTS}}
         if kind == "query":
             return self._query(principal, message.get("what"), message)
-        if kind == "subscribe" and message.get("topic") in {"status", "log"}:
-            return self._subscribe(principal, token, conn, message["topic"], push)
-        if kind == "unsubscribe" and message.get("topic") in {"status", "log"}:
+        topic = message.get("topic")
+        if kind == "subscribe" and isinstance(topic, str) and topic in {"status", "log"}:
+            return self._subscribe(principal, token, conn, topic, push)
+        if kind == "subscribe" and isinstance(topic, str) and topic.startswith("trigger:"):
+            return self._subscribe_trigger(principal, token, conn, topic, push)
+        if kind == "unsubscribe" and isinstance(topic, str) and topic in {"status", "log"}:
             with self._lock:
                 entry = self._subscribers.get(conn)
                 if entry is not None:
-                    entry.topics.discard(message["topic"])
+                    entry.topics.discard(topic)
             return {"type": "result", "code": "ok"}
+        if kind == "unsubscribe" and isinstance(topic, str) and topic.startswith("trigger:"):
+            return self._unsubscribe_trigger(conn, topic)
         if kind == "op":
             return self._operation(principal, message.get("operation"))
         if isinstance(kind, str) and kind.startswith("script."):
             return self._script(principal, kind[len("script."):], message)
         if isinstance(kind, str) and kind.startswith("group."):
             return self._group(principal, kind[len("group."):], message)
+        if isinstance(kind, str) and kind.startswith("trigger."):
+            return self._trigger(principal, kind[len("trigger."):], message)
         return {"type": "result", "code": "unsupported"}
 
     # -- operations (docs/WEB.md P11) -------------------------------------------
@@ -258,6 +280,194 @@ class WebApi:
             else:
                 return None
         return pinned
+
+    # -- triggers (docs/EVENTS.md E10; docs/WEB_PROTOCOL.md) ---------------------
+
+    def _trigger(self, principal: Principal, action: str, message: dict) -> dict:
+        """One trigger operation for this page's principal; the engine checks ownership and visibility."""
+        triggers = self._triggers
+        if triggers is None:
+            return self._unavailable(principal.language, "Triggers are unavailable")
+        if triggers.max_triggers == 0:
+            return self._unavailable(principal.language, "Triggers are turned off on this server")
+        if action == "list":
+            return {"type": "result", "code": "ok", "data": {
+                "triggers": [self._trigger_data(trigger, principal) for trigger in triggers.list(principal)],
+                "canArm": triggers.max_triggers > 0, "limit": triggers.max_triggers}}
+        if action == "create":
+            return self._trigger_create(principal, message)
+        name = message.get("name")
+        if not isinstance(name, str) or not TRIGGER_NAME.fullmatch(name):
+            return {"type": "result", "code": "invalid_argument"}
+        owner = message.get("owner")
+        if owner is not None and (not isinstance(owner, str) or not OWNER_KEY.fullmatch(owner)):
+            return {"type": "result", "code": "invalid_argument"}
+        try:
+            if action == "get":
+                trigger = triggers.get(owner, name, principal)
+                return {"type": "result", "code": "ok", "data": {
+                    "trigger": self._trigger_data(trigger, principal),
+                    "requires": self._trigger_requires(trigger, principal)}}
+            if action == "update":
+                return self._trigger_update(principal, name, owner, message)
+            if action in {"enable", "disable"}:
+                trigger = getattr(triggers, action)(principal, name, owner)
+                return self._changed_answer(trigger, principal)
+            if action == "remove":
+                trigger = triggers.get(owner, name, principal)
+                triggers.remove(principal, name, owner)
+                return {"type": "result", "code": "ok",
+                        "data": {"name": trigger.name, "owner": trigger.owner}, "messages": []}
+        except (ValueError, RuntimeError, OSError) as error:
+            return self._refused(error, principal)
+        return {"type": "result", "code": "unsupported"}
+
+    def _trigger_create(self, principal: Principal, message: dict) -> dict:
+        script, kind = message.get("script"), message.get("kind")
+        filter_, arguments = message.get("filter", {}), message.get("arguments")
+        name, visibility = message.get("name"), message.get("visibility", "private")
+        policy = message.get("policy")
+        if not isinstance(script, str) or not SCRIPT_NAME.fullmatch(script):
+            return {"type": "result", "code": "invalid_argument"}
+        if not isinstance(kind, str) or not TRIGGER_KIND.fullmatch(kind):
+            return {"type": "result", "code": "invalid_argument"}
+        if filter_ is None:
+            filter_ = {}
+        if not isinstance(filter_, dict) or not self._valid_filter(filter_):
+            return {"type": "result", "code": "invalid_argument"}
+        if not isinstance(arguments, list) or len(arguments) > MAX_TRIGGER_ARGUMENTS \
+                or not all(isinstance(argument, str) and len(argument) <= MAX_TRIGGER_ARGUMENT
+                           for argument in arguments):
+            return {"type": "result", "code": "invalid_argument"}
+        if name is not None and (not isinstance(name, str) or not TRIGGER_NAME.fullmatch(name)):
+            return {"type": "result", "code": "invalid_argument"}
+        if visibility not in {"private", "shared"}:
+            return {"type": "result", "code": "invalid_argument"}
+        if policy is not None and not isinstance(policy, dict):
+            return {"type": "result", "code": "invalid_argument"}
+        try:
+            trigger = self._triggers.create(principal, script=script, kind=kind, filter_=filter_,
+                                            arguments=arguments, name=name, visibility=visibility, policy=policy)
+        except (ValueError, RuntimeError, OSError) as error:
+            return self._refused(error, principal)
+        return self._changed_answer(trigger, principal)
+
+    def _trigger_update(self, principal: Principal, name: str, owner: str | None, message: dict) -> dict:
+        policy, visibility = message.get("policy"), message.get("visibility")
+        if policy is None and visibility is None:
+            return {"type": "result", "code": "invalid_argument"}
+        if policy is not None and not isinstance(policy, dict):
+            return {"type": "result", "code": "invalid_argument"}
+        if visibility is not None and visibility not in {"private", "shared"}:
+            return {"type": "result", "code": "invalid_argument"}
+        trigger = None
+        try:
+            if policy is not None:
+                trigger = self._triggers.set_policy(principal, name, policy, owner)
+            if visibility is not None:
+                trigger = self._triggers.set_visibility(principal, name, visibility, owner)
+        except (ValueError, RuntimeError, OSError) as error:
+            return self._refused(error, principal)
+        return self._changed_answer(trigger, principal)
+
+    @staticmethod
+    def _changed_answer(trigger, principal: Principal) -> dict:
+        return {"type": "result", "code": "ok",
+                "data": {"trigger": WebApi._trigger_data(trigger, principal)}, "messages": []}
+
+    @staticmethod
+    def _valid_filter(values: dict) -> bool:
+        for name, value in values.items():
+            if not isinstance(name, str) or not FILTER_FIELD.fullmatch(name):
+                return False
+            if type(value) is int:
+                continue
+            if not isinstance(value, str) or len(value) > MAX_FILTER_TEXT:
+                return False
+        return True
+
+    @staticmethod
+    def _trigger_data(trigger, principal: Principal) -> dict:
+        return {
+            "name": trigger.name,
+            "owner": trigger.owner,
+            "ownerName": trigger.owner_name,
+            "visibility": trigger.visibility,
+            "kind": trigger.kind,
+            "filter": {name: areas.area_text(value) if isinstance(value, dict) and "within" in value else value
+                       for name, value in trigger.filter.items()},
+            "script": trigger.script,
+            "arguments": list(trigger.arguments),
+            "status": trigger.status,
+            "reason": trigger.reason,
+            "policy": dict(trigger.policy),
+            "stats": dict(trigger.stats),
+            "approved": {"declaration": list(trigger.approved.get("declaration", ()))},
+            "own": trigger.owner == (owner_key(principal) or "console"),
+        }
+
+    def _trigger_requires(self, trigger, principal: Principal) -> list[str]:
+        """The script's current declaration, for the confirm step before enabling (E7)."""
+        declaration = getattr(self._scripts, "declaration", None)
+        if declaration is None:
+            return []
+        try:
+            found = declaration(trigger.script, principal)
+        except (ValueError, RuntimeError, OSError):
+            return []
+        requires = found.get("requires") if isinstance(found, dict) else None
+        return list(requires) if isinstance(requires, (list, tuple)) else []
+
+    @staticmethod
+    def _trigger_topic(topic: object) -> tuple[str, str] | None:
+        if not isinstance(topic, str) or len(topic) > MAX_TOPIC or not topic.startswith("trigger:"):
+            return None
+        owner, slash, name = topic[len("trigger:"):].rpartition("/")
+        if not slash or not OWNER_KEY.fullmatch(owner) or not TRIGGER_NAME.fullmatch(name):
+            return None
+        return owner, name
+
+    def _subscribe_trigger(self, principal: Principal, token: str, conn: str, topic: str,
+                           push: Callable[[object], None]) -> dict:
+        parsed = self._trigger_topic(topic)
+        if parsed is None:
+            return {"type": "result", "code": "invalid_argument"}
+        if self._triggers is None:
+            return self._unavailable(principal.language, "Triggers are unavailable")
+        if self._triggers.max_triggers == 0:
+            return self._unavailable(principal.language, "Triggers are turned off on this server")
+        try:
+            self._triggers.get(parsed[0], parsed[1], principal)
+        except (ValueError, RuntimeError, OSError) as error:
+            return self._refused(error, principal)
+        return self._subscribe(principal, token, conn, f"trigger:{parsed[0]}/{parsed[1]}", push)
+
+    def _unsubscribe_trigger(self, conn: str, topic: str) -> dict:
+        parsed = self._trigger_topic(topic)
+        if parsed is None:
+            return {"type": "result", "code": "invalid_argument"}
+        with self._lock:
+            entry = self._subscribers.get(conn)
+            if entry is not None:
+                entry.topics.discard(f"trigger:{parsed[0]}/{parsed[1]}")
+        return {"type": "result", "code": "ok"}
+
+    def trigger_changed(self, trigger) -> None:
+        """Push a stored change to the pages subscribed to it that may still see it."""
+        triggers = self._triggers
+        if triggers is None:
+            return
+        topic = f"trigger:{trigger.owner}/{trigger.name}"
+        for entry in self._live(lambda item: topic in item.topics):
+            principal = self._auth.principal(entry.token, entry.language, active=False)
+            if principal is None or not triggers.visible(trigger, principal):
+                continue
+            entry.push({"type": "event", "topic": topic,
+                        "data": {"trigger": self._trigger_data(trigger, principal)}})
+
+    @staticmethod
+    def _unavailable(language: str, template: str) -> dict:
+        return {"type": "result", "code": "unavailable", "messages": [tr(language, template)]}
 
     def _group(self, principal: Principal, action: str, message: dict) -> dict:
         """Group management through /botgroup: the same rules, wording and history as in game."""

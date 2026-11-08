@@ -4,7 +4,6 @@ import unittest
 
 from endbot_core import areas
 from endbot_core.i18n import LocalizedError
-
 from endbotd.occurrences import OccurrenceHub
 
 KINDS = {

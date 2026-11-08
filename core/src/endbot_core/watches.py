@@ -30,7 +30,7 @@ from endbot_core.script_params import BASIC_CAPABILITIES
 
 BUFFER_LIMIT = 64
 MAX_WATCHES_PER_RUN = 16
-DIMENSIONS = ("overworld", "nether", "the_end")
+DIMENSIONS = ("overworld", "nether", "end")
 BLOCK = re.compile(r"(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+")
 NAME = re.compile(r"[A-Za-z0-9_ ]{1,32}")
 

@@ -179,7 +179,7 @@ SCRIPT_USAGES = [
     "/botscript (reload)<action: EndbotScriptReload>",
     "/botscript (trigger)<action: EndbotScriptTrigger> <arguments: message>",
     (
-        "/botscript (trigger)<action: EndbotScriptTrigger> "
+        "/botscript (trigger)<action: EndbotScriptTriggerOperation> "
         "(add|list|show|enable|disable|remove|set|visibility)<verb: EndbotScriptTriggerVerb> "
         "[arguments: message]"
     ),

@@ -54,7 +54,10 @@ def _load_usages():
     command.ConsoleCommandSender = type("ConsoleCommandSender", (_StubSender,), {})
     event.PlayerJoinEvent = type("PlayerJoinEvent", (), {})
     event.PlayerQuitEvent = type("PlayerQuitEvent", (), {})
-    event.event_handler = lambda function: function
+    event.BlockBreakEvent = type("BlockBreakEvent", (), {})
+    event.BlockPlaceEvent = type("BlockPlaceEvent", (), {})
+    event.EventPriority = type("EventPriority", (), {"MONITOR": 5})
+    event.event_handler = lambda function=None, **options: function or (lambda inner: inner)
     level.Location = type("Location", (), {})
     plugin.Plugin = _StubPlugin
     sys.modules.update(

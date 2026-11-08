@@ -336,9 +336,12 @@ class EventRegistryTests(unittest.TestCase):
         if message:
             self.assertIn(message, str(caught.exception))
 
-    def test_no_event_kind_is_listed_yet(self):
-        self.assertEqual(EVENTS, {})
-        self.assertEqual(operations.REGISTRY["events"], {})
+    def test_block_change_is_listed_with_the_measured_guarantee(self):
+        self.assertEqual(set(EVENTS), {"block.change"})
+        guarantee = EVENTS["block.change"]["guarantee"]
+        self.assertEqual((guarantee["class"], guarantee["ticks"], guarantee["each"], guarantee["record"]),
+                         ("persist", 4, ["player-break", "player-place"], "BLOCK_EVENTS_SPIKE.md#result"))
+        self.assertEqual(EVENTS["block.change"]["filters"]["area"], {"type": "area", "maxBlocks": 512})
 
     def test_the_registry_requires_an_events_table(self):
         registry = {key: value for key, value in operations.REGISTRY.items() if key != "events"}

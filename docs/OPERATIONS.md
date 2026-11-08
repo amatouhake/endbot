@@ -88,7 +88,14 @@ enabled = false            # opt in to controller Luau scripts; restart to apply
 [permissions]
 bots-default = "shared"    # shared or private: visibility of a Bot someone creates
 groups-default = "shared"  # shared or private: visibility of a Group someone creates
+
+[events]
+max-watched-blocks = 2048  # positions watched for block changes, all watches and triggers together; 0 turns them off
 ```
+
+`[events] max-watched-blocks` bounds the server thread's cost of `block.change` watches: every watched position is
+read once every 4 ticks, a quarter of them per tick, which cost about 1 ms per tick per 2000 positions on the PC that
+measured it ([record](BLOCK_EVENTS_SPIKE.md#result)). A watch that would exceed it is refused with the limit named.
 
 `[scripting].enabled` is a boolean and defaults to false, including when the section is absent.
 Bundles ship the runner, so enabling it requires no build or toolchain. On each start the CLI writes this setting

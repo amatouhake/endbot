@@ -114,13 +114,15 @@ that, `guarantee.class` is one of:
   tick later, reads the position on the server thread and reports only if the block actually changed. Cancelled or
   rewritten actions are therefore never reported, and the payload is what the world holds, not what an event
   proposed.
-- **Polled positions.** Every `block-poll-ticks` ticks (`[events]` in `endbot.toml`; the default and the resulting
-  `guarantee.ticks` come from step 1) the plugin reads every watched position in one server-thread pass and compares
-  it with the last value it saw. A difference is reported with cause `poll`.
+- **Polled positions.** The plugin reads every watched position once every 4 ticks, a quarter of them on each tick,
+  and compares it with the last value it saw; a difference is reported with cause `poll`. The period comes from step 1
+  and is fixed, not an operator setting, so `guarantee.ticks` (4) stays true
+  ([record](BLOCK_EVENTS_SPIKE.md#result)).
 - **Unloaded chunks** are skipped by the poll. When the chunk is loaded again a difference is reported late, with
   cause `poll`; the spike confirms that reading an unloaded position is detectable rather than a default block.
 - **Bounds**: a watch or trigger filter is a BOT-027 area (S7) of at most `maxBlocks` (512) cells; the server watches
-  at most `[events] max-watched-blocks` positions in total (default from step 1's cost measurement, 4096 assumed).
+  at most `[events] max-watched-blocks` positions in total (default 2048 from step 1's cost measurement, at most
+  16384 so the interest set fits one link frame).
   A watch that would exceed it fails at creation with the limit named.
 - **Who did it** (S1): `cause` is `player-break`, `player-place`, another measured cause, or `poll`; `bot` is set
   when a Bot did it. A human player's name is not in the payload, because it would reveal that player's position.
@@ -258,7 +260,7 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
 - **S1. Human players' names are not in `block.change`**; only Bot names (`bot`) are given. A name next to a
   coordinate tells a watcher where that player is, which PERMISSIONS puts in "not normally visible".
 - **S2. Default limits** are those in E3, E5 and E8: 8 triggers and 32 watches per controller, 10 starts per minute,
-  a 20-tick cooldown and `skip`; `max-watched-blocks` and `block-poll-ticks` are set from step 1.
+  a 20-tick cooldown and `skip`; `max-watched-blocks` (2048) and the fixed 4-tick poll come from step 1.
 - **S3. No trigger starts while BDS is stopped**; such starts are counted as skipped, and `server.started` fires when
   BDS comes back.
 - **S4. Changes during a gap are reported as a gap, never reconstructed.** Replaying from a stored baseline would

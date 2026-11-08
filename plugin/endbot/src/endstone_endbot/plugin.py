@@ -16,10 +16,18 @@ from endbot_core.link import LinkError
 from endbot_core.principal import Principal
 from endbot_core.wire_views import encode_view
 from endstone.command import Command, CommandSender, ConsoleCommandSender
-from endstone.event import PlayerJoinEvent, PlayerQuitEvent, event_handler
+from endstone.event import (
+    BlockBreakEvent,
+    BlockPlaceEvent,
+    EventPriority,
+    PlayerJoinEvent,
+    PlayerQuitEvent,
+    event_handler,
+)
 from endstone.plugin import Plugin
 
 from endstone_endbot import __version__
+from endstone_endbot.block_source import BlockChangeSource
 from endstone_endbot.dispatch import ServerThreadBridge
 from endstone_endbot.form_adapter import FormPresenter
 from endstone_endbot.inventory_sync import PACKET_ID as INVENTORY_PACKET_ID
@@ -240,6 +248,7 @@ class EndbotPlugin(Plugin):
         self._world = None
         self._server_thread = None
         self._link = None
+        self._blocks = None
         self._inventory_warning = False
         self._hotbar_interval = 4
         self._hotbar_countdown = 4
@@ -270,6 +279,9 @@ class EndbotPlugin(Plugin):
                 return self.server.get_player(UUID(source.player_id))
             return self.server.command_sender
 
+        # block.change (BOT-022): endbotd's interest arrives on a link thread and is applied on the server thread.
+        self._blocks = BlockChangeSource(
+            self.server, lambda tick, items, dropped: self._link.report_events(tick, items, dropped))
         self._link = PluginLink(
             host=str(settings.get("host", "127.0.0.1")),
             port=int(settings.get("port", 19143)),
@@ -283,9 +295,11 @@ class EndbotPlugin(Plugin):
             show_view=presenter.show_view,
             log=self._log_endbot,
             on_config=self._apply_link_config,
+            on_interest=lambda interest: self._server_thread.post(lambda: self._blocks.apply_interest(interest)),
             call_deadline=CALL_DEADLINE_SECONDS,
         )
         self.server.scheduler.run_task(self, self._hotbar_ticker, delay=1, period=1)
+        self.server.scheduler.run_task(self, self._blocks.on_tick, delay=1, period=1)
         # The server console belongs to the operator who installed Endbot; it
         # gets the control permission directly. Operator players do not.
         self.server.command_sender.add_attachment(self, "endbot.command.control", True)
@@ -344,6 +358,16 @@ class EndbotPlugin(Plugin):
                     self.logger.warning(f"Bot hotbar synchronization unavailable: {type(error).__name__}")
                     self._inventory_warning = True
         self._hotbar_publisher.retain(identities)
+
+    @event_handler(priority=EventPriority.MONITOR, ignore_cancelled=True)
+    def on_block_break(self, event: BlockBreakEvent) -> None:
+        if self._blocks is not None:
+            self._blocks.player_changed(event.block, event.player, "player-break")
+
+    @event_handler(priority=EventPriority.MONITOR, ignore_cancelled=True)
+    def on_block_place(self, event: BlockPlaceEvent) -> None:
+        if self._blocks is not None:
+            self._blocks.player_changed(event.block, event.player, "player-place")
 
     @event_handler
     def on_player_join(self, event: PlayerJoinEvent) -> None:

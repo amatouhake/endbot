@@ -161,6 +161,11 @@ class OccurrenceHubTests(unittest.TestCase):
         self.hub.link_changed(None, "epoch-1")  # the old link's close arrives after the new link: no gap
         self.assertEqual(len(gaps), before)
 
+    def test_a_kind_the_operator_has_not_turned_on_is_refused_with_the_setting_named(self):
+        hub = OccurrenceHub(KINDS, self.sent.append, turned_off=("bot.online",))
+        with self.assertRaisesRegex(LocalizedError, r"turned off on this server.*\[events\]"):
+            hub.subscribe("bot.online", {}, print, print)
+
     def test_gaps_reach_subscriptions_of_their_source_once_per_cause(self):
         _, _, block_gaps = self.subscribe()
         _, _, bot_gaps = self.subscribe("bot.online", {})

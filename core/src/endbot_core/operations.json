@@ -930,6 +930,67 @@
         ],
         "record": "BLOCK_EVENTS_SPIKE.md#result"
       }
+    },
+    "player.join": {
+      "source": "plugin",
+      "capability": "observe.presence",
+      "visibility": "public",
+      "filters": {
+        "player": {
+          "type": "player"
+        }
+      },
+      "require": [],
+      "payload": {
+        "player": "string"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#presence-and-chat"
+      }
+    },
+    "player.leave": {
+      "source": "plugin",
+      "capability": "observe.presence",
+      "visibility": "public",
+      "filters": {
+        "player": {
+          "type": "player"
+        }
+      },
+      "require": [],
+      "payload": {
+        "player": "string"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#presence-and-chat"
+      }
+    },
+    "player.chat": {
+      "source": "plugin",
+      "capability": "observe.chat",
+      "visibility": "public",
+      "filters": {
+        "player": {
+          "type": "player"
+        }
+      },
+      "require": [],
+      "payload": {
+        "player": "string",
+        "message": "string"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#presence-and-chat"
+      }
     }
   },
   "reservedBotNames": [

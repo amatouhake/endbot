@@ -172,5 +172,36 @@ class BlockChangeSourceTests(unittest.TestCase):
         self.assertEqual([item["dimension"] for item in self.items()], ["nether"])
 
 
+
+class PresenceTests(unittest.TestCase):
+    """Step 6a: human joins, leaves and public chat, only while endbotd asks for them."""
+
+    def setUp(self):
+        self.reports = []
+        self.source = BlockChangeSource(FakeServer(), lambda tick, items, dropped: self.reports.append(items))
+        self.alice = SimpleNamespace(name="Alice", xuid="2535400000000001")
+        self.bot = SimpleNamespace(name="Miner", xuid="")
+
+    def items(self):
+        return [item for items in self.reports for item in items]
+
+    def test_only_kinds_in_the_interest_set_and_only_humans_are_reported(self):
+        self.source.player_presence("player.join", self.alice)
+        self.source.on_tick()
+        self.assertEqual(self.reports, [])
+        self.source.apply_interest({"revision": 1, "block": [], "kinds": ["player.join", "player.chat"]})
+        self.source.player_presence("player.join", self.alice)
+        self.source.player_presence("player.join", self.bot)
+        self.source.player_presence("player.leave", self.alice)  # not asked for
+        self.source.player_presence("player.chat", self.alice, "hi\x1b[31m \u00a7cthere" + "x" * 400)
+        self.source.on_tick()
+        items = self.items()
+        self.assertEqual(items[0], {"kind": "player.join", "player": "Alice"})
+        self.assertEqual([item["kind"] for item in items], ["player.join", "player.chat"])
+        self.assertEqual(len(items[1]["message"]), 256)
+        self.assertNotIn("\x1b", items[1]["message"])
+        self.assertNotIn("\u00a7", items[1]["message"])
+
+
 if __name__ == "__main__":
     unittest.main()

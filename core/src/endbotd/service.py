@@ -119,7 +119,8 @@ class EndbotService:
             bots_default = groups_default = "shared"
         self.occurrences = OccurrenceHub(
             REGISTRY.get("events", {}), lambda interest: self.link.send_interest(interest),
-            max_watched_blocks=self._max_watched_blocks(config.events), log=self._log)
+            max_watched_blocks=self._max_watched_blocks(config.events),
+            turned_off=() if config.events.get("chat") is True else ("player.chat",), log=self._log)
         self.link = LinkServer(
             config.link_host, config.link_port, load_token(config.link_token_file), version=__version__,
             config={"language": self._language_setting, "hotbar": dict(config.hotbar)},

@@ -126,11 +126,13 @@ class OccurrenceHub:
     """Subscriptions, the interest set and gap tracking for every event source."""
 
     def __init__(self, kinds: dict, send_interest: Callable[[dict], object], *,
-                 max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS,
+                 max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS, turned_off=(),
                  log: Callable[[str, str], None] | None = None) -> None:
         self._kinds = kinds
         self._send_interest = send_interest
         self._max_watched_blocks = max_watched_blocks
+        # Kinds the operator has not turned on (player.chat without [events] chat = true): refused at subscribe.
+        self._turned_off = frozenset(turned_off)
         self._log = log or (lambda level, message: None)
         self._lock = threading.Lock()
         # Held while an interest set is computed and sent, so sets reach the plugin in revision order.
@@ -152,6 +154,9 @@ class OccurrenceHub:
         spec = self._kinds.get(kind)
         if spec is None:
             raise LocalizedError("Unknown event kind {kind}", kind=kind)
+        if kind in self._turned_off:
+            raise LocalizedError("{kind} is turned off on this server; the operator turns it on in [events]",
+                                 kind=kind)
         filter_ = resolve_filter(kind, spec, filter_)
         cells = area_cells(spec, filter_)
         dimension = _dimension(spec, filter_)

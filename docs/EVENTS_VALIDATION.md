@@ -11,6 +11,8 @@ checks that back a listed guarantee; the unit tests prove the delivery path, not
 - `player.chat` comes from `PlayerChatEvent` at MONITOR, with chat cancelled by another Endstone plugin ignored and a
   chat BDS targets at only some players dropped. Bots cannot chat, so it has **not been measured**: the guarantee is
   stated from the event's contract and is checked with a human in the release pass.
+- `player.chat` is off unless the operator sets `[events] chat = true` (decided 2026-11-08 JST because of the known
+  limit below); a watch or trigger on it is refused on other servers with the setting named.
 - Known limit: on the locked pair, Endstone raises `PlayerChatEvent` before BDS runs the Script API's
   `chatSend` before-event and its chat filter, so a message a behavior pack mutes, or BDS rejects, may still reach a
   `player.chat` watch or trigger although no player saw it.

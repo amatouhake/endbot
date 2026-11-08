@@ -340,6 +340,7 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
 
     events = tomlkit.table()
     events["max-watched-blocks"] = config.events.max_watched_blocks
+    events["chat"] = config.events.chat
     document.add("events", events)
 
     ui = tomlkit.table()

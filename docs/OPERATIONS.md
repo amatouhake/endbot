@@ -91,11 +91,17 @@ groups-default = "shared"  # shared or private: visibility of a Group someone cr
 
 [events]
 max-watched-blocks = 2048  # positions watched for block changes, all watches and triggers together; 0 turns them off
+chat = false               # true lets scripts that declare observe.chat watch public chat (player.chat)
 ```
 
 `[events] max-watched-blocks` bounds the server thread's cost of `block.change` watches: every watched position is
 read once every 4 ticks, a quarter of them per tick, which cost about 1 ms per tick per 2000 positions on the PC that
 measured it ([record](BLOCK_EVENTS_SPIKE.md#result)). A watch that would exceed it is refused with the limit named.
+
+`[events] chat` is off by default. When it is on, scripts that declare `observe.chat` can watch public chat. On the
+locked Endstone the chat event comes before a behavior pack's `chatSend` mute and BDS's chat filter run, so a message
+those block may still reach such a script although no player saw it ([record](EVENTS_VALIDATION.md#presence-and-chat));
+leave it off on a server that mutes chat with a pack.
 
 `[scripting].enabled` is a boolean and defaults to false, including when the section is absent.
 Bundles ship the runner, so enabling it requires no build or toolchain. On each start the CLI writes this setting

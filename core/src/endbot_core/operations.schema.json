@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/amatouhake/endbot/core/src/endbot_core/operations.schema.json",
   "title": "Endbot operation registry",
-  "description": "operations.json: every operation, the shapes of its typed parameters and their command clauses, the capability each operation and Luau host request requires, and the reserved Bot names. Python (operations.py), the Luau bootstrap (runner/api.luau) and the operator reference read it; later the web Worker generates its types from it.",
+  "description": "operations.json: every operation, the shapes of its typed parameters and their command clauses, the capability each operation, Luau host request and event kind requires, the event kinds, and the reserved Bot names. Python (operations.py), the Luau bootstrap (runner/api.luau) and the operator reference read it; later the web Worker generates its types from it.",
   "type": "object",
-  "required": ["operations", "capabilities", "hostRequests", "reservedBotNames"],
+  "required": ["operations", "capabilities", "hostRequests", "events", "reservedBotNames"],
   "additionalProperties": false,
   "properties": {
     "operations": {
@@ -31,6 +31,12 @@
       "propertyNames": {"pattern": "^[a-z][A-Za-z]*$"},
       "minProperties": 1,
       "additionalProperties": {"enum": ["act.bot", "read.world", "wait", "log", "operation", "declaration"]}
+    },
+    "events": {
+      "description": "The event kinds scripts may watch and triggers may bind, keyed by category.action. Every kind names its source, capability, visibility, filters, payload and measured delivery guarantee (EVENTS E1, E2). Empty until step 2 lists a kind.",
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z]+\\.[a-z][a-z_]*$"},
+      "additionalProperties": {"$ref": "#/$defs/eventKind"}
     },
     "reservedBotNames": {
       "description": "Names no Bot may be created or renamed to, because a root command word takes them (interface guide D3). Compared without case.",
@@ -98,6 +104,95 @@
           "description": "Literal words between the operation and its first field.",
           "type": "array",
           "items": {"$ref": "#/$defs/word"}
+        }
+      }
+    },
+    "eventKind": {
+      "description": "One event kind (EVENTS E1): who reports it, what a watcher must declare, how it is filtered and delivered.",
+      "type": "object",
+      "required": ["source", "capability", "visibility", "filters", "require", "payload", "guarantee"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "description": "The adapter that reports the kind and whose gaps apply (EVENTS E4).",
+          "enum": ["plugin", "runtime", "endbotd"]
+        },
+        "capability": {
+          "description": "The PERMISSIONS capability name a run must hold; read.world is basic, observe.* must be declared.",
+          "type": "string"
+        },
+        "visibility": {
+          "description": "The PERMISSIONS data class; only public may be listed (EVENTS E1).",
+          "enum": ["public", "not-visible", "private"]
+        },
+        "filters": {
+          "description": "The filter names a watch or trigger may pass, and their types and bounds.",
+          "type": "object",
+          "propertyNames": {"pattern": "^[a-z][A-Za-z]*$"},
+          "additionalProperties": {"$ref": "#/$defs/eventFilter"}
+        },
+        "require": {
+          "description": "Alternative sets of filters of which one must be given; empty when any filter is optional.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/name"}
+          }
+        },
+        "payload": {
+          "description": "The fields an occurrence carries; ? marks an optional one, and delivery adds kind and missed.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(integer|number|string|boolean|block|area)\\??$"
+          }
+        },
+        "guarantee": {"$ref": "#/$defs/guarantee"}
+      }
+    },
+    "eventFilter": {
+      "description": "One event filter: its value type, an optional default and the box bound of an area filter.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": ["area", "block", "dimension", "string", "integer", "bot", "player", "duration", "time"]
+        },
+        "default": {},
+        "maxBlocks": {
+          "description": "The greatest box an area filter may cover; it is meaningless on any other type.",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {"required": ["maxBlocks"]},
+          "then": {"properties": {"type": {"const": "area"}}}
+        }
+      ]
+    },
+    "guarantee": {
+      "description": "The measured delivery guarantee (EVENTS E2); record names the validation document and heading that measured it.",
+      "type": "object",
+      "required": ["class", "ticks", "each", "record"],
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "description": "each delivers every occurrence; persist delivers a state that lasts at least ticks.",
+          "enum": ["each", "persist"]
+        },
+        "ticks": {"type": ["integer", "null"]},
+        "each": {
+          "description": "The causes a persist kind delivers individually.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "record": {
+          "description": "DOC.md#anchor in docs/ whose heading measured the guarantee.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+\\.md#[A-Za-z0-9_-]+$"
         }
       }
     }

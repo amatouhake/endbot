@@ -21,6 +21,8 @@ REGISTRY = json.loads(Path(__file__).with_name("operations.json").read_text(enco
 OPERATIONS = REGISTRY["operations"]
 CAPABILITIES = REGISTRY["capabilities"]
 HOST_REQUESTS = REGISTRY["hostRequests"]
+# Event kinds keyed by category.action; delivery, watches and triggers are BOT-022 steps 3 to 5.
+EVENTS = REGISTRY["events"]
 # Root command words that would shadow a Bot of the same name (interface guide D3).
 RESERVED_BOT_NAMES = frozenset(REGISTRY["reservedBotNames"])
 ALIASES = {"teleport": "tp"}
@@ -31,6 +33,30 @@ GROUPS = (("yaw", "pitch"), ("facingX", "facingY", "facingZ"))
 PLAYER_NAME = re.compile(r"""[^\s"'\\~]+(?: [^\s"'\\~]+)*""")
 # A Bot's name as the runtime allows it, or a Group, whose name may not start with a digit.
 TARGET = re.compile(r"[A-Za-z0-9_]{1,16}|#[A-Za-z_][A-Za-z0-9_]{0,15}(?:\[[1-9][0-9]*\])?")
+
+
+def _and_list(items) -> str:
+    """An English list: ``a``, ``a and b``, ``a, b and c``."""
+    if len(items) < 2:
+        return items[0] if items else ""
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def guarantee_text(spec) -> str:
+    """The one sentence stating an event kind's delivery guarantee (EVENTS E2), from the registry alone.
+
+    ``spec`` is an event-kind entry or its ``guarantee`` object. Every kind opens with the part it shares;
+    a persist kind then states the measured tick count and the causes delivered individually.
+    """
+    guarantee = spec.get("guarantee", spec)
+    if guarantee["class"] == "each":
+        return ("At most once, after the fact, in source order. "
+                "Every occurrence is delivered while the source is connected.")
+    text = f"A change that lasts at least {guarantee['ticks']} ticks is delivered"
+    if guarantee["each"]:
+        text += (f"; {_and_list(guarantee['each'])} "
+                 f"{'is' if len(guarantee['each']) == 1 else 'are'} delivered individually")
+    return f"At most once, after the fact, in source order. {text}."
 
 
 def area_argument(value) -> list[str]:

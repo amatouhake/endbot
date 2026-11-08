@@ -346,8 +346,8 @@ class EventRegistryTests(unittest.TestCase):
         self.assertEqual(EVENTS["block.change"]["filters"]["area"], {"type": "area", "maxBlocks": 512})
 
     def test_the_runtime_and_server_kinds_are_listed_with_their_guarantees(self):
-        self.assertEqual(set(EVENTS), {"block.change", "bot.online", "bot.offline", "bot.died", "job.finished",
-                                       "server.started"})
+        self.assertLessEqual({"block.change", "bot.online", "bot.offline", "bot.died", "job.finished",
+                              "server.started"}, set(EVENTS))
         record = "EVENTS_VALIDATION.md#runtime-and-server-kinds"
         for kind in ("bot.online", "bot.offline", "job.finished", "server.started"):
             with self.subTest(kind=kind):

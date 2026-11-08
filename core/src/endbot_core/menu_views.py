@@ -38,7 +38,8 @@ def _list(data: dict, lang: str):
         for row in data.get("scripts", ())
     )
     return script_forms.list_screen(scripts, lang, own=lambda script: script.own, author=data.get("author", True),
-                                    whole_editor=data.get("whole_editor", False))
+                                    whole_editor=data.get("whole_editor", False),
+                                    triggers=data.get("triggers", False))
 
 
 def _screen(data: dict, lang: str):
@@ -69,6 +70,41 @@ def _parameters(data: dict, lang: str):
                                    data.get("origin"), lang, requires=tuple(data.get("requires", ())))
 
 
+def _trigger(data: dict) -> SimpleNamespace:
+    """One trigger's plain fields, as the screens and `trigger show` read them."""
+    return SimpleNamespace(**data)
+
+
+def _triggers(data: dict, lang: str):
+    triggers = tuple(_trigger(row) for row in data.get("triggers", ()))
+    return script_forms.trigger_list_screen(triggers, lang)
+
+
+def _trigger_screen(data: dict, lang: str):
+    return script_forms.trigger_screen(_trigger(data["trigger"]), lang)
+
+
+def _trigger_scripts(data: dict, lang: str):
+    scripts = tuple(
+        SimpleNamespace(name=row["name"], revision=row["revision"], owner_name=row["owner_name"],
+                        visibility=row["visibility"], file=row["file"], own=row["own"])
+        for row in data.get("scripts", ())
+    )
+    return script_forms.trigger_scripts_screen(scripts, lang)
+
+
+def _trigger_kinds(data: dict, lang: str):
+    return script_forms.trigger_kinds_screen(_script(data["script"]), lang)
+
+
+def _trigger_filter(data: dict, lang: str):
+    groups = tuple(SimpleNamespace(name=row["name"], identity=row["identity"], members=tuple(row["members"]))
+                   for row in data.get("groups", ()))
+    return script_forms.trigger_filter_screen(
+        _script(data["script"]), data["kind"], data["filters"], data["schema"], groups, data["bots"],
+        data.get("origin"), lang, requires=tuple(data.get("requires", ())))
+
+
 # One table drives both the crossing decision (menu_view) and the screen builder (script_view), so a
 # new /botscript menu cannot be added to one and forgotten in the other.
 SCRIPT_MENUS = {
@@ -79,6 +115,11 @@ SCRIPT_MENUS = {
     "scriptExport": _export,
     "scriptHistory": _history,
     "scriptParameters": _parameters,
+    "scriptTriggers": _triggers,
+    "scriptTrigger": _trigger_screen,
+    "scriptTriggerScripts": _trigger_scripts,
+    "scriptTriggerKinds": _trigger_kinds,
+    "scriptTriggerFilter": _trigger_filter,
 }
 
 

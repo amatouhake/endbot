@@ -632,8 +632,8 @@ w:close()                          -- optional; a watch ends with its run
 - `watch(kind, filter)` checks the kind, every filter name and value, the required filters and the kind's capability
   against `requires {}` before it returns; a mistake stops the run with a message naming the field. Block names may
   omit `minecraft:`.
-- `block.change` takes an `area` built with `area.cell`, `area.box` or `area.sphere` (with `:minus`), of at most 512
-  blocks. A watch has no Bot to resolve against, so `~` and the sphere around the Bot are refused: build the area from
+- `block.change` takes an `area` built with `area.cell`, `area.box` or `area.sphere` (with at most 16 `:minus`), of at
+  most 512 blocks. A watch has no Bot to resolve against, so `~` and the sphere around the Bot are refused: build the area from
   a position, such as a Bot's `status()` coordinates. Optional filters: `dimension` (default `overworld`), `from` and
   `to`.
 - Buffering starts at `watch()`, so nothing is lost between waits. A watch keeps the 64 newest occurrences; `missed`
@@ -661,6 +661,74 @@ w:close()                          -- optional; a watch ends with its run
 | `player.leave` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 | `player.chat` | none | player: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 <!-- END GENERATED EVENTS -->
+
+### Triggers
+
+A trigger is a stored binding from an event kind and filter to a script and its arguments. It is armed once and
+then starts a run for every matching occurrence, without anyone typing a command. The script declares
+`param.event("event")`; a manual run gets `a.event = nil`, so one script works both ways. The event parameter
+carries the payload, `kind` and `missed`.
+
+```lua
+params {
+    param.event("event"),
+    param.number("count", 1),
+}
+if a.event then
+    log(a.event.kind .. " at " .. a.event.x .. " " .. a.event.y .. " " .. a.event.z)
+end
+```
+
+```text
+/botscript trigger add <script> <kind> [field=value ...] [name=<name>] [visibility=shared|private] [-- <arg> ...]
+/botscript trigger add guard block.change area="100 64 200" to=air
+/botscript trigger list
+/botscript trigger show <name>
+/botscript trigger enable <name>
+/botscript trigger disable <name>
+/botscript trigger remove <name>
+/botscript trigger set <name> <policy>=<value> ...
+/botscript trigger visibility <name> shared|private
+```
+
+- `area=` takes the area values in one quoted token, in the same forms as `within`: `"100 64 200"`,
+  `"0 64 0 3 65 3"` or `"5 of 0 64 0"`, optionally followed inside the token by `except <values>`. Other filters
+  are `name=value`; for `block.change` they are `dimension` (default `overworld`), `from` and `to`. Block names may
+  omit `minecraft:`.
+- `--` separates the script arguments, which are stored as strings exactly as `/botscript run` takes them. The
+  name defaults to the script name. A trigger is private unless `visibility=shared`, which only makes it visible
+  in other people's `list` and `show`; it does not let them change it.
+- The console addresses another owner's trigger as `<owner>/<name>`, where the owner is the display name
+  (case-insensitive) or the owner key. Players address their own by `<name>` and see shared ones as
+  `<owner>/<name>` in `list` and `show`.
+
+**Approval.** Adding or enabling shows the script's declaration and records it with the script revision and its
+parameters; only someone who may run the script may arm it. The trigger then runs the script's current revision
+while its declaration stays within the approved one and its parameters still accept the stored arguments. A
+started run has the owner's authority intersected with the approved declaration and counts toward the owner's
+concurrent-run limit.
+
+| Policy | Default | Bounds | Effect |
+| --- | --- | --- | --- |
+| `concurrency` | `skip` | `skip`, `queue`, `parallel` | `skip` drops an occurrence while a run from this trigger is active or in cooldown and counts it as missed. `queue` keeps the newest `queue` occurrences and starts them in order. `parallel` allows up to 2 runs at once |
+| `cooldown` | 20 ticks | 0-72000 | Minimum time between two starts |
+| `startsPerMinute` | 10 | 1-60 | Starts in a sliding 60-second window; one more disables the trigger (`rate limit`) |
+| `queue` | 4 | 1-16 | Pending occurrences under `queue`; the oldest is dropped and counted as missed |
+
+**Pausing and disabling.** A trigger pauses when its script's declaration grows (`declaration grew`), its
+parameters no longer accept the stored arguments (`arguments no longer valid`), or the script can no longer be
+run by its owner (`script unavailable`); it stays paused until its owner enables it again, which re-approves.
+Going over the start cap disables it (`rate limit`) and tells its owner in chat. Revoking the owner disables it
+(`owner revoked`), and a regrant does not re-enable it. A disabled trigger keeps its state and can be enabled
+again.
+
+**Restarts.** endbotd loads armed triggers with their state, stats and last start, so the cooldown holds; the
+minute window starts empty and `lastGap` records the gap. A BDS or link restart leaves them armed, but no run
+starts while the link is down; those occurrences are counted as skipped. Runtime-sourced kinds resume after the
+runtime comes back.
+
+**Limits.** `[limits] max-triggers-per-controller` (default 8) bounds armed triggers per owner; `0` turns
+triggers off on the server. Every other run limit applies to triggered runs unchanged.
 
 ## Lifetime, boundaries and unverified gates
 

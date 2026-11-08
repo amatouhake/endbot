@@ -1,4 +1,4 @@
-"""Opt-in live check of watches for raknet_spike --events (BOT-022 steps 4 to 6).
+"""Opt-in live check of watches and triggers for raknet_spike --events (BOT-022 steps 4 to 6).
 
 Never installed in the product. Bots stand in for a human (EVENTS.md S9). The
 probe changes blocks and drops the plugin's link on request; outcomes are read
@@ -165,4 +165,78 @@ def exercise_events(output: Path, console, control, wait, log, report) -> dict:
     _request(output, wait, {"id": "clear-miss", "action": "fill", "from": [x - 4, y + 4, z - 4],
                             "to": [x + 4, y + 4, z + 4], "block": "minecraft:air"})
     _request(output, wait, {"id": "clear-gap", "action": "fill", "from": cell, "to": cell, "block": "minecraft:air"})
+    return results
+
+
+TRIGGER_SOURCE = """local a = params { param.event("event") }
+local e = a.event
+if e == nil then log("manual run") return end
+log("triggered " .. tostring(e.to) .. " " .. tostring(e.cause) .. " missed=" .. tostring(e.missed))
+"""
+
+
+def exercise_triggers(output: Path, console, control, wait, log, report, kill_endbotd, restart_endbotd) -> dict:
+    """Triggers end to end with console-owned triggers (Bots cannot be controllers)."""
+    from mining_probe import mining_state, setup_mining_fixture
+    from scripting_probe import save_script
+
+    results = report.setdefault("triggers", {})
+
+    def seen(text, offset, timeout=30):
+        wait(f"log {text!r}", lambda: text in log()[offset:], timeout)
+
+    def command(line, expected, timeout=15):
+        offset = len(log())
+        console(line)
+        seen(expected, offset, timeout)
+        return offset
+
+    save_script(output, wait, log, "guardtrig", TRIGGER_SOURCE)
+
+    # 1. A Bot breaks the watched block: the trigger starts the script with the occurrence.
+    setup_mining_fixture(output, console, control, wait, "events-trigger", "minecraft:dirt")
+    x, y, z = mining_state(output)["target"]
+    # Logged commands answer the console through the endbotd log line; show and list reply directly.
+    command(f'botscript trigger add guardtrig block.change area="{x} {y} {z}" to=air',
+            "Trigger guardtrig of console armed for block.change")
+    offset = len(log())
+    console(f"bot {BOT} destroy")
+    seen("triggered minecraft:air player-break missed=0", offset)
+    results["start"] = {"cell": [x, y, z], "cause": "player-break"}
+
+    # 2. Restart endbotd: the trigger comes back armed with its stats, and starts again.
+    linked = log().count("Endbot linked to endbotd")
+    kill_endbotd()
+    restart_endbotd()
+    wait("plugin relinked to endbotd", lambda: log().count("Endbot linked to endbotd") > linked, 60)
+    command("botscript trigger show guardtrig", "armed")
+    offset = len(log())
+    _request(output, wait, {"id": "trigger-again", "action": "fill", "from": [x, y, z], "to": [x, y, z],
+                            "block": "minecraft:stone"})
+    time.sleep(1)
+    _request(output, wait, {"id": "trigger-again-air", "action": "fill", "from": [x, y, z], "to": [x, y, z],
+                            "block": "minecraft:air"})
+    seen("triggered minecraft:air poll", offset)
+    results["restart"] = {"armed_after_restart": True, "started_again": True}
+
+    # 3. A trigger that fires faster than its start cap is disabled and says why.
+    command("botscript trigger set guardtrig cooldown=0 startsPerMinute=2 concurrency=parallel",
+            "Trigger guardtrig of console:")
+    offset = len(log())
+    for index in range(4):
+        _request(output, wait, {"id": f"cap-{index}-on", "action": "fill", "from": [x, y, z], "to": [x, y, z],
+                                "block": "minecraft:stone"})
+        time.sleep(0.4)
+        _request(output, wait, {"id": f"cap-{index}-off", "action": "fill", "from": [x, y, z], "to": [x, y, z],
+                                "block": "minecraft:air"})
+        time.sleep(0.4)
+    seen("disabled: rate limit", offset)
+    command("botscript trigger show guardtrig", "disabled")
+    results["start_cap"] = {"disabled": "rate limit"}
+
+    # 4. Enabling again re-arms it; removing it ends it.
+    command("botscript trigger enable guardtrig", "Trigger guardtrig of console armed")
+    command("botscript trigger remove guardtrig", "Trigger guardtrig of console removed")
+    command("botscript trigger list", "No triggers")
+    results["enable_remove"] = True
     return results

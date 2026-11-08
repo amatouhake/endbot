@@ -5,7 +5,6 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import SimpleNamespace
 
 from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import LocalizedError
@@ -169,6 +168,21 @@ class EngineTests(unittest.TestCase):
         notices = [event for event in self.events if event.kind == "trigger.disabled"]
         self.assertEqual(notices[0].data["reason"], "rate limit")
         self.assertEqual(notices[0].to.player_id, OWNER.player_id)
+
+    def test_queue_keeps_the_newest_occurrences_and_starts_them_in_order(self):
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change",
+                                     filter_={"area": "within 0 64 0 9 64 0"},
+                                     policy={"concurrency": "queue", "queue": 2, "cooldown": 200})
+        for x in range(4):
+            self.hub.raise_occurrence("plugin", change(x))
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["missed"] == 1))
+        with self.engine._lock:
+            queued = [item["x"] for item in self.engine._armed[(trigger.owner, "guard")]["queue"]]
+        self.assertEqual(queued, [2, 3])  # x=1 was the oldest queued and was dropped
+        self.clock.advance(11)
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 2))
 
     def test_no_start_while_the_plugin_is_unlinked(self):
         self.engine.start()

@@ -83,9 +83,19 @@ class TriggerEngine:
         """Arm every armed trigger from the store; their cooldown holds across the restart (E9)."""
         now = self._wall()
         for trigger in self.store.list():
-            if trigger.status == "armed":
-                self.store.update(trigger.owner, trigger.name, stats={**trigger.stats, "lastGap": now})
+            if trigger.status != "armed":
+                continue
+            if not self._authorize(self._principal(trigger)):
+                # Revoked while endbotd was stopped (a GamerTag removed from endbot.toml): disabled, not armed.
+                self.disable_for(_key(trigger), "owner revoked", notify=False)
+                continue
+            self.store.update(trigger.owner, trigger.name, stats={**trigger.stats, "lastGap": now})
+            try:
                 self._arm(self.store.get(trigger.owner, trigger.name))
+            except LocalizedError as error:
+                # The kind left the registry (a rollback) or the server-wide watched-block limit shrank.
+                self.pause_for(_key(trigger), "kind unavailable" if trigger.kind not in self.hub.kinds
+                               else str(error)[:128])
         self._thread = threading.Thread(target=self._loop, name="endbotd-triggers", daemon=True)
         self._thread.start()
         return self
@@ -169,7 +179,12 @@ class TriggerEngine:
             self._bump(key, "missed")
             self.disable_for(key, decision.reason or "rate limit", notify=True)
         elif decision.action == "queued":
-            entry.setdefault("queue", []).append(item)
+            # The policy keeps the newest `queue` occurrences and counts the dropped oldest; keep the same ones.
+            pending = entry.setdefault("queue", [])
+            pending.append(item)
+            dropped = max(0, len(pending) - policy.pending)
+            del pending[:dropped]
+            self._bump(key, "missed", dropped)
 
     def _due(self) -> None:
         with self._lock:

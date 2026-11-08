@@ -133,8 +133,9 @@ class EndbotService:
             self._log("info", f"Controller {gamertag} is pending; it binds on its first Xbox-authenticated join.")
         self.web = WebService(config.web, config.stores_directory, self.authority, base=config.base, log=self._log)
         self.web.on_passkey_added = self._passkey_added
-        # A GamerTag removed from endbot.toml is revoked by this load, with no live command to end its sessions (P6).
-        self._grants_changed()
+        # A GamerTag removed from endbot.toml is revoked by this load, with no live command to end its sessions (P6);
+        # the trigger engine makes the same check for its owners when it starts.
+        self.web.grants_changed()
         self.web_link = None
         self.web_api = None
         self._delivery = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbotd-delivery")

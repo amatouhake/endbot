@@ -177,6 +177,12 @@ SCRIPT_USAGES = [
     "/botscript (export)<action: EndbotScriptExport> <name: string>",
     "/botscript (export)<action: EndbotScriptExportTo> <name: string> (overwrite)<mode: EndbotScriptOverwrite>",
     "/botscript (reload)<action: EndbotScriptReload>",
+    "/botscript (trigger)<action: EndbotScriptTrigger> <arguments: message>",
+    (
+        "/botscript (trigger)<action: EndbotScriptTriggerOperation> "
+        "(add|list|show|enable|disable|remove|set|visibility)<verb: EndbotScriptTriggerVerb> "
+        "[arguments: message]"
+    ),
 ]
 
 

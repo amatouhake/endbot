@@ -314,10 +314,10 @@ def check_locked_endstone() -> dict:
 
 def exercise(
     output: Path, node: str, report: dict, *, mining=False, inventory=False, inventory_stack=False,
-    item_use=False, groups=False, scripting=False, entity=False, endbotd_failures=False, block_events=False,
+    item_use=False, groups=False, scripting=False, entity=False, endbotd_failures=False, block_events=False, events=False,
     transport="nethernet", server: Path | None = None,
 ) -> None:
-    needs_scripting_fixture = scripting or endbotd_failures
+    needs_scripting_fixture = scripting or endbotd_failures or events
     scripting_runner = None
     if needs_scripting_fixture:
         from scripting_probe import built_runner
@@ -374,6 +374,7 @@ def exercise(
             ROOT / "scripts/item_use_probe.py",
             ROOT / "scripts/entity_probe.py",
             ROOT / "scripts/block_events_probe.py",
+            ROOT / "scripts/events_probe.py",
             ROOT / "plugin/endbot/src/endstone_endbot/plugin.py",
             ROOT / "core/src/endbot_core/controller_policy.py",
             ROOT / "plugin/endbot/src/endstone_endbot/dispatch.py",
@@ -494,6 +495,9 @@ def exercise(
     if block_events:
         from block_events_probe import configure_fixture as configure_block_events
         configure_block_events(ROOT, output, environment)
+    if events:
+        from events_probe import configure_fixture as configure_events
+        configure_events(ROOT, output, environment)
     if inventory_stack:
         from inventory_stack_probe import configure_fixture as configure_stack
 
@@ -865,6 +869,15 @@ def exercise(
                     lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report, logtext,
                     spawn_again,
                 )
+            if events:
+                from events_probe import exercise_events
+
+                report["stage"] = "watches and triggers (BOT-022)"
+                exercise_events(
+                    output, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), logtext, report,
+                )
             if inventory_stack:
                 from inventory_stack_probe import exercise_inventory_stack
 
@@ -1227,6 +1240,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
     parser.add_argument("--block-events", action="store_true",
                         help="measure which block changes raise Endstone events and what a per-tick read sees (BOT-022)")
+    parser.add_argument("--events", action="store_true",
+                        help="watch block changes from a script: Bot break, missed, link gap, limits (BOT-022)")
     parser.add_argument("--entity", action="store_true", help="feed a cow and ride/dismount stationary and moving minecarts (BOT-012)")
     parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
     parser.add_argument("--scripting", action="store_true", help="enable scripting only in the disposable instance and validate native runs/stop/budgets with BDS observations")
@@ -1275,7 +1290,7 @@ def main() -> int:
     try:
         options = {"mining": args.mining, "inventory": args.inventory, "inventory_stack": args.inventory_stack,
                    "item_use": args.item_use,
-                   "groups": args.groups, "scripting": args.scripting, "entity": args.entity, "block_events": args.block_events,
+                   "groups": args.groups, "scripting": args.scripting, "entity": args.entity, "block_events": args.block_events, "events": args.events,
                    "endbotd_failures": args.endbotd_failures, "transport": args.transport}
         if args.server_dir is None:
             exercise(output, args.node, report, **options)

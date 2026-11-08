@@ -75,6 +75,7 @@ class BlockChangeSourceTests(unittest.TestCase):
     def test_a_state_change_with_the_same_type_is_reported(self):
         self.world.blocks[(0, 64, 0)] = "minecraft:wooden_door"
         self.source.apply_interest(interest((0, 64, 0)))
+        self.run_ticks(POLL_TICKS)  # the first read is the baseline
         self.world.blocks[(0, 64, 0)] = "minecraft:wooden_door[open]"
         self.run_ticks(POLL_TICKS)
         self.assertEqual([(item["from"], item["to"]) for item in self.items()],
@@ -82,7 +83,7 @@ class BlockChangeSourceTests(unittest.TestCase):
 
     def test_player_actions_are_confirmed_on_the_next_tick_and_name_only_bots(self):
         self.source.apply_interest(interest((0, 64, 0), (1, 64, 0), (2, 64, 0)))
-        self.run_ticks(2)
+        self.run_ticks(POLL_TICKS)
         bot = SimpleNamespace(name="Miner", xuid="")
         human = SimpleNamespace(name="Alice", xuid="2535400000000000")
         self.world.blocks[(0, 64, 0)] = "minecraft:dirt"
@@ -127,9 +128,45 @@ class BlockChangeSourceTests(unittest.TestCase):
         self.run_ticks(POLL_TICKS)
         self.assertEqual(self.reports, [])
 
+    def test_a_large_new_set_is_read_a_quarter_per_tick_and_a_resent_set_changes_nothing(self):
+        cells = [(x, 64, 0) for x in range(8)]
+        self.source.apply_interest(interest(*cells))
+        self.assertEqual(self.world.reads, 0)  # no read on the tick the set arrives
+        self.run_ticks(1)
+        self.assertEqual(self.world.reads, 2)
+        self.run_ticks(POLL_TICKS - 1)
+        self.world.blocks[(0, 64, 0)] = "minecraft:stone"
+        self.source.apply_interest(interest(*cells))  # a relink resends the same set: baselines kept
+        self.run_ticks(POLL_TICKS)
+        self.assertEqual([(item["x"], item["to"]) for item in self.items()], [(0, "minecraft:stone")])
+
+    def test_a_player_action_before_the_first_read_is_reported_from_what_the_event_saw(self):
+        self.source.apply_interest(interest((5, 64, 0)))
+        bot = SimpleNamespace(name="Miner", xuid="")
+        self.world.blocks[(5, 64, 0)] = "minecraft:stone"
+        block = self.world.get_block_at(5, 64, 0)  # the event's block, before the break
+        self.world.blocks[(5, 64, 0)] = "minecraft:air"
+        self.source.player_changed(block, bot, "player-break")
+        self.run_ticks(1)
+        self.assertEqual([(item["from"], item["to"], item["cause"]) for item in self.items()],
+                         [("minecraft:stone", "minecraft:air", "player-break")])
+
+    def test_ticks_without_reads_do_not_scan_chunks(self):
+        scans = []
+        world = self.world
+        original = type(world).loaded_chunks
+        type(world).loaded_chunks = property(lambda dimension: scans.append(1) or original.fget(dimension))
+        try:
+            self.source.apply_interest(interest((0, 64, 0)))  # one cell: three of four ticks read nothing
+            self.run_ticks(POLL_TICKS)
+        finally:
+            type(world).loaded_chunks = original
+        self.assertEqual(len(scans), 1)
+
     def test_the_nether_is_polled_with_its_own_dimension(self):
         nether = self.server.dimensions["Nether"]
         self.source.apply_interest(interest((0, 64, 0), dimension="nether"))
+        self.run_ticks(POLL_TICKS)
         nether.blocks[(0, 64, 0)] = "minecraft:stone"
         self.run_ticks(POLL_TICKS)
         self.assertEqual([item["dimension"] for item in self.items()], ["nether"])

@@ -262,8 +262,7 @@ class ScriptMenuViewTests(unittest.TestCase):
         # A script screen carries ModalScreen.build, a function, so it cannot cross the endbotd
         # link (encode_view refuses it). The outcome crosses as data and the plugin builds the
         # screen; this test is the guard for the whole set, not one menu.
-        schema = [{"name": "event", "type": "event"}, {"name": "bot", "type": "bot"},
-                  {"name": "text", "type": "string", "default": "x"}]
+        schema = [{"name": "event", "type": "event"}, {"name": "text", "type": "string", "default": "x"}]
         self.host.inspect = lambda script, source: Declaration(schema, ())
         hub = OccurrenceHub(EVENTS, lambda interest: None)
         self.host.triggers = TriggerEngine(TriggerStore(self.root / "triggers.json"), hub, self.host,

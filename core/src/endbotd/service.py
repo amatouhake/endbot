@@ -37,7 +37,7 @@ from endbotd import __version__
 from endbotd.authority import Authority
 from endbotd.config import EndbotdConfig
 from endbotd.journal import RunJournal
-from endbotd.occurrences import DEFAULT_MAX_WATCHED_BLOCKS, OccurrenceHub
+from endbotd.occurrences import DEFAULT_MAX_WATCHED_BLOCKS, MAX_WATCHED_BLOCKS, OccurrenceHub
 from endbotd.web import WebService
 
 LOGGER = logging.getLogger("endbotd")
@@ -194,9 +194,9 @@ class EndbotService:
     def _max_watched_blocks(self, section: dict) -> int:
         """``[events] max-watched-blocks``: positions the server watches for every watch and trigger together."""
         value = section.get("max-watched-blocks", DEFAULT_MAX_WATCHED_BLOCKS)
-        if type(value) is not int or not 0 <= value <= 65536:
-            self._log("warning", "Invalid [events] max-watched-blocks; it must be an integer from 0 to 65536; "
-                                 f"using {DEFAULT_MAX_WATCHED_BLOCKS}")
+        if type(value) is not int or not 0 <= value <= MAX_WATCHED_BLOCKS:
+            self._log("warning", f"Invalid [events] max-watched-blocks; it must be an integer from 0 to "
+                                 f"{MAX_WATCHED_BLOCKS}; using {DEFAULT_MAX_WATCHED_BLOCKS}")
             return DEFAULT_MAX_WATCHED_BLOCKS
         return value
 

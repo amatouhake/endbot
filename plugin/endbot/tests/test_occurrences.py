@@ -47,6 +47,8 @@ class OccurrenceHubTests(unittest.TestCase):
 
     def test_the_interest_set_is_the_union_and_follows_every_change(self):
         first, _, _ = self.subscribe()
+        self.assertEqual(self.sent, [])  # no plugin linked: nothing to send, the link gets the set
+        self.hub.link_changed("epoch-1")
         second, _, _ = self.subscribe(filter_={"area": box(1, 64, 1, 2, 64, 1)})
         self.assertEqual([interest["revision"] for interest in self.sent], [1, 2])
         self.assertEqual(self.sent[-1]["kinds"], ["block.change"])
@@ -105,6 +107,59 @@ class OccurrenceHubTests(unittest.TestCase):
         self.hub.accept({"revision": 1, "epoch": "e", "tick": 1, "dropped": 0,
                          "items": [change(1, 64, 0), change(2, 64, 0)]})
         self.assertEqual(items, [change(2, 64, 0)])
+
+    def test_area_and_required_filters_fail_closed(self):
+        for filter_ in ({}, {"area": None}, {"to": "minecraft:air"}, {"area": "within 0 0 0"}):
+            with self.subTest(filter=filter_), self.assertRaises(LocalizedError):
+                self.subscribe(filter_=filter_)
+        self.assertEqual(self.hub.watched_blocks(), 0)
+
+    def test_untrusted_occurrence_fields_never_match_or_break_delivery(self):
+        _, items, _ = self.subscribe(filter_={"area": areas.parse_area("within 3 of 0 64 0")})
+        _, nether, _ = self.subscribe(filter_={"area": box(0, 64, 0, 1, 64, 1), "dimension": "nether"})
+        self.hub.accept({"revision": 1, "epoch": "e", "tick": 1, "dropped": 0, "items": [
+            {"kind": "block.change", "x": 10 ** 400, "y": 64, "z": 0, "dimension": "overworld"},
+            {"kind": "block.change", "x": 0, "y": 64, "z": 0},  # no dimension: matches no dimension filter
+            change(0, 64, 0),
+        ]})
+        self.assertEqual(items, [change(0, 64, 0)])
+        self.assertEqual(nether, [])
+
+    def test_a_failing_subscriber_does_not_starve_the_others(self):
+        def broken(value):
+            raise RuntimeError("subscriber bug")
+
+        self.hub.subscribe("block.change", {"area": box(0, 64, 0, 1, 64, 1)}, broken, broken)
+        _, items, gaps = self.subscribe()
+        self.assertEqual(self.hub.accept({"revision": 1, "epoch": "e", "tick": 1, "dropped": 0,
+                                          "items": [change(0, 64, 0)]}), 1)
+        self.hub.gap("plugin", "source restarted")
+        self.assertEqual((len(items), gaps), (1, ["source restarted"]))
+        self.assertTrue(any("subscriber failed" in message for message in self.logs))
+
+    def test_unknown_kinds_are_remembered_only_up_to_a_bound(self):
+        for index in range(100):
+            self.hub.raise_occurrence("plugin", {"kind": f"made.up{index}" + "x" * 500})
+        self.assertLessEqual(len(self.logs), 32)
+        self.assertTrue(all(len(message) < 200 for message in self.logs))
+
+    def test_sets_are_sent_in_order_after_the_gap_and_a_late_close_is_ignored(self):
+        _, _, gaps = self.subscribe()
+        opened = []
+
+        def on_gap(reason):
+            opened.append(self.subscribe(filter_={"area": box(5, 64, 5, 5, 64, 5)})[0])
+
+        self.hub.subscribe("block.change", {"area": box(0, 64, 0, 0, 64, 0)}, print, on_gap)
+        self.hub.link_changed("epoch-1")
+        self.hub.link_changed(None, "epoch-1")
+        self.hub.link_changed("epoch-2")
+        revisions = [interest["revision"] for interest in self.sent]
+        self.assertEqual(revisions, sorted(revisions))
+        self.assertIn([5, 64, 5], self.sent[-1]["block"][0]["cells"])  # the watch the gap opened is in the last set
+        before = len(gaps)
+        self.hub.link_changed(None, "epoch-1")  # the old link's close arrives after the new link: no gap
+        self.assertEqual(len(gaps), before)
 
     def test_gaps_reach_subscriptions_of_their_source_once_per_cause(self):
         _, _, block_gaps = self.subscribe()

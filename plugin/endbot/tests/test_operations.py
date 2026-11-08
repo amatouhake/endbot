@@ -349,13 +349,18 @@ class EventRegistryTests(unittest.TestCase):
         self.assertLessEqual({"block.change", "bot.online", "bot.offline", "bot.died", "job.finished",
                               "server.started", "schedule", "world.time"}, set(EVENTS))
         record = "EVENTS_VALIDATION.md#runtime-and-server-kinds"
-        for kind in ("bot.online", "bot.offline", "job.finished", "server.started"):
+        for kind in ("job.finished", "server.started"):
             with self.subTest(kind=kind):
                 spec = EVENTS[kind]
                 self.assertEqual((spec["source"], spec["capability"], spec["visibility"], spec["require"]),
                                  ("endbotd", "read.world", "public", []))
                 self.assertEqual(spec["guarantee"],
                                  {"class": "each", "ticks": None, "each": [], "record": record})
+        for kind in ("bot.online", "bot.offline"):  # a one-second sample of the runtime, not a feed
+            with self.subTest(kind=kind):
+                spec = EVENTS[kind]
+                self.assertEqual(spec["source"], "runtime")
+                self.assertEqual(spec["guarantee"], {"class": "persist", "ticks": 40, "each": [], "record": record})
         self.assertEqual(EVENTS["bot.online"]["filters"], {"bot": {"type": "bot"}})
         self.assertEqual(EVENTS["bot.online"]["payload"], {"bot": "string"})
         self.assertEqual(EVENTS["bot.offline"]["payload"], {"bot": "string", "reason": "string?"})

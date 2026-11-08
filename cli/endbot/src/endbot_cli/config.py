@@ -107,6 +107,8 @@ MAX_WATCHED_BLOCKS = 16384
 @dataclass(frozen=True, slots=True)
 class EventsConfig:
     max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS
+    # player.chat is opt-in: the locked Endstone raises chat before a pack's mute runs (EVENTS_VALIDATION.md).
+    chat: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,13 +388,17 @@ def _load_events(path: Path, document: dict[str, Any]) -> EventsConfig:
     table = document.get("events", {})
     if not isinstance(table, dict):
         raise _fail(path, "events", "must be a table", "write it as an [events] section")
-    _reject_unknown_keys(path, table, "events", ("max-watched-blocks",))
+    _reject_unknown_keys(path, table, "events", ("max-watched-blocks", "chat"))
     value = table.get("max-watched-blocks", DEFAULT_MAX_WATCHED_BLOCKS)
     if type(value) is not int or not 0 <= value <= MAX_WATCHED_BLOCKS:
         raise _fail(path, "events.max-watched-blocks",
                     f"must be an integer from 0 to {MAX_WATCHED_BLOCKS}, found {value!r}",
                     f"use max-watched-blocks = {DEFAULT_MAX_WATCHED_BLOCKS} (the default); 0 turns block watches off")
-    return EventsConfig(max_watched_blocks=value)
+    chat = table.get("chat", False)
+    if type(chat) is not bool:
+        raise _fail(path, "events.chat", f"must be true or false, found {chat!r}",
+                    "use chat = false (the default) or chat = true to let scripts watch public chat")
+    return EventsConfig(max_watched_blocks=value, chat=chat)
 
 
 def _load_permissions(path: Path, document: dict[str, Any]) -> PermissionsConfig:

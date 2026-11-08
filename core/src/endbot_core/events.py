@@ -118,7 +118,16 @@ def _run_ended(data, lang, sink):
     return lines
 
 
-RENDERERS = {"job.ended": _job_ended, "job.waiting": _job_waiting, "run.log": _run_log, "run.ended": _run_ended}
+def _trigger_disabled(data, lang, sink):
+    """A trigger went over its start cap or lost its owner's grant (BOT-022, EVENTS.md E8)."""
+    if sink == "log":
+        return (f"Endbot trigger {data['name']} of {data['owner']} disabled: {data['reason']}",)
+    return (reply(tr(lang, "Trigger {name} was disabled: {reason}; /botscript trigger enable {name} arms it again",
+                     name=data["name"], reason=tr(lang, data["reason"]))),)
+
+
+RENDERERS = {"job.ended": _job_ended, "job.waiting": _job_waiting, "run.log": _run_log, "run.ended": _run_ended,
+             "trigger.disabled": _trigger_disabled}
 
 
 def render(event: Event, sink: str, lang: str | None = None) -> tuple[str, ...]:

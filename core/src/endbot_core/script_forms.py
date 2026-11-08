@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from endbot_core import forms as f
 from endbot_core.i18n import tr
-from endbot_core.script_params import declarations
+from endbot_core.script_params import inputs
 
 
 @dataclass(frozen=True)
@@ -446,7 +446,7 @@ def _typed_argument(name, value):
 
 def parameter_choices(schema, groups, bots):
     """Dropdown options for each selectable parameter; refuses a form with no target for one."""
-    schema = declarations(schema)
+    schema = inputs(schema)
     choices = {}
     for name, spec in schema.items():
         kind = spec["type"]

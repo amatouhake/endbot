@@ -1173,6 +1173,10 @@ JA.update({
     "A controller may hold at most {limit} watches ([limits] max-watches-per-controller)":
         "コントローラーが持てる watch は最大 {limit} 個です ([limits] max-watches-per-controller)",
     "Unknown or closed watch": "その watch はないか、閉じられています",
+    "Trigger {name} was disabled: {reason}; /botscript trigger enable {name} arms it again":
+        "トリガー {name} は無効になりました: {reason}。/botscript trigger enable {name} で再び有効にできます",
+    "rate limit": "開始回数の上限",
+    "owner revoked": "所有者の権限が取り消されました",
 })
 
 CATALOGS: dict[str, dict[str, str]] = {"ja": JA}

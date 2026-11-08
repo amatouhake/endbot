@@ -31,6 +31,8 @@ from endbot_core.principal import Principal
 from endbot_core.script_config import ScriptConfig
 from endbot_core.script_inputs import OwnedInputs
 from endbot_core.script_store import ScriptStore
+from endbot_core.trigger_store import FILE_NAME as TRIGGERS_FILE
+from endbot_core.trigger_store import TriggerStore
 from endbot_core.scripting import ScriptService
 from endbot_core.wire_views import decode_view, encode_view
 from endbotd import __version__
@@ -38,6 +40,7 @@ from endbotd.authority import Authority
 from endbotd.config import EndbotdConfig
 from endbotd.journal import RunJournal
 from endbotd.occurrences import DEFAULT_MAX_WATCHED_BLOCKS, OccurrenceHub
+from endbotd.triggers import DEFAULT_MAX_TRIGGERS, TriggerEngine
 from endbotd.web import WebService
 
 LOGGER = logging.getLogger("endbotd")
@@ -131,7 +134,7 @@ class EndbotService:
         self.web = WebService(config.web, config.stores_directory, self.authority, base=config.base, log=self._log)
         self.web.on_passkey_added = self._passkey_added
         # A GamerTag removed from endbot.toml is revoked by this load, with no live command to end its sessions (P6).
-        self.web.grants_changed()
+        self._grants_changed()
         self.web_link = None
         self.web_api = None
         self._delivery = ThreadPoolExecutor(max_workers=1, thread_name_prefix="endbotd-delivery")
@@ -174,6 +177,12 @@ class EndbotService:
                                      authorize=self.authority.authorize, files_directory=config.scripts_folder,
                                      resolve_owner=self._resolve_owner)
         self.scripts.occurrences = self.occurrences
+        # Triggers (BOT-022): stored in state/triggers.json, which a version without them ignores.
+        self.triggers = TriggerEngine(
+            TriggerStore(stores / TRIGGERS_FILE), self.occurrences, self.scripts,
+            authorize=self.authority.authorize, role=self._role, linked=lambda: self.link.connected,
+            publish=lambda event: self.scripts.publish(event) if self.scripts.publish else None,
+            max_triggers=getattr(limits, "max_triggers_per_controller", DEFAULT_MAX_TRIGGERS), log=self._log)
         if scripts is not None and script_config.enabled:
             # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
             try:
@@ -211,8 +220,14 @@ class EndbotService:
             values.append(value)
         return values[0], values[1]
 
+    def _grants_changed(self) -> None:
+        """A controller grant changed: web sessions and triggers of a revoked owner end (P6, EVENTS.md E7)."""
+        self.web.grants_changed()
+        self.triggers.grants_changed()
+
     def start(self) -> EndbotService:
         self._recover()
+        self.triggers.start()
         self._inputs.on_change = self.scripts.on_runs_changed = self._record_runs
         self.link.start()
         self._start_web_link()
@@ -288,6 +303,7 @@ class EndbotService:
         if self._closed.is_set():
             return
         self._closed.set()
+        self.triggers.close()
         if self.web_link is not None:
             self.web_link.stop()
         # Cleanup (stopping scripts, Group work and mining) still reaches the runtime.
@@ -408,7 +424,7 @@ class EndbotService:
                 self.deliver(to, ["Endbot: controller management is available only from the server console"])
                 return {"accepted": False, "code": "unauthorized"}
             lines, permissions = self.authority.manage(list(submission.argv or ()))
-            self.web.grants_changed()
+            self._grants_changed()
             self.deliver("console", lines)
             self._send_permissions(permissions)
             return {"accepted": True, "code": "ok"}
@@ -466,7 +482,7 @@ class EndbotService:
                 raise ValueError("role is only accepted for add")
         # The target is one whole name; it is never reparsed as console text.
         result, permissions = self.authority.operation([operation], target, role=role)
-        self.web.grants_changed()
+        self._grants_changed()
         self._send_permissions(permissions)
         if operation != "list":
             self._log("info", f"endbot CLI controllers {operation}: {result['messages'][0]}")

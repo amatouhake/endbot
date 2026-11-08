@@ -4,6 +4,8 @@
   import registry from "../../../core/src/endbot_core/operations.json";
   import type { Connection } from "./api";
   import { confirmDialog } from "./dialogs.svelte";
+  import { convert, type Field, type Spec } from "./fields";
+  import FieldInput from "./FieldInput.svelte";
   import { fieldLabel, opLabel, refusalText, t } from "./i18n";
 
   let { connection, target, group = false, botState = "online", onchanged }: {
@@ -14,7 +16,6 @@
     onchanged: (op: string, fields: Record<string, unknown>) => void;
   } = $props();
 
-  type Spec = { type: string; choices?: string[]; clause?: string };
   type Variant = { positional: [string, Spec][]; options: Record<string, Spec>; prefix: string[] };
   type Mode = "once" | "continuous" | "interval" | "stop";
   const OPERATIONS = (registry as unknown as { operations: Record<string, Variant[]> }).operations;
@@ -46,7 +47,6 @@
   const PAIRED: Record<string, string> = { yaw: "pitch", pitch: "yaw" };
   // Left to the typed command, as in the in-game forms.
   const COMMAND_ONLY = new Set(["facing", "facingX", "facingY", "facingZ"]);
-  const CHOICES: Record<string, string[]> = { dimension: ["overworld", "nether", "end"] };
   const TICK_FIELDS = new Set(["ticks", "hold", "interval"]);
   // Each mode takes only its own clauses: `interval` replaces once and continuous, and `once` has no duration.
   const MODE_FIELDS: Record<Mode, string[]> = {
@@ -138,22 +138,35 @@
     return item.options.interval ? [...named.filter((name) => name !== "stop"), "interval", "stop"] : named;
   }
 
-  function inputsOf(item: Variant): { name: string; spec: Spec; required: boolean }[] {
-    const positional = item.positional.map(([name, spec]) => ({ name, spec, required: true }));
-    const area = areaOffered(item) ? [{ name: "area", spec: item.options.area, required: false }] : [];
+  function targetHint(): string | undefined {
+    if (active === "interact") return t("interactTargetHint");
+    if (active === "attack") return t("attackTargetHint");
+    return undefined;
+  }
+
+  function inputsOf(item: Variant): Field[] {
+    const positional = item.positional.map(([name, spec]): Field => ({ name, spec, required: true, blank: true }));
+    const area = areaOffered(item) ? [{ name: "area", spec: item.options.area, required: false, blank: true,
+      placeholder: "within 6 except ~ ~-1 ~" }] : [];
     const chosen = modeOf(item);
     if (modesOf(item).length) {
       return [...positional, ...(chosen === null ? [] : MODE_FIELDS[chosen]
         .filter((name) => item.options[name])
-        .map((name) => ({ name, spec: item.options[name], required: name === "interval" }))), ...area];
+        .map((name): Field => ({ name, spec: item.options[name], required: name === "interval", blank: true }))), ...area];
     }
     return [
       ...positional,
       // Repeating belongs to an entity: the grammar takes none of it with a block type.
       ...(blockTarget(item) ? [] : shownOptions(item)).filter(([name]) => name !== "mode")
-        .map(([name, spec]): { name: string; spec: Spec; required: boolean } => ({ name, spec, required: false })),
+        .map(([name, spec]): Field => ({ name, spec, required: false, blank: true,
+          placeholder: name === "target" ? targetHint() : undefined })),
       ...area,
     ];
+  }
+
+  function requiredOf(field: Field): boolean {
+    const pair = PAIRED[field.name];
+    return field.required || (pair !== undefined && !!fields[pair]);
   }
 
   function variantLabel(item: Variant): string {
@@ -163,16 +176,6 @@
 
   function modeLabel(name: Mode): string {
     return t(({ once: "modeOnce", continuous: "modeContinuous", interval: "modeInterval", stop: "modeStop" } as const)[name]);
-  }
-
-  function convert(value: any, spec: Spec): any {
-    if (spec.type === "boolean") return value === true;
-    if (spec.type === "integer" || spec.type === "number") return Number(value);
-    const text = String(value).trim();
-    const numeric = /^-?\d+(\.\d+)?$/.test(text);
-    if (spec.type === "coordinate") return numeric ? Number(text) : text;
-    if (spec.type === "stringOrInteger" || spec.type === "integerOrDefault") return numeric ? Number(text) : text;
-    return text;
   }
 
   function parameters(): Record<string, unknown> {
@@ -254,10 +257,6 @@
   function step(direction: string): void {
     void run("move", { direction, ticks: Number(ticks) || 20 });
   }
-
-  function inputType(spec: Spec): string {
-    return spec.type === "integer" || spec.type === "number" ? "number" : "text";
-  }
 </script>
 
 <section class="card">
@@ -333,25 +332,9 @@
         {/if}
         {#if inputs.length}
           <form onsubmit={(event) => { event.preventDefault(); void run(active, parameters()); }}>
-            {#each inputs as { name, spec, required: always } (name)}
-              {@const choices = spec.choices ?? CHOICES[name]}
-              {@const required = always || (name in PAIRED && !!fields[PAIRED[name]])}
-              <label class="field">{fieldLabel(name)}
-                {#if !required}<span class="quiet">{t("optional")}</span>{/if}
-                {#if spec.type === "boolean"}
-                  <input type="checkbox" bind:checked={fields[name]} />
-                {:else if choices}
-                  <select bind:value={fields[name]} {required}>
-                    <option value={undefined}>—</option>
-                    {#each choices as choice}<option value={choice}>{choice}</option>{/each}
-                  </select>
-                {:else}
-                  <input type={inputType(spec)} step="any" bind:value={fields[name]} {required} spellcheck="false"
-                         placeholder={name === "area" ? "within 6 except ~ ~-1 ~"
-                           : name === "target" && active === "interact" ? t("interactTargetHint")
-                           : name === "target" && active === "attack" ? t("attackTargetHint") : undefined} />
-                {/if}
-              </label>
+            {#each inputs as field (field.name)}
+              <FieldInput {field} required={requiredOf(field)} value={fields[field.name]}
+                          onchange={(next) => { fields[field.name] = next; }} />
             {/each}
             {#if inputs.some(({ name }) => TICK_FIELDS.has(name))}<p class="quiet">{t("ticksHint")}</p>{/if}
             <button class="primary" disabled={busy}>{t("opRun", { op: opLabel(active) })}</button>

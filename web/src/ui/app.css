@@ -49,6 +49,10 @@ input[type="checkbox"] { min-height: 0; }
 label { display: block; font-size: .85rem; }
 .field { margin: 0 0 .6rem; }
 .field input:not([type="checkbox"]), .field select { display: block; width: 100%; margin-top: .15rem; }
+.field small.quiet { display: block; margin-top: .15rem; }
+/* Generated fields sit side by side on a PC and in one column on a phone. */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0 .9rem; }
+.form-grid .field { margin-bottom: .6rem; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: .6rem; min-width: 0; }
 .error { background: var(--bad-bg); color: var(--bad); padding: .5rem .7rem; border-radius: .4rem; margin: 0 0 .6rem; overflow-wrap: anywhere; }
@@ -127,6 +131,10 @@ button.primary.danger-fill { background: var(--bad); border-color: var(--bad); }
 .item.current { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item small { display: block; color: var(--quiet); }
+/* A trigger's status can name a pause reason and its stats need a line of their own, so both wrap. */
+.item.trigger { align-items: flex-start; }
+.item.trigger .name { white-space: normal; overflow: visible; }
+.item.trigger .tag { white-space: normal; text-align: right; }
 .empty { padding: 1rem; color: var(--quiet); }
 .detail { min-height: 0; overflow: auto; padding: .9rem; }
 .back { display: none; }

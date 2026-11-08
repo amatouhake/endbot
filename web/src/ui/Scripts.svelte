@@ -4,6 +4,8 @@
   import { confirmDialog, promptDialog } from "./dialogs.svelte";
   import { diffLines } from "./diff";
   import Editor from "./Editor.svelte";
+  import { defaultValues, scriptFields, type Field } from "./fields";
+  import FieldInput from "./FieldInput.svelte";
   import { formatDate, t } from "./i18n";
   import { href, navigate } from "./route.svelte";
 
@@ -35,6 +37,7 @@
   let revisions = $state(false);
   let comparing = $state<any>(null);
   let runForm = $state<any>(null);
+  let runFields = $state<Field[]>([]);
   let values = $state<Record<string, any>>({});
   let moreMenu = $state<HTMLDetailsElement>();
   // Only the answer to the latest choice may fill the editor.
@@ -277,9 +280,8 @@
       fail(answer);
       return;
     }
-    values = Object.fromEntries((answer.data.schema as any[])
-      .filter((field) => field.default !== undefined)
-      .map((field) => [field.name, field.default]));
+    runFields = scriptFields(answer.data.schema, answer.data.groups, answer.data.bots);
+    values = defaultValues(runFields);
     runForm = answer.data;
   }
 
@@ -348,6 +350,10 @@
       <div class="row">
         <input class="grow" type="search" bind:value={search} placeholder={t("search")} aria-label={t("search")} />
         {#if canAuthor}<button onclick={() => startNew()}>{t("new")}</button>{/if}
+      </div>
+      <div class="row">
+        <a class="button grow" href={href("triggers")}
+           onclick={(event) => { event.preventDefault(); navigate("triggers"); }}>{t("tabTriggers")}</a>
       </div>
     </div>
     <div class="list-scroll">
@@ -507,33 +513,11 @@
   <dialog use:modal oncancel={(event) => { event.preventDefault(); runForm = null; }}>
     <h2>{t("runTitle", { name: open.name })}</h2>
     {#if runForm.requires.length}<p class="quiet">{t("runRequires", { list: runForm.requires.join(", ") })}</p>{/if}
-    {#if runForm.schema.length === 0}<p class="quiet">{t("runNoParams")}</p>{/if}
+    {#if runFields.length === 0}<p class="quiet">{t("runNoParams")}</p>{/if}
     <form onsubmit={(event) => { event.preventDefault(); void run(); }}>
-      {#each runForm.schema as field}
-        <label class="field">
-          {field.name}
-          {#if field.type === "group"}
-            <select bind:value={values[field.name]}>
-              <option value={undefined}>—</option>
-              {#each runForm.groups as group}<option value={`#${group.name}`}>#{group.name}</option>{/each}
-            </select>
-          {:else if field.type === "bot"}
-            <select bind:value={values[field.name]}>
-              <option value={undefined}>—</option>
-              {#each runForm.bots as bot}<option value={bot.name}>{bot.name}</option>{/each}
-            </select>
-          {:else if field.type === "choice"}
-            <select bind:value={values[field.name]}>
-              {#each field.choices ?? [] as choice}<option value={choice}>{choice}</option>{/each}
-            </select>
-          {:else if field.type === "boolean"}
-            <input type="checkbox" bind:checked={values[field.name]} />
-          {:else if field.type === "number"}
-            <input type="number" step="any" bind:value={values[field.name]} />
-          {:else}
-            <input bind:value={values[field.name]} spellcheck="false" placeholder={field.type === "pos" ? "x y z" : ""} />
-          {/if}
-        </label>
+      {#each runFields as field (field.name)}
+        <FieldInput {field} value={values[field.name]} showOptional={false}
+                    onchange={(next) => { values[field.name] = next; }} />
       {/each}
       <div class="dialog-actions">
         <button type="button" onclick={() => { runForm = null; }}>{t("cancel")}</button>

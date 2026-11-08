@@ -1,6 +1,6 @@
 // Where the page is, in the address: a reload, a link and the browser's Back all land on the same thing.
-export type Section = "bots" | "scripts" | "groups" | "history" | "devices";
-const SECTIONS: Section[] = ["bots", "scripts", "groups", "history", "devices"];
+export type Section = "bots" | "scripts" | "triggers" | "groups" | "history" | "devices";
+const SECTIONS: Section[] = ["bots", "scripts", "triggers", "groups", "history", "devices"];
 
 function read(): { section: Section; item: string | null } {
   const [first, second] = location.pathname.split("/").filter(Boolean);

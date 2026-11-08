@@ -1,7 +1,8 @@
 """The real endbotd for the end-to-end test: no BDS and no runtime, only what a browser can reach.
 
 Reads commands on stdin and answers on stdout, one JSON line each:
-``code`` gives a link code for the test player, ``reset`` deletes every passkey and session,
+``code`` gives a link code for the test player, ``reset`` deletes every passkey, session, trigger and
+the trigger test's script, ``trigger-seed`` creates that script and another person's shared trigger,
 ``revoke`` removes their grant, ``log`` records a run log line, ``online NAME`` brings a Bot online,
 ``state NAME STATE`` puts it in any other state, ``remove NAME`` takes away one the page created,
 ``site MODE`` turns on the trusted site served by the test (``reset`` turns it off).
@@ -25,7 +26,10 @@ from cryptography.hazmat.primitives.serialization import (  # noqa: E402
     load_pem_public_key,
 )
 from endbot_core.events import Event  # noqa: E402
+from endbot_core.i18n import LocalizedError  # noqa: E402
 from endbot_core.principal import Principal  # noqa: E402
+from endbot_core.scripting import Declaration  # noqa: E402
+from endbot_core.trigger_store import DEFAULT_POLICY, Trigger  # noqa: E402
 from endbotd.config import EndbotdConfig  # noqa: E402
 from endbotd.service import EndbotService  # noqa: E402
 from endbotd.web_site import SiteConfig, TrustedSite  # noqa: E402
@@ -34,6 +38,14 @@ from endbotd.web_store import LinkIdentity  # noqa: E402
 XUID = "2535412345678901"
 PLAYER = "00000000-0000-4000-8000-0000000000a1"
 BOT = "00000000-0000-4000-8000-00000000000b"
+OTHER_XUID = "2535412345670002"
+TRIGGER_SCRIPT = "guard"
+# Inspection runs Luau; the trigger tests need a declaration, not the runner.
+TRIGGER_SOURCE = 'params {\n  param.number("count", 2)\n  param.event("event")\n}\nlog("triggered")\n'
+TRIGGER_DECLARATION = Declaration(
+    [{"name": "count", "type": "number", "default": 2}, {"name": "event", "type": "event"}],
+    ("observe.chat",),
+)
 
 
 class FakeControl:
@@ -59,6 +71,38 @@ class FakeControl:
         return {"name": params.get("name"), "identityId": BOT, "connectionState": "online"}
 
 
+def seed_triggers(service) -> None:
+    """The trigger test's script and another person's shared trigger, created only for that test."""
+    try:
+        service.scripts.store.get(TRIGGER_SCRIPT)
+    except LocalizedError:
+        service.scripts.store.save(TRIGGER_SCRIPT, TRIGGER_SOURCE, None,
+                                   owner=f"xuid:{XUID}", owner_name="Alice")
+    if service.triggers.store.get(f"xuid:{OTHER_XUID}", "shared_bob") is None:
+        service.triggers.store.add(Trigger(
+            name="shared_bob", owner=f"xuid:{OTHER_XUID}", owner_name="Bob", visibility="shared",
+            kind="block.change", filter={"area": "within 0 0 0 2 1 2"}, script=TRIGGER_SCRIPT, arguments=["2"],
+            approved={"revision": "shared", "declaration": ["observe.chat"], "paramsHash": "shared"},
+            status="disabled", reason="disabled by its owner", policy=dict(DEFAULT_POLICY),
+            stats={"starts": 0, "missed": 0, "skipped": 0, "lastStart": None, "lastGap": None, "lastError": None},
+        ))
+
+
+def clear_triggers(service) -> None:
+    """Reset removes what a test seeded, so the next test starts from the same empty page."""
+    console = Principal("console")
+    for trigger in list(service.triggers.store.list()):
+        try:
+            service.triggers.remove(console, trigger.name, trigger.owner)
+        except LocalizedError:
+            continue
+    try:
+        script = service.scripts.store.get(TRIGGER_SCRIPT)
+        service.scripts.store.delete(TRIGGER_SCRIPT, script.revision)
+    except LocalizedError:
+        pass
+
+
 def main() -> None:
     origin, key_path = sys.argv[1], Path(sys.argv[2])
     key_path.write_bytes(Ed25519PrivateKey.from_private_bytes(bytes(range(32))).private_bytes(
@@ -81,6 +125,13 @@ def main() -> None:
             f"[{level}] {message}", file=sys.stderr, flush=True))
         service.authority.policy.add("Alice", xuid=XUID, player_uuid=PLAYER)
         service.authority.roles.set(XUID, "scripter")
+        # Inspection runs Luau; the trigger test needs a declaration, not the runner.
+        original_inspect = service.scripts.inspect
+
+        def inspect_trigger(script, source):
+            return TRIGGER_DECLARATION if script.name == TRIGGER_SCRIPT else original_inspect(script, source)
+
+        service.scripts.inspect = inspect_trigger
         # What the plugin would see in the world, with no BDS here to see it.
         service.commands.world.observe = lambda identity: {
             "x": 12.5, "y": 64, "z": -3, "dimension": "overworld", "yaw": 90, "pitch": 0, "health": 18, "maxHealth": 20,
@@ -114,9 +165,13 @@ def main() -> None:
             elif command.startswith("state "):
                 control.states[command.split()[1]] = command.split()[2]
                 print(json.dumps({"ok": True}), flush=True)
+            elif command == "trigger-seed":
+                seed_triggers(service)
+                print(json.dumps({"ok": True}), flush=True)
             elif command == "reset":
                 service.web.domain_changed()
                 service.web.site = None
+                clear_triggers(service)
                 print(json.dumps({"ok": True}), flush=True)
             elif command == "revoke":
                 service._cli_controllers({"operation": "remove", "target": "Alice"})

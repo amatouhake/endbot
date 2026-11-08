@@ -456,13 +456,13 @@ class EventDeliveryTests(LinkHarness):
         self.endbotd.stop()
         self.events = []
         self.links = []
-        self.endbotd = self.start_endbotd(on_events=self.events.append, on_link=self.links.append)
+        self.endbotd = self.start_endbotd(on_events=self.events.append, on_link=lambda *args: self.links.append(args))
         self.interests = []
 
     def test_interest_reaches_the_plugin_and_events_reach_endbotd_with_the_epoch(self):
         link = self.start_plugin(on_interest=self.interests.append)
         self.assertTrue(wait_for(lambda: link.connected and self.endbotd.connected))
-        self.assertTrue(wait_for(lambda: self.links == [link.epoch]))
+        self.assertTrue(wait_for(lambda: self.links == [(link.epoch,)]))
         interest = {"revision": 3, "block": [{"dimension": "overworld", "cells": [[1, 2, 3]]}],
                     "kinds": ["block.change"]}
         self.assertTrue(self.endbotd.send_interest(interest))
@@ -477,14 +477,14 @@ class EventDeliveryTests(LinkHarness):
 
     def test_a_link_drop_and_relink_are_reported_and_without_a_link_nothing_is_sent(self):
         link = self.linked()
-        self.assertTrue(wait_for(lambda: self.links == [link.epoch]))
+        self.assertTrue(wait_for(lambda: self.links == [(link.epoch,)]))
         first = link.epoch
         self.endbotd.drop_link("test")
         self.assertTrue(wait_for(lambda: link.connected and link.epoch != first))
-        self.assertTrue(wait_for(lambda: self.links == [first, None, link.epoch]))
+        self.assertTrue(wait_for(lambda: self.links == [(first,), (None, first), (link.epoch,)]))
         link.stop()
         self.assertFalse(self.on_server_thread(lambda: link.report_events(1, [{"kind": "block.change"}])))
-        self.assertTrue(wait_for(lambda: self.links[-1] is None))
+        self.assertTrue(wait_for(lambda: self.links[-1][0] is None))
         self.assertFalse(self.endbotd.send_interest({"revision": 1, "block": [], "kinds": []}))
 
     def test_malformed_events_and_interest_are_refused(self):

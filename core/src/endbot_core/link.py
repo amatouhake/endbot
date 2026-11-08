@@ -347,6 +347,8 @@ class LinkConnection:
         # Request ids already received, when the peer must never reuse one (CLI connections).
         self._seen: set[int] | None = set() if unique_ids else None
         self.close_reason: str | None = None
+        # The plugin's epoch for a plugin link (set by endbotd's handshake), so a late close names its link.
+        self.epoch: str | None = None
 
     def start(self) -> LinkConnection:
         for target in (self._read_loop, self._write_loop, self._ordered_loop):
@@ -679,7 +681,7 @@ class LinkServer:
         on_submit: Callable[[Submission], object],
         on_presence: Callable[[str, list[dict]], None] | None = None,
         on_events: Callable[[dict], None] | None = None,
-        on_link: Callable[[str | None], None] | None = None,
+        on_link: Callable[..., None] | None = None,
         grant_revision: Callable[[str], int] | None = None,
         role: Callable[[str], str] | None = None,
         log: Callable[[str, str], None] | None = None,
@@ -698,7 +700,8 @@ class LinkServer:
         self._on_submit = on_submit
         self._on_presence = on_presence
         self._on_events = on_events
-        # Called with the new epoch after a plugin links and with None after it goes away (EVENTS.md E4 gaps).
+        # Called with the new epoch after a plugin links, and with (None, its epoch) after that link goes away
+        # (EVENTS.md E4 gaps); a close that names an older epoch than the current link is stale.
         self._on_link = on_link
         self._grant_revision = grant_revision or (lambda player_id: 0)
         # A player's role by XUID, read for each command (S5); without one every player is a scripter.
@@ -812,6 +815,7 @@ class LinkServer:
             return
         handlers = {"presence": self._presence, "submit": self._submit, "events": self._events}
         connection = LinkConnection(sock, reader, handlers, on_close=self._closed)
+        connection.epoch = epoch
         with self._lock:
             if self._stopped:
                 sock.close()
@@ -852,7 +856,7 @@ class LinkServer:
             self.presence.reset(None)
         self._log("warning", f"Endbot plugin link closed: {reason}")
         if self._on_link is not None:
-            self._on_link(None)
+            self._on_link(None, connection.epoch)
 
     def _presence(self, body: dict) -> dict:
         records = self.presence.apply(body)

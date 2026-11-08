@@ -130,11 +130,13 @@ that, `guarantee.class` is one of:
 Two link messages, and `PROTOCOL = 3` (S8):
 
 ```text
-interest   endbotd → plugin   {revision, block: [{dimension, x, y, z} | {dimension, from, to}], kinds: [...]}
+interest   endbotd → plugin   {revision, block: [{dimension, cells: [[x, y, z], ...]}], kinds: [...]}
 events     plugin → endbotd   {revision, epoch, tick, items: [{kind, ...payload}], dropped}
 ```
 
-- `interest` replaces the whole set; endbotd sends it on every change and after every `hello`. The plugin applies it
+- `interest` replaces the whole set; endbotd sends it on every change and after every `hello`, one at a time in
+  revision order (the plugin ignores an older revision). It lists every watched cell, so `[events]
+  max-watched-blocks` is capped at 16384, which keeps the set inside the 1 MiB frame. The plugin applies it
   on the server thread and resets its poll baseline for new positions (a new position is never reported as changed).
 - `events` batches one tick's occurrences into one frame, at most 256 items; the rest are counted in `dropped`.
   Items carry no owner: endbotd maps them to watches and triggers and applies visibility.

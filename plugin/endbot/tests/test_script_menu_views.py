@@ -12,12 +12,16 @@ from endbot_core.commands import ERROR, error_code, reply
 from endbot_core.groups import Group
 from endbot_core.i18n import localize_error
 from endbot_core.menu_views import menu_view, script_view
+from endbot_core.operations import EVENTS
 from endbot_core.principal import Principal
 from endbot_core.script_books import pages_to_source
 from endbot_core.script_config import ScriptConfig
 from endbot_core.script_store import FILE_OWNER, Script, ScriptStore
 from endbot_core.scripting import Declaration, ScriptService
+from endbot_core.trigger_store import TriggerStore
 from endbot_core.wire_views import decode_view, encode_view
+from endbotd.occurrences import OccurrenceHub
+from endbotd.triggers import TriggerEngine
 
 
 class FakeInputs:
@@ -42,8 +46,9 @@ class ScriptMenuViewTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
         self.config = ScriptConfig(enabled=True, book_export=True, ui_pack_editor=True)
-        self.store = ScriptStore(Path(directory.name) / "scripts.json", self.config)
+        self.store = ScriptStore(self.root / "scripts.json", self.config)
         first = self.store.save("mine", "params {}\n-- v1\n", None, "xuid:111", "Alice")
         self.store.save("mine", "params {}\n-- v2\n", first.revision, "xuid:111", "Alice")
         self.world = FakeWorld(["params {}\n-- book\n"])
@@ -257,8 +262,15 @@ class ScriptMenuViewTests(unittest.TestCase):
         # A script screen carries ModalScreen.build, a function, so it cannot cross the endbotd
         # link (encode_view refuses it). The outcome crosses as data and the plugin builds the
         # screen; this test is the guard for the whole set, not one menu.
-        schema = [{"name": "bot", "type": "bot"}, {"name": "text", "type": "string", "default": "x"}]
+        schema = [{"name": "event", "type": "event"}, {"name": "bot", "type": "bot"},
+                  {"name": "text", "type": "string", "default": "x"}]
         self.host.inspect = lambda script, source: Declaration(schema, ())
+        hub = OccurrenceHub(EVENTS, lambda interest: None)
+        self.host.triggers = TriggerEngine(TriggerStore(self.root / "triggers.json"), hub, self.host,
+                                           authorize=lambda source: True)
+        self.addCleanup(self.host.triggers.close)
+        self.host.triggers.create(self.alice, script="mine", kind="block.change",
+                                  filter_={"area": "within 0 64 0"})
         outcomes = {
             "scripts": self.host.execute(["menu"], self.alice),
             "script": self.host.execute(["menu", "mine"], self.alice),
@@ -268,6 +280,11 @@ class ScriptMenuViewTests(unittest.TestCase):
             "scriptHistory": self.host.execute(["history", "mine"],
                                                replace(self.alice, group_guard=self.guard(edit=True, page=1))),
             "scriptParameters": self.host.execute(["parameters", "mine"], self.alice),
+            "scriptTriggers": self.host.execute(["trigger", "menu"], self.alice),
+            "scriptTrigger": self.host.execute(["trigger", "menu", "mine"], self.alice),
+            "scriptTriggerScripts": self.host.execute(["trigger", "new"], self.alice),
+            "scriptTriggerKinds": self.host.execute(["trigger", "new", "mine"], self.alice),
+            "scriptTriggerFilter": self.host.execute(["trigger", "new", "mine", "block.change"], self.alice),
         }
         self.assertEqual(set(outcomes), set(menu_views.SCRIPT_MENUS))
         for menu, result in outcomes.items():

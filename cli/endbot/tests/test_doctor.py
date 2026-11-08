@@ -700,6 +700,69 @@ class EffectiveControllersTests(DoctorTestCase):
                 self.assertEqual(self.status_of(self.doctor(), "ownership"), FAIL)
                 self.assertIn("endbotd will not start", self.messages_of(self.doctor(), "ownership")[0])
 
+    def test_triggers_file_is_validated(self):
+        path = self.paths.state_controllers.parent / "triggers.json"
+        self.assertEqual(self.status_of(self.doctor(), "triggers"), PASS)
+        self.assertIn("no triggers", self.messages_of(self.doctor(), "triggers")[0])
+
+        def row(**changes):
+            values = {
+                "name": "digger",
+                "owner": "xuid:2535400000000001",
+                "ownerName": "Alice",
+                "visibility": "private",
+                "kind": "block.change",
+                "filter": {"to": "minecraft:air"},
+                "script": "digger",
+                "arguments": ["--fast"],
+                "approved": {"revision": "rev-1", "declaration": ["act.bot"], "paramsHash": "hash-1"},
+                "status": "armed",
+                "reason": None,
+                "policy": {"concurrency": "skip", "cooldown": 20, "startsPerMinute": 10, "queue": 4},
+                "stats": {
+                    "starts": 2,
+                    "missed": 1,
+                    "skipped": 0,
+                    "lastStart": 1700000000.5,
+                    "lastGap": 0.25,
+                    "lastError": None,
+                },
+            }
+            values.update(changes)
+            return values
+
+        path.write_text(
+            json.dumps({"schemaVersion": 1, "triggers": [row(), row(name="watcher", status="paused",
+                                                                    reason="declaration grew")]}),
+            encoding="utf-8",
+        )
+        self.assertEqual(self.status_of(self.doctor(), "triggers"), PASS)
+        self.assertIn("records 2 triggers, 1 armed", self.messages_of(self.doctor(), "triggers")[0])
+        path.write_text(json.dumps({"schemaVersion": 1, "triggers": []}), encoding="utf-8")
+        self.assertEqual(self.status_of(self.doctor(), "triggers"), PASS)
+        self.assertIn("records 0 triggers, 0 armed", self.messages_of(self.doctor(), "triggers")[0])
+
+        corrupt = (
+            "{invalid",
+            "[]",
+            json.dumps({"schemaVersion": 2, "triggers": []}),
+            json.dumps({"version": 1, "triggers": []}),
+            json.dumps({"schemaVersion": 1, "triggers": {}}),
+            json.dumps({"schemaVersion": 1, "triggers": [row()], "extra": True}),
+            json.dumps({"schemaVersion": 1, "triggers": [row(status="on")]}),
+            json.dumps({"schemaVersion": 1, "triggers": [row(owner="nobody")]}),
+            json.dumps({"schemaVersion": 1, "triggers": [row(policy={"concurrency": "skip"})]}),
+            json.dumps({"schemaVersion": 1, "triggers": [row(unknown=True)]}),
+            json.dumps({"schemaVersion": 1, "triggers": [row(), row()]}),
+        )
+        for document in corrupt:
+            with self.subTest(document=document[:80]):
+                path.write_text(document, encoding="utf-8")
+                self.assertEqual(self.status_of(self.doctor(), "triggers"), FAIL)
+                message = self.messages_of(self.doctor(), "triggers")[0]
+                self.assertIn("endbotd will not start", message)
+                self.assertIn("removes every trigger", message)
+
     def test_corrupt_policy_is_reported_as_failure(self):
         (self.paths.state_controllers.parent / "controller-policy.json").write_text("{invalid")
         self.assertEqual(self.status_of(self.doctor(), "controllers-effective"), FAIL)

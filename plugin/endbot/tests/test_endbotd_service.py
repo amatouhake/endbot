@@ -8,11 +8,13 @@ import time
 import unittest
 from pathlib import Path
 
+from endbot_core.events import Event, reason
 from endbot_core.forms import ActionScreen, BotListView, Button, Run
 from endbot_core.group_forms import GroupGuard, GroupView
 from endbot_core.link import principal_from_wire, principal_to_wire
 from endbot_core.principal import Principal
 from endbot_core.script_forms import ScriptGuard
+from endbot_core.watches import WatchBuffer
 from endbot_core.wire_views import decode_view, encode_view
 from endbotd.config import EndbotdConfig
 from endbotd.service import EndbotService
@@ -99,6 +101,16 @@ class EndbotServiceTests(ServiceHarness):
     def test_hello_carries_the_language_and_hotbar_settings(self):
         self.link()
         self.assertEqual(self.configs, [{"language": "en", "hotbar": {"hotbar-sync-interval-ticks": 2}}])
+
+    def test_a_job_ended_event_reaches_a_job_finished_watch(self):
+        buffer = WatchBuffer("job.finished")
+        subscription = self.service.occurrences.subscribe("job.finished", {}, buffer.on_item, buffer.on_gap)
+        self.addCleanup(self.service.occurrences.unsubscribe, subscription)
+        self.service._record_event(Event(Principal("console"), "job.ended", {
+            "bot": "Miner", "job": "destroy", "reason": reason("disconnected")}))
+        result = buffer.wait(0, lambda: None)
+        self.assertEqual(result["data"], {"kind": "job.finished", "bot": "Miner", "job": "mining",
+                                          "reason": "disconnected"})
 
     def test_only_granted_players_command_bots_and_grants_reach_the_attachment(self):
         link = self.link()

@@ -17,12 +17,29 @@ The plugin hosts scripts; the Node Bedrock runtime is unchanged. Scripts use the
 /botscript delete <name>
 /botscript help
 /botscript menu
+/botscript trigger add <script> <kind> [field=value ...] [name=<name>] [visibility=shared|private] [-- <arg> ...]
+/botscript trigger list
+/botscript trigger show <name>
+/botscript trigger enable <name>
+/botscript trigger disable <name>
+/botscript trigger remove <name>
+/botscript trigger set <name> <policy>=<value> ...
+/botscript trigger visibility <name> shared|private
 ```
 
 Enabled `/bot menu` adds **Scripts...** (after **+ New Bot here**) for shared source, line-by-line and book editing,
 templates, parameter forms, the source on each script's screen, per-controller stopping and confirmed deletion. Typed `save` cannot
 author source. Positional run arguments follow the script's declaration order, then `name=value`; quote positions, for example
 `/botscript run row #miners "~ ~ ~" 2`. Runs never resume after restart. Disabling scripting retains source.
+
+**Triggers** bind an event kind and filter to a script and start it for each occurrence. The script declares
+`param.event("event")`; `trigger add` and `trigger enable` approve the script's declaration and parameters, so only
+someone who may run the script can arm it. `area=` takes the area values in one quoted token as `within` does
+(`"100 64 200"`, `"0 64 0 3 65 3"`, `"5 of 0 64 0"`), optionally with `except <values>`; `--` separates the
+script arguments. `trigger set` takes `concurrency`, `cooldown` (ticks), `startsPerMinute` and `queue`. The console
+addresses another owner's trigger as `<owner>/<name>` (display name or owner key). Limits:
+`[limits] max-triggers-per-controller` (default 8, `0` disables triggers). See
+[SCRIPTING.md](SCRIPTING.md#triggers) for pausing, disabling and the policy defaults.
 
 ## Quick start
 

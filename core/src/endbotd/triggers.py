@@ -60,6 +60,7 @@ class TriggerEngine:
 
     def __init__(self, store, hub, scripts, *, authorize: Callable[[Principal], bool],
                  role: Callable[[str], str | None] = lambda xuid: None,
+                 grant_revision: Callable[[str], int | None] = lambda player_id: None,
                  linked: Callable[[], bool] = lambda: True,
                  publish: Callable[[Event], None] | None = None,
                  max_triggers: int = DEFAULT_MAX_TRIGGERS,
@@ -67,12 +68,19 @@ class TriggerEngine:
                  monotonic: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time) -> None:
         self.store, self.hub, self.scripts = store, hub, scripts
         self._authorize, self._role, self._linked = authorize, role, linked
+        self._grant_revision = grant_revision
         self._publish = publish
         self.max_triggers = max_triggers
         self._log = log or (lambda level, message: None)
         self._monotonic, self._wall = monotonic, wall
         self._lock = threading.RLock()
-        self._armed: dict[tuple, dict] = {}  # key -> {"policy", "subscription", "declarations"}
+        self._armed: dict[tuple, dict] = {}  # key -> {"policy", "subscription", "generation", "declaration"}
+        # The last policy of each trigger, kept across disarming, so re-arming never resets its start cap.
+        self._policies: dict[tuple, TriggerPolicy] = {}
+        self._generation = 0
+        # Held from the last check before a start to the start, and by every state change: no start after a
+        # disable, remove or pause has returned.
+        self._state = threading.RLock()
         self._work: queue.Queue = queue.Queue()
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
@@ -87,6 +95,8 @@ class TriggerEngine:
         for trigger in self.store.list():
             if trigger.status != "armed":
                 continue
+            if self.max_triggers == 0:
+                continue  # triggers are turned off on this server: nothing is armed, nothing is changed
             if not self._authorize(self._principal(trigger)):
                 # Revoked while endbotd was stopped (a GamerTag removed from endbot.toml): disabled, not armed.
                 self.disable_for(_key(trigger), "owner revoked", notify=False)
@@ -126,13 +136,23 @@ class TriggerEngine:
         last = trigger.stats.get("lastStart")
         elapsed = None if last is None else max(0.0, self._wall() - last)
         policy = TriggerPolicy(trigger.policy, None if elapsed is None else self._monotonic() - elapsed)
+        with self._lock:
+            previous_policy = self._policies.get(key)
+            if previous_policy is not None:
+                policy.carry_from(previous_policy)
+            self._policies[key] = policy
+            self._generation += 1
+            generation = self._generation
+        # Occurrences carry the generation they were subscribed under; one from a replaced subscription is ignored.
         subscription = self.hub.subscribe(
             trigger.kind, trigger.filter,
-            lambda item, key=key: self._work.put(("occurrence", key, item)),
+            lambda item, key=key, generation=generation: self._work.put(("occurrence", key, item, generation)),
             lambda reason, key=key: self._work.put(("gap", key, reason)))
         with self._lock:
             previous = self._armed.pop(key, None)
-            self._armed[key] = {"policy": policy, "subscription": subscription}
+            queued = previous.get("queue", []) if previous is not None else []
+            self._armed[key] = {"policy": policy, "subscription": subscription, "generation": generation,
+                                "queue": queued[-policy.pending:] if policy.pending else []}
         if previous is not None:
             self.hub.unsubscribe(previous["subscription"])
 
@@ -152,7 +172,7 @@ class TriggerEngine:
                 return
             try:
                 if item[0] == "occurrence":
-                    self._occurrence(item[1], item[2])
+                    self._occurrence(item[1], item[2], item[3])
                 elif item[0] == "gap":
                     self._stat(item[1], lastGap=self._wall())
                 elif item[0] == "ended":
@@ -173,10 +193,10 @@ class TriggerEngine:
         if trigger is not None and count:
             self._changed(self.store.update(*key, stats={**trigger.stats, name: trigger.stats.get(name, 0) + count}))
 
-    def _occurrence(self, key: tuple, item: dict) -> None:
+    def _occurrence(self, key: tuple, item: dict, generation: int) -> None:
         with self._lock:
             entry = self._armed.get(key)
-        if entry is None:
+        if entry is None or entry["generation"] != generation:
             return
         policy = entry["policy"]
         if not self._linked():
@@ -202,9 +222,16 @@ class TriggerEngine:
     def _due(self) -> None:
         with self._lock:
             ready = [(key, entry) for key, entry in self._armed.items() if entry.get("queue")]
+        if ready and not self._linked():
+            return  # queued occurrences wait for the plugin: no start while it is unlinked (S3)
         for key, entry in ready:
             decision = entry["policy"].due(self._monotonic())
-            if decision is not None and decision.action == "start":
+            if decision is None:
+                continue
+            if decision.action == "disable":
+                entry["queue"].clear()
+                self.disable_for(key, decision.reason or "rate limit", notify=True)
+            elif decision.action == "start":
                 self._start(key, entry["queue"].pop(0), decision.missed)
 
     def _ended(self, key: tuple) -> None:
@@ -214,11 +241,21 @@ class TriggerEngine:
             entry["policy"].finished(self._monotonic())
 
     def _principal(self, trigger: Trigger) -> Principal:
+        """A ``run`` principal of the owner, bound to the grant revision approved when the trigger was armed.
+
+        Like any run it outlives the owner's session; a revoke and regrant change the grant revision, so it no
+        longer authorizes. An owner without a recorded player id never becomes the console.
+        """
         approved = trigger.approved
         if trigger.owner == "console":
             return Principal("console")
         xuid = trigger.owner.removeprefix("xuid:") if trigger.owner.startswith("xuid:") else None
-        return Principal("player", name=trigger.owner_name, xuid=xuid, player_id=approved.get("playerId"),
+        player_id = approved.get("playerId")
+        if player_id is None and trigger.owner.startswith("player:"):
+            player_id = trigger.owner.removeprefix("player:")
+        if player_id is None:
+            player_id = "unknown"  # authorizes nothing: no grant is recorded for it
+        return Principal("run", name=trigger.owner_name, xuid=xuid, player_id=player_id,
                          grant_revision=approved.get("grantRevision"), role=self._role(xuid) if xuid else None)
 
     def _start(self, key: tuple, item: dict, missed: int) -> None:
@@ -236,6 +273,7 @@ class TriggerEngine:
         if script is None or not self.scripts.can_run(script, principal):
             self.pause_for(key, "script unavailable")
             return
+        found_revision = script.revision
         try:
             found = self._declaration(key, script, principal)
         except LocalizedError as error:
@@ -249,22 +287,32 @@ class TriggerEngine:
             self.pause_for(key, "arguments no longer valid")
             return
         occurrence = {**item, "missed": missed}
-        try:
-            self.scripts.start(script, list(trigger.arguments), principal, requires=tuple(found.requires),
-                               event=occurrence, trigger=trigger.name,
-                               on_end=lambda run, outcome, key=key: self._work.put(("ended", key)))
-        except LocalizedError as error:
-            # At the owner's concurrent-run limit, or scripting is off: the start is skipped and counted (E7).
-            self._stat(key, lastError=str(error)[:256])
-            self._bump(key, "skipped")
-            return
-        with self._lock:
-            entry = self._armed.get(key)
-        if entry is not None:
+        with self._state:
+            # The inspection took time: start only if nothing changed meanwhile.
+            current = self.store.get(*key)
+            with self._lock:
+                entry = self._armed.get(key)
+            try:
+                script = self.scripts.store.get(trigger.script)
+            except (KeyError, LocalizedError):
+                script = None
+            if (current is None or current.status != "armed" or entry is None or current.approved != trigger.approved
+                    or script is None or script.revision != found_revision or not self._linked()
+                    or not self.scripts.can_run(script, principal)):
+                return
+            try:
+                self.scripts.start(script, list(trigger.arguments), principal, requires=tuple(found.requires),
+                                   event=occurrence, trigger=trigger.name,
+                                   on_end=lambda run, outcome, key=key: self._work.put(("ended", key)))
+            except LocalizedError as error:
+                # At the owner's concurrent-run limit, or scripting is off: the start is skipped and counted (E7).
+                self._stat(key, lastError=str(error)[:256])
+                self._bump(key, "skipped")
+                return
             entry["policy"].started(self._monotonic())
-        trigger = self.store.get(*key)
-        self._changed(self.store.update(*key, stats={**trigger.stats, "starts": trigger.stats.get("starts", 0) + 1,
-                                                      "lastStart": self._wall(), "lastError": None}))
+            updated = self.store.update(*key, stats={**current.stats, "starts": current.stats.get("starts", 0) + 1,
+                                                     "lastStart": self._wall(), "lastError": None})
+        self._changed(updated)
 
     def _declaration(self, key: tuple, script, principal):
         """The script's declaration at its current revision, inspected once per revision."""
@@ -282,17 +330,22 @@ class TriggerEngine:
     # -- state changes -----------------------------------------------------
 
     def pause_for(self, key: tuple, reason: str) -> None:
-        self._disarm(key)
-        if self.store.get(*key) is not None:
-            self._changed(self.store.update(*key, status="paused", reason=reason))
+        with self._state:
+            self._disarm(key)
+            if self.store.get(*key) is None:
+                return
+            updated = self.store.update(*key, status="paused", reason=reason)
             self._log("info", f"trigger {key[1]} of {key[0]} paused: {reason}")
+        self._changed(updated)
 
     def disable_for(self, key: tuple, reason: str, *, notify: bool) -> None:
-        self._disarm(key)
-        trigger = self.store.get(*key)
-        if trigger is None:
-            return
-        self._changed(self.store.update(*key, status="disabled", reason=reason))
+        with self._state:
+            self._disarm(key)
+            trigger = self.store.get(*key)
+            if trigger is None:
+                return
+            updated = self.store.update(*key, status="disabled", reason=reason)
+        self._changed(updated)
         self._log("warning", f"trigger {trigger.name} of {trigger.owner_name or trigger.owner} disabled: {reason}")
         if notify:
             self._notify(trigger, reason)
@@ -322,6 +375,8 @@ class TriggerEngine:
         found = self.scripts.inspect(script, principal)
         if event_parameter(found.schema) is None:
             raise LocalizedError("Script {name} has no param.event, so a trigger cannot start it", name=script.name)
+        # The stored arguments are checked now, as a form run checks its values (E6).
+        self.scripts.check_arguments(found.schema, [str(value) for value in arguments], principal)
         if stored:
             check_kind(kind, found.requires)
             canonical = filter_
@@ -385,38 +440,58 @@ class TriggerEngine:
         return created
 
     def enable(self, principal: Principal, name: str, owner: str | None = None) -> Trigger:
-        """Arm again; this re-approves the script's current declaration and parameters (E7)."""
+        """Arm again; this re-approves the script's current declaration and parameters (E7).
+
+        The console may enable someone else's trigger; it is then approved under that owner's current grant and
+        still counts toward the owner's armed limit.
+        """
+        if self.max_triggers == 0:
+            raise LocalizedError("Triggers are turned off on this server")
         trigger = self._own(owner, name, principal)
-        if trigger.status != "armed" and not principal.console and \
+        if trigger.status != "armed" and trigger.owner != "console" and \
                 self.store.count_armed(trigger.owner) >= self.max_triggers:
             raise LocalizedError("A controller may have at most {limit} armed triggers", limit=self.max_triggers)
-        acting = principal if not principal.console or trigger.owner == "console" else self._principal(trigger)
+        if principal.console and trigger.owner != "console":
+            acting = self._principal(trigger)
+            acting = Principal("run", name=acting.name, xuid=acting.xuid, player_id=acting.player_id,
+                               grant_revision=self._grant_revision(acting.player_id), role=acting.role)
+            if not self._authorize(acting):
+                raise LocalizedError("The owner {owner} of trigger {name} no longer holds a controller grant",
+                                     owner=trigger.owner_name or "?", name=name)
+        else:
+            acting = principal
         _, _, _, _, approved = self._approve(acting, trigger.script, trigger.kind, trigger.filter, trigger.arguments,
                                              stored=True)
-        trigger = self.store.update(trigger.owner, name, status="armed", reason=None, approved=approved)
-        self._arm(trigger)
+        with self._state:
+            trigger = self.store.update(trigger.owner, name, status="armed", reason=None, approved=approved)
+            self._arm(trigger)
         self._changed(trigger)
         return trigger
 
     def disable(self, principal: Principal, name: str, owner: str | None = None) -> Trigger:
         trigger = self._own(owner, name, principal)
-        self._disarm(_key(trigger))
-        trigger = self.store.update(trigger.owner, name, status="disabled", reason="disabled by its owner")
+        with self._state:
+            self._disarm(_key(trigger))
+            trigger = self.store.update(trigger.owner, name, status="disabled", reason="disabled by its owner")
         self._changed(trigger)
         return trigger
 
     def remove(self, principal: Principal, name: str, owner: str | None = None) -> None:
         trigger = self._own(owner, name, principal)
-        self._disarm(_key(trigger))
-        self.store.remove(trigger.owner, name)
+        with self._state:
+            self._disarm(_key(trigger))
+            self.store.remove(trigger.owner, name)
+            with self._lock:
+                self._policies.pop(_key(trigger), None)
         self._changed(trigger)
 
     def set_policy(self, principal: Principal, name: str, values: dict, owner: str | None = None) -> Trigger:
         trigger = self._own(owner, name, principal)
         policy = policy_from({**trigger.policy, **values})
-        trigger = self.store.update(trigger.owner, name, policy=policy)
-        if trigger.status == "armed":
-            self._arm(trigger)
+        with self._state:
+            trigger = self.store.update(trigger.owner, name, policy=policy)
+            if trigger.status == "armed":
+                self._arm(trigger)
         self._changed(trigger)
         return trigger
 

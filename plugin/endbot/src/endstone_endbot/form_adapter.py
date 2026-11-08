@@ -17,7 +17,7 @@ from endbot_core.operations import command_text
 LOGGER = logging.getLogger(__name__)
 
 # /botscript form steps that are not commands a player could type.
-SCRIPT_FORM_STEPS = {("parameters",), ("edit",), ("save",)}
+SCRIPT_FORM_STEPS = {("parameters",), ("edit",), ("save",), ("trigger", "menu"), ("trigger", "new")}
 
 
 class FormPresenter:
@@ -127,7 +127,8 @@ class FormPresenter:
             # Menu navigation is not echoed: /bot ends with "menu", /botgroup starts with it. /botscript also
             # opens forms (`parameters`, `edit`) and saves them (`save`) with internal words nobody can type.
             if (command[:1] if action.command in {"botgroup", "botscript"} else command[-1:]) != ("menu",) and not (
-                action.command == "botscript" and command[:1] in SCRIPT_FORM_STEPS
+                action.command == "botscript"
+                and any(command[:len(step)] == step for step in SCRIPT_FORM_STEPS)
             ):
                 # Show the typed equivalent, so forms also teach the command. ASCII only:
                 # the Bedrock chat font lacks symbols such as arrows.

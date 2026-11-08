@@ -152,13 +152,13 @@ class OccurrenceHubTests(unittest.TestCase):
 
         self.hub.subscribe("block.change", {"area": box(0, 64, 0, 0, 64, 0)}, print, on_gap)
         self.hub.link_changed("epoch-1")
-        self.hub.link_changed(None, "epoch-1")
+        self.hub.link_changed(None, closed="epoch-1")
         self.hub.link_changed("epoch-2")
         revisions = [interest["revision"] for interest in self.sent]
         self.assertEqual(revisions, sorted(revisions))
         self.assertIn([5, 64, 5], self.sent[-1]["block"][0]["cells"])  # the watch the gap opened is in the last set
         before = len(gaps)
-        self.hub.link_changed(None, "epoch-1")  # the old link's close arrives after the new link: no gap
+        self.hub.link_changed(None, closed="epoch-1")  # the old link's close arrives after the new link: no gap
         self.assertEqual(len(gaps), before)
 
     def test_gaps_reach_subscriptions_of_their_source_once_per_cause(self):

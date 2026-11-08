@@ -20,6 +20,8 @@ from endstone.event import (
     BlockBreakEvent,
     BlockPlaceEvent,
     EventPriority,
+    PlayerChatEvent,
+    PlayerDeathEvent,
     PlayerJoinEvent,
     PlayerQuitEvent,
     event_handler,
@@ -177,6 +179,12 @@ SCRIPT_USAGES = [
     "/botscript (export)<action: EndbotScriptExport> <name: string>",
     "/botscript (export)<action: EndbotScriptExportTo> <name: string> (overwrite)<mode: EndbotScriptOverwrite>",
     "/botscript (reload)<action: EndbotScriptReload>",
+    "/botscript (trigger)<action: EndbotScriptTrigger> <arguments: message>",
+    (
+        "/botscript (trigger)<action: EndbotScriptTriggerOperation> "
+        "(add|list|show|enable|disable|remove|set|visibility)<verb: EndbotScriptTriggerVerb> "
+        "[arguments: message]"
+    ),
 ]
 
 
@@ -369,6 +377,13 @@ class EndbotPlugin(Plugin):
         if self._blocks is not None:
             self._blocks.player_changed(event.block, event.player, "player-place")
 
+    @event_handler(priority=EventPriority.MONITOR)
+    def on_player_death(self, event: PlayerDeathEvent) -> None:
+        if self._blocks is not None:
+            # Translatable.text is the translation key; a plain string death message is used as it is.
+            message = getattr(event.death_message, "text", event.death_message)
+            self._blocks.player_died(event.player, "" if message is None else str(message))
+
     @event_handler
     def on_player_join(self, event: PlayerJoinEvent) -> None:
         player = event.player
@@ -377,11 +392,21 @@ class EndbotPlugin(Plugin):
             self._link.player_joined(player)
         if self._world is not None:
             self._world.apply_pending_placement(player)
+        if self._blocks is not None:
+            self._blocks.player_presence("player.join", player)
 
     @event_handler
     def on_player_quit(self, event: PlayerQuitEvent) -> None:
         if self._link is not None:
             self._link.player_quit(event.player)
+        if self._blocks is not None:
+            self._blocks.player_presence("player.leave", event.player)
+
+    @event_handler(priority=EventPriority.MONITOR, ignore_cancelled=True)
+    def on_player_chat(self, event: PlayerChatEvent) -> None:
+        # Public chat only: /tell, /msg and /w are commands and raise no chat event (BLOCK_EVENTS_SPIKE.md).
+        if self._blocks is not None:
+            self._blocks.player_presence("player.chat", event.player, event.message)
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         if command.name not in ROOTS:

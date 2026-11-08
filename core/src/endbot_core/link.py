@@ -700,8 +700,9 @@ class LinkServer:
         self._on_submit = on_submit
         self._on_presence = on_presence
         self._on_events = on_events
-        # Called with the new epoch after a plugin links, and with (None, its epoch) after that link goes away
-        # (EVENTS.md E4 gaps); a close that names an older epoch than the current link is stale.
+        # Called with the new epoch and boot id after a plugin links, and with (None, its epoch) after that link goes
+        # away (EVENTS.md E4 gaps, E9 server.started); a close that names an older epoch than the current link is
+        # stale.
         self._on_link = on_link
         self._grant_revision = grant_revision or (lambda player_id: 0)
         # A player's role by XUID, read for each command (S5); without one every player is a scripter.
@@ -803,6 +804,9 @@ class LinkServer:
             epoch = body.get("epoch")
             if not isinstance(epoch, str) or not epoch:
                 raise LinkError("invalid", "hello needs an epoch")
+            boot = body.get("boot")
+            if not isinstance(boot, str) or not boot:
+                raise LinkError("invalid", "hello needs a boot")
             sock.settimeout(None)
         except (LinkError, OSError) as error:
             if isinstance(error, LinkError) and error.code != "unavailable":
@@ -829,7 +833,7 @@ class LinkServer:
             previous.close("replaced by a newer plugin link")
         self._log("info", f"Endbot plugin {body.get('pluginVersion')} linked")
         if self._on_link is not None:
-            self._on_link(epoch)
+            self._on_link(epoch, boot=boot if body.get("firstLink") is True else None)
 
     def _accept_cli(self, sock: socket.socket, reader: FrameReader) -> None:
         """Run one CLI connection beside the plugin link; it never replaces the link."""

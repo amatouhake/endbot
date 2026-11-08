@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import NamedTuple
 from uuid import uuid4
 
-from endbot_core import script_forms
+from endbot_core import areas, script_forms
 from endbot_core.commands import (
     DIM,
     ERROR,
@@ -27,12 +27,12 @@ from endbot_core.control import bot_profiles
 from endbot_core.events import Event, outcome_text, reason
 from endbot_core.group_forms import GroupGuard
 from endbot_core.i18n import LocalizedError, Text, localize_error, tr
-from endbot_core.operations import OPERATIONS, Operation
+from endbot_core.operations import EVENTS, OPERATIONS, Operation
 from endbot_core.ownership import OwnershipRefused, owner_for_gamertag
 from endbot_core.ownership import owner_key as ownership_key
 from endbot_core.principal import Principal
 from endbot_core.script_books import pages_to_source, source_to_pages, written
-from endbot_core.script_params import arguments, declarations, required
+from endbot_core.script_params import arguments, declarations, event_parameter, required
 from endbot_core.script_process import RunnerProcess
 from endbot_core.script_store import FILE_SUFFIX, VISIBILITIES, Script, load_files
 from endbot_core.watches import MAX_WATCHES_PER_RUN, WatchBuffer, validate_filter
@@ -133,6 +133,8 @@ class ScriptService:
         self.on_runs_changed = None
         # endbotd's event fan-out (BOT-022); without it watch() is refused.
         self.occurrences = None
+        # endbotd's trigger engine (BOT-022 step 5c); None elsewhere, where trigger commands are refused.
+        self.triggers = None
         self._watch_owners: dict = {}  # owner key -> open watches across that controller's runs
 
     def _enabled(self):
@@ -429,6 +431,11 @@ class ScriptService:
             self.on_runs_changed()
         return identity
 
+    def check_arguments(self, schema, values, source):
+        """Refuse stored arguments the schema does not accept, as a form run would (a trigger's approval)."""
+        groups = self.service._store(source) if self.service.groups is not None else None
+        arguments(schema, values, groups=groups, bots=bot_profiles(self.inputs), origin=None)
+
     def _prepare(self, run, schema, values):
         self._alive(run)
         with self.inputs.scope(run.identity, lambda: self._alive(run)):
@@ -671,7 +678,11 @@ class ScriptService:
             subscription = self.occurrences.subscribe(kind, canonical, buffer.on_item, buffer.on_gap)
         except BaseException:
             with self._lock:
-                self._watch_owners[owner] -= 1
+                remaining = self._watch_owners.get(owner, 1) - 1
+                if remaining > 0:
+                    self._watch_owners[owner] = remaining
+                else:
+                    self._watch_owners.pop(owner, None)
             raise
         run.next_watch += 1
         run.watches[run.next_watch] = (subscription, buffer, owner)
@@ -881,6 +892,216 @@ class ScriptService:
             # Called on the command worker after all earlier operations.
             self.inputs.cleanup(run.identity)
 
+    # -- triggers (BOT-022 step 5c: the commands and forms only parse, call and reply) -------------
+
+    def _trigger_command(self, tail, source, lang, guard):
+        if self.triggers is None:
+            raise LocalizedError("Triggers need endbotd; they are not available here")
+        if not tail:
+            raise LocalizedError("Use /botscript trigger add|list|show|enable|disable|remove|set|visibility ...")
+        verb, rest = tail[0].lower(), tail[1:]
+        if verb == "add":
+            return self._trigger_add(rest, source, lang, guard)
+        if verb == "menu":
+            self._player(source)
+            if not rest:
+                triggers = [self._trigger_data(trigger, source) for trigger in self.triggers.list(source)]
+                return CommandResult(True, data=self._menu_data("scriptTriggers", lang, triggers=triggers))
+            if len(rest) == 1:
+                trigger = self._trigger_get(rest[0], source)
+                return CommandResult(True, data=self._menu_data("scriptTrigger", lang,
+                                                                trigger=self._trigger_data(trigger, source)))
+            raise LocalizedError("Use /botscript trigger show <name>")
+        if verb == "new":
+            self._player(source)
+            return self._trigger_new(rest, source, lang, guard)
+        if verb == "list" and not rest:
+            lines = tuple(reply(script_forms.trigger_line(trigger, lang))
+                          for trigger in self.triggers.list(source))
+            return CommandResult(True, lines or (reply(tr(lang, "No triggers")),))
+        if verb == "show" and len(rest) == 1:
+            trigger = self._trigger_get(rest[0], source)
+            return CommandResult(True, tuple(reply(line) for line in script_forms.trigger_lines(trigger, lang)))
+        if verb == "enable" and len(rest) == 1:
+            owner, name = self._trigger_ref(rest[0], source)
+            trigger = self.triggers.enable(source, name, owner)
+            declaration = trigger.approved.get("declaration") or []
+            text = ", ".join(declaration) if declaration else tr(lang, "basic only")
+            return CommandResult(
+                True, (reply(tr(lang, "Trigger {name} armed; it runs {script} with: {declaration}",
+                                  name=trigger.name, script=trigger.script, declaration=text)),),
+                log_level="info",
+                log_messages=(f"Trigger {trigger.name} of {self._who(source)} armed",))
+        if verb == "disable" and len(rest) == 1:
+            owner, name = self._trigger_ref(rest[0], source)
+            trigger = self.triggers.disable(source, name, owner)
+            return CommandResult(
+                True, (reply(tr(lang, "Trigger {name} disabled", name=trigger.name)),), log_level="info",
+                log_messages=(f"Trigger {trigger.name} of {self._who(source)} disabled",))
+        if verb == "remove" and len(rest) == 1:
+            owner, name = self._trigger_ref(rest[0], source)
+            self.triggers.remove(source, name, owner)
+            return CommandResult(
+                True, (reply(tr(lang, "Trigger {name} removed", name=name)),), log_level="info",
+                log_messages=(f"Trigger {name} of {self._who(source)} removed",))
+        if verb == "set" and len(rest) >= 2:
+            owner, name = self._trigger_ref(rest[0], source)
+            trigger = self.triggers.set_policy(source, name, self._trigger_policy(rest[1:]), owner)
+            policy = script_forms.policy_text(trigger.policy)
+            return CommandResult(
+                True, (reply(tr(lang, "Trigger {name}: {policy}", name=trigger.name,
+                                  policy=script_forms.policy_text(trigger.policy, lang))),),
+                log_level="info",
+                log_messages=(f"Trigger {trigger.name} of {self._who(source)}: {policy}",))
+        if verb == "visibility" and len(rest) == 2 and rest[1].lower() in {"shared", "private"}:
+            visibility = rest[1].lower()
+            owner, name = self._trigger_ref(rest[0], source)
+            trigger = self.triggers.set_visibility(source, name, visibility, owner)
+            return CommandResult(
+                True, (reply(tr(lang, "Trigger {name} is now {visibility}", name=trigger.name,
+                                  visibility=Text(visibility))),),
+                log_level="info",
+                log_messages=(f"Trigger {trigger.name} of {self._who(source)} is now {visibility}",))
+        raise LocalizedError("Use /botscript trigger add|list|show|enable|disable|remove|set|visibility ...")
+
+    def _trigger_ref(self, token, source):
+        """``(owner key or None, name)`` for ``<name>`` or ``<owner>/<name>``.
+
+        The owner is the display name (case-insensitive) or the owner key; a player's bare name is their own.
+        """
+        if not isinstance(token, str) or not token:
+            raise LocalizedError("Trigger {name} does not exist", name="")
+        owner, separator, name = token.partition("/")
+        if not separator:
+            return None, token
+        for trigger in self.triggers.list(source):
+            if trigger.owner == owner or (trigger.owner_name or "").casefold() == owner.casefold():
+                return trigger.owner, name
+        raise LocalizedError("Trigger {name} does not exist", name=name or token)
+
+    def _trigger_get(self, token, source):
+        owner, name = self._trigger_ref(token, source)
+        return self.triggers.get(owner, name, source)
+
+    @staticmethod
+    def _trigger_filter_value(kind, field, value):
+        spec = EVENTS.get(kind, {}).get("filters", {}).get(field)
+        if spec is None:
+            return value
+        if spec["type"] == "area":
+            try:
+                return areas.clause_from_value(value)
+            except LocalizedError as error:
+                raise LocalizedError("Trigger filter {field}: {reason}", field=field,
+                                     reason=Text(str(error))) from None
+        if spec["type"] == "integer":
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                raise LocalizedError("Trigger filter {field} must be a whole number", field=field) from None
+        return value
+
+    @staticmethod
+    def _trigger_policy(words):
+        values = {}
+        for word in words:
+            field, separator, value = word.partition("=")
+            if not separator or not field:
+                raise LocalizedError("Use /botscript trigger set <name> <policy>=<value> ...")
+            if field == "concurrency":
+                if value not in {"skip", "queue", "parallel"}:
+                    raise LocalizedError("Trigger policy concurrency must be skip, queue or parallel")
+                values[field] = value
+            elif field in {"cooldown", "startsPerMinute", "queue"}:
+                try:
+                    values[field] = int(value)
+                except (TypeError, ValueError):
+                    raise LocalizedError("Trigger policy {field} must be an integer", field=field) from None
+            else:
+                raise LocalizedError("Unknown trigger policy {field}; policies: concurrency, cooldown, "
+                                     "startsPerMinute, queue", field=field)
+        return values
+
+    def _trigger_add(self, rest, source, lang, guard):
+        if len(rest) < 2:
+            raise LocalizedError("Use /botscript trigger add <script> <kind> [field=value ...] [-- <args>]")
+        script_name, kind = rest[0], rest[1]
+        words = rest[2:]
+        if "--" in words:
+            separator = words.index("--")
+            filter_words, arguments = words[:separator], words[separator + 1:]
+        else:
+            filter_words, arguments = words, []
+        name, visibility, filters = None, "private", {}
+        for word in filter_words:
+            field, separator, value = word.partition("=")
+            if not separator or not field:
+                raise LocalizedError("Use /botscript trigger add <script> <kind> [field=value ...] [-- <args>]")
+            if field == "name":
+                name = value
+            elif field == "visibility":
+                visibility = value.lower()
+            else:
+                filters[field] = self._trigger_filter_value(kind, field, value)
+        if visibility not in {"shared", "private"}:
+            raise LocalizedError("Trigger visibility must be shared or private")
+        script = self._script(script_name, source)
+        if isinstance(guard, script_forms.ScriptGuard) and guard.revision not in {None, script.revision}:
+            raise LocalizedError("Script changed; reopen the menu")
+        trigger = self.triggers.create(source, script=script_name, kind=kind, filter_=filters,
+                                       arguments=arguments, name=name, visibility=visibility)
+        return CommandResult(
+            True, (reply(tr(lang, "Trigger {name} armed for {kind}", name=trigger.name, kind=trigger.kind)),),
+            log_level="info",
+            log_messages=(f"Trigger {trigger.name} of {self._who(source)} armed for {trigger.kind}",))
+
+    def _trigger_new(self, rest, source, lang, guard):
+        """The form steps: choose the script, then the kind, then the filters and parameters."""
+        if not rest:
+            scripts = [{"name": script.name, "revision": script.revision, "owner_name": script.owner_name,
+                        "visibility": script.visibility, "file": script.file,
+                        "own": script.owner == self.owner_key(source)} for script in self._visible(source)]
+            return CommandResult(True, data=self._menu_data("scriptTriggerScripts", lang, scripts=scripts))
+        if len(rest) > 2:
+            raise LocalizedError("Use /botscript trigger add <script> <kind> [field=value ...] [-- <args>]")
+        script = self._script(rest[0], source)
+        if isinstance(guard, script_forms.ScriptGuard) and guard.revision not in {None, script.revision}:
+            raise LocalizedError("Script changed; reopen the menu")
+        declaration = self.inspect(script, source)
+        schema = declaration.schema
+        if event_parameter(schema) is None:
+            raise LocalizedError("Script {name} has no param.event, so a trigger cannot start it", name=script.name)
+        bots = bot_profiles(self.inputs)
+        groups = self.service.visible_groups(source) if self.service.groups else ()
+        script_forms.parameter_choices(schema, groups, bots)
+        if len(rest) == 1:
+            return CommandResult(True, data=self._menu_data(
+                "scriptTriggerKinds", lang, script=self._script_data(script), schema=schema,
+                requires=list(declaration.requires), origin=source.origin))
+        kind = rest[1]
+        if kind not in EVENTS:
+            raise LocalizedError("Unknown event kind {kind}; known kinds: {known}", kind=kind,
+                                 known=", ".join(sorted(EVENTS)) or "none")
+        return CommandResult(True, data=self._menu_data(
+            "scriptTriggerFilter", lang, script=self._script_data(script), kind=kind,
+            filters=EVENTS[kind]["filters"], schema=schema, requires=list(declaration.requires),
+            groups=[{"identity": group.identity, "name": group.name, "members": list(group.members)}
+                    for group in groups],
+            bots=bots, origin=source.origin))
+
+    def _trigger_data(self, trigger, source):
+        """A trigger's plain fields for the menu; the owner may manage it, and so may the console."""
+        own = trigger.owner == self.owner_key(source)
+        return {
+            "name": trigger.name, "owner": trigger.owner, "owner_name": trigger.owner_name,
+            "visibility": trigger.visibility, "kind": trigger.kind, "filter": dict(trigger.filter),
+            "script": trigger.script, "arguments": list(trigger.arguments),
+            "declaration": list(trigger.approved.get("declaration", ())),
+            "status": trigger.status, "reason": trigger.reason, "policy": dict(trigger.policy),
+            "stats": dict(trigger.stats), "own": own, "can_manage": own or source.player_id is None,
+            "ref": trigger.name if own else f"{trigger.owner}/{trigger.name}",
+        }
+
     def execute(self, argv, source):
         lang = _language(source)
         try:
@@ -913,7 +1134,8 @@ class ScriptService:
                                 "| runs | stop <id|name|all> | delete <name> | copy <name> <new> "
                                 "| visibility <name> shared|private | owner <name> <GamerTag> | history <name> "
                                 "| restore <name> <n> | rename <name> <new> | import <name> | export <name> "
-                                "[overwrite] | reload | menu",
+                                "[overwrite] | reload | trigger add|list|show|enable|disable|remove|set|visibility "
+                                "| menu",
                             )
                         ),
                         reply(
@@ -925,6 +1147,8 @@ class ScriptService:
                         ),
                     ),
                 )
+            if operation == "trigger":
+                return self._trigger_command(tail, source, lang, guard)
             if operation == "list" and not tail:
                 text = ", ".join(script_forms.label(script, script.owner == self.owner_key(source), lang)
                                  for script in self._visible(source))
@@ -996,7 +1220,8 @@ class ScriptService:
                 ]
                 return CommandResult(True, data=self._menu_data("scripts", lang, scripts=scripts,
                                                                 author=self._author(source),
-                                                                whole_editor=self.config.ui_pack_editor))
+                                                                whole_editor=self.config.ui_pack_editor,
+                                                                triggers=self.triggers is not None))
             if not tail:
                 raise LocalizedError("Use /botscript help")
             if operation == "import" and len(tail) == 1:

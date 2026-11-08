@@ -172,9 +172,6 @@ class BlockChangeSourceTests(unittest.TestCase):
         self.assertEqual([item["dimension"] for item in self.items()], ["nether"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class PresenceTests(unittest.TestCase):
     """Step 6a: human joins, leaves and public chat, only while endbotd asks for them."""
@@ -196,10 +193,15 @@ class PresenceTests(unittest.TestCase):
         self.source.player_presence("player.join", self.alice)
         self.source.player_presence("player.join", self.bot)
         self.source.player_presence("player.leave", self.alice)  # not asked for
-        self.source.player_presence("player.chat", self.alice, "hi\x1b[31m there" + "x" * 400)
+        self.source.player_presence("player.chat", self.alice, "hi\x1b[31m \u00a7cthere" + "x" * 400)
         self.source.on_tick()
         items = self.items()
         self.assertEqual(items[0], {"kind": "player.join", "player": "Alice"})
         self.assertEqual([item["kind"] for item in items], ["player.join", "player.chat"])
         self.assertEqual(len(items[1]["message"]), 256)
         self.assertNotIn("\x1b", items[1]["message"])
+        self.assertNotIn("\u00a7", items[1]["message"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -33,9 +33,9 @@
       "additionalProperties": {"enum": ["act.bot", "read.world", "wait", "log", "operation", "declaration"]}
     },
     "events": {
-      "description": "The event kinds scripts may watch and triggers may bind, keyed by category.action. Every kind names its source, capability, visibility, filters, payload and measured delivery guarantee (EVENTS E1, E2). Empty until step 2 lists a kind.",
+      "description": "The event kinds scripts may watch and triggers may bind, keyed by category.action; the wall-clock kind is the single word schedule (EVENTS.md names it so). Every kind names its source, capability, visibility, filters, payload and measured delivery guarantee (EVENTS E1, E2).",
       "type": "object",
-      "propertyNames": {"pattern": "^[a-z]+\\.[a-z][a-z_]*$"},
+      "propertyNames": {"pattern": "^(?:[a-z]+\\.[a-z][a-z_]*|schedule)$"},
       "additionalProperties": {"$ref": "#/$defs/eventKind"}
     },
     "reservedBotNames": {
@@ -151,13 +151,20 @@
       }
     },
     "eventFilter": {
-      "description": "One event filter: its value type, an optional default and the box bound of an area filter.",
+      "description": "One event filter: its value type, the only values allowed, an optional default and the box bound of an area filter.",
       "type": "object",
       "required": ["type"],
       "additionalProperties": false,
       "properties": {
         "type": {
           "enum": ["area", "block", "dimension", "string", "integer", "bot", "player", "duration", "time"]
+        },
+        "choices": {
+          "description": "The only string values allowed.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z]+$"}
         },
         "default": {},
         "maxBlocks": {
@@ -170,6 +177,10 @@
         {
           "if": {"required": ["maxBlocks"]},
           "then": {"properties": {"type": {"const": "area"}}}
+        },
+        {
+          "if": {"required": ["choices"]},
+          "then": {"properties": {"type": {"const": "string"}}}
         }
       ]
     },

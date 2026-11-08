@@ -26,3 +26,24 @@ BOT-022 release pass (EVENTS.md step 8) on the locked Endstone/BDS pair.
 The live check for these four kinds is part of the release pass and has not been run yet. It covers: a Bot
 connecting and disconnecting while a watch is open; a profile removed while its Bot is online; a mining job ending
 while a watch is open; and a BDS restart raising `server.started` exactly once with a reconnect raising nothing.
+
+## Schedule and world time
+
+- `schedule`: raised inside endbotd by its wall-clock timer, not by the plugin or the runtime. Each watch or
+  trigger names `every` (an integer and `s`, `m` or `h`, from 10s to 24h, counted from the moment the subscription
+  was made) or `at` (`HH:MM` in endbotd's local time, fired once a day), or both; the occurrence carries the fired
+  local time in `at`. The timer only follows subscriptions that exist, and `schedule` occurrences are still raised
+  with the web enabled and BDS stopped (EVENTS.md S3): the trigger engine skips and counts those starts while the
+  link is down, and watches still receive them.
+- `world.time`: raised by the plugin's poll of `level.time` on the server thread. While `world.time` is in the
+  interest set's `kinds`, the plugin reads the level time every 20 ticks and reports a phase change (`day`,
+  `sunset`, `night` or `sunrise`) with the time of day (`level.time % 24000`). The first read after interest
+  appears is the baseline, so a watch opened mid-phase sees only later changes; phases last at least 1000 ticks,
+  well over the poll period.
+
+### Not yet run
+
+The live checks for these two kinds belong to the combined BOT-021/BOT-022 release pass (EVENTS.md step 8) and
+have not been run yet. They cover: `every` firing at its interval and `at` at its local minute while a watch and a
+trigger are open; a `schedule` trigger being skipped and counted while BDS is stopped; and `world.time` reporting
+each phase change within 20 ticks across a full day cycle.

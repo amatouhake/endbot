@@ -629,6 +629,16 @@ if r.ok then log(r.data.from .. " became " .. r.data.to .. " (" .. r.data.cause 
 w:close()                          -- optional; a watch ends with its run
 ```
 
+```lua
+local w = watch("schedule", {every = "1m"})        -- each time the endbotd timer fires
+local n = watch("world.time", {phase = "night"})   -- each time night falls
+```
+
+- `schedule` takes `every` (an integer and `s`, `m` or `h`, from `10s` to `24h`), `at` (`HH:MM` in endbotd's
+  local time, once a day) or both. `data.at` is the local time of the tick that fired.
+- `world.time` takes an optional `phase` (`day`, `sunset`, `night` or `sunrise`). `data.phase` and `data.time`
+  (the level time of day, 0-23999) change when the day cycle enters another phase.
+
 - `watch(kind, filter)` checks the kind, every filter name and value, the required filters and the kind's capability
   against `requires {}` before it returns; a mistake stops the run with a message naming the field. Block names may
   omit `minecraft:`.
@@ -658,6 +668,8 @@ w:close()                          -- optional; a watch ends with its run
 | `bot.died` | none | bot: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 | `job.finished` | none | bot: string, job: string, reason: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 | `server.started` | none | none | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `schedule` | every: duration or at: time | at: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `world.time` | none | phase: string, time: integer | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 <!-- END GENERATED EVENTS -->
 
 ## Lifetime, boundaries and unverified gates

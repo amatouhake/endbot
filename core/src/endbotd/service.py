@@ -41,6 +41,7 @@ from endbotd.config import EndbotdConfig
 from endbotd.journal import RunJournal
 from endbotd.occurrences import DEFAULT_MAX_WATCHED_BLOCKS, MAX_WATCHED_BLOCKS, OccurrenceHub
 from endbotd.runtime_kinds import RuntimeKinds
+from endbotd.schedule import ScheduleTimer
 from endbotd.triggers import DEFAULT_MAX_TRIGGERS, TriggerEngine
 from endbotd.web import WebService
 
@@ -148,6 +149,8 @@ class EndbotService:
         self._runtime_control = control
         # Runtime-sourced kinds (BOT-022 6b): profile polling only while bot.online or bot.offline is wanted.
         self.runtime_kinds = RuntimeKinds(self.occurrences, self._runtime_control, log=self._log)
+        # The wall-clock timer for the schedule kind (BOT-022 6c); it needs no link.
+        self.schedule = ScheduleTimer(self.occurrences, log=self._log)
         control = OwnedInputs(control)
         self._inputs = control
         journal_file = config.journal_file if config.journal_file.is_absolute() else config.base / config.journal_file
@@ -235,6 +238,7 @@ class EndbotService:
         self._inputs.on_change = self.scripts.on_runs_changed = self._record_runs
         self.link.start()
         self.runtime_kinds.start()
+        self.schedule.start()
         self._start_web_link()
         threading.Thread(target=self._poll_loop, name="endbotd-mining", daemon=True).start()
         return self
@@ -310,6 +314,7 @@ class EndbotService:
         if self._closed.is_set():
             return
         self._closed.set()
+        self.schedule.close()
         self.triggers.close()
         self.runtime_kinds.close()
         if self.web_link is not None:

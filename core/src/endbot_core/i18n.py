@@ -1143,4 +1143,36 @@ JA.update({
         "Web アカウントはリンク済みです: パスキー {passkeys} 件、セッション {sessions} 件",
 })
 
+# Events and watches (BOT-022).
+JA.update({
+    "Watch filter {field} must be an area (area.cell, area.box or area.sphere)":
+        "watch のフィルタ {field} には範囲 (area.cell、area.box、area.sphere) を指定してください",
+    "Watch filter {field}: {reason}": "watch のフィルタ {field}: {reason}",
+    "Watch filter {field} must be a block name": "watch のフィルタ {field} にはブロック名を指定してください",
+    "Watch filter {field} must be one of {choices}": "watch のフィルタ {field} は {choices} のいずれかです",
+    "Watch filter {field} must be a name": "watch のフィルタ {field} には名前を指定してください",
+    "Watch filter {field} must be a whole number": "watch のフィルタ {field} には整数を指定してください",
+    "Watch filter {field} must be text": "watch のフィルタ {field} には文字列を指定してください",
+    "Watch filter {field} has an unknown type": "watch のフィルタ {field} の型が不明です",
+    "Unknown event kind {kind}; known kinds: {known}": "イベント種別 {kind} はありません。使える種別: {known}",
+    "Watching {kind} needs {capability} in requires {{}}":
+        "{kind} を watch するには requires {{}} に {capability} が必要です",
+    "A watch filter must be a table": "watch のフィルタはテーブルで指定してください",
+    "{kind} has no filter {field}; filters: {known}": "{kind} にフィルタ {field} はありません。フィルタ: {known}",
+    "{kind} needs a filter: {choices}": "{kind} にはフィルタが必要です: {choices}",
+    "A watched area needs absolute coordinates; build it from a position":
+        "watch する範囲には絶対座標が必要です。位置から範囲を作ってください",
+    "A watched area needs a shape": "watch する範囲には形が必要です",
+    "A watched area may hold at most {limit} blocks; this one holds {count}":
+        "watch できる範囲は最大 {limit} ブロックです。この範囲は {count} ブロックあります",
+    "Unknown event kind {kind}": "イベント種別 {kind} はありません",
+    "The server watches at most {limit} blocks; this watch would make it {count}":
+        "サーバーが watch できるのは最大 {limit} ブロックです。この watch で {count} ブロックになります",
+    "Watches need endbotd; they are not available here": "watch には endbotd が必要です。ここでは使えません",
+    "A run may hold at most {limit} watches": "1 回の実行で持てる watch は最大 {limit} 個です",
+    "A controller may hold at most {limit} watches ([limits] max-watches-per-controller)":
+        "コントローラーが持てる watch は最大 {limit} 個です ([limits] max-watches-per-controller)",
+    "Unknown or closed watch": "その watch はないか、閉じられています",
+})
+
 CATALOGS: dict[str, dict[str, str]] = {"ja": JA}

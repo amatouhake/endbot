@@ -500,6 +500,36 @@ log("done")`, {}, {
   assert.deepEqual(waits[0].job.ids, {uuid:7});
 });
 
+test('watch() sends its kind and filter, area values as clause text, and waits and closes by id', async () => {
+  const requests = [];
+  const run = startRun(`params{}
+local w = watch("block.change", {area = area.box(0, 64, 0, 3, 65, 3):minus(area.cell(1, 64, 1)), to = "air"})
+local r = w:wait{timeout = 40}
+assert(r.ok and r.data.x == 1 and r.missed == 0)
+r = w:wait()
+assert(not r.ok and r.code == "timeout")
+w:close()
+w:close()
+assert(not pcall(function() w:wait() end))
+assert(not pcall(function() watch(5) end))
+assert(not pcall(function() watch("block.change", {area = vector.create(1, 2, 3)}) end))
+assert(not pcall(function() watch("block.change", "area") end))
+log("done")`, {}, {
+    onWatch: e => { requests.push(e); return { watch: 7 }; },
+    onWatchWait: e => {
+      requests.push(e);
+      return { result: e.timeout === 40 ? { ok: true, code: 'ok', reason: 'occurred', data: { kind: 'block.change', x: 1 }, missed: 0 }
+        : { ok: false, code: 'timeout', reason: 'timeout', missed: 0 } };
+    },
+    onWatchClose: e => { requests.push(e); return {}; },
+  });
+  assert.equal((await run.done).type, 'done');
+  assert.deepEqual(requests.map(e => [e.type, e.watch, e.timeout]),
+    [['watch', undefined, undefined], ['watchWait', 7, 40], ['watchWait', 7, 1200], ['watchClose', 7, undefined]]);
+  assert.deepEqual(requests[0].kind, 'block.change');
+  assert.deepEqual(requests[0].filter, { area: 'within 0 64 0 3 65 3 except 1 64 1', to: 'air' });
+});
+
 test('waitMining suspends until reply and host stop prevents later work', async () => {
   let run;
   run = startRun('params{}\nbot("A"):waitMining{timeout=20}\nlog("wrong")', {}, {

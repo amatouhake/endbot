@@ -1,7 +1,7 @@
 # Events, watches and triggers design (BOT-022)
 
 Status: **Steps 1 to 7 on `main`** (2026-11-08 JST, #234 to #247); design agreed 2026-10-29 JST, amended
-2026-11-08 JST by S6 to S10 (see [settled points](#settled-points)). The Bot-only live smoke passed
+2026-11-08 JST by S6 to S13 (see [settled points](#settled-points)). The Bot-only live smoke passed
 ([record](EVENTS_VALIDATION.md#bot-only-live-smoke)); step 8, the human checks, belongs to the combined release pass.
 
 This document turns [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
@@ -286,6 +286,20 @@ Decided 2026-11-08 JST, before implementation started:
   locked Endstone the chat event comes before a behavior pack's `chatSend` mute and BDS's chat filter run, so a
   message nobody saw could reach a script; operators who do not mute chat with a pack turn it on
   ([record](EVENTS_VALIDATION.md#presence-and-chat)).
+
+Approved by the operator 2026-11-08 JST after implementation (they changed the design during review):
+
+- **S11. `bot.online` and `bot.offline` are a sample, not a feed.** endbotd reads the runtime's Bot profiles once a
+  second, so their guarantee is `persist` 40 ticks (a state that lasts two seconds is delivered), they are
+  runtime-sourced, a failed poll is a gap, and a watch or trigger made after the last sample gets no change that may
+  predate it ([record](EVENTS_VALIDATION.md#runtime-and-server-kinds)).
+- **S12. Area filters and the poll.** A watched area is absolute (`~` and the sphere around a Bot are refused: a watch
+  has no Bot to resolve against), holds at most 512 cells and at most 16 `except` clauses in 1024 characters (every
+  occurrence is tested against every shape on the link thread), and spells the End `end` as commands do. The 4-tick
+  poll is fixed, not an operator setting, so `guarantee.ticks` stays true.
+- **S13. A trigger pauses when its script's parameters change** (`arguments no longer valid`), even if the stored
+  arguments would still be accepted; enabling it again re-approves and checks the arguments. Stored arguments are
+  also checked when the trigger is armed.
 
 ## Steps
 

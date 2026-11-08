@@ -12,8 +12,10 @@ on the server thread only:
 - skips positions whose chunk is not loaded (an unloaded read returns air) and
   keeps their baseline, so a difference is reported late, as ``poll``, once the
   chunk loads again;
-- never reports a newly watched position as changed: its first read is the
-  baseline.
+- never reports a newly watched position as changed: its first read, in its
+  own quarter, is the baseline, so a large new interest set costs no more per
+  tick than the poll does; a player action there before that read is still
+  reported, from the block the event saw.
 
 Occurrences carry no owner and no human player's name (S1): ``bot`` is set
 only when a Bot did it. One tick's occurrences go out as one ``events`` frame.
@@ -28,7 +30,7 @@ from collections.abc import Callable
 POLL_TICKS = 4
 KIND = "block.change"
 # Endstone dimension names to the registry's dimension values.
-DIMENSION_VALUES = {"Overworld": "overworld", "Nether": "nether", "TheEnd": "the_end"}
+DIMENSION_VALUES = {"Overworld": "overworld", "Nether": "nether", "TheEnd": "end"}
 ENDSTONE_DIMENSIONS = {value: name for name, value in DIMENSION_VALUES.items()}
 # Presence and public chat (step 6a): reported only for human players and only while endbotd asks for them.
 PRESENCE_KINDS = frozenset({"player.join", "player.leave", "player.chat"})
@@ -46,7 +48,7 @@ class BlockChangeSource:
         # (dimension value, x, y, z) -> (runtime id, block type) or None while its chunk has not been read.
         self._baseline: dict[tuple, tuple | None] = {}
         self._phases: list[list[tuple]] = [[] for _ in range(POLL_TICKS)]
-        self._confirm: list[tuple[int, tuple, str, str | None]] = []
+        self._confirm: list[tuple[int, tuple, str, str | None, str | None]] = []
         self._pending: list[dict] = []
         self._dropped = 0
         self._dimensions: set[str] = set()
@@ -69,17 +71,16 @@ class BlockChangeSource:
                     if (isinstance(cell, list) and len(cell) == 3
                             and all(type(value) is int for value in cell)):
                         cells.add((dimension, *cell))
+        if cells == set(self._baseline):
+            return  # the same positions (a resent set after a relink): keep baselines and phases
         self._dimensions = {key[0] for key in cells}
-        loaded = self._loaded() if cells - set(self._baseline) else {}
-        baseline = {}
-        for key in cells:
-            baseline[key] = self._baseline[key] if key in self._baseline else self._read(key, loaded)
-        self._baseline = baseline
+        # New positions get their baseline from their first phase read, never all at once on this tick.
+        self._baseline = {key: self._baseline.get(key) for key in cells}
         phases: list[list[tuple]] = [[] for _ in range(POLL_TICKS)]
         for index, key in enumerate(sorted(cells)):
             phases[index % POLL_TICKS].append(key)
         self._phases = phases
-        self._confirm = [item for item in self._confirm if item[1] in baseline]
+        self._confirm = [item for item in self._confirm if item[1] in self._baseline]
 
     def player_changed(self, block, player, cause: str) -> None:
         """A break or place event at MONITOR priority: confirm what the world holds on the next tick."""
@@ -90,7 +91,9 @@ class BlockChangeSource:
         if key not in self._baseline:
             return
         bot = None if player is None or str(getattr(player, "xuid", "") or "") else str(player.name)
-        self._confirm.append((self.tick + 1, key, cause, bot))
+        # What the event saw before the action: the `from` when the position had no baseline read yet.
+        before = getattr(block, "type", None)
+        self._confirm.append((self.tick + 1, key, cause, bot, before if isinstance(before, str) else None))
 
     def player_presence(self, kind: str, player, message: str | None = None) -> None:
         """A human player joined, left or chatted publicly; Bots are left out (bot.* kinds cover them)."""
@@ -115,13 +118,16 @@ class BlockChangeSource:
             self._report(self.tick, pending, dropped)
 
     def _poll(self) -> None:
-        loaded = self._loaded()
         due = [item for item in self._confirm if item[0] <= self.tick]
+        phase = self._phases[self.tick % POLL_TICKS]
+        if not (due or phase):
+            return
+        loaded = self._loaded()  # only on ticks that read something
         if due:
             self._confirm = [item for item in self._confirm if item[0] > self.tick]
-            for _, key, cause, bot in due:
-                self._check(key, loaded, cause, bot)
-        for key in self._phases[self.tick % POLL_TICKS]:
+            for _, key, cause, bot, before in due:
+                self._check(key, loaded, cause, bot, before)
+        for key in phase:
             self._check(key, loaded, "poll", None)
 
     def _loaded(self) -> dict[str, set]:
@@ -143,7 +149,7 @@ class BlockChangeSource:
         block = entry[0].get_block_at(x, y, z)
         return block.data.runtime_id, block.type
 
-    def _check(self, key: tuple, loaded: dict, cause: str, bot: str | None) -> None:
+    def _check(self, key: tuple, loaded: dict, cause: str, bot: str | None, before: str | None = None) -> None:
         if key not in self._baseline:
             return
         current = self._read(key, loaded)
@@ -151,11 +157,18 @@ class BlockChangeSource:
             return  # unloaded: keep the baseline until the chunk loads again
         previous = self._baseline[key]
         self._baseline[key] = current
-        if previous is None or previous[0] == current[0]:
+        if previous is None:
+            # No baseline read yet: a poll only takes one; a confirmed player action reports from what it saw.
+            if before is None or before == current[1]:
+                return
+            source = before
+        elif previous[0] == current[0]:
             return
+        else:
+            source = previous[1]
         dimension, x, y, z = key
         item = {"kind": KIND, "x": x, "y": y, "z": z, "dimension": dimension,
-                "from": previous[1], "to": current[1], "cause": cause}
+                "from": source, "to": current[1], "cause": cause}
         if bot is not None:
             item["bot"] = bot
         self._pending.append(item)

@@ -233,8 +233,8 @@ class OccurrenceHub:
 
         A close that arrives after a newer link replaced it changes nothing. A gap is recorded for plugin-fed
         subscriptions first, then the current set is sent, so a watch opened or closed by a gap callback is in it.
-        A boot id endbotd has not seen before is a fresh BDS process: ``server.started`` is raised once for it,
-        while a reconnect of the same plugin process keeps its boot id and raises nothing (EVENTS.md E9).
+        ``boot`` is given only for the first link of a plugin process: ``server.started`` is raised once for it,
+        so a reconnect, or endbotd restarting under a running BDS, raises nothing (EVENTS.md E9).
         """
         with self._lock:
             if epoch is None and closed is not None and closed != self._epoch:

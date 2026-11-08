@@ -499,7 +499,8 @@ class EventDeliveryTests(LinkHarness):
         self.endbotd.drop_link("test")
         self.assertTrue(wait_for(lambda: link.connected and link.epoch != first_epoch and self.endbotd.connected))
         self.assertEqual(link.boot, first_boot)  # the same plugin process reconnects with the same boot id
-        self.assertTrue(wait_for(lambda: self.links[-1] == (link.epoch, first_boot, None)))
+        # Only a process's first link carries its boot to the hub, so a reconnect raises no server.started.
+        self.assertTrue(wait_for(lambda: self.links[-1] == (link.epoch, None, None)))
 
         link.stop()
         second = self.start_plugin()  # a new plugin process: a new boot id
@@ -514,7 +515,7 @@ class EventDeliveryTests(LinkHarness):
         self.endbotd.drop_link("test")
         self.assertTrue(wait_for(lambda: link.connected and link.epoch != first))
         self.assertTrue(wait_for(lambda: self.links == [
-            (first, link.boot, None), (None, None, first), (link.epoch, link.boot, None)]))
+            (first, link.boot, None), (None, None, first), (link.epoch, None, None)]))
         link.stop()
         self.assertFalse(self.on_server_thread(lambda: link.report_events(1, [{"kind": "block.change"}])))
         self.assertTrue(wait_for(lambda: self.links[-1][0] is None))

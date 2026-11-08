@@ -833,7 +833,7 @@ class LinkServer:
             previous.close("replaced by a newer plugin link")
         self._log("info", f"Endbot plugin {body.get('pluginVersion')} linked")
         if self._on_link is not None:
-            self._on_link(epoch, boot=boot)
+            self._on_link(epoch, boot=boot if body.get("firstLink") is True else None)
 
     def _accept_cli(self, sock: socket.socket, reader: FrameReader) -> None:
         """Run one CLI connection beside the plugin link; it never replaces the link."""

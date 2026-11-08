@@ -292,7 +292,9 @@ BOT-021 and BOT-022 ship together in one release; no release is cut between them
    within 1, 2, 4 and 8 ticks. Also measured: poll cost per 1000 positions per pass, reads in unloaded chunks, and
    whether `player.join`, `player.leave`, `player.chat` (public only; a `/tell` must raise nothing the plugin
    forwards) and death messages have usable events. Recorded in `docs/BLOCK_EVENTS_SPIKE.md` with a `#result`
-   section that sets `guarantee.ticks`, `each`, `block-poll-ticks` and `max-watched-blocks`. *Claude.*
+   section that sets `guarantee.ticks`, `each`, `block-poll-ticks` and `max-watched-blocks`. *Claude.* **Done
+   2026-11-08 JST** ([record](BLOCK_EVENTS_SPIKE.md#result)): poll every 4 ticks, `guarantee.ticks` 4, `each` player
+   break and place, `max-watched-blocks` 2048.
 2. **Registry.**
    - **2a. The `events` schema** (E1, E2), the registry tests (required fields, `require` sets, `visibility` must be
      `public`, `record` anchor exists, `persist` needs `ticks`), and `api.luau`/docs generation of kind and guarantee

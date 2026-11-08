@@ -43,7 +43,10 @@ class PluginAdapterTests(unittest.TestCase):
         command.ConsoleCommandSender = FakeConsole
         event.PlayerJoinEvent = type("PlayerJoinEvent", (), {})
         event.PlayerQuitEvent = type("PlayerQuitEvent", (), {})
-        event.event_handler = lambda function: function
+        event.BlockBreakEvent = type("BlockBreakEvent", (), {})
+        event.BlockPlaceEvent = type("BlockPlaceEvent", (), {})
+        event.EventPriority = type("EventPriority", (), {"MONITOR": 5})
+        event.event_handler = lambda function=None, **options: function or (lambda inner: inner)
         level.Location = type("Location", (), {})
         plugin.Plugin = FakePlugin
         sys.modules.update(

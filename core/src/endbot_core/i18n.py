@@ -1171,6 +1171,8 @@ JA.update({
     "A watched area may hold at most {limit} blocks; this one holds {count}":
         "watch できる範囲は最大 {limit} ブロックです。この範囲は {count} ブロックあります",
     "Unknown event kind {kind}": "イベント種別 {kind} はありません",
+    "{kind} is turned off on this server; the operator turns it on in [events]":
+        "{kind} はこのサーバーでは無効です。運用者が [events] で有効にできます",
     "The server watches at most {limit} blocks; this watch would make it {count}":
         "サーバーが watch できるのは最大 {limit} ブロックです。この watch で {count} ブロックになります",
     "Watches need endbotd; they are not available here": "watch には endbotd が必要です。ここでは使えません",

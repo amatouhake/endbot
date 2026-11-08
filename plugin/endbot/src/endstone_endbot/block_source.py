@@ -29,6 +29,8 @@ import math
 import re
 from collections.abc import Callable
 
+from endbot_core.commands import strip_colors
+
 POLL_TICKS = 4
 KIND = "block.change"
 DEATH_KIND = "bot.died"
@@ -110,7 +112,7 @@ class BlockChangeSource:
             return
         item = {"kind": kind, "player": str(player.name)}
         if kind == "player.chat":
-            item["message"] = CONTROL.sub(" ", str(message or ""))[:CHAT_LIMIT]
+            item["message"] = strip_colors(CONTROL.sub(" ", str(message or "")))[:CHAT_LIMIT]
         self._pending.append(item)
 
     def player_died(self, player, message: str) -> None:

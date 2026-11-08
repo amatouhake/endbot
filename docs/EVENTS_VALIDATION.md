@@ -30,3 +30,22 @@ BOT-022 release pass (EVENTS.md step 8) on the locked Endstone/BDS pair.
 The live check for these four kinds is part of the release pass and has not been run yet. It covers: a Bot
 connecting and disconnecting while a watch is open; a profile removed while its Bot is online; a mining job ending
 while a watch is open; and a BDS restart raising `server.started` exactly once with a reconnect raising nothing.
+
+## Presence and chat
+
+- `player.join` and `player.leave` come from Endstone's `PlayerJoinEvent` and `PlayerQuitEvent`, measured with a Bot
+  in the step 1 spike ([record](BLOCK_EVENTS_SPIKE.md#presence-chat-and-death)); human players raise the same events.
+  Bots are left out (they have the `bot.*` kinds).
+- `player.chat` comes from `PlayerChatEvent` at MONITOR, with chat cancelled by another Endstone plugin ignored and a
+  chat BDS targets at only some players dropped. Bots cannot chat, so it has **not been measured**: the guarantee is
+  stated from the event's contract and is checked with a human in the release pass.
+- `player.chat` is off unless the operator sets `[events] chat = true` (decided 2026-11-08 JST because of the known
+  limit below); a watch or trigger on it is refused on other servers with the setting named.
+- Known limit: on the locked pair, Endstone raises `PlayerChatEvent` before BDS runs the Script API's
+  `chatSend` before-event and its chat filter, so a message a behavior pack mutes, or BDS rejects, may still reach a
+  `player.chat` watch or trigger although no player saw it.
+
+### Not yet run
+
+A human joining and leaving; a human's public chat delivered once; a `/tell`, `/msg` and `/w` never delivered; a
+chat muted by a behavior pack (the known limit above).

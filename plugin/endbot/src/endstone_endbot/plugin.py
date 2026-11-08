@@ -404,9 +404,18 @@ class EndbotPlugin(Plugin):
 
     @event_handler(priority=EventPriority.MONITOR, ignore_cancelled=True)
     def on_player_chat(self, event: PlayerChatEvent) -> None:
-        # Public chat only: /tell, /msg and /w are commands and raise no chat event (BLOCK_EVENTS_SPIKE.md).
-        if self._blocks is not None:
-            self._blocks.player_presence("player.chat", event.player, event.message)
+        # Public chat only: /tell, /msg and /w are commands and raise no chat event (BLOCK_EVENTS_SPIKE.md), and a
+        # chat BDS targets at some players only is not public either.
+        if self._blocks is None:
+            return
+        try:
+            recipients = list(event.recipients or ())
+            everyone = len(list(self.server.online_players))
+        except (AttributeError, RuntimeError, TypeError):
+            return
+        if recipients and len(recipients) < everyone:
+            return
+        self._blocks.player_presence("player.chat", event.player, event.message)
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         if command.name not in ROOTS:

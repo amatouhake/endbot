@@ -880,7 +880,10 @@
     "waitMining": "wait",
     "waitOnline": "wait",
     "members": "read.world",
-    "operation": "operation"
+    "operation": "operation",
+    "watch": "read.world",
+    "watchWait": "wait",
+    "watchClose": "wait"
   },
   "events": {
     "block.change": {

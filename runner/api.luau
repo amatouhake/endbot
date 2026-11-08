@@ -241,6 +241,38 @@ local function timeout(options, what, default)
         "invalid " .. what .. " timeout")
     return ticks
 end
+-- Watches (BOT-022): `local w = watch("block.change", {area = area.cell(x, y, z), to = "air"})` buffers
+-- occurrences from now on; `w:wait{timeout = ticks}` returns {ok, code, reason, data, missed}; `w:close()`.
+-- A watch ends with its run. Filters are checked by the host against the registry.
+function watch(kind, filter)
+    ready()
+    assert(type(kind) == "string", "watch expects an event kind such as \"block.change\"")
+    assert(filter == nil or type(filter) == "table", "watch expects a filter table")
+    local sent = {}
+    for key, value in filter or {} do
+        assert(type(key) == "string", "watch filter names are strings")
+        if AREAS[value] then
+            sent[key] = areaText(value)
+        else
+            assert(type(value) == "string" or type(value) == "number", "watch filter " .. key .. " has an invalid value")
+            sent[key] = value
+        end
+    end
+    local id = request({type = "watch", kind = kind, filter = sent}).watch
+    local closed = false
+    return table.freeze({
+        wait = function(_, options)
+            assert(not closed, "the watch is closed")
+            local ticks = timeout(options, "watch wait", 1200)
+            return request({type = "watchWait", watch = id, timeout = ticks}).result
+        end,
+        close = function()
+            if closed then return end
+            closed = true
+            request({type = "watchClose", watch = id})
+        end,
+    })
+end
 local target
 target = function(name, isGroup)
     ready()

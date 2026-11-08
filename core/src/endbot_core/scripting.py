@@ -35,6 +35,7 @@ from endbot_core.script_books import pages_to_source, source_to_pages, written
 from endbot_core.script_params import arguments, declarations, required
 from endbot_core.script_process import RunnerProcess
 from endbot_core.script_store import FILE_SUFFIX, VISIBILITIES, Script, load_files
+from endbot_core.watches import MAX_WATCHES_PER_RUN, WatchBuffer, validate_filter
 
 # The operator's script folder in the plugin data folder.
 FILES_DIRECTORY = "scripts"
@@ -96,6 +97,10 @@ class ScriptRun:
     chat_window: float = 0.0
     chat_lines: int = 0
     chat_skipped: int = 0
+    # What the script declared in requires {} (its watches are checked against it), and its open watches.
+    declared: tuple = ()
+    watches: dict = field(default_factory=dict)
+    next_watch: int = 0
 
 
 class ScriptService:
@@ -121,6 +126,9 @@ class ScriptService:
         self.publish = None
         # Called after a run starts or ends (endbotd's run journal).
         self.on_runs_changed = None
+        # endbotd's event fan-out (BOT-022); without it watch() is refused.
+        self.occurrences = None
+        self._watch_owners: dict = {}  # owner key -> open watches across that controller's runs
 
     def _enabled(self):
         if not self.config.enabled:
@@ -632,6 +640,72 @@ class ScriptService:
                 return {"ok": ok, "code": code, "reason": reason, "results": results}
             self._wait(run, min(max(0.25, 1 / self.config.operations_per_second), max(0, end - time.monotonic())))
 
+    def _watch_limit(self):
+        limits = getattr(self.service, "limits", None)
+        return getattr(limits, "max_watches_per_controller", 32)
+
+    def _watch(self, run, event):
+        """Open a watch (EVENTS.md E5): validated, within the limits, buffering from now."""
+        if self.occurrences is None:
+            raise LocalizedError("Watches need endbotd; they are not available here")
+        kind, canonical = validate_filter(event.get("kind"), event.get("filter"), run.declared)
+        owner = self.owner_key(run.source)
+        limit = self._watch_limit()
+        with self._lock:
+            if len(run.watches) >= MAX_WATCHES_PER_RUN:
+                raise LocalizedError("A run may hold at most {limit} watches", limit=MAX_WATCHES_PER_RUN)
+            if self._watch_owners.get(owner, 0) >= limit:
+                raise LocalizedError("A controller may hold at most {limit} watches ([limits] "
+                                     "max-watches-per-controller)", limit=limit)
+            self._watch_owners[owner] = self._watch_owners.get(owner, 0) + 1
+        buffer = WatchBuffer(kind)
+        try:
+            subscription = self.occurrences.subscribe(kind, canonical, buffer.on_item, buffer.on_gap)
+        except BaseException:
+            with self._lock:
+                remaining = self._watch_owners.get(owner, 1) - 1
+                if remaining > 0:
+                    self._watch_owners[owner] = remaining
+                else:
+                    self._watch_owners.pop(owner, None)
+            raise
+        run.next_watch += 1
+        run.watches[run.next_watch] = (subscription, buffer, owner)
+        return run.next_watch
+
+    def _watch_wait(self, run, event):
+        entry = run.watches.get(self._watch_id(event.get("watch")))
+        if entry is None:
+            raise LocalizedError("Unknown or closed watch")
+        ticks = event.get("timeout", 1200)
+        if type(ticks) not in (int, float) or not math_is_integer(ticks) or not 0 <= ticks <= 2147483647:
+            raise LocalizedError("Invalid script wait")
+        result = entry[1].wait(ticks / 20, lambda: self._alive(run))
+        self._alive(run)
+        return result
+
+    @staticmethod
+    def _watch_id(value):
+        """A watch id as Luau sends it back; JSON through the runner may turn 7 into 7.0."""
+        if type(value) in (int, float) and math_is_integer(value):
+            return int(value)
+        return None
+
+    def _watch_close(self, run, watch_id):
+        entry = run.watches.pop(self._watch_id(watch_id), None)
+        if entry is None:
+            return
+        subscription, _, owner = entry
+        try:
+            self.occurrences.unsubscribe(subscription)
+        finally:
+            with self._lock:
+                remaining = self._watch_owners.get(owner, 1) - 1
+                if remaining > 0:
+                    self._watch_owners[owner] = remaining
+                else:
+                    self._watch_owners.pop(owner, None)
+
     def _wait(self, run, seconds):
         end = time.monotonic() + seconds
         if run.deadline is not None:
@@ -646,6 +720,7 @@ class ScriptService:
         try:
             process = self._process(script.source)
             declaration = self._declaration(process, run.source, run.canceled, run.deadline)
+            run.declared = tuple(declaration.requires)
             # S3: a run started from an inspection (a menu, later a trigger) must declare what that inspection
             # read, or it stops here, before its first operation; a conditional requires {} cannot widen it.
             if run.requires is not None and declaration.requires != run.requires:
@@ -694,6 +769,12 @@ class ScriptService:
                     payload = {"result": self._wait_mining(run, event)}
                 elif kind == "waitJob":
                     payload = {"result": self._wait_job(run, event)}
+                elif kind == "watch":
+                    payload = {"watch": self._watch(run, event)}
+                elif kind == "watchWait":
+                    payload = {"result": self._watch_wait(run, event)}
+                elif kind == "watchClose":
+                    self._watch_close(run, event.get("watch"))
                 elif kind in {"operation", "members", "waitOnline"}:
                     # waitOnline(b) waits without end; b:waitOnline{timeout = ...} gives up after its ticks.
                     timeout = event.get("timeout") if kind == "waitOnline" else None
@@ -723,6 +804,8 @@ class ScriptService:
             outcome = reason(error)
         finally:
             cleanup_ok = False
+            for watch_id in list(run.watches):
+                self._watch_close(run, watch_id)
             if process is not None:
                 try:
                     process.close()

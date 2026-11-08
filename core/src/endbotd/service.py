@@ -173,6 +173,7 @@ class EndbotService:
         self.scripts = ScriptService(script_config, scripts, self.commands, control, config.base,
                                      authorize=self.authority.authorize, files_directory=config.scripts_folder,
                                      resolve_owner=self._resolve_owner)
+        self.scripts.occurrences = self.occurrences
         if scripts is not None and script_config.enabled:
             # Start-up only reads the operator's files; `/botscript reload` also checks their declarations.
             try:

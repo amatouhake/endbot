@@ -161,6 +161,10 @@ export function startRun(source, args = {}, options = {}) {
         const handler = event.type === 'waitJob' ? options.onWaitJob : options.onWaitMining;
         send({ type: 'reply', id: event.id, accepted: true, result: await handler?.(event) ?? { ok: true, code: 'ok', reason: 'idle', results: [] } });
         return;
+      } else if (event.type === 'watch' || event.type === 'watchWait' || event.type === 'watchClose') {
+        const handler = { watch: options.onWatch, watchWait: options.onWatchWait, watchClose: options.onWatchClose }[event.type];
+        send({ type: 'reply', id: event.id, accepted: true, ...(await handler?.(event) ?? {}) });
+        return;
       } else throw new Error('unknown request');
       send({ type: 'reply', id: event.id, accepted: true });
     } catch (error) {

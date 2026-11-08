@@ -23,6 +23,8 @@ class BotLimits:
     max_bots: int = 0
     reserved_player_slots: int = 1
     max_bots_per_controller: int = 0
+    # Open watches across one controller's runs (BOT-022, EVENTS.md E5).
+    max_watches_per_controller: int = 32
 
     @classmethod
     def from_config(cls, table: object) -> BotLimits:
@@ -30,7 +32,8 @@ class BotLimits:
             return cls()
         if not isinstance(table, dict):
             raise ValueError("[limits] must be a table")  # noqa: TRY004 - configuration validation API
-        unknown = set(table) - {"max-bots", "reserved-player-slots", "max-bots-per-controller"}
+        unknown = set(table) - {"max-bots", "reserved-player-slots", "max-bots-per-controller",
+                                "max-watches-per-controller"}
         if unknown:
             raise ValueError(f"unknown [limits] key: {min(unknown)}")
 
@@ -43,13 +46,16 @@ class BotLimits:
         max_bots = whole("max-bots", 0)
         reserved = whole("reserved-player-slots", 1)
         per_controller = whole("max-bots-per-controller", 0)
+        watches = whole("max-watches-per-controller", 32)
         if max_bots < 0:
             raise ValueError("[limits] max-bots must be 0 or a positive integer")
         if reserved < 0:
             raise ValueError("[limits] reserved-player-slots must be 0 or more")
         if per_controller < 0:
             raise ValueError("[limits] max-bots-per-controller must be 0 or a positive integer")
-        return cls(max_bots, reserved, per_controller)
+        if not 0 <= watches <= 1024:
+            raise ValueError("[limits] max-watches-per-controller must be an integer from 0 to 1024")
+        return cls(max_bots, reserved, per_controller, watches)
 
     @property
     def enabled(self) -> bool:

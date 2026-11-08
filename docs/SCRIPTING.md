@@ -616,7 +616,38 @@ crosshair operation right after it uses the new view; if BDS does not report it 
 
 ## Event kinds
 
-The event kinds a script may watch come from the same registry; watches and triggers arrive later in BOT-022.
+The event kinds a script may watch come from the same registry. Triggers, which start a run for an occurrence,
+arrive later in BOT-022.
+
+### Watches
+
+```lua
+params {}
+local w = watch("block.change", {area = area.cell(100, 64, 200), to = "air"})
+local r = w:wait{timeout = 1200}   -- {ok, code, reason, data, missed}
+if r.ok then log(r.data.from .. " became " .. r.data.to .. " (" .. r.data.cause .. ")") end
+w:close()                          -- optional; a watch ends with its run
+```
+
+- `watch(kind, filter)` checks the kind, every filter name and value, the required filters and the kind's capability
+  against `requires {}` before it returns; a mistake stops the run with a message naming the field. Block names may
+  omit `minecraft:`.
+- `block.change` takes an `area` built with `area.cell`, `area.box` or `area.sphere` (with at most 16 `:minus`), of at
+  most 512 blocks. A watch has no Bot to resolve against, so `~` and the sphere around the Bot are refused: build the area from
+  a position, such as a Bot's `status()` coordinates. Optional filters: `dimension` (default `overworld`), `from` and
+  `to`.
+- Buffering starts at `watch()`, so nothing is lost between waits. A watch keeps the 64 newest occurrences; `missed`
+  counts the ones dropped since the previous successful wait.
+- `w:wait{timeout = ticks}` follows the other waits: the default timeout is 1200 ticks and a timeout is
+  `ok = false, code = "timeout"`. `data` is the occurrence: for `block.change` `x`, `y`, `z`, `dimension`, `from`,
+  `to`, `cause` (`player-break`, `player-place` or `poll`) and `bot` when a Bot did it. A human player's name is never
+  given.
+- After the source restarted (BDS or the link) or dropped occurrences, the next wait returns once
+  `ok = false, code = "unavailable"` with the reason, then waiting continues. Changes during such a gap are not
+  replayed; re-read with `block()` if the script cannot tolerate one.
+- A wait is answered as soon as an occurrence arrives; it uses no operation budget.
+- Limits: 16 watches per run, `[limits] max-watches-per-controller` (default 32) across one controller's runs, and
+  the server-wide `[events] max-watched-blocks` (default 2048). A watch over a limit is refused with the limit named.
 
 <!-- BEGIN GENERATED EVENTS -->
 | Kind | Filters (one of) | Payload | Guarantee |

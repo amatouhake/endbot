@@ -732,9 +732,10 @@ test("a trigger is created and armed after its declaration, then disabled and re
   // New: a script the user may run, a kind, then the generated filter and the script's parameters.
   await page.locator(".list-tools").getByRole("button", { name: "New", exact: true }).click();
   await expect(page).toHaveURL(/\/triggers\/new$/);
-  await page.getByLabel("Script", { exact: true }).selectOption("guard");
+  // A select inside its label is named by the label and its chosen option ("Script —"): match the label's start.
+  await page.getByRole("combobox", { name: /^Script/ }).selectOption("guard");
   await expect(page.getByText("This script asks for: observe.chat")).toBeVisible();
-  await page.getByLabel("Event kind", { exact: true }).selectOption("block.change");
+  await page.getByRole("combobox", { name: /^Event kind/ }).selectOption("block.change");
   await page.getByLabel(/^area/).fill("0 64 0 2 65 2");
   await page.getByLabel(/^except/).fill("1 64 1");
   await expect(page.getByLabel(/^dimension/).locator("option")).toHaveText(["—", "overworld", "nether", "end"]);

@@ -35,7 +35,7 @@ from endbot_core.principal import Principal
 from endbot_core.script_params import declarations, event_parameter, inputs
 from endbot_core.trigger_policy import TriggerPolicy
 from endbot_core.trigger_store import Trigger, policy_from
-from endbot_core.watches import validate_filter
+from endbot_core.watches import check_kind, validate_filter
 
 DEFAULT_MAX_TRIGGERS = 8
 TICK_SECONDS = 0.25
@@ -283,13 +283,22 @@ class TriggerEngine:
 
     # -- operations (commands, forms and the web call these) -----------------
 
-    def _approve(self, principal: Principal, script_name: str, kind: str, filter_: dict, arguments: list):
-        """Check that the principal may arm this binding and what it approves; LocalizedError says why not."""
+    def _approve(self, principal: Principal, script_name: str, kind: str, filter_: dict, arguments: list, *,
+                 stored: bool = False):
+        """Check that the principal may arm this binding and what it approves; LocalizedError says why not.
+
+        A ``stored`` filter is already canonical (enable re-approves it): only the kind and its capability are
+        checked against the script's current declaration then.
+        """
         script = self.scripts._script(script_name, principal)
         found = self.scripts.inspect(script, principal)
         if event_parameter(found.schema) is None:
             raise LocalizedError("Script {name} has no param.event, so a trigger cannot start it", name=script.name)
-        kind, canonical = validate_filter(kind, filter_, found.requires)
+        if stored:
+            check_kind(kind, found.requires)
+            canonical = filter_
+        else:
+            kind, canonical = validate_filter(kind, filter_, found.requires)
         declarations(found.schema)
         return script, found, kind, canonical, {
             "revision": script.revision, "declaration": list(found.requires), "paramsHash": params_hash(found.schema),
@@ -348,7 +357,8 @@ class TriggerEngine:
                 self.store.count_armed(trigger.owner) >= self.max_triggers:
             raise LocalizedError("A controller may have at most {limit} armed triggers", limit=self.max_triggers)
         acting = principal if not principal.console or trigger.owner == "console" else self._principal(trigger)
-        _, _, _, _, approved = self._approve(acting, trigger.script, trigger.kind, trigger.filter, trigger.arguments)
+        _, _, _, _, approved = self._approve(acting, trigger.script, trigger.kind, trigger.filter, trigger.arguments,
+                                             stored=True)
         trigger = self.store.update(trigger.owner, name, status="armed", reason=None, approved=approved)
         self._arm(trigger)
         return trigger

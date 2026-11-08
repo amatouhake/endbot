@@ -45,6 +45,7 @@ class PluginAdapterTests(unittest.TestCase):
         event.PlayerQuitEvent = type("PlayerQuitEvent", (), {})
         event.BlockBreakEvent = type("BlockBreakEvent", (), {})
         event.BlockPlaceEvent = type("BlockPlaceEvent", (), {})
+        event.PlayerChatEvent = type("PlayerChatEvent", (), {})
         event.EventPriority = type("EventPriority", (), {"MONITOR": 5})
         event.event_handler = lambda function=None, **options: function or (lambda inner: inner)
         level.Location = type("Location", (), {})

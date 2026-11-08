@@ -22,6 +22,7 @@ only when a Bot did it. One tick's occurrences go out as one ``events`` frame.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Callable
 
 POLL_TICKS = 4
@@ -29,6 +30,10 @@ KIND = "block.change"
 # Endstone dimension names to the registry's dimension values.
 DIMENSION_VALUES = {"Overworld": "overworld", "Nether": "nether", "TheEnd": "the_end"}
 ENDSTONE_DIMENSIONS = {value: name for name, value in DIMENSION_VALUES.items()}
+# Presence and public chat (step 6a): reported only for human players and only while endbotd asks for them.
+PRESENCE_KINDS = frozenset({"player.join", "player.leave", "player.chat"})
+CHAT_LIMIT = 256
+CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
 class BlockChangeSource:
@@ -45,6 +50,7 @@ class BlockChangeSource:
         self._pending: list[dict] = []
         self._dropped = 0
         self._dimensions: set[str] = set()
+        self._kinds: frozenset = frozenset()
 
     @property
     def watched(self) -> int:
@@ -53,7 +59,8 @@ class BlockChangeSource:
     def apply_interest(self, interest: dict) -> None:
         """Replace the watched positions; new ones take a baseline, removed ones are forgotten."""
         cells = set()
-        if KIND in (interest.get("kinds") or ()):
+        self._kinds = frozenset(kind for kind in interest.get("kinds") or () if isinstance(kind, str))
+        if KIND in self._kinds:
             for group in interest.get("block") or ():
                 dimension = group.get("dimension")
                 if dimension not in ENDSTONE_DIMENSIONS:
@@ -85,11 +92,29 @@ class BlockChangeSource:
         bot = None if player is None or str(getattr(player, "xuid", "") or "") else str(player.name)
         self._confirm.append((self.tick + 1, key, cause, bot))
 
+    def player_presence(self, kind: str, player, message: str | None = None) -> None:
+        """A human player joined, left or chatted publicly; Bots are left out (bot.* kinds cover them)."""
+        if kind not in self._kinds or kind not in PRESENCE_KINDS or player is None:
+            return
+        if not str(getattr(player, "xuid", "") or ""):
+            return
+        item = {"kind": kind, "player": str(player.name)}
+        if kind == "player.chat":
+            item["message"] = CONTROL.sub(" ", str(message or ""))[:CHAT_LIMIT]
+        self._pending.append(item)
+
     def on_tick(self) -> None:
         self.tick += 1
-        if not self._baseline:
+        if self._baseline:
+            self._poll()
+        else:
             self._confirm.clear()
-            return
+        if self._pending or self._dropped:
+            pending, dropped = self._pending, self._dropped
+            self._pending, self._dropped = [], 0
+            self._report(self.tick, pending, dropped)
+
+    def _poll(self) -> None:
         loaded = self._loaded()
         due = [item for item in self._confirm if item[0] <= self.tick]
         if due:
@@ -98,10 +123,6 @@ class BlockChangeSource:
                 self._check(key, loaded, cause, bot)
         for key in self._phases[self.tick % POLL_TICKS]:
             self._check(key, loaded, "poll", None)
-        if self._pending or self._dropped:
-            pending, dropped = self._pending, self._dropped
-            self._pending, self._dropped = [], 0
-            self._report(self.tick, pending, dropped)
 
     def _loaded(self) -> dict[str, set]:
         loaded = {}

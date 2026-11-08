@@ -20,6 +20,7 @@ from endstone.event import (
     BlockBreakEvent,
     BlockPlaceEvent,
     EventPriority,
+    PlayerChatEvent,
     PlayerJoinEvent,
     PlayerQuitEvent,
     event_handler,
@@ -377,11 +378,21 @@ class EndbotPlugin(Plugin):
             self._link.player_joined(player)
         if self._world is not None:
             self._world.apply_pending_placement(player)
+        if self._blocks is not None:
+            self._blocks.player_presence("player.join", player)
 
     @event_handler
     def on_player_quit(self, event: PlayerQuitEvent) -> None:
         if self._link is not None:
             self._link.player_quit(event.player)
+        if self._blocks is not None:
+            self._blocks.player_presence("player.leave", event.player)
+
+    @event_handler(priority=EventPriority.MONITOR, ignore_cancelled=True)
+    def on_player_chat(self, event: PlayerChatEvent) -> None:
+        # Public chat only: /tell, /msg and /w are commands and raise no chat event (BLOCK_EVENTS_SPIKE.md).
+        if self._blocks is not None:
+            self._blocks.player_presence("player.chat", event.player, event.message)
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         if command.name not in ROOTS:

@@ -646,6 +646,10 @@ w:close()                          -- optional; a watch ends with its run
   `ok = false, code = "unavailable"` with the reason, then waiting continues. Changes during such a gap are not
   replayed; re-read with `block()` if the script cannot tolerate one.
 - A wait is answered as soon as an occurrence arrives; it uses no operation budget.
+- `player.join`, `player.leave` and `player.chat` report human players only (Bots have the `bot.*` kinds) and need
+  `requires { "observe.presence" }` or `requires { "observe.chat" }`; the run form and the trigger form show the
+  declaration first. `player.chat` is public chat only: `/tell`, `/msg` and `/w` are never reported. The message is
+  cut to 256 characters.
 - Limits: 16 watches per run, `[limits] max-watches-per-controller` (default 32) across one controller's runs, and
   the server-wide `[events] max-watched-blocks` (default 2048). A watch over a limit is refused with the limit named.
 
@@ -653,6 +657,9 @@ w:close()                          -- optional; a watch ends with its run
 | Kind | Filters (one of) | Payload | Guarantee |
 | --- | --- | --- | --- |
 | `block.change` | area: area (max 512 blocks) | x: integer, y: integer, z: integer, dimension: string, from: block, to: block, cause: string, bot: string? | At most once, after the fact, in source order. A change that lasts at least 4 ticks is delivered; player-break and player-place are delivered individually. |
+| `player.join` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `player.leave` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `player.chat` | none | player: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 <!-- END GENERATED EVENTS -->
 
 ## Lifetime, boundaries and unverified gates

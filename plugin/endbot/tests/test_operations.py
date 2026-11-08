@@ -337,7 +337,9 @@ class EventRegistryTests(unittest.TestCase):
             self.assertIn(message, str(caught.exception))
 
     def test_block_change_is_listed_with_the_measured_guarantee(self):
-        self.assertEqual(set(EVENTS), {"block.change"})
+        self.assertLessEqual({"block.change", "player.join", "player.leave", "player.chat"}, set(EVENTS))
+        self.assertEqual(EVENTS["player.chat"]["capability"], "observe.chat")
+        self.assertEqual(EVENTS["player.join"]["capability"], "observe.presence")
         guarantee = EVENTS["block.change"]["guarantee"]
         self.assertEqual((guarantee["class"], guarantee["ticks"], guarantee["each"], guarantee["record"]),
                          ("persist", 4, ["player-break", "player-place"], "BLOCK_EVENTS_SPIKE.md#result"))

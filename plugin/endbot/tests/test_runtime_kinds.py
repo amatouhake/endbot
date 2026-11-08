@@ -150,7 +150,22 @@ class RuntimeKindTests(unittest.TestCase):
         self.control.request = original
         self.control.profiles = [profile("1", "Miner", "online")]
         self.kinds.poll()
+        # The outage is reported once as a gap, never as a burst of offline reports.
+        result = offline.wait(0, lambda: None)
+        self.assertEqual((result["code"], result["reason"]), ("unavailable", "source restarted"))
         self.empty(offline)
+
+    def test_a_watch_made_after_the_last_sample_gets_no_change_that_may_predate_it(self):
+        early = self.watch("bot.online")
+        time.sleep(0.03)  # the Windows monotonic clock advances in steps of about 16 ms
+        self.control.profiles = [profile("1", "Miner", "offline")]
+        self.kinds.poll()
+        time.sleep(0.03)
+        self.control.profiles = [profile("1", "Miner", "online")]
+        late = self.watch("bot.online")  # made after the sample: the connect may have happened before it
+        self.kinds.poll()
+        self.assertEqual(self.item(early)["bot"], "Miner")
+        self.empty(late)
 
     def test_job_ended_becomes_job_finished_with_its_bot_kind_and_reason(self):
         finished = self.watch("job.finished")

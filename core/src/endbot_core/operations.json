@@ -948,7 +948,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "BLOCK_EVENTS_SPIKE.md#presence-chat-and-death"
+        "record": "EVENTS_VALIDATION.md#presence-and-chat"
       }
     },
     "player.leave": {
@@ -968,7 +968,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "BLOCK_EVENTS_SPIKE.md#presence-chat-and-death"
+        "record": "EVENTS_VALIDATION.md#presence-and-chat"
       }
     },
     "player.chat": {
@@ -989,11 +989,11 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "BLOCK_EVENTS_SPIKE.md#presence-chat-and-death"
+        "record": "EVENTS_VALIDATION.md#presence-and-chat"
       }
     },
     "bot.online": {
-      "source": "endbotd",
+      "source": "runtime",
       "capability": "read.world",
       "visibility": "public",
       "filters": {
@@ -1006,14 +1006,14 @@
         "bot": "string"
       },
       "guarantee": {
-        "class": "each",
-        "ticks": null,
+        "class": "persist",
+        "ticks": 40,
         "each": [],
         "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
       }
     },
     "bot.offline": {
-      "source": "endbotd",
+      "source": "runtime",
       "capability": "read.world",
       "visibility": "public",
       "filters": {
@@ -1027,8 +1027,8 @@
         "reason": "string?"
       },
       "guarantee": {
-        "class": "each",
-        "ticks": null,
+        "class": "persist",
+        "ticks": 40,
         "each": [],
         "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
       }

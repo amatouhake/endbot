@@ -60,6 +60,21 @@ class ConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(ConfigError, key):
                     load_config(self.path)
 
+    def test_events_watched_blocks_default_and_bounds(self):
+        base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
+        self.write(base)
+        self.assertEqual(load_config(self.path).events.max_watched_blocks, 2048)
+        self.write(base + "[events]\nmax-watched-blocks=0\n")
+        self.assertEqual(load_config(self.path).events.max_watched_blocks, 0)
+        for value in ("-1", "65537", "true", "'2048'", "1.5"):
+            with self.subTest(value=value):
+                self.write(base + f"[events]\nmax-watched-blocks={value}\n")
+                with self.assertRaisesRegex(ConfigError, "events.max-watched-blocks"):
+                    load_config(self.path)
+        self.write(base + "[events]\nblock-poll-ticks=2\n")
+        with self.assertRaisesRegex(ConfigError, "events.block-poll-ticks"):
+            load_config(self.path)
+
     def test_permissions_defaults_and_visibility_values(self):
         base = "[server]\npath='server'\n[controllers]\ngamertags=[]\n"
         self.write(base)

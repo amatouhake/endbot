@@ -336,6 +336,10 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
     permissions["groups-default"] = config.permissions.groups_default
     document.add("permissions", permissions)
 
+    events = tomlkit.table()
+    events["max-watched-blocks"] = config.events.max_watched_blocks
+    document.add("events", events)
+
     ui = tomlkit.table()
     ui["language"] = config.ui.language
     document.add("ui", ui)

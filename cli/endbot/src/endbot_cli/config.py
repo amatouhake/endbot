@@ -24,7 +24,7 @@ TRANSPORTS = ("nethernet",)
 # direct dials server-port over HTTP; lan needs UDP 7551, which one program per machine can own.
 DEFAULT_NETHERNET_SIGNALLING = "direct"
 NETHERNET_SIGNALLINGS = ("direct", "lan")
-SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting", "permissions", "web")
+SECTIONS = ("server", "controllers", "runtime", "endbotd", "limits", "ui", "scripting", "permissions", "events", "web")
 LANGUAGES = ("auto", "en", "ja")
 DEFAULT_LANGUAGE = "auto"
 VISIBILITIES = ("shared", "private")
@@ -96,6 +96,15 @@ class PermissionsConfig:
     groups_default: str = "shared"
 
 
+# Positions the server watches for block.change, all watches and triggers together (BLOCK_EVENTS_SPIKE.md#result).
+DEFAULT_MAX_WATCHED_BLOCKS = 2048
+
+
+@dataclass(frozen=True, slots=True)
+class EventsConfig:
+    max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS
+
+
 @dataclass(frozen=True, slots=True)
 class WebConfig:
     enabled: bool = False
@@ -118,6 +127,7 @@ class EndbotConfig:
     ui: UiConfig = UiConfig()
     scripting: ScriptingConfig = ScriptingConfig()
     permissions: PermissionsConfig = PermissionsConfig()
+    events: EventsConfig = EventsConfig()
     web: WebConfig = WebConfig()
 
 
@@ -356,6 +366,18 @@ def _load_scripting(path: Path, document: dict[str, Any]) -> ScriptingConfig:
     )
 
 
+def _load_events(path: Path, document: dict[str, Any]) -> EventsConfig:
+    table = document.get("events", {})
+    if not isinstance(table, dict):
+        raise _fail(path, "events", "must be a table", "write it as an [events] section")
+    _reject_unknown_keys(path, table, "events", ("max-watched-blocks",))
+    value = table.get("max-watched-blocks", DEFAULT_MAX_WATCHED_BLOCKS)
+    if type(value) is not int or not 0 <= value <= 65536:
+        raise _fail(path, "events.max-watched-blocks", f"must be an integer from 0 to 65536, found {value!r}",
+                    f"use max-watched-blocks = {DEFAULT_MAX_WATCHED_BLOCKS} (the default); 0 turns block watches off")
+    return EventsConfig(max_watched_blocks=value)
+
+
 def _load_permissions(path: Path, document: dict[str, Any]) -> PermissionsConfig:
     table = document.get("permissions", {})
     if not isinstance(table, dict):
@@ -440,5 +462,6 @@ def load_config(path: Path) -> EndbotConfig:
         ui=_load_ui(path, document),
         scripting=_load_scripting(path, document),
         permissions=_load_permissions(path, document),
+        events=_load_events(path, document),
         web=_load_web(path, document),
     )

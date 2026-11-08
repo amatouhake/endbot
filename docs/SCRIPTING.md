@@ -619,7 +619,9 @@ crosshair operation right after it uses the new view; if BDS does not report it 
 The event kinds a script may watch come from the same registry; watches and triggers arrive later in BOT-022.
 
 <!-- BEGIN GENERATED EVENTS -->
-No event kinds are listed yet.
+| Kind | Filters (one of) | Payload | Guarantee |
+| --- | --- | --- | --- |
+| `block.change` | area: area (max 512 blocks) | x: integer, y: integer, z: integer, dimension: string, from: block, to: block, cause: string, bot: string? | At most once, after the fact, in source order. A change that lasts at least 4 ticks is delivered; player-break and player-place are delivered individually. |
 <!-- END GENERATED EVENTS -->
 
 ## Lifetime, boundaries and unverified gates

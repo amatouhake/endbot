@@ -23,7 +23,8 @@ from collections.abc import Callable
 from endbot_core import areas
 from endbot_core.i18n import LocalizedError
 
-DEFAULT_MAX_WATCHED_BLOCKS = 4096
+# BLOCK_EVENTS_SPIKE.md#result: a quarter of these read per tick costs about 1 to 2 ms.
+DEFAULT_MAX_WATCHED_BLOCKS = 2048
 
 
 class Subscription:

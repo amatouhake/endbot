@@ -882,7 +882,53 @@
     "members": "read.world",
     "operation": "operation"
   },
-  "events": {},
+  "events": {
+    "block.change": {
+      "source": "plugin",
+      "capability": "read.world",
+      "visibility": "public",
+      "filters": {
+        "area": {
+          "type": "area",
+          "maxBlocks": 512
+        },
+        "dimension": {
+          "type": "dimension",
+          "default": "overworld"
+        },
+        "from": {
+          "type": "block"
+        },
+        "to": {
+          "type": "block"
+        }
+      },
+      "require": [
+        [
+          "area"
+        ]
+      ],
+      "payload": {
+        "x": "integer",
+        "y": "integer",
+        "z": "integer",
+        "dimension": "string",
+        "from": "block",
+        "to": "block",
+        "cause": "string",
+        "bot": "string?"
+      },
+      "guarantee": {
+        "class": "persist",
+        "ticks": 4,
+        "each": [
+          "player-break",
+          "player-place"
+        ],
+        "record": "BLOCK_EVENTS_SPIKE.md#result"
+      }
+    }
+  },
   "reservedBotNames": [
     "help",
     "list",

@@ -10,6 +10,7 @@ Sections::
     [run]            journal-file                    the run journal (P6)
     [permissions]    bots-default, groups-default    Bot and Group ownership defaults (BOT-024 4a)
     [authorization]  [limits]  [ui]  [scripting]      as the plugin config had them
+    [events]         max-watched-blocks              event watches (BOT-022, docs/EVENTS.md)
     [web]            enabled, origin, display-name, link-key-file, [web.trusted-site]   the web (docs/WEB.md)
 
 Relative paths resolve against the file's directory. Developers with a manual
@@ -64,6 +65,7 @@ class EndbotdConfig:
     scripting: dict = field(default_factory=dict)
     permissions: dict = field(default_factory=dict)
     web: dict = field(default_factory=dict)
+    events: dict = field(default_factory=dict)
     web_link_key_file: Path | None = None
 
     @classmethod
@@ -102,5 +104,6 @@ class EndbotdConfig:
             scripting=_table(document, "scripting"),
             permissions=_table(document, "permissions"),
             web=_table(document, "web"),
+            events=_table(document, "events"),
             web_link_key_file=resolve(_table(document, "web").get("link-key-file"), "web-link.key"),
         )

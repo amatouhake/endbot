@@ -13,12 +13,14 @@ from endbot_core.forms import BotListView, GroupTarget
 from endbot_core.group_forms import GroupGuard
 from endbot_core.i18n import LocalizedError
 from endbot_core.link import (
+    MAX_EVENT_ITEMS,
     MAX_FRAME_BYTES,
     PROTOCOL,
     LinkError,
     LinkServer,
     encode,
     error_from_wire,
+    parse_events,
     registry_hash,
     token_matches,
 )
@@ -444,3 +446,67 @@ class WorldCallTests(LinkHarness):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EventDeliveryTests(LinkHarness):
+    """EVENTS.md E4: endbotd sends the interest set, the plugin reports one tick of occurrences per frame."""
+
+    def setUp(self):
+        super().setUp()
+        self.endbotd.stop()
+        self.events = []
+        self.links = []
+        self.endbotd = self.start_endbotd(on_events=self.events.append, on_link=self.links.append)
+        self.interests = []
+
+    def test_interest_reaches_the_plugin_and_events_reach_endbotd_with_the_epoch(self):
+        link = self.start_plugin(on_interest=self.interests.append)
+        self.assertTrue(wait_for(lambda: link.connected and self.endbotd.connected))
+        self.assertTrue(wait_for(lambda: self.links == [link.epoch]))
+        interest = {"revision": 3, "block": [{"dimension": "overworld", "cells": [[1, 2, 3]]}],
+                    "kinds": ["block.change"]}
+        self.assertTrue(self.endbotd.send_interest(interest))
+        self.assertTrue(wait_for(lambda: self.interests == [interest]))
+        self.assertEqual(link.interest_revision, 3)
+        items = [{"kind": "block.change", "x": 1, "y": 2, "z": 3}] * (MAX_EVENT_ITEMS + 2)
+        self.assertTrue(self.on_server_thread(lambda: link.report_events(40, items)))
+        self.assertTrue(wait_for(lambda: len(self.events) == 1))
+        self.assertEqual(self.events[0]["epoch"], link.epoch)
+        self.assertEqual((self.events[0]["revision"], self.events[0]["tick"]), (3, 40))
+        self.assertEqual((len(self.events[0]["items"]), self.events[0]["dropped"]), (MAX_EVENT_ITEMS, 2))
+
+    def test_a_link_drop_and_relink_are_reported_and_without_a_link_nothing_is_sent(self):
+        link = self.linked()
+        self.assertTrue(wait_for(lambda: self.links == [link.epoch]))
+        first = link.epoch
+        self.endbotd.drop_link("test")
+        self.assertTrue(wait_for(lambda: link.connected and link.epoch != first))
+        self.assertTrue(wait_for(lambda: self.links == [first, None, link.epoch]))
+        link.stop()
+        self.assertFalse(self.on_server_thread(lambda: link.report_events(1, [{"kind": "block.change"}])))
+        self.assertTrue(wait_for(lambda: self.links[-1] is None))
+        self.assertFalse(self.endbotd.send_interest({"revision": 1, "block": [], "kinds": []}))
+
+    def test_malformed_events_and_interest_are_refused(self):
+        self.assertEqual(parse_events({"revision": 0, "epoch": "e", "tick": 0, "items": [], "dropped": 0})["tick"], 0)
+        for body in (
+            {"revision": -1, "epoch": "e", "tick": 0, "items": [], "dropped": 0},
+            {"revision": 0, "epoch": "", "tick": 0, "items": [], "dropped": 0},
+            {"revision": 0, "epoch": "e", "tick": True, "items": [], "dropped": 0},
+            {"revision": 0, "epoch": "e", "tick": 0, "items": [{}], "dropped": 0},
+            {"revision": 0, "epoch": "e", "tick": 0, "items": [{"kind": "x"}] * (MAX_EVENT_ITEMS + 1),
+             "dropped": 0},
+            {"revision": 0, "epoch": "e", "tick": 0, "items": [], "dropped": -1},
+        ):
+            with self.subTest(body=body), self.assertRaises(LinkError):
+                parse_events(body)
+        link = self.linked()
+        warnings = []
+        link._log = lambda level, message: warnings.append(message)
+        # An events frame from another epoch is refused by endbotd and never handed on.
+        link.epoch = "stale"
+        self.assertTrue(self.on_server_thread(lambda: link.report_events(1, [{"kind": "block.change"}])))
+        self.assertTrue(wait_for(lambda: any("another epoch" in message for message in warnings)))
+        self.assertEqual(self.events, [])
+        with self.assertRaises(LinkError):
+            link._interest({"revision": 1, "block": "all", "kinds": []})

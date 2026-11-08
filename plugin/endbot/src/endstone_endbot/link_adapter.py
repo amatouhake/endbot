@@ -21,6 +21,7 @@ from uuid import UUID
 
 from endbot_core.commands import strip_colors
 from endbot_core.link import (
+    MAX_EVENT_ITEMS,
     PROTOCOL,
     WORLD_METHODS,
     LinkConnection,
@@ -81,6 +82,7 @@ class PluginLink:
         show_view: Callable[[object, dict], None] | None = None,
         log: Callable[[str, str], None] | None = None,
         on_config: Callable[[dict], None] | None = None,
+        on_interest: Callable[[dict], None] | None = None,
         call_deadline: float = 5.0,
         retry: tuple[float, float] = (1.0, 30.0),
     ) -> None:
@@ -95,6 +97,9 @@ class PluginLink:
         self._show_view = show_view
         self._log = log or (lambda level, message: None)
         self._on_config = on_config
+        # Receives endbotd's interest set (EVENTS.md E4) on the link thread; sources apply it on the server thread.
+        self._on_interest = on_interest
+        self.interest_revision = 0
         self._deadline = call_deadline
         self._retry = retry
         # Reentrant: a send that overflows closes the link, whose callback takes this lock.
@@ -152,7 +157,8 @@ class PluginLink:
         epoch = uuid.uuid4().hex
         hello = {"protocol": PROTOCOL, "pluginVersion": self._plugin_version, "registryHash": registry_hash(),
                  "epoch": epoch, "token": load_token(self._token_file)}
-        handlers = {"world": self._world_call, "deliver": self._deliver, "permission": self._permission}
+        handlers = {"world": self._world_call, "deliver": self._deliver, "permission": self._permission,
+                    "interest": self._interest}
         connection, result = connect(self._host, self._port, hello, handlers, concurrent=frozenset({"world"}),
                                      on_close=self._closed)
         try:
@@ -193,6 +199,38 @@ class PluginLink:
                 self._log("warning", f"endbotd refused a presence report: {error}")
 
         connection.send("presence", body).add_done_callback(failed)
+
+    def _interest(self, body: dict) -> dict:
+        revision = body.get("revision")
+        if type(revision) is not int or revision < 0:
+            raise LinkError("invalid", "interest needs a revision")
+        if not isinstance(body.get("block"), list) or not isinstance(body.get("kinds"), list):
+            raise LinkError("invalid", "interest needs block and kinds lists")
+        self.interest_revision = revision
+        if self._on_interest is not None:
+            self._on_interest(body)
+        return {"revision": revision}
+
+    def report_events(self, tick: int, items: list[dict], dropped: int = 0) -> bool:
+        """Send one tick's occurrences; at most MAX_EVENT_ITEMS go, the rest are counted as dropped.
+
+        False when no link is live: those occurrences are lost, and endbotd records the gap itself.
+        """
+        with self._lock:
+            live, epoch = self._live, self.epoch
+        if live is None or epoch is None:
+            return False
+        sent = items[:MAX_EVENT_ITEMS]
+        body = {"revision": self.interest_revision, "epoch": epoch, "tick": tick, "items": sent,
+                "dropped": dropped + len(items) - len(sent)}
+
+        def failed(future) -> None:
+            error = future.exception()
+            if error is not None and getattr(error, "code", None) != "unavailable":
+                self._log("warning", f"endbotd refused an events report: {error}")
+
+        live.send("events", body).add_done_callback(failed)
+        return True
 
     def _presence(self, body: dict) -> None:
         with self._lock:

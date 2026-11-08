@@ -66,7 +66,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(load_config(self.path).events.max_watched_blocks, 2048)
         self.write(base + "[events]\nmax-watched-blocks=0\n")
         self.assertEqual(load_config(self.path).events.max_watched_blocks, 0)
-        for value in ("-1", "65537", "true", "'2048'", "1.5"):
+        for value in ("-1", "16385", "true", "'2048'", "1.5"):
             with self.subTest(value=value):
                 self.write(base + f"[events]\nmax-watched-blocks={value}\n")
                 with self.assertRaisesRegex(ConfigError, "events.max-watched-blocks"):

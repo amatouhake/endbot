@@ -1155,6 +1155,10 @@ JA.update({
     "Watch filter {field} must be a name": "watch のフィルタ {field} には名前を指定してください",
     "Watch filter {field} must be a whole number": "watch のフィルタ {field} には整数を指定してください",
     "Watch filter {field} must be text": "watch のフィルタ {field} には文字列を指定してください",
+    "Watch filter {field} must be a duration from 10s to 24h (such as 30s, 5m or 2h)":
+        "watch のフィルタ {field} には 10s から 24h の長さ (例: 30s、5m、2h) を指定してください",
+    "Watch filter {field} must be a time of day as HH:MM, from 00:00 to 23:59":
+        "watch のフィルタ {field} には HH:MM の時刻 (00:00 から 23:59) を指定してください",
     "Watch filter {field} has an unknown type": "watch のフィルタ {field} の型が不明です",
     "Watch filter {field} is too long": "watch のフィルタ {field} が長すぎます",
     "Watch filter {field} may remove at most {limit} areas":

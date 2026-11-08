@@ -1,4 +1,4 @@
-"""The plugin's ``block.change`` and ``bot.died`` source (BOT-022 steps 3b and 6b, EVENTS.md E3, E4).
+"""The plugin's ``block.change``, ``bot.died`` and ``world.time`` source (BOT-022 steps 3b, 6b, 6c; EVENTS.md E3, E4).
 
 endbotd sends the positions and kinds it wants watched (the interest set). This source,
 on the server thread only:
@@ -17,7 +17,11 @@ on the server thread only:
   tick than the poll does; a player action there before that read is still
   reported, from the block the event saw;
 - when ``bot.died`` is wanted, reports a death of a player without an XUID (a
-  Bot) with its death message key. A human's death is never reported.
+  Bot) with its death message key. A human's death is never reported;
+- when ``world.time`` is wanted, reads ``level.time`` every ``TIME_POLL_TICKS``
+  ticks and reports the phase of the day cycle when it changes. The first read
+  of a new interest is the baseline, so only later changes are reported; the
+  phase lasts at least 1000 ticks, well over the poll period.
 
 Occurrences carry no owner and no human player's name (S1): ``bot`` is set
 only when a Bot did it. One tick's occurrences go out as one ``events`` frame.
@@ -34,6 +38,9 @@ from endbot_core.commands import strip_colors
 POLL_TICKS = 4
 KIND = "block.change"
 DEATH_KIND = "bot.died"
+TIME_KIND = "world.time"
+# 20 ticks: every phase lasts at least 1000 ticks, so a change is never missed.
+TIME_POLL_TICKS = 20
 # Endstone dimension names to the registry's dimension values.
 DIMENSION_VALUES = {"Overworld": "overworld", "Nether": "nether", "TheEnd": "end"}
 ENDSTONE_DIMENSIONS = {value: name for name, value in DIMENSION_VALUES.items()}
@@ -41,6 +48,17 @@ ENDSTONE_DIMENSIONS = {value: name for name, value in DIMENSION_VALUES.items()}
 PRESENCE_KINDS = frozenset({"player.join", "player.leave", "player.chat"})
 CHAT_LIMIT = 256
 CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def phase_at(time_of_day: int) -> str:
+    """The day-cycle phase of a time of day 0-23999: day 0-11999, sunset, night, sunrise."""
+    if time_of_day < 12000:
+        return "day"
+    if time_of_day < 13000:
+        return "sunset"
+    if time_of_day < 23000:
+        return "night"
+    return "sunrise"
 
 
 class BlockChangeSource:
@@ -59,6 +77,8 @@ class BlockChangeSource:
         self._pending: list[dict] = []
         self._dropped = 0
         self._dimensions: set[str] = set()
+        # The last day-cycle phase read for world.time; None until a read is the baseline.
+        self._time_phase: str | None = None
 
     @property
     def watched(self) -> int:
@@ -67,7 +87,9 @@ class BlockChangeSource:
     def apply_interest(self, interest: dict) -> None:
         """Replace the watched positions and kinds; new positions take a baseline, removed ones are forgotten."""
         kinds = interest.get("kinds") or ()
-        self._kinds = {kind for kind in kinds if isinstance(kind, str)}
+        previous, self._kinds = self._kinds, {kind for kind in kinds if isinstance(kind, str)}
+        if TIME_KIND not in self._kinds or TIME_KIND not in previous:
+            self._time_phase = None  # a new interest needs a fresh baseline
         # Occurrences of kinds nobody asks for any more are not sent (block changes are checked by position).
         self._pending = [item for item in self._pending if item.get("kind") == KIND or item.get("kind") in self._kinds]
         cells = set()
@@ -127,6 +149,8 @@ class BlockChangeSource:
 
     def on_tick(self) -> None:
         self.tick += 1
+        if TIME_KIND in self._kinds and self.tick % TIME_POLL_TICKS == 0:
+            self._check_time()
         if self._baseline:
             self._poll()
         else:
@@ -135,6 +159,21 @@ class BlockChangeSource:
             pending, dropped = self._pending, self._dropped
             self._pending, self._dropped = [], 0
             self._report(self.tick, pending, dropped)
+
+    def _check_time(self) -> None:
+        """Read the level's time of day and report a phase change after the baseline read."""
+        try:
+            time_of_day = int(self._server.level.time) % 24000
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return
+        phase = phase_at(time_of_day)
+        if self._time_phase is None:
+            self._time_phase = phase  # the first read of a new interest is the baseline
+            return
+        if phase == self._time_phase:
+            return
+        self._time_phase = phase
+        self._pending.append({"kind": TIME_KIND, "phase": phase, "time": time_of_day})
 
     def _poll(self) -> None:
         due = [item for item in self._confirm if item[0] <= self.tick]

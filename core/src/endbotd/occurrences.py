@@ -203,6 +203,23 @@ class OccurrenceHub:
         with self._lock:
             return any(self._subscriptions.get(kind) for kind in kinds)
 
+    def subscriptions(self, kind: str) -> list[Subscription]:
+        """A snapshot of the live subscriptions of ``kind`` (the schedule timer's delivery path)."""
+        with self._lock:
+            return [subscription for subscription in self._subscriptions.get(kind, ()) if subscription.active]
+
+    def deliver_to(self, subscription: Subscription, item: dict) -> int:
+        """Deliver one occurrence to one subscription without matching its filters.
+
+        A source that knows which subscription is due (the schedule timer) uses this: an
+        ``every`` or ``at`` value names when to fire, not a value an occurrence carries, so the
+        normal filter match cannot select the subscription. Every other kind keeps going through
+        :meth:`raise_occurrence`.
+        """
+        if not subscription.active or item.get("kind") != subscription.kind:
+            return 0
+        return 1 if self._call(subscription.on_item, dict(item)) else 0
+
     def _publish(self) -> None:
         """Send the current set with a new revision; one send at a time, so a later set never arrives first."""
         with self._send_lock:

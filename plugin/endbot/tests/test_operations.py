@@ -347,7 +347,7 @@ class EventRegistryTests(unittest.TestCase):
 
     def test_the_runtime_and_server_kinds_are_listed_with_their_guarantees(self):
         self.assertLessEqual({"block.change", "bot.online", "bot.offline", "bot.died", "job.finished",
-                              "server.started"}, set(EVENTS))
+                              "server.started", "schedule", "world.time"}, set(EVENTS))
         record = "EVENTS_VALIDATION.md#runtime-and-server-kinds"
         for kind in ("job.finished", "server.started"):
             with self.subTest(kind=kind):
@@ -377,6 +377,22 @@ class EventRegistryTests(unittest.TestCase):
         self.assertEqual(died["guarantee"], {"class": "each", "ticks": None, "each": [],
                                              "record": "BLOCK_EVENTS_SPIKE.md#presence-chat-and-death"})
 
+    def test_schedule_and_world_time_are_listed_with_their_guarantees(self):
+        record = "EVENTS_VALIDATION.md#schedule-and-world-time"
+        schedule = EVENTS["schedule"]
+        self.assertEqual((schedule["source"], schedule["capability"], schedule["visibility"], schedule["require"]),
+                         ("endbotd", "read.world", "public", [["every"], ["at"]]))
+        self.assertEqual(schedule["filters"], {"every": {"type": "duration"}, "at": {"type": "time"}})
+        self.assertEqual(schedule["payload"], {"at": "string"})
+        self.assertEqual(schedule["guarantee"], {"class": "each", "ticks": None, "each": [], "record": record})
+        world_time = EVENTS["world.time"]
+        self.assertEqual((world_time["source"], world_time["capability"], world_time["visibility"],
+                          world_time["require"]), ("plugin", "read.world", "public", []))
+        self.assertEqual(world_time["filters"],
+                         {"phase": {"type": "string", "choices": ["day", "sunset", "night", "sunrise"]}})
+        self.assertEqual(world_time["payload"], {"phase": "string", "time": "integer"})
+        self.assertEqual(world_time["guarantee"], {"class": "each", "ticks": None, "each": [], "record": record})
+
     def test_the_registry_requires_an_events_table(self):
         registry = {key: value for key, value in operations.REGISTRY.items() if key != "events"}
         with self.assertRaises(AssertionError):
@@ -398,10 +414,11 @@ class EventRegistryTests(unittest.TestCase):
             with self.subTest(guarantee=guarantee):
                 self.assertRegistryAccepted(event_kind(guarantee=guarantee))
 
-    def test_the_kind_name_is_category_action(self):
+    def test_the_kind_name_is_category_action_except_schedule(self):
         for name in ("block", "Block.change", "block.Change", "block..change", "block.change.more", "block. change"):
             with self.subTest(name=name):
                 self.assertRegistryRejected({name: copy.deepcopy(VALID_EVENT)})
+        self.assertRegistryAccepted({"schedule": copy.deepcopy(VALID_EVENT)})
 
     def test_every_kind_field_is_required_and_nothing_else_is_allowed(self):
         for field in ("source", "capability", "visibility", "filters", "require", "payload", "guarantee"):
@@ -421,6 +438,9 @@ class EventRegistryTests(unittest.TestCase):
             {"x": {"type": "area", "maxBlocks": -1}},
             {"x": {"type": "area", "maxBlocks": 1.5}},
             {"x": {"type": "block", "maxBlocks": 2}},
+            {"x": {"type": "integer", "choices": ["day"]}},
+            {"x": {"type": "string", "choices": []}},
+            {"x": {"type": "string", "choices": ["Day"]}},
             {"x": {"type": "string", "clue": "x"}},
             {"x": {}},
             {"Bad": {"type": "string"}},
@@ -429,6 +449,8 @@ class EventRegistryTests(unittest.TestCase):
                 self.assertRegistryRejected(event_kind(filters=filters, require=[]))
         self.assertRegistryAccepted(event_kind(
             filters={"box": {"type": "area", "maxBlocks": 1}, "dimension": {"type": "dimension"}}, require=[]))
+        self.assertRegistryAccepted(event_kind(
+            filters={"phase": {"type": "string", "choices": ["day", "night"]}}, require=[]))
 
     def test_payload_fields_name_a_type_and_optional_fields_end_in_a_question_mark(self):
         for payload in ({"x": "vector"}, {"x": "string??"}, {"x": "block "}, {"x": "integer|string"}):

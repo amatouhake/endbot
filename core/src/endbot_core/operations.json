@@ -1092,6 +1092,63 @@
         "each": [],
         "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
       }
+    },
+    "schedule": {
+      "source": "endbotd",
+      "capability": "read.world",
+      "visibility": "public",
+      "filters": {
+        "every": {
+          "type": "duration"
+        },
+        "at": {
+          "type": "time"
+        }
+      },
+      "require": [
+        [
+          "every"
+        ],
+        [
+          "at"
+        ]
+      ],
+      "payload": {
+        "at": "string"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#schedule-and-world-time"
+      }
+    },
+    "world.time": {
+      "source": "plugin",
+      "capability": "read.world",
+      "visibility": "public",
+      "filters": {
+        "phase": {
+          "type": "string",
+          "choices": [
+            "day",
+            "sunset",
+            "night",
+            "sunrise"
+          ]
+        }
+      },
+      "require": [],
+      "payload": {
+        "phase": "string",
+        "time": "integer"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#schedule-and-world-time"
+      }
     }
   },
   "reservedBotNames": [

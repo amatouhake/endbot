@@ -1,6 +1,6 @@
-"""The plugin's ``block.change`` source (BOT-022 step 3b, EVENTS.md E3).
+"""The plugin's ``block.change`` and ``bot.died`` source (BOT-022 steps 3b and 6b, EVENTS.md E3, E4).
 
-endbotd sends the positions it wants watched (the interest set). This source,
+endbotd sends the positions and kinds it wants watched (the interest set). This source,
 on the server thread only:
 
 - reads every watched position once every ``POLL_TICKS`` ticks, a quarter of
@@ -13,7 +13,9 @@ on the server thread only:
   keeps their baseline, so a difference is reported late, as ``poll``, once the
   chunk loads again;
 - never reports a newly watched position as changed: its first read is the
-  baseline.
+  baseline;
+- when ``bot.died`` is wanted, reports a death of a player without an XUID (a
+  Bot) with its death message key. A human's death is never reported.
 
 Occurrences carry no owner and no human player's name (S1): ``bot`` is set
 only when a Bot did it. One tick's occurrences go out as one ``events`` frame.
@@ -26,18 +28,21 @@ from collections.abc import Callable
 
 POLL_TICKS = 4
 KIND = "block.change"
+DEATH_KIND = "bot.died"
 # Endstone dimension names to the registry's dimension values.
 DIMENSION_VALUES = {"Overworld": "overworld", "Nether": "nether", "TheEnd": "the_end"}
 ENDSTONE_DIMENSIONS = {value: name for name, value in DIMENSION_VALUES.items()}
 
 
 class BlockChangeSource:
-    """Polls watched positions and confirms player actions; every method runs on the server thread."""
+    """Polls watched positions, confirms player actions and reports Bot deaths; server thread only."""
 
     def __init__(self, server, report: Callable[[int, list[dict], int], object]) -> None:
         self._server = server
         self._report = report
         self.tick = 0
+        # The interest set's kinds: block.change drives the poll, bot.died the death listener.
+        self._kinds: set[str] = set()
         # (dimension value, x, y, z) -> (runtime id, block type) or None while its chunk has not been read.
         self._baseline: dict[tuple, tuple | None] = {}
         self._phases: list[list[tuple]] = [[] for _ in range(POLL_TICKS)]
@@ -51,9 +56,11 @@ class BlockChangeSource:
         return len(self._baseline)
 
     def apply_interest(self, interest: dict) -> None:
-        """Replace the watched positions; new ones take a baseline, removed ones are forgotten."""
+        """Replace the watched positions and kinds; new positions take a baseline, removed ones are forgotten."""
+        kinds = interest.get("kinds") or ()
+        self._kinds = {kind for kind in kinds if isinstance(kind, str)}
         cells = set()
-        if KIND in (interest.get("kinds") or ()):
+        if KIND in self._kinds:
             for group in interest.get("block") or ():
                 dimension = group.get("dimension")
                 if dimension not in ENDSTONE_DIMENSIONS:
@@ -73,6 +80,8 @@ class BlockChangeSource:
             phases[index % POLL_TICKS].append(key)
         self._phases = phases
         self._confirm = [item for item in self._confirm if item[1] in baseline]
+        if DEATH_KIND not in self._kinds:
+            self._pending = [item for item in self._pending if item.get("kind") != DEATH_KIND]
 
     def player_changed(self, block, player, cause: str) -> None:
         """A break or place event at MONITOR priority: confirm what the world holds on the next tick."""
@@ -85,19 +94,29 @@ class BlockChangeSource:
         bot = None if player is None or str(getattr(player, "xuid", "") or "") else str(player.name)
         self._confirm.append((self.tick + 1, key, cause, bot))
 
+    def player_died(self, player, message: str) -> None:
+        """A PlayerDeathEvent at MONITOR priority: report it only for a Bot and only when bot.died is wanted."""
+        if DEATH_KIND not in self._kinds or player is None:
+            return
+        if str(getattr(player, "xuid", "") or ""):
+            return  # A human's death is never reported (BLOCK_EVENTS_SPIKE.md#presence-chat-and-death).
+        name = str(getattr(player, "name", "") or "")
+        if name:
+            self._pending.append({"kind": DEATH_KIND, "bot": name, "message": str(message)})
+
     def on_tick(self) -> None:
         self.tick += 1
-        if not self._baseline:
+        if self._baseline:
+            loaded = self._loaded()
+            due = [item for item in self._confirm if item[0] <= self.tick]
+            if due:
+                self._confirm = [item for item in self._confirm if item[0] > self.tick]
+                for _, key, cause, bot in due:
+                    self._check(key, loaded, cause, bot)
+            for key in self._phases[self.tick % POLL_TICKS]:
+                self._check(key, loaded, "poll", None)
+        else:
             self._confirm.clear()
-            return
-        loaded = self._loaded()
-        due = [item for item in self._confirm if item[0] <= self.tick]
-        if due:
-            self._confirm = [item for item in self._confirm if item[0] > self.tick]
-            for _, key, cause, bot in due:
-                self._check(key, loaded, cause, bot)
-        for key in self._phases[self.tick % POLL_TICKS]:
-            self._check(key, loaded, "poll", None)
         if self._pending or self._dropped:
             pending, dropped = self._pending, self._dropped
             self._pending, self._dropped = [], 0

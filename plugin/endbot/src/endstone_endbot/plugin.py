@@ -20,6 +20,7 @@ from endstone.event import (
     BlockBreakEvent,
     BlockPlaceEvent,
     EventPriority,
+    PlayerDeathEvent,
     PlayerJoinEvent,
     PlayerQuitEvent,
     event_handler,
@@ -368,6 +369,13 @@ class EndbotPlugin(Plugin):
     def on_block_place(self, event: BlockPlaceEvent) -> None:
         if self._blocks is not None:
             self._blocks.player_changed(event.block, event.player, "player-place")
+
+    @event_handler(priority=EventPriority.MONITOR)
+    def on_player_death(self, event: PlayerDeathEvent) -> None:
+        if self._blocks is not None:
+            # Translatable.text is the translation key; a plain string death message is used as it is.
+            message = getattr(event.death_message, "text", event.death_message)
+            self._blocks.player_died(event.player, "" if message is None else str(message))
 
     @event_handler
     def on_player_join(self, event: PlayerJoinEvent) -> None:

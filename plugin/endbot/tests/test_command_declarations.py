@@ -54,6 +54,7 @@ def _load_usages():
     command.ConsoleCommandSender = type("ConsoleCommandSender", (_StubSender,), {})
     event.PlayerJoinEvent = type("PlayerJoinEvent", (), {})
     event.PlayerQuitEvent = type("PlayerQuitEvent", (), {})
+    event.PlayerDeathEvent = type("PlayerDeathEvent", (), {})
     event.BlockBreakEvent = type("BlockBreakEvent", (), {})
     event.BlockPlaceEvent = type("BlockPlaceEvent", (), {})
     event.EventPriority = type("EventPriority", (), {"MONITOR": 5})

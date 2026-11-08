@@ -51,8 +51,16 @@ def reason(value) -> dict:
     return {"template": str(value), "params": {}}
 
 
+def reason_text(value, lang: str = "en") -> str:
+    """A reason as text: a ``reason()`` mapping rendered in ``lang``, or any other value as a string."""
+    if isinstance(value, dict) and isinstance(value.get("template"), str):
+        params = value.get("params") if isinstance(value.get("params"), dict) else {}
+        return tr(lang, value["template"], **params)
+    return str(value)
+
+
 def _reason_text(data: dict, lang: str) -> str:
-    return tr(lang, data["template"], **data["params"])
+    return reason_text(data, lang)
 
 
 def _job_ended(data, lang, sink):

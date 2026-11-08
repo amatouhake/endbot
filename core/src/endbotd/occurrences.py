@@ -138,6 +138,8 @@ class OccurrenceHub:
         self._subscriptions: dict[str, list[Subscription]] = {}
         self._revision = 0
         self._epoch: str | None = None
+        # The plugin's boot id from its last hello: a new one means BDS started again (server.started).
+        self._boot: str | None = None
         self._unknown: set[str] = set()
 
     @property
@@ -189,6 +191,11 @@ class OccurrenceHub:
         with self._lock:
             return len(self._watched_cells())
 
+    def has_interest(self, *kinds: str) -> bool:
+        """Whether any live subscription wants one of ``kinds``; the runtime poll starts and stops with this."""
+        with self._lock:
+            return any(self._subscriptions.get(kind) for kind in kinds)
+
     def _publish(self) -> None:
         """Send the current set with a new revision; one send at a time, so a later set never arrives first."""
         with self._send_lock:
@@ -221,16 +228,21 @@ class OccurrenceHub:
 
     # -- sources ---------------------------------------------------------
 
-    def link_changed(self, epoch: str | None, closed: str | None = None) -> None:
-        """A plugin linked (its epoch) or the link of epoch ``closed`` went away (None).
+    def link_changed(self, epoch: str | None, closed: str | None = None, *, boot: str | None = None) -> None:
+        """A plugin linked (its epoch and boot id) or the link of epoch ``closed`` went away (None).
 
         A close that arrives after a newer link replaced it changes nothing. A gap is recorded for plugin-fed
         subscriptions first, then the current set is sent, so a watch opened or closed by a gap callback is in it.
+        A boot id endbotd has not seen before is a fresh BDS process: ``server.started`` is raised once for it,
+        while a reconnect of the same plugin process keeps its boot id and raises nothing (EVENTS.md E9).
         """
         with self._lock:
             if epoch is None and closed is not None and closed != self._epoch:
                 return
             previous, self._epoch = self._epoch, epoch
+        if epoch is not None and boot is not None and boot != self._boot:
+            self._boot = boot
+            self.raise_occurrence("endbotd", {"kind": "server.started"})
         if epoch is None or (previous is not None and previous != epoch):
             self.gap("plugin", "source restarted")
         if epoch is not None:

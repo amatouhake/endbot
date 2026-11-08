@@ -40,6 +40,7 @@ from endbotd.authority import Authority
 from endbotd.config import EndbotdConfig
 from endbotd.journal import RunJournal
 from endbotd.occurrences import DEFAULT_MAX_WATCHED_BLOCKS, MAX_WATCHED_BLOCKS, OccurrenceHub
+from endbotd.runtime_kinds import RuntimeKinds
 from endbotd.triggers import DEFAULT_MAX_TRIGGERS, TriggerEngine
 from endbotd.web import WebService
 
@@ -145,6 +146,8 @@ class EndbotService:
                                            timeout=config.runtime_timeout)
         # Read-only web queries use this one: OwnedInputs records the run journal on every request it carries.
         self._runtime_control = control
+        # Runtime-sourced kinds (BOT-022 6b): profile polling only while bot.online or bot.offline is wanted.
+        self.runtime_kinds = RuntimeKinds(self.occurrences, self._runtime_control, log=self._log)
         control = OwnedInputs(control)
         self._inputs = control
         journal_file = config.journal_file if config.journal_file.is_absolute() else config.base / config.journal_file
@@ -197,7 +200,7 @@ class EndbotService:
         self.runner = AsyncCommandRunner(
             self.commands, _LocalBridge(self.authority.lock, self._delivery), self._resolve_sender,
             authorize=self.authority.authorize, log_sink=LoggerSink(LOGGER), show_view=self._show_view,
-            scripts=self.scripts, on_event=self._web_event, on_result=self._web_result,
+            scripts=self.scripts, on_event=self._record_event, on_result=self._web_result,
         )
 
     # -- lifecycle -----------------------------------------------------------
@@ -231,6 +234,7 @@ class EndbotService:
         self.triggers.start()
         self._inputs.on_change = self.scripts.on_runs_changed = self._record_runs
         self.link.start()
+        self.runtime_kinds.start()
         self._start_web_link()
         threading.Thread(target=self._poll_loop, name="endbotd-mining", daemon=True).start()
         return self
@@ -262,7 +266,9 @@ class EndbotService:
         self.web.on_sessions_removed = self.web_link.sessions_removed
         self.web_link.start()
 
-    def _web_event(self, event) -> None:
+    def _record_event(self, event) -> None:
+        # job.ended Events also feed the job.finished event kind (BOT-022 6b).
+        self.runtime_kinds.on_event(event)
         if self.web_api is not None:
             self.web_api.record(event)
 
@@ -305,6 +311,7 @@ class EndbotService:
             return
         self._closed.set()
         self.triggers.close()
+        self.runtime_kinds.close()
         if self.web_link is not None:
             self.web_link.stop()
         # Cleanup (stopping scripts, Group work and mining) still reaches the runtime.

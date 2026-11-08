@@ -653,6 +653,11 @@ w:close()                          -- optional; a watch ends with its run
 | Kind | Filters (one of) | Payload | Guarantee |
 | --- | --- | --- | --- |
 | `block.change` | area: area (max 512 blocks) | x: integer, y: integer, z: integer, dimension: string, from: block, to: block, cause: string, bot: string? | At most once, after the fact, in source order. A change that lasts at least 4 ticks is delivered; player-break and player-place are delivered individually. |
+| `bot.online` | none | bot: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `bot.offline` | none | bot: string, reason: string? | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `bot.died` | none | bot: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `job.finished` | none | bot: string, job: string, reason: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `server.started` | none | none | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 <!-- END GENERATED EVENTS -->
 
 ## Lifetime, boundaries and unverified gates

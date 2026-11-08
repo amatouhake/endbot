@@ -113,6 +113,8 @@ class PluginLink:
         # Server thread only, like the plugin's own attachments today.
         self._attachments: dict[str, object] = {}
         self.epoch: str | None = None
+        # One id per plugin enable: endbotd raises server.started when a hello carries a boot it has not seen.
+        self.boot = uuid.uuid4().hex
         self.config: dict | None = None
 
     @property
@@ -156,7 +158,7 @@ class PluginLink:
     def _connect_once(self) -> None:
         epoch = uuid.uuid4().hex
         hello = {"protocol": PROTOCOL, "pluginVersion": self._plugin_version, "registryHash": registry_hash(),
-                 "epoch": epoch, "token": load_token(self._token_file)}
+                 "epoch": epoch, "boot": self.boot, "token": load_token(self._token_file)}
         handlers = {"world": self._world_call, "deliver": self._deliver, "permission": self._permission,
                     "interest": self._interest}
         connection, result = connect(self._host, self._port, hello, handlers, concurrent=frozenset({"world"}),

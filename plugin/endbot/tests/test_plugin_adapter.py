@@ -43,6 +43,7 @@ class PluginAdapterTests(unittest.TestCase):
         command.ConsoleCommandSender = FakeConsole
         event.PlayerJoinEvent = type("PlayerJoinEvent", (), {})
         event.PlayerQuitEvent = type("PlayerQuitEvent", (), {})
+        event.PlayerDeathEvent = type("PlayerDeathEvent", (), {})
         event.BlockBreakEvent = type("BlockBreakEvent", (), {})
         event.BlockPlaceEvent = type("BlockPlaceEvent", (), {})
         event.EventPriority = type("EventPriority", (), {"MONITOR": 5})
@@ -85,6 +86,16 @@ class PluginAdapterTests(unittest.TestCase):
             plugin._publish_hotbars()
         self.assertEqual(publish.call_count, 4)
         plugin.logger.warning.assert_called_once()
+
+    def test_a_death_is_forwarded_with_its_translation_key(self):
+        plugin = self.module.EndbotPlugin()
+        calls = []
+        plugin._blocks = types.SimpleNamespace(player_died=lambda player, message: calls.append((player, message)))
+        player = types.SimpleNamespace(name="Miner", xuid="")
+        event = types.SimpleNamespace(player=player,
+                                      death_message=types.SimpleNamespace(text="death.attack.generic"))
+        plugin.on_player_death(event)
+        self.assertEqual(calls, [(player, "death.attack.generic")])
 
     def test_metadata_registers_narrow_command_and_permission(self) -> None:
         plugin_class = self.module.EndbotPlugin

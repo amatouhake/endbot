@@ -930,6 +930,107 @@
         ],
         "record": "BLOCK_EVENTS_SPIKE.md#result"
       }
+    },
+    "bot.online": {
+      "source": "endbotd",
+      "capability": "read.world",
+      "visibility": "public",
+      "filters": {
+        "bot": {
+          "type": "bot"
+        }
+      },
+      "require": [],
+      "payload": {
+        "bot": "string"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+      }
+    },
+    "bot.offline": {
+      "source": "endbotd",
+      "capability": "read.world",
+      "visibility": "public",
+      "filters": {
+        "bot": {
+          "type": "bot"
+        }
+      },
+      "require": [],
+      "payload": {
+        "bot": "string",
+        "reason": "string?"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+      }
+    },
+    "bot.died": {
+      "source": "plugin",
+      "capability": "read.world",
+      "visibility": "public",
+      "filters": {
+        "bot": {
+          "type": "bot"
+        }
+      },
+      "require": [],
+      "payload": {
+        "bot": "string",
+        "message": "string"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "BLOCK_EVENTS_SPIKE.md#presence-chat-and-death"
+      }
+    },
+    "job.finished": {
+      "source": "endbotd",
+      "capability": "read.world",
+      "visibility": "public",
+      "filters": {
+        "bot": {
+          "type": "bot"
+        },
+        "job": {
+          "type": "string"
+        }
+      },
+      "require": [],
+      "payload": {
+        "bot": "string",
+        "job": "string",
+        "reason": "string"
+      },
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+      }
+    },
+    "server.started": {
+      "source": "endbotd",
+      "capability": "read.world",
+      "visibility": "public",
+      "filters": {},
+      "require": [],
+      "payload": {},
+      "guarantee": {
+        "class": "each",
+        "ticks": null,
+        "each": [],
+        "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+      }
     }
   },
   "reservedBotNames": [

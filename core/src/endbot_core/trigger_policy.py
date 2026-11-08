@@ -65,6 +65,18 @@ class TriggerPolicy:
         """Every occurrence missed since this policy was created."""
         return self._missed_total
 
+    def carry_from(self, other: TriggerPolicy) -> TriggerPolicy:
+        """Keep what ``other`` knew (runs still active, the start window, queued and missed occurrences) under this
+        policy's settings, so changing or re-enabling a trigger never resets its start cap; a disable is not kept."""
+        self._active = other._active
+        self._starts = deque(other._starts)
+        self._pending = deque(list(other._pending)[-self._queue_limit:]) if self._concurrency == "queue" else deque()
+        self._missed_total = other._missed_total
+        self._missed_since_start = other._missed_since_start
+        if other._last_start is not None and (self._last_start is None or other._last_start > self._last_start):
+            self._last_start = other._last_start
+        return self
+
     def offer(self, now: float) -> Decision:
         """An occurrence arrived; decide whether to start, queue, drop or disable."""
         if self._disabled:

@@ -71,6 +71,7 @@ class ConfigTests(unittest.TestCase):
                 self.write(base + f"[events]\nmax-watched-blocks={value}\n")
                 with self.assertRaisesRegex(ConfigError, "events.max-watched-blocks"):
                     load_config(self.path)
+        # The poll period is fixed at 4 ticks so the registry's guarantee stays true; it is not a setting.
         self.write(base + "[events]\nblock-poll-ticks=2\n")
         with self.assertRaisesRegex(ConfigError, "events.block-poll-ticks"):
             load_config(self.path)

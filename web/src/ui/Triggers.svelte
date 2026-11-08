@@ -393,7 +393,17 @@
     if (!parts) return;
     const topic = `trigger:${parts.owner}/${parts.name}`;
     const stop = connection.listen((event) => {
-      if (event.topic !== topic || !event.data?.trigger) return;
+      if (event.topic !== topic) return;
+      if (event.data?.removed) {
+        // Removed elsewhere (another page, the game): leave its page and drop it from the list.
+        triggers = triggers.filter((item) => item.owner !== parts.owner || item.name !== parts.name);
+        if (selected === wanted) {
+          navigate("triggers", null, true);
+          notice = t("triggerRemoved");
+        }
+        return;
+      }
+      if (!event.data?.trigger) return;
       const trigger = event.data.trigger;
       if (trigger.owner !== parts.owner || trigger.name !== parts.name) return;
       upsert(trigger);

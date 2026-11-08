@@ -1,8 +1,8 @@
 # Events, watches and triggers design (BOT-022)
 
-Status: **Design agreed** (2026-10-29 JST, amended 2026-11-08 JST by S6 to S9): the operator accepted the proposals
-and the recommended answers to the former open points (see [settled points](#settled-points)). Implementation
-started 2026-11-08 JST.
+Status: **Steps 1 to 7 on `main`** (2026-11-08 JST, #234 to #247); design agreed 2026-10-29 JST, amended
+2026-11-08 JST by S6 to S10 (see [settled points](#settled-points)). The Bot-only live smoke passed
+([record](EVENTS_VALIDATION.md#bot-only-live-smoke)); step 8, the human checks, belongs to the combined release pass.
 
 This document turns [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
 into a registry format, a delivery path, watch and trigger semantics, and a step plan. It builds on endbotd

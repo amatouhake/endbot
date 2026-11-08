@@ -180,6 +180,7 @@ class PluginLink:
                 raise LinkError("unavailable", "link closed before the snapshot")
             self._live = connection
             self.epoch = epoch
+            self.interest_revision = 0  # a new endbotd numbers its sets from the start
             self._down.clear()
             self._report(connection, {"kind": "snapshot", "players": snapshot})
 
@@ -206,7 +207,10 @@ class PluginLink:
             raise LinkError("invalid", "interest needs a revision")
         if not isinstance(body.get("block"), list) or not isinstance(body.get("kinds"), list):
             raise LinkError("invalid", "interest needs block and kinds lists")
-        self.interest_revision = revision
+        with self._lock:
+            if revision < self.interest_revision:
+                return {"revision": self.interest_revision}  # an older set that arrived late
+            self.interest_revision = revision
         if self._on_interest is not None:
             self._on_interest(body)
         return {"revision": revision}
@@ -217,11 +221,11 @@ class PluginLink:
         False when no link is live: those occurrences are lost, and endbotd records the gap itself.
         """
         with self._lock:
-            live, epoch = self._live, self.epoch
+            live, epoch, revision = self._live, self.epoch, self.interest_revision
         if live is None or epoch is None:
             return False
         sent = items[:MAX_EVENT_ITEMS]
-        body = {"revision": self.interest_revision, "epoch": epoch, "tick": tick, "items": sent,
+        body = {"revision": revision, "epoch": epoch, "tick": tick, "items": sent,
                 "dropped": dropped + len(items) - len(sent)}
 
         def failed(future) -> None:

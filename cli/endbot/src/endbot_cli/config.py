@@ -100,6 +100,8 @@ class PermissionsConfig:
 
 # Positions the server watches for block.change, all watches and triggers together (BLOCK_EVENTS_SPIKE.md#result).
 DEFAULT_MAX_WATCHED_BLOCKS = 2048
+# The interest set lists every watched cell in one 1 MiB link frame (endbotd.occurrences.MAX_WATCHED_BLOCKS).
+MAX_WATCHED_BLOCKS = 16384
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,8 +388,9 @@ def _load_events(path: Path, document: dict[str, Any]) -> EventsConfig:
         raise _fail(path, "events", "must be a table", "write it as an [events] section")
     _reject_unknown_keys(path, table, "events", ("max-watched-blocks",))
     value = table.get("max-watched-blocks", DEFAULT_MAX_WATCHED_BLOCKS)
-    if type(value) is not int or not 0 <= value <= 65536:
-        raise _fail(path, "events.max-watched-blocks", f"must be an integer from 0 to 65536, found {value!r}",
+    if type(value) is not int or not 0 <= value <= MAX_WATCHED_BLOCKS:
+        raise _fail(path, "events.max-watched-blocks",
+                    f"must be an integer from 0 to {MAX_WATCHED_BLOCKS}, found {value!r}",
                     f"use max-watched-blocks = {DEFAULT_MAX_WATCHED_BLOCKS} (the default); 0 turns block watches off")
     return EventsConfig(max_watched_blocks=value)
 

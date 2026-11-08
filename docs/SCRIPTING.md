@@ -670,8 +670,8 @@ local n = watch("world.time", {phase = "night"})   -- each time night falls
 | `player.join` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 | `player.leave` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 | `player.chat` | none | player: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `bot.online` | none | bot: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `bot.offline` | none | bot: string, reason: string? | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `bot.online` | none | bot: string | At most once, after the fact, in source order. A change that lasts at least 40 ticks is delivered. |
+| `bot.offline` | none | bot: string, reason: string? | At most once, after the fact, in source order. A change that lasts at least 40 ticks is delivered. |
 | `bot.died` | none | bot: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 | `job.finished` | none | bot: string, job: string, reason: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
 | `server.started` | none | none | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |

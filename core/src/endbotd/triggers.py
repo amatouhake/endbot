@@ -38,6 +38,8 @@ from endbot_core.trigger_store import Trigger, policy_from
 from endbot_core.watches import check_kind, validate_filter
 
 DEFAULT_MAX_TRIGGERS = 8
+# Change notices waiting for a slow listener; beyond this they are dropped (the page re-reads on its next list).
+MAX_NOTICES = 256
 TICK_SECONDS = 0.25
 
 
@@ -81,6 +83,8 @@ class TriggerEngine:
         # Held from the last check before a start to the start, and by every state change: no start after a
         # disable, remove or pause has returned.
         self._state = threading.RLock()
+        self._notices: queue.Queue = queue.Queue()
+        self._notifier: threading.Thread | None = None
         self._work: queue.Queue = queue.Queue()
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
@@ -116,20 +120,43 @@ class TriggerEngine:
     def close(self) -> None:
         self._closed.set()
         self._work.put(None)
+        self._notices.put(None)
         with self._lock:
             armed, self._armed = self._armed, {}
         for entry in armed.values():
             self.hub.unsubscribe(entry["subscription"])
 
-    def _changed(self, trigger: Trigger | None) -> None:
-        """Tell the listener a stored change happened; its failure must not break the engine."""
-        callback = self.on_changed
-        if callback is None or trigger is None:
+    def _changed(self, trigger: Trigger | None, *, removed: bool = False) -> None:
+        """Queue a notice of a stored change for the listener (the web); never waits for it."""
+        if self.on_changed is None or trigger is None:
             return
-        try:
-            callback(trigger)
-        except Exception as error:  # noqa: BLE001 - a listener's failure is logged, not raised into the engine
-            self._log("warning", f"trigger change listener failed: {type(error).__name__}: {error}")
+        if self._notices.qsize() >= MAX_NOTICES:
+            return  # a listener that cannot keep up loses notices, never the engine's time
+        self._notices.put((trigger, removed))
+        with self._lock:
+            if self._notifier is None or not self._notifier.is_alive():
+                self._notifier = threading.Thread(target=self._notify_loop, name="endbotd-trigger-notices",
+                                                  daemon=True)
+                self._notifier.start()
+
+    def _notify_loop(self) -> None:
+        while True:
+            item = self._notices.get()
+            if item is None:
+                return
+            trigger, removed = item
+            callback = self.on_changed
+            try:
+                if callback is not None:
+                    callback(trigger, removed=removed)
+            except Exception as error:  # noqa: BLE001 - a listener's failure is logged, not raised into the engine
+                self._log("warning", f"trigger change listener failed: {type(error).__name__}: {error}")
+            finally:
+                self._notices.task_done()
+
+    def flush_notices(self) -> None:
+        """Wait until every queued change notice was handed to the listener (tests and shutdown)."""
+        self._notices.join()
 
     def _arm(self, trigger: Trigger) -> None:
         key = _key(trigger)
@@ -483,7 +510,7 @@ class TriggerEngine:
             self.store.remove(trigger.owner, name)
             with self._lock:
                 self._policies.pop(_key(trigger), None)
-        self._changed(trigger)
+        self._changed(trigger, removed=True)
 
     def set_policy(self, principal: Principal, name: str, values: dict, owner: str | None = None) -> Trigger:
         trigger = self._own(owner, name, principal)

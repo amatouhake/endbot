@@ -552,7 +552,8 @@ class ProtocolExampleTests(unittest.TestCase):
     def test_the_schema_version_is_the_protocol_version(self):
         root = Path(__file__).resolve().parents[3]
         schema = json.loads((root / "core/src/endbotd/web_protocol.schema.json").read_text(encoding="utf-8"))
-        self.assertEqual(schema["version"], WEB_PROTOCOL)
+        # A literal: bumping the protocol must be deliberate, and a forgotten bump must fail here.
+        self.assertEqual((schema["version"], WEB_PROTOCOL), (2, 2))
         examples = json.loads((root / "web/protocol-examples.json").read_text(encoding="utf-8"))
         kinds = {example["t"] for example in examples["valid"] if "t" in example}
         self.assertEqual(kinds, {"challenge", "prove", "ready", "open", "msg", "close", "cache"})

@@ -42,7 +42,7 @@ OWNER_KEY = re.compile(r"(?:console|xuid:[0-9]{1,20}|player:[0-9A-Fa-f]{8}-[0-9A
 FILTER_FIELD = re.compile(r"[a-z][a-z0-9_]{0,31}")
 MAX_TRIGGER_ARGUMENTS = 32
 MAX_TRIGGER_ARGUMENT = 256
-MAX_FILTER_TEXT = 512
+MAX_FILTER_TEXT = 1024  # endbot_core.watches.MAX_AREA_TEXT: the longest area clause the game accepts
 MAX_TOPIC = 200
 # Not for the web: an in-game screen, chat help, and what stays with the console.
 WEB_REFUSED_OPERATIONS = frozenset({"menu", "help", "owner"})
@@ -288,8 +288,6 @@ class WebApi:
         triggers = self._triggers
         if triggers is None:
             return self._unavailable(principal.language, "Triggers are unavailable")
-        if triggers.max_triggers == 0:
-            return self._unavailable(principal.language, "Triggers are turned off on this server")
         if action == "list":
             return {"type": "result", "code": "ok", "data": {
                 "triggers": [self._trigger_data(trigger, principal) for trigger in triggers.list(principal)],
@@ -434,8 +432,6 @@ class WebApi:
             return {"type": "result", "code": "invalid_argument"}
         if self._triggers is None:
             return self._unavailable(principal.language, "Triggers are unavailable")
-        if self._triggers.max_triggers == 0:
-            return self._unavailable(principal.language, "Triggers are turned off on this server")
         try:
             self._triggers.get(parsed[0], parsed[1], principal)
         except (ValueError, RuntimeError, OSError) as error:
@@ -452,8 +448,8 @@ class WebApi:
                 entry.topics.discard(f"trigger:{parsed[0]}/{parsed[1]}")
         return {"type": "result", "code": "ok"}
 
-    def trigger_changed(self, trigger) -> None:
-        """Push a stored change to the pages subscribed to it that may still see it."""
+    def trigger_changed(self, trigger, removed: bool = False) -> None:
+        """Push a stored change to the pages subscribed to it that may still see it; a removal says so."""
         triggers = self._triggers
         if triggers is None:
             return
@@ -462,8 +458,9 @@ class WebApi:
             principal = self._auth.principal(entry.token, entry.language, active=False)
             if principal is None or not triggers.visible(trigger, principal):
                 continue
-            entry.push({"type": "event", "topic": topic,
-                        "data": {"trigger": self._trigger_data(trigger, principal)}})
+            data = ({"removed": True, "name": trigger.name, "owner": trigger.owner} if removed
+                    else {"trigger": self._trigger_data(trigger, principal)})
+            entry.push({"type": "event", "topic": topic, "data": data})
 
     @staticmethod
     def _unavailable(language: str, template: str) -> dict:

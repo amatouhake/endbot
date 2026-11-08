@@ -18,6 +18,7 @@ instance; ``endbot_core.events.Event`` stays the Event log entry.
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 
 from endbot_core import areas
@@ -37,7 +38,7 @@ MAX_UNKNOWN_KINDS = 32
 class Subscription:
     """One watch's or trigger's interest in one kind; delivery goes through its callbacks."""
 
-    __slots__ = ("active", "cells", "dimension", "filter", "kind", "on_gap", "on_item", "source")
+    __slots__ = ("active", "cells", "created", "dimension", "filter", "kind", "on_gap", "on_item", "source")
 
     def __init__(self, kind: str, source: str, filter_: dict, cells: frozenset, dimension: str | None,
                  on_item: Callable[[dict], None], on_gap: Callable[[str], None]) -> None:
@@ -49,6 +50,7 @@ class Subscription:
         self.on_item = on_item
         self.on_gap = on_gap
         self.active = True
+        self.created = time.perf_counter()
 
 
 def _area_filters(spec: dict) -> list[str]:
@@ -126,11 +128,13 @@ class OccurrenceHub:
     """Subscriptions, the interest set and gap tracking for every event source."""
 
     def __init__(self, kinds: dict, send_interest: Callable[[dict], object], *,
-                 max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS,
+                 max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS, turned_off=(),
                  log: Callable[[str, str], None] | None = None) -> None:
         self._kinds = kinds
         self._send_interest = send_interest
         self._max_watched_blocks = max_watched_blocks
+        # Kinds the operator has not turned on (player.chat without [events] chat = true): refused at subscribe.
+        self._turned_off = frozenset(turned_off)
         self._log = log or (lambda level, message: None)
         self._lock = threading.Lock()
         # Held while an interest set is computed and sent, so sets reach the plugin in revision order.
@@ -154,6 +158,9 @@ class OccurrenceHub:
         spec = self._kinds.get(kind)
         if spec is None:
             raise LocalizedError("Unknown event kind {kind}", kind=kind)
+        if kind in self._turned_off:
+            raise LocalizedError("{kind} is turned off on this server; the operator turns it on in [events]",
+                                 kind=kind)
         filter_ = resolve_filter(kind, spec, filter_)
         cells = area_cells(spec, filter_)
         dimension = _dimension(spec, filter_)
@@ -284,10 +291,15 @@ class OccurrenceHub:
                 self._unknown.add(label)
                 self._log("warning", f"ignored an occurrence of {label!r} from {source}")
             return 0
+        # A source that sees changes only between two samples says when the change could have begun (``_since``,
+        # perf_counter seconds): a subscription made after that may have been made after the change, so it is skipped.
+        since = item.pop("_since", None) if isinstance(item, dict) else None
         with self._lock:
             listed = list(self._subscriptions.get(kind, ()))
         delivered = 0
         for subscription in listed:
+            if since is not None and subscription.created > since:
+                continue
             if subscription.active and matches(spec, subscription, item):
                 if self._call(subscription.on_item, dict(item)):
                     delivered += 1

@@ -331,10 +331,14 @@ class TriggerWebApiTests(unittest.TestCase):
         self.pushed, self.bob_pushed = [], []
 
     def ask(self, **message):
-        return self.api.handle(self.token, "c1", message, self.pushed.append)
+        answer = self.api.handle(self.token, "c1", message, self.pushed.append)
+        self.engine.flush_notices()  # change notices go out on their own thread
+        return answer
 
     def ask_bob(self, **message):
-        return self.api.handle(self.bob_token, "c2", message, self.bob_pushed.append)
+        answer = self.api.handle(self.bob_token, "c2", message, self.bob_pushed.append)
+        self.engine.flush_notices()
+        return answer
 
     def create(self, **fields):
         message = {"type": "trigger.create", "script": "guard", "kind": "block.change",
@@ -446,14 +450,27 @@ class TriggerWebApiTests(unittest.TestCase):
         self.ask(type="subscribe", topic=topic)
         del self.auth.principals[self.token]
         self.engine.disable(self.alice, "guard")
+        self.engine.flush_notices()
         self.assertEqual(self.pushed, [])
         self.assertEqual(self.api._subscribers, {})
 
-    def test_triggers_turned_off_are_unavailable(self):
+    def test_triggers_turned_off_refuse_arming_exactly_as_the_game_does(self):
+        self.create()
         self.engine.max_triggers = 0
-        answer = self.ask(type="trigger.list")
-        self.assertEqual((answer["code"], answer["messages"]),
-                         ("unavailable", ["Triggers are turned off on this server"]))
+        listed = self.ask(type="trigger.list")
+        self.assertEqual((listed["code"], [item["name"] for item in listed["data"]["triggers"]]), ("ok", ["guard"]))
+        self.assertFalse(listed["data"]["canArm"])
+        answer = self.ask(type="trigger.enable", name="guard")
+        self.assertNotEqual(answer["code"], "ok")
+        self.assertIn("Triggers are turned off on this server", answer.get("messages", []))
+        self.assertEqual(self.ask(type="trigger.remove", name="guard")["code"], "ok")
+
+    def test_a_removal_is_pushed_as_a_removal(self):
+        self.create()
+        topic = f"trigger:xuid:{XUID}/guard"
+        self.ask(type="subscribe", topic=topic)
+        self.ask(type="trigger.remove", name="guard")
+        self.assertEqual(self.pushed[-1]["data"], {"removed": True, "name": "guard", "owner": f"xuid:{XUID}"})
 
     def test_checked_names_owners_and_fields(self):
         for message in (

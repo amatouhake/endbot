@@ -282,6 +282,10 @@ Decided 2026-11-08 JST, before implementation started:
 - **S9. Step 1 measures with Bots, not a human.** A Bot's break and place are real player actions on BDS and raise
   the same events; the spike record says "measured with Bots", and human break and place are checked in the release
   pass. Validation uses NetherNet Bots only (RakNet was removed in 0.5.0).
+- **S10. `player.chat` is an operator opt-in** (`[events] chat`, off by default; decided 2026-11-08 JST). On the
+  locked Endstone the chat event comes before a behavior pack's `chatSend` mute and BDS's chat filter run, so a
+  message nobody saw could reach a script; operators who do not mute chat with a pack turn it on
+  ([record](EVENTS_VALIDATION.md#presence-and-chat)).
 
 ## Steps
 

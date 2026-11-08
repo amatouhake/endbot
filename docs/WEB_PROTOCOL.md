@@ -98,6 +98,9 @@ also carries the script's current declaration as `requires`, for the confirmatio
 
 A `trigger:<owner>/<name>` subscription pushes `{type: "event", topic, data: {trigger}}` after every stored state or
 stats change of that trigger, to pages whose current principal may still see it; a revoked session gets nothing.
+A removed trigger is pushed once as `data: {removed: true, name, owner}`. Notices are sent from their own thread,
+never from the one that starts runs, and a page that cannot keep up may miss some; `trigger.list` and `trigger.get`
+always answer the current state.
 
 endbotd also pushes `{type: "event", topic: "account", data: {kind: "passkey_added"}}` to every open page of an account
 that subscribed to anything, so a passkey added elsewhere is seen at once.

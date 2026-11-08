@@ -314,7 +314,7 @@ def check_locked_endstone() -> dict:
 
 def exercise(
     output: Path, node: str, report: dict, *, mining=False, inventory=False, inventory_stack=False,
-    item_use=False, groups=False, scripting=False, entity=False, endbotd_failures=False,
+    item_use=False, groups=False, scripting=False, entity=False, endbotd_failures=False, block_events=False,
     transport="nethernet", server: Path | None = None,
 ) -> None:
     needs_scripting_fixture = scripting or endbotd_failures
@@ -373,6 +373,7 @@ def exercise(
             ROOT / "scripts/mining_probe.py",
             ROOT / "scripts/item_use_probe.py",
             ROOT / "scripts/entity_probe.py",
+            ROOT / "scripts/block_events_probe.py",
             ROOT / "plugin/endbot/src/endstone_endbot/plugin.py",
             ROOT / "core/src/endbot_core/controller_policy.py",
             ROOT / "plugin/endbot/src/endstone_endbot/dispatch.py",
@@ -481,7 +482,7 @@ def exercise(
         [str(ROOT / "plugin/endbot/src"), str(ROOT / "core/src"), str(ROOT / "cli/endbot/src")]
     )
     environment["PYTHONIOENCODING"] = "utf-8"
-    if mining or inventory or item_use or inventory_stack or needs_scripting_fixture or entity:
+    if mining or inventory or item_use or inventory_stack or needs_scripting_fixture or entity or block_events:
         from mining_probe import configure_fixture
         configure_fixture(ROOT, output, environment)
     if item_use:
@@ -490,6 +491,9 @@ def exercise(
     if entity:
         from entity_probe import configure_fixture as configure_entity
         configure_entity(ROOT, output, environment)
+    if block_events:
+        from block_events_probe import configure_fixture as configure_block_events
+        configure_block_events(ROOT, output, environment)
     if inventory_stack:
         from inventory_stack_probe import configure_fixture as configure_stack
 
@@ -843,6 +847,23 @@ def exercise(
                     output, lambda line: console(bds, line),
                     lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
                     lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report, logtext,
+                )
+            if block_events:
+                from block_events_probe import exercise_block_events
+
+                report["stage"] = "block event coverage (BOT-022 step 1)"
+
+                def spawn_again():
+                    console(bds, f"bot {BOT} despawn")
+                    time.sleep(3)
+                    console(bds, f"bot {BOT} resume")
+                    wait_for("Bot back after resume", online, 60, bds)
+
+                exercise_block_events(
+                    output, lambda line: console(bds, line),
+                    lambda method, **params: control_request(control_port, token, method, name=BOT, **params),
+                    lambda label, predicate, timeout: wait_for(label, predicate, timeout, bds), report, logtext,
+                    spawn_again,
                 )
             if inventory_stack:
                 from inventory_stack_probe import exercise_inventory_stack
@@ -1204,6 +1225,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--inventory", action="store_true", help="validate natural pickups and hotbar/drop without reconnect")
     parser.add_argument("--inventory-stack", action="store_true", help="record stack requests/responses and authoritative inventory in disposable fixtures")
     parser.add_argument("--item-use", action="store_true", help="validate timed trident/bow/food use and observe sync cost")
+    parser.add_argument("--block-events", action="store_true",
+                        help="measure which block changes raise Endstone events and what a per-tick read sees (BOT-022)")
     parser.add_argument("--entity", action="store_true", help="feed a cow and ride/dismount stationary and moving minecarts (BOT-012)")
     parser.add_argument("--groups", action="store_true", help="validate shared Group commands through real BDS")
     parser.add_argument("--scripting", action="store_true", help="enable scripting only in the disposable instance and validate native runs/stop/budgets with BDS observations")
@@ -1252,7 +1275,7 @@ def main() -> int:
     try:
         options = {"mining": args.mining, "inventory": args.inventory, "inventory_stack": args.inventory_stack,
                    "item_use": args.item_use,
-                   "groups": args.groups, "scripting": args.scripting, "entity": args.entity,
+                   "groups": args.groups, "scripting": args.scripting, "entity": args.entity, "block_events": args.block_events,
                    "endbotd_failures": args.endbotd_failures, "transport": args.transport}
         if args.server_dir is None:
             exercise(output, args.node, report, **options)

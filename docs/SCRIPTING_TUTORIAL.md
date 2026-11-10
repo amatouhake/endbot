@@ -215,7 +215,129 @@ stop the job. `group:waitMining{...}` waits for every member.
   which.
 - Runs survive you logging out; they do not survive a server restart.
 
-## 9. Cheat sheet
+## 9. Reacting to events
+
+So far a script runs when you start it. Events let Bots react to the world: a block changing, a player joining,
+night falling, a timer. There are two ways to use them, and they suit different jobs.
+
+- A **trigger** starts a script for you every time an event happens, until you disable it. It is stored by the
+  server and survives restarts.
+- A **watch** waits for an event inside a script that is already running, so the script can prepare first and
+  decide what to do when the event arrives.
+
+The examples use a Bot called Bob and the block at `0 64 0`.
+
+### Your first trigger
+
+A script that a trigger starts declares `param.event`. Save this as `bob_toggle.luau`:
+
+```lua
+local a = params { param.event "event", param.bot("name", "Bob") }
+local b = bot(a.name)
+local s = b:status()
+if s.ok and s.data.connectionState == "online" then
+    b:despawn()
+else
+    b:resume()
+end
+```
+
+Then bind it to the block:
+
+```text
+/botscript trigger add bob_toggle block.change area="0 64 0"
+```
+
+Break or place a block at `0 64 0` and Bob goes offline or comes back. `trigger add` shows the script's declaration
+first and records your approval; the trigger is named after the script unless you add `name=...`. The same is
+available without commands from `/botscript menu` → **Triggers...** and on the web.
+
+- `a.event` holds the occurrence: for `block.change` it has `x`, `y`, `z`, `from`, `to`, `cause` (`player-break`,
+  `player-place` or `poll`), `bot` when a Bot did it, and `missed` (how many occurrences were dropped since the last
+  start). Run the script by hand with `/botscript run bob_toggle` and `a.event` is `nil`, so one script works both
+  ways.
+- Filters narrow the trigger. `to=air` fires only when the block is removed, `from=air` only when one is placed:
+
+  ```text
+  /botscript trigger add bob_off block.change area="0 64 0" to=air
+  /botscript trigger add bob_on  block.change area="0 64 0" from=air
+  ```
+
+  Two small scripts, one calling `b:despawn()` and one `b:resume()`, never guess from Bob's state, which can lag
+  while he is still connecting.
+- `area=` takes the same values as `within`: one block `"0 64 0"`, a box `"0 64 0 3 65 3"` or a sphere
+  `"5 of 0 64 0"`, at most 512 blocks.
+- Other kinds work the same way: `schedule every=10m`, `world.time phase=night` and the rest in
+  [event kinds](SCRIPTING.md#event-kinds). Kinds about players (`player.join`, `player.chat`) need the script to
+  declare `requires { "observe.presence" }` or `requires { "observe.chat" }`.
+- `/botscript trigger list` lists your triggers and their state; `trigger show <name>` adds the counts (starts,
+  missed, skipped). `disable`, `enable` and `remove` do what they say.
+
+### Waiting inside a script
+
+A watch is for "do this first, then react". This script brings Bob online, then waits up to ten minutes for the
+block to be broken and sends him away only if he is still online at that moment:
+
+```lua
+local a = params { param.bot("name", "Bob") }
+local b = bot(a.name)
+b:resume()
+waitOnline(b)
+
+local w = watch("block.change", {area = area.cell(0, 64, 0), to = "air"})
+for _ = 1, 10 do
+    local r = w:wait{timeout = 1200}           -- one minute
+    if r.ok then
+        local s = b:status()
+        if s.ok and s.data.connectionState == "online" then
+            b:despawn()
+        end
+        break
+    elseif r.code == "unavailable" then
+        log("events were missed while waiting: " .. r.reason)
+    end                                        -- a timeout just waits again
+end
+```
+
+- Nothing is lost between `watch()` and `wait`: the watch keeps the 64 newest occurrences.
+- `wait` returns as soon as an occurrence arrives and uses no CPU or operations while it waits.
+- `unavailable` means BDS or its link restarted and changes in between were not seen; read the world again with
+  `b:block(x, y, z)` if that matters.
+- A watch ends with its run, and runs do not survive an Endbot restart (section 8).
+
+### Which one to use
+
+| You want to... | Use |
+| --- | --- |
+| React the same way every time, for days, across restarts | A trigger |
+| React every time, but only when a condition holds | A trigger whose script checks the condition first and returns early |
+| Prepare, wait for one event (or a few), then finish | A watch inside the script |
+| Wait for an event in the middle of a longer job | A watch inside the script |
+
+Prefer a trigger when either would do. A running script uses one of your concurrent runs the whole time it waits,
+and you have two (`[scripting] controller-runs`). A trigger uses none while it waits: its run exists only while it
+reacts. Two long-waiting scripts fill both runs, and then every start of your triggers is skipped (counted in
+`skipped` in `trigger show`).
+
+### Things that surprise people
+
+- **The cooldown drops, it does not delay.** By default a trigger starts at most once a second (`cooldown` 20 ticks)
+  and skips events while its previous run is still going. Those events are counted as `missed`, not started later.
+  To start them later instead, use a queue: `/botscript trigger set bob_toggle concurrency=queue`.
+- **Busy events are throttled.** A trigger starts at most 10 times a minute (`startsPerMinute`). Beyond that, events
+  are skipped (or queued) and you are told once in chat; the trigger keeps working.
+- **A paused trigger waits for you.** A trigger pauses when its script starts asking for more (`declaration grew`),
+  its parameters change (`arguments no longer valid`), or someone else changes a script you do not own
+  (`script changed`), including a script file the operator edits. Check it and `/botscript trigger enable <name>`
+  to approve the new version. Your own scripts can be edited freely as long as they ask for no more.
+- **It runs as you.** A triggered run has your permissions, whoever caused the event. If you lose your controller
+  grant, your triggers are disabled and stay disabled after a regrant until you enable them.
+- **Limits.** You can have 8 armed triggers, watch 1024 blocks across your watches and triggers, and a run holds at
+  most 16 watches; the operator can change these in `[limits]`.
+
+The full rules are in [watches](SCRIPTING.md#watches) and [triggers](SCRIPTING.md#triggers).
+
+## 10. Cheat sheet
 
 ```lua
 local a = params { param.bot "name" }     -- always first; declares parameters
@@ -228,6 +350,14 @@ b:move("forward", {ticks = 20})           -- options go in a final table
 b:tp(vector.create(0, 64, 0))             -- a vector stands for x, y, z
 b:waitMining{timeout = 1200}              -- wait for a destroy/mining job
 log("text")                               -- one line in your chat and the server console
+local w = watch("block.change", {area = area.cell(0, 64, 0)})   -- start buffering events
+local r = w:wait{timeout = 1200}          -- r.ok and r.data, or code "timeout"/"unavailable"
+```
+
+```text
+/botscript trigger add <script> <kind> [filter=value ...]   -- the script declares param.event
+/botscript trigger list | show | enable | disable | remove <name>
+/botscript trigger set <name> concurrency=queue cooldown=0
 ```
 
 Next: the [generated API reference](SCRIPTING.md#generated-api-reference) lists every operation and its options,

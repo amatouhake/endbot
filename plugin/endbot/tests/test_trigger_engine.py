@@ -13,7 +13,7 @@ from endbot_core.operations import EVENTS
 from endbot_core.principal import Principal
 from endbot_core.script_config import ScriptConfig
 from endbot_core.script_inputs import OwnedInputs
-from endbot_core.script_store import ScriptStore
+from endbot_core.script_store import FILE_OWNER, Script, ScriptStore
 from endbot_core.scripting import Declaration, ScriptService
 from endbot_core.trigger_store import TriggerStore
 from endbotd import triggers as trigger_module
@@ -178,6 +178,64 @@ class EngineTests(unittest.TestCase):
         self.hub.raise_occurrence("plugin", change())
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
         self.assertEqual(self.trigger_store.get(trigger.owner, "guard").status, "armed")
+
+    def test_the_operators_script_files_follow_their_current_revision(self):
+        def files(revision, source):
+            return {"filed": Script("filed", source, revision, FILE_OWNER, None, "shared")}
+
+        self.store.set_files(files("file:1", "params { param.event('event') }"))
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="filed", kind="block.change", filter_=AREA)
+        self.store.set_files(files("file:2", "params { param.event('event') } -- fixed a typo"))
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "filed").stats["starts"] == 1))
+        self.assertEqual(self.trigger_store.get(trigger.owner, "filed").status, "armed")
+
+    def test_a_pause_and_an_engine_disable_tell_the_owner(self):
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
+        self.declaration = Declaration(list(EVENT_SCHEMA), ("observe.chat",))
+        self.save("guard", "params { param.event('event') } -- r2", OWNER)
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").status == "paused"))
+        stopped = [event for event in self.events if event.kind == "trigger.stopped"]
+        self.assertEqual([(event.data["status"], event.data["reason"]) for event in stopped],
+                         [("paused", "declaration grew")])
+        self.assertEqual(stopped[0].to.player_id, OWNER.player_id)
+        self.engine.enable(OWNER, "guard")
+        self.revoked.add(OWNER.player_id)
+        self.engine.grants_changed()
+        stopped = [event for event in self.events if event.kind == "trigger.stopped"]
+        self.assertEqual((stopped[-1].data["status"], stopped[-1].data["reason"]), ("disabled", "owner revoked"))
+        self.engine.disable(OWNER, "guard")  # the owner's own disable needs no notice
+        self.assertEqual(len([event for event in self.events if event.kind == "trigger.stopped"]), 2)
+
+    def test_a_refused_start_tells_the_owner_once_until_a_start_succeeds(self):
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
+                                     policy={"cooldown": 0})
+        real = self.scripts.start
+        refusals = [LocalizedError("A controller may run at most {limit} scripts at once", limit=2)] * 2
+
+        def start(*args, **kwargs):
+            if refusals:
+                raise refusals.pop()
+            return real(*args, **kwargs)
+
+        with patch.object(self.scripts, "start", side_effect=start):
+            for expected in (1, 2):
+                self.hub.raise_occurrence("plugin", change())
+                self.assertTrue(self.settle(lambda expected=expected: self.trigger_store.get(
+                    trigger.owner, "guard").stats["skipped"] == expected))
+            blocked = [event for event in self.events if event.kind == "trigger.blocked"]
+            self.assertEqual(len(blocked), 1)
+            self.assertEqual(blocked[0].data["reason"]["params"], {"limit": 2})
+            self.hub.raise_occurrence("plugin", change())
+            self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
+            refusals.append(LocalizedError("A controller may run at most {limit} scripts at once", limit=2))
+            self.hub.raise_occurrence("plugin", change())
+            self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["skipped"] == 3))
+        self.assertEqual(len([event for event in self.events if event.kind == "trigger.blocked"]), 2)
 
     def test_revoking_the_owner_disables_and_a_regrant_does_not_rearm(self):
         self.engine.start()

@@ -270,6 +270,8 @@ available without commands from `/botscript menu` → **Triggers...** and on the
 - Other kinds work the same way: `schedule every=10m`, `world.time phase=night` and the rest in
   [event kinds](SCRIPTING.md#event-kinds). Kinds about players (`player.join`, `player.chat`) need the script to
   declare `requires { "observe.presence" }` or `requires { "observe.chat" }`.
+- A triggered run that finishes normally says nothing in chat, so a busy trigger does not flood it; a failure and
+  your own `log` lines still show.
 - `/botscript trigger list` lists your triggers and their state; `trigger show <name>` adds the counts (starts,
   missed, skipped). `disable`, `enable` and `remove` do what they say.
 
@@ -317,7 +319,7 @@ end
 Prefer a trigger when either would do. A running script uses one of your concurrent runs the whole time it waits,
 and you have two (`[scripting] controller-runs`). A trigger uses none while it waits: its run exists only while it
 reacts. Two long-waiting scripts fill both runs, and then every start of your triggers is skipped (counted in
-`skipped` in `trigger show`).
+`skipped` in `trigger show`, and you are told once in chat).
 
 ### Things that surprise people
 
@@ -327,9 +329,10 @@ reacts. Two long-waiting scripts fill both runs, and then every start of your tr
 - **Busy events are throttled.** A trigger starts at most 10 times a minute (`startsPerMinute`). Beyond that, events
   are skipped (or queued) and you are told once in chat; the trigger keeps working.
 - **A paused trigger waits for you.** A trigger pauses when its script starts asking for more (`declaration grew`),
-  its parameters change (`arguments no longer valid`), or someone else changes a script you do not own
-  (`script changed`), including a script file the operator edits. Check it and `/botscript trigger enable <name>`
-  to approve the new version. Your own scripts can be edited freely as long as they ask for no more.
+  its parameters change (`arguments no longer valid`), or another player changes a script you do not own
+  (`script changed`). You are told in chat when it happens. Check it and `/botscript trigger enable <name>` to
+  approve the new version. Your own scripts and the operator's script files can be edited freely as long as they
+  ask for no more.
 - **It runs as you.** A triggered run has your permissions, whoever caused the event. If you lose your controller
   grant, your triggers are disabled and stay disabled after a regrant until you enable them.
 - **Limits.** You can have 8 armed triggers, watch 1024 blocks across your watches and triggers, and a run holds at

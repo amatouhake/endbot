@@ -208,7 +208,11 @@ trigger = { name, owner (identity id), visibility (private|shared),
   declaration is a subset of the approved one and its params still accept the stored arguments. Otherwise it pauses
   with the reason (`declaration grew`, `arguments no longer valid`) until the owner enables it again, which
   re-approves. On someone else's script it runs only the approved revision: any new revision pauses it
-  (`script changed`) until the trigger's owner enables it again.
+  (`script changed`) until the trigger's owner enables it again. The operator's script files count as one's own
+  (S17).
+- **Telling the owner** (S18): a pause, a disable by the engine (`owner revoked`) and a start refused at the owner's
+  run limit are told to the owner in chat when online and in the Event log; the refusal once until a start succeeds.
+  A triggered run that ends cleanly is logged but not shown in chat; any other end is shown as for any run.
 - **Other pauses and disables**: the script deleted or no longer runnable by the owner → paused; the kind no longer in
   the registry (only possible across a rollback) → paused `kind unavailable`; the owner revoked → disabled, not
   deleted, and a regrant does not re-enable it by itself (PERMISSIONS Revocation).
@@ -311,7 +315,8 @@ Approved by the operator 2026-11-08 JST after implementation (they changed the d
   arguments would still be accepted; enabling it again re-approves and checks the arguments. Stored arguments are
   also checked when the trigger is armed.
 
-Approved by the operator 2026-11-10 JST after a design review of the implementation:
+Approved by the operator 2026-11-10 JST after a design review of the implementation (S17 and S18 on 2026-11-11
+after a user-perspective review):
 
 - **S14. The start cap throttles, it does not disable.** Disabling at the cap made ordinary busy triggers (a farm
   area, public chat) stop until enabled by hand, so the cost of chain protection fell on normal traffic. Over the cap
@@ -324,6 +329,12 @@ Approved by the operator 2026-11-10 JST after a design review of the implementat
   would otherwise run that controller's future code, unattended, with the trigger owner's authority, since `act.bot`
   never appears in a declaration. A new revision pauses it (`script changed`); the trigger's owner enables it again
   to approve the new code. Triggers on one's own script still follow its current revision (S5).
+- **S17. The operator's script files follow their current revision.** Pinning them (S16) paused every player's
+  trigger on a typo fix and `reload`, and the operator already controls the server, so a file script is trusted like
+  one's own: its declaration and parameters are still checked.
+- **S18. A trigger that stops tells its owner, and its ordinary runs stay quiet.** Pauses and engine disables were
+  only logged, so a trigger simply stopped reacting; now the owner is told why, and a start refused at the run limit
+  is told once. A clean end of a triggered run no longer reaches chat, where a busy trigger would fill it.
 
 ## Steps
 

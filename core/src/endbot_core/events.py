@@ -120,6 +120,9 @@ def _run_ended(data, lang, sink):
     if sink == "log":
         return (f"Endbot script {run} {data['name']} ended: {outcome} (controller {data['controller']})",
                 f"Endbot script {run}: input cleanup {'completed' if data['cleanup'] else 'failed'}")
+    if (data.get("trigger") and data["outcome"].get("template") == "completed" and data["cleanup"]
+            and not data["skipped"]):
+        return ()  # a trigger's ordinary end stays in the log: a busy trigger must not fill its owner's chat (S18)
     lines = (reply(tr(lang, "Script {name} ({run}) ended: {reason}", name=data["name"], run=run, reason=outcome)),)
     if data["skipped"]:
         lines += (reply(_skipped(data, lang), f"{data['name']} ({run})", DIM),)
@@ -137,8 +140,26 @@ def _trigger_throttled(data, lang, sink):
     return (reply(tr(lang, template, name=data["name"], limit=data["limit"])),)
 
 
+def _trigger_stopped(data, lang, sink):
+    """A trigger paused or was disabled by the engine; its owner enables it again (BOT-022 S18)."""
+    if sink == "log":
+        return (f"Endbot trigger {data['name']} of {data['owner']} {data['status']}: {data['reason']}",)
+    template = ("Trigger {name} paused: {reason}; /botscript trigger enable {name} approves it again"
+                if data["status"] == "paused" else "Trigger {name} was disabled: {reason}")
+    return (reply(tr(lang, template, name=data["name"], reason=tr(lang, data["reason"]))),)
+
+
+def _trigger_blocked(data, lang, sink):
+    """A trigger's start was refused (the owner's run limit, scripting off); told once until one starts (S18)."""
+    if sink == "log":
+        return (f"Endbot trigger {data['name']} of {data['owner']} could not start: {reason_text(data['reason'])}",)
+    return (reply(tr(lang, "Trigger {name} could not start: {reason}; occurrences are skipped until it can",
+                     name=data["name"], reason=reason_text(data["reason"], lang))),)
+
+
 RENDERERS = {"job.ended": _job_ended, "job.waiting": _job_waiting, "run.log": _run_log, "run.ended": _run_ended,
-             "trigger.throttled": _trigger_throttled}
+             "trigger.throttled": _trigger_throttled, "trigger.stopped": _trigger_stopped,
+             "trigger.blocked": _trigger_blocked}
 
 
 def render(event: Event, sink: str, lang: str | None = None) -> tuple[str, ...]:

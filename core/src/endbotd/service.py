@@ -282,10 +282,10 @@ class EndbotService:
         if self.web_api is not None:
             self.web_api.record(event)
 
-    def _trigger_changed(self, trigger) -> None:
-        """A stored trigger changed: push it to subscribed pages (docs/EVENTS.md E10)."""
+    def _trigger_changed(self, trigger, *, removed: bool = False) -> None:
+        """A stored trigger changed or was removed: push it to subscribed pages (docs/EVENTS.md E10)."""
         if self.web_api is not None:
-            self.web_api.trigger_changed(trigger)
+            self.web_api.trigger_changed(trigger, removed=removed)
 
     def _web_result(self, source, arguments, root, result) -> None:
         if self.web_api is not None:

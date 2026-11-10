@@ -112,6 +112,18 @@ class EndbotServiceTests(ServiceHarness):
         self.assertEqual(result["data"], {"kind": "job.finished", "bot": "Miner", "job": "mining",
                                           "reason": "disconnected"})
 
+    def test_trigger_change_notices_reach_the_web_api_with_removals(self):
+        pushed = []
+
+        class RecordingWebApi:
+            def trigger_changed(self, trigger, removed=False):
+                pushed.append((trigger, removed))
+
+        self.service.web_api = RecordingWebApi()
+        self.service.triggers.on_changed("changed")
+        self.service.triggers.on_changed("gone", removed=True)
+        self.assertEqual(pushed, [("changed", False), ("gone", True)])
+
     def test_only_granted_players_command_bots_and_grants_reach_the_attachment(self):
         link = self.link()
         alice = FakePlayer(ALICE, "Alice", xuid=OWNER)

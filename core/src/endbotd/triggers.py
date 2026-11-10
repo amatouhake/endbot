@@ -89,7 +89,7 @@ class TriggerEngine:
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
         # Called outside every lock after a state or stats change is stored (the web's trigger subscription).
-        self.on_changed: Callable[[Trigger], None] | None = None
+        self.on_changed: Callable[..., None] | None = None  # (trigger, *, removed: bool)
 
     # -- lifecycle -------------------------------------------------------
 
@@ -262,10 +262,12 @@ class TriggerEngine:
                 self._start(key, entry["queue"].pop(0), decision.missed)
 
     def _ended(self, key: tuple) -> None:
+        # The kept policy, not only an armed one: a run that ends while its trigger is disabled or paused must
+        # still leave it, or re-enabling carries a phantom active run and every occurrence is missed.
         with self._lock:
-            entry = self._armed.get(key)
-        if entry is not None:
-            entry["policy"].finished(self._monotonic())
+            policy = self._policies.get(key)
+        if policy is not None:
+            policy.finished(self._monotonic())
 
     def _principal(self, trigger: Trigger) -> Principal:
         """A ``run`` principal of the owner, bound to the grant revision approved when the trigger was armed.

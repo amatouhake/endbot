@@ -169,6 +169,19 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(notices[0].data["reason"], "rate limit")
         self.assertEqual(notices[0].to.player_id, OWNER.player_id)
 
+    def test_a_run_that_ends_while_disabled_does_not_block_the_trigger_after_enable(self):
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
+                                     policy={"cooldown": 0})
+        key = (trigger.owner, trigger.name)
+        self.engine._policies[key].started(self.clock.mono)  # a long run from this trigger is active
+        self.engine.disable(OWNER, "guard")
+        self.engine._ended(key)  # it ends while the trigger is disabled
+        self.engine.enable(OWNER, "guard")
+        self.engine.start()
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats.get("starts") == 1))
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats.get("missed", 0), 0)
+
     def test_queue_keeps_the_newest_occurrences_and_starts_them_in_order(self):
         self.engine.start()
         trigger = self.engine.create(OWNER, script="guard", kind="block.change",

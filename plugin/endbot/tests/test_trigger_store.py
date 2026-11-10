@@ -161,6 +161,22 @@ class TriggerStoreTest(unittest.TestCase):
             self.store.add(trigger(name="one"))
         self.store.add(trigger(name="one", owner=OTHER_OWNER))
 
+    def test_a_memory_only_update_reaches_the_file_on_flush_or_the_next_durable_change(self):
+        self.store.add(trigger(name="one"))
+        base = self.store.get(OWNER, "one").stats
+        self.store.update(OWNER, "one", durable=False, stats={**base, "starts": 3})
+        self.assertEqual(self.store.get(OWNER, "one").stats["starts"], 3)
+        self.assertNotEqual(load_triggers(self.path)[0].stats.get("starts"), 3)
+        self.store.flush()
+        self.assertEqual(load_triggers(self.path)[0].stats["starts"], 3)
+        self.store.update(OWNER, "one", durable=False, stats={**base, "starts": 4})
+        self.store.update(OWNER, "one", status="paused", reason="declaration grew")
+        stored = load_triggers(self.path)[0]
+        self.assertEqual((stored.status, stored.stats["starts"]), ("paused", 4))
+        with patch.object(self.store, "_save") as save:
+            self.store.flush()  # nothing changed since: no write
+        save.assert_not_called()
+
     def test_replace_requires_an_existing_trigger(self):
         with self.assertRaises(ValueError):
             self.store.replace(trigger(name="missing"))

@@ -341,6 +341,8 @@ class TriggerStore:
         self._lock = threading.RLock()
         loaded = load_triggers(self.path) if self.path is not None else []
         self._triggers = {(trigger.owner, trigger.name): trigger for trigger in loaded}
+        # A change kept only in memory (stats) waiting for the next flush or durable change to reach the file.
+        self._dirty = False
 
     def list(self) -> list[Trigger]:
         """Every trigger, sorted by owner and then name."""
@@ -378,7 +380,8 @@ class TriggerStore:
             self._commit(remaining)
             return True
 
-    def update(self, owner: str, name: str, /, **changes) -> Trigger:
+    def update(self, owner: str, name: str, /, *, durable: bool = True, **changes) -> Trigger:
+        """Change a trigger; ``durable=False`` keeps the change in memory until ``flush`` or the next durable one."""
         key = self._key(owner, name)
         with self._lock:
             current = self._triggers.get(key)
@@ -392,8 +395,18 @@ class TriggerStore:
             remaining = dict(self._triggers)
             del remaining[key]
             remaining[new_key] = updated
-            self._commit(remaining)
+            if durable:
+                self._commit(remaining)
+            else:
+                self._triggers = remaining
+                self._dirty = True
             return updated
+
+    def flush(self) -> None:
+        """Write changes kept in memory, if any."""
+        with self._lock:
+            if self._dirty:
+                self._commit(dict(self._triggers))
 
     def count_armed(self, owner: str) -> int:
         _validate_owner(owner)
@@ -413,6 +426,7 @@ class TriggerStore:
         if self.path is not None:
             self._save(triggers)
         self._triggers = triggers
+        self._dirty = False
 
     def _save(self, triggers: dict[tuple[str, str], Trigger]) -> None:
         if self.path.is_symlink():

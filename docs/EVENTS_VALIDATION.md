@@ -88,6 +88,9 @@ signalling, in the disposable sandbox world, with Bots only (EVENTS.md S9): `scr
 | `startsPerMinute=2`, `cooldown=0`, parallel, four changes in a few seconds | disabled with `rate limit`, logged for its owner |
 | enable, remove, list | re-armed, removed, `No triggers` |
 
+The start-cap row records the behavior before EVENTS.md S14 (2026-11-10): the cap now throttles instead of
+disabling, which the release pass checks again.
+
 Evidence: `build/2026-11-08-events-2` (watches) and `build/2026-11-08-triggers-2` (watches and triggers) in the
 worktrees that ran them; raw logs stay out of the repository.
 

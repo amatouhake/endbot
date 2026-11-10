@@ -281,7 +281,7 @@ trigger = { event kind + filter → script (+ arguments), owner, enabled, policy
 - `watch():wait()` stays for waiting inside a run; a trigger is what starts a run.
 - Policy, against runaway chains (a Bot breaks a block, which fires the trigger that made it break blocks):
   concurrency defaults to "skip while a run from this trigger is active" (alternatives: queue one, run in parallel);
-  a cooldown; a maximum number of starts per minute, beyond which the trigger disables itself and notifies its owner;
+  a cooldown; a maximum number of starts per minute, beyond which the trigger is throttled and its owner notified (EVENTS.md S14);
   a bounded event queue that drops the oldest and reports a `missed` count.
 - Triggers persist in endbotd and survive restarts (after BOT-020).
 

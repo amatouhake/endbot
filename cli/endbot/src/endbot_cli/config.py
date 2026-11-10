@@ -72,6 +72,7 @@ class LimitsConfig:
     max_bots_per_controller: int = 0
     max_watches_per_controller: int = 32
     max_triggers_per_controller: int = 8
+    max_watched_blocks_per_controller: int = 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,18 +276,21 @@ def _load_limits(path: Path, document: dict[str, Any]) -> LimitsConfig:
     if not isinstance(table, dict):
         raise _fail(path, "limits", "must be a table", "write it as a [limits] section")
     _reject_unknown_keys(path, table, "limits", ("max-bots", "reserved-player-slots", "max-bots-per-controller",
-                                                 "max-watches-per-controller", "max-triggers-per-controller"))
+                                                 "max-watches-per-controller", "max-triggers-per-controller",
+                                                 "max-watched-blocks-per-controller"))
     max_bots = table.get("max-bots", 0)
     reserved = table.get("reserved-player-slots", 1)
     per_controller = table.get("max-bots-per-controller", 0)
     watches = table.get("max-watches-per-controller", 32)
     triggers = table.get("max-triggers-per-controller", 8)
+    cells = table.get("max-watched-blocks-per-controller", 1024)
     for key, value in (
         ("max-bots", max_bots),
         ("reserved-player-slots", reserved),
         ("max-bots-per-controller", per_controller),
         ("max-watches-per-controller", watches),
         ("max-triggers-per-controller", triggers),
+        ("max-watched-blocks-per-controller", cells),
     ):
         if type(value) is not int:
             raise _fail(path, f"limits.{key}", "must be an integer", "use 0 or a positive integer")
@@ -303,9 +307,12 @@ def _load_limits(path: Path, document: dict[str, Any]) -> LimitsConfig:
     if not 0 <= triggers <= 256:
         raise _fail(path, "limits.max-triggers-per-controller", "must be from 0 to 256",
                     "use 8 (the default); 0 turns triggers off")
+    if not 0 <= cells <= 16384:
+        raise _fail(path, "limits.max-watched-blocks-per-controller", "must be from 0 to 16384",
+                    "use 1024 (the default); 0 leaves only the server-wide [events] max-watched-blocks")
     return LimitsConfig(max_bots=max_bots, reserved_player_slots=reserved,
                         max_bots_per_controller=per_controller, max_watches_per_controller=watches,
-                        max_triggers_per_controller=triggers)
+                        max_triggers_per_controller=triggers, max_watched_blocks_per_controller=cells)
 
 
 def _load_endbotd(path: Path, document: dict[str, Any], runtime: RuntimeConfig) -> EndbotdConfig:

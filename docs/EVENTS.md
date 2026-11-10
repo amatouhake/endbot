@@ -122,8 +122,9 @@ that, `guarantee.class` is one of:
   cause `poll`; the spike confirms that reading an unloaded position is detectable rather than a default block.
 - **Bounds**: a watch or trigger filter is a BOT-027 area (S7) of at most `maxBlocks` (512) cells; the server watches
   at most `[events] max-watched-blocks` positions in total (default 2048 from step 1's cost measurement, at most
-  16384 so the interest set fits one link frame).
-  A watch that would exceed it fails at creation with the limit named.
+  16384 so the interest set fits one link frame), and one controller's watches and triggers at most `[limits]
+  max-watched-blocks-per-controller` of them (default 1024, `0` for no separate share; S15).
+  A watch that would exceed either fails at creation with the limit named.
 - **Who did it** (S1): `cause` is `player-break`, `player-place`, another measured cause, or `poll`; `bot` is set
   when a Bot did it. A human player's name is not in the payload, because it would reveal that player's position.
 
@@ -145,9 +146,9 @@ events     plugin → endbotd   {revision, epoch, tick, items: [{kind, ...payloa
 - **Gaps.** A source is in a gap from a link drop, a new `epoch`, `dropped > 0`, a runtime restart or an endbotd
   restart until its next report. Every watch and trigger fed by that source records the gap (E5, E8). Occurrences
   during a gap are not replayed or reconstructed (S4).
-- Runtime-sourced kinds (`bot.online`, `bot.offline`, `bot.died`) come from the runtime status endbotd already
-  receives; if the runtime protocol has no push for them, step 6b adds one long-poll request rather than polling per
-  watch. endbotd-sourced kinds (`server.started`, `schedule`, `job.finished`) are raised inside endbotd.
+- Runtime-sourced kinds (`bot.online`, `bot.offline`) come from the runtime status endbotd already receives (a
+  sample, S11). `bot.died` is plugin-sourced: the plugin reports a Bot's death event over the link like
+  `block.change`. endbotd-sourced kinds (`server.started`, `schedule`, `job.finished`) are raised inside endbotd.
 
 ### E5. Watches
 
@@ -169,7 +170,7 @@ w:close()                          -- optional; a watch ends with its run
   is buffered or the timeout passes. A wait uses no operation budget and counts as one IPC event; it rechecks
   authority on return, as today's waits do.
 - **Limits**: 16 watches per run; `[limits] max-watches-per-controller` (default 32) across the controller's runs and
-  triggers' runs; the server-wide `max-watched-blocks`. A watch is owned by the run's principal and ends with the run,
+  triggers' runs; the controller's `max-watched-blocks-per-controller` and the server-wide `max-watched-blocks`. A watch is owned by the run's principal and ends with the run,
   which already ends on revoke.
 - Manual polling with `block()` and `wait()` keeps working.
 
@@ -203,9 +204,11 @@ trigger = { name, owner (identity id), visibility (private|shared),
 - **A started run** has the owner's authority intersected with `approved.declaration`, the `trigger` channel and the
   online-independent layer, like any run. It counts toward the owner's concurrent-run limit; at the limit the start
   is skipped and counted.
-- **Revisions** (S5): the trigger runs the script's current revision while that revision's declaration is a subset of
-  the approved one and its params still accept the stored arguments. Otherwise it pauses with the reason
-  (`declaration grew`, `arguments no longer valid`) until the owner enables it again, which re-approves.
+- **Revisions** (S5, S16): on the owner's own script the trigger runs the current revision while that revision's
+  declaration is a subset of the approved one and its params still accept the stored arguments. Otherwise it pauses
+  with the reason (`declaration grew`, `arguments no longer valid`) until the owner enables it again, which
+  re-approves. On someone else's script it runs only the approved revision: any new revision pauses it
+  (`script changed`) until the trigger's owner enables it again.
 - **Other pauses and disables**: the script deleted or no longer runnable by the owner → paused; the kind no longer in
   the registry (only possible across a rollback) → paused `kind unavailable`; the owner revoked → disabled, not
   deleted, and a regrant does not re-enable it by itself (PERMISSIONS Revocation).
@@ -216,11 +219,17 @@ trigger = { name, owner (identity id), visibility (private|shared),
 | --- | --- | --- | --- |
 | `concurrency` | `skip` | `skip`, `queue`, `parallel` | `skip`: occurrences while a run from this trigger is active or in cooldown are dropped and counted in `missed`. `queue`: keep the newest `queue` and start them in order. `parallel`: up to 2 runs at once |
 | `cooldown` | 20 ticks | 0–72000 | Minimum time between two starts |
-| `startsPerMinute` | 10 | 1–60 | Starts in a sliding 60 s window; one more **disables** the trigger (`rate limit`) |
+| `startsPerMinute` | 10 | 1–60 | Starts in a sliding 60 s window; over it the trigger is **throttled**: `skip` and `parallel` drop the occurrence as missed, `queue` holds it until the window allows a start |
 | `queue` | 4 | 1–16 | Pending occurrences under `queue`; the oldest is dropped and counted |
 
-- The cap is what stops a chain (a Bot breaks a block that starts the trigger that breaks blocks). Disabling notifies
-  the owner in chat when online, in the Event log and on the web, and the reason stays in `state` until re-enabled.
+- The cap bounds a chain (a Bot breaks a block that starts the trigger that breaks blocks) to `startsPerMinute`
+  starts a minute without stopping ordinary busy triggers (S14). When a trigger starts being throttled its owner is
+  told once in chat when online and in the Event log; the next start ends that episode. The dropped occurrences count
+  in `missed`.
+- `cooldown` with `skip` drops, it does not delay: an occurrence inside the cooldown is counted in `missed`. Use
+  `queue` to have it start later.
+- Stats reach `triggers.json` at most once a second and on every state change; occurrences waiting for the trigger
+  worker are bounded (1024), and those beyond it are counted in `missed`.
 - Each start passes the `missed` count since the previous start in `a.event.missed`.
 - Ordinary run limits (CPU, operation rate, `wall-seconds`) apply to triggered runs unchanged.
 
@@ -260,7 +269,8 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
 - **S1. Human players' names are not in `block.change`**; only Bot names (`bot`) are given. A name next to a
   coordinate tells a watcher where that player is, which PERMISSIONS puts in "not normally visible".
 - **S2. Default limits** are those in E3, E5 and E8: 8 triggers and 32 watches per controller, 10 starts per minute,
-  a 20-tick cooldown and `skip`; `max-watched-blocks` (2048) and the fixed 4-tick poll come from step 1.
+  a 20-tick cooldown and `skip`; `max-watched-blocks` (2048) and the fixed 4-tick poll come from step 1;
+  1024 watched blocks per controller (S15).
 - **S3. No trigger starts while BDS is stopped**; such starts are counted as skipped, and `server.started` fires when
   BDS comes back.
 - **S4. Changes during a gap are reported as a gap, never reconstructed.** Replaying from a stored baseline would
@@ -268,7 +278,7 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
 - **S5. A trigger runs the script's current revision** while its declaration does not grow and its params accept the
   stored arguments (E7); this is how PERMISSIONS' "bound to the script revision its owner approved" is read. Pinning
   the exact source would pause every trigger on every edit, including fixes to one's own script, and would require
-  the store to keep old revisions runnable.
+  the store to keep old revisions runnable. S16 narrows this for someone else's script.
 
 Decided 2026-11-08 JST, before implementation started:
 
@@ -300,6 +310,20 @@ Approved by the operator 2026-11-08 JST after implementation (they changed the d
 - **S13. A trigger pauses when its script's parameters change** (`arguments no longer valid`), even if the stored
   arguments would still be accepted; enabling it again re-approves and checks the arguments. Stored arguments are
   also checked when the trigger is armed.
+
+Approved by the operator 2026-11-10 JST after a design review of the implementation:
+
+- **S14. The start cap throttles, it does not disable.** Disabling at the cap made ordinary busy triggers (a farm
+  area, public chat) stop until enabled by hand, so the cost of chain protection fell on normal traffic. Over the cap
+  occurrences are dropped (or held under `queue`) and the owner is told once per episode; a chain still costs at most
+  `startsPerMinute` starts a minute per trigger, within the owner's trigger and concurrent-run limits.
+- **S15. Watched blocks have a per-controller share.** `[limits] max-watched-blocks-per-controller` (default 1024,
+  two full-size areas) keeps one controller from filling the server's `max-watched-blocks` and refusing everyone
+  else's watches.
+- **S16. Someone else's script is pinned to the approved revision.** A trigger on another controller's shared script
+  would otherwise run that controller's future code, unattended, with the trigger owner's authority, since `act.bot`
+  never appears in a declaration. A new revision pauses it (`script changed`); the trigger's owner enables it again
+  to approve the new code. Triggers on one's own script still follow its current revision (S5).
 
 ## Steps
 
@@ -357,8 +381,8 @@ NetherNet, gains an `--events` case set):
   poll; a change shorter than that is allowed to be missed but never reported twice.
 - Watch timeout, `missed` after overflowing the buffer, a filter over the box bound refused, the watch and
   watched-block limits refused with the limit named.
-- Trigger skip, queue, cooldown, and a self-feeding chain disabled by the start cap with the owner notified.
-- A shared script edited to grow its declaration pauses another person's trigger; enabling re-approves.
+- Trigger skip, queue, cooldown, and a self-feeding chain throttled by the start cap with the owner notified once.
+- A shared script edited by its owner pauses another person's trigger (`script changed`); enabling re-approves.
 - Revoke disables the owner's triggers and ends their watches; regrant leaves them disabled.
 - Kill endbotd: triggers come back armed with their stats; restart BDS: watches see the gap, `server.started` fires
   once, no trigger starts while BDS is down.

@@ -142,16 +142,18 @@ class RateLimitTest(unittest.TestCase):
             trigger.finished(float(second))
         self.assertEqual(trigger.missed_total, 0)
 
-    def test_the_eleventh_start_in_the_window_disables(self):
+    def test_the_eleventh_start_in_the_window_is_dropped_not_disabled(self):
         trigger = policy(cooldown=0)
         for second in range(10):
             trigger.offer(float(second))
             trigger.started(float(second))
             trigger.finished(float(second))
-        decision = trigger.offer(59.0)
-        self.assertEqual(decision.action, "disable")
-        self.assertEqual(decision.reason, "rate limit")
-        self.assertEqual(trigger.offer(59.5), Decision("disable", 0, "rate limit"))
+        self.assertEqual(trigger.offer(59.0), Decision("missed", 0, "rate limit"))
+        self.assertTrue(trigger.throttle_started())
+        self.assertEqual(trigger.offer(59.5), Decision("missed", 0, "rate limit"))
+        self.assertFalse(trigger.throttle_started())  # reported once per episode
+        self.assertEqual(trigger.offer(60.0), Decision("start", 2, None))
+        self.assertFalse(trigger.throttle_started())
 
     def test_the_window_frees_after_sixty_seconds(self):
         trigger = policy(cooldown=0)
@@ -161,28 +163,33 @@ class RateLimitTest(unittest.TestCase):
             trigger.finished(0.0)
         self.assertEqual(trigger.offer(60.0), Decision("start", 0, None))
 
-    def test_a_disabled_policy_stays_disabled_for_that_instance(self):
+    def test_a_new_throttle_episode_is_reported_again_after_a_start(self):
         trigger = policy(cooldown=0, startsPerMinute=1)
-        trigger.offer(0.0)
-        trigger.started(0.0)
-        trigger.finished(0.0)
-        self.assertEqual(trigger.offer(1.0).action, "disable")
-        for now in (60.0, 120.0):
-            self.assertEqual(trigger.offer(now).action, "disable")
-        restored = TriggerPolicy(
-            {"concurrency": "skip", "cooldown": 0, "startsPerMinute": 1, "queue": 4}, last_start=0.0
-        )
-        self.assertEqual(restored.offer(1.0), Decision("start", 0, None))
+        for now in (0.0, 60.0):
+            self.assertEqual(trigger.offer(now).action, "start")
+            trigger.started(now)
+            trigger.finished(now)
+            self.assertEqual(trigger.offer(now + 1).reason, "rate limit")
+            self.assertTrue(trigger.throttle_started())
 
-    def test_a_queued_occurrence_that_would_exceed_the_window_disables(self):
+    def test_a_queued_occurrence_over_the_window_waits_for_it(self):
         trigger = policy(concurrency="queue", cooldown=0, startsPerMinute=1)
         trigger.offer(0.0)
         trigger.started(0.0)
         self.assertEqual(trigger.offer(0.1), Decision("queued", 0, None))
         trigger.finished(0.1)
-        decision = trigger.due(0.2)
-        self.assertEqual(decision.action, "disable")
-        self.assertEqual(decision.reason, "rate limit")
+        self.assertIsNone(trigger.due(0.2))
+        self.assertTrue(trigger.throttle_started())
+        self.assertEqual(trigger.pending, 1)
+        self.assertEqual(trigger.due(60.0), Decision("start", 0, None))
+
+    def test_a_queue_trigger_over_the_window_queues_new_occurrences(self):
+        trigger = policy(concurrency="queue", cooldown=0, startsPerMinute=1)
+        trigger.offer(0.0)
+        trigger.started(0.0)
+        trigger.finished(0.0)
+        self.assertEqual(trigger.offer(1.0), Decision("queued", 0, "rate limit"))
+        self.assertEqual(trigger.pending, 1)
 
 
 class RestartAndGapTest(unittest.TestCase):

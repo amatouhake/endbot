@@ -107,15 +107,18 @@ player is. Kinds beyond the basic set (`observe.chat`, `observe.presence`) need 
 The plugin reports only what endbotd's interest set asks for, and endbotd matches occurrences to watches and triggers
 itself; occurrences carry no owner. Bounds keep a script from loading the server thread: a watched area holds at most
 512 blocks, the whole server at most `[events] max-watched-blocks` (default 2048, at most 16384), read a quarter per tick;
-a run holds at most 16 watches and a controller `[limits] max-watches-per-controller` (32).
+a run holds at most 16 watches and a controller `[limits] max-watches-per-controller` (32), watching at most
+`[limits] max-watched-blocks-per-controller` (1024) cells across its watches and triggers.
 
 A trigger starts runs as its owner, never as whoever caused the occurrence. Arming (creating or enabling) records the
 script revision, its declaration, a hash of its parameters and the owner's grant revision. Each start checks that the
 owner still holds that grant (a revoke disables the trigger and a regrant does not re-arm it), that the owner may still
-run the script, that its declaration has not grown and its parameters have not changed (otherwise the trigger pauses
-until the owner enables it again, which re-approves). Runs count toward the owner's concurrent-run limit, at most
-`[limits] max-triggers-per-controller` (8) triggers are armed per controller, and the per-minute start cap disables a
-trigger that feeds itself, telling the owner. No trigger starts while the plugin is not linked.
+run the script, that its declaration has not grown and its parameters have not changed, and, for someone else's
+script, that it is still the approved revision (otherwise the trigger pauses until the owner enables it again, which
+re-approves; another controller cannot change the code a trigger runs with its owner's authority). Runs count toward
+the owner's concurrent-run limit, at most `[limits] max-triggers-per-controller` (8) triggers are armed per
+controller, and the per-minute start cap throttles a trigger that feeds itself to that many starts a minute, telling
+the owner once. No trigger starts while the plugin is not linked.
 
 ### Operators and achievements
 

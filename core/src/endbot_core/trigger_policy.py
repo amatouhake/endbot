@@ -48,7 +48,9 @@ class TriggerPolicy:
         self._missed_since_start = 0
         self._last_start = last_start
         self._starts: deque[float] = deque()
-        self._disabled = False
+        # Over the start cap since the last start; the first occurrence of such an episode is reported once.
+        self._throttled = False
+        self._throttle_reported = False
 
     @property
     def active(self) -> int:
@@ -67,7 +69,7 @@ class TriggerPolicy:
 
     def carry_from(self, other: TriggerPolicy) -> TriggerPolicy:
         """Keep what ``other`` knew (runs still active, the start window, queued and missed occurrences) under this
-        policy's settings, so changing or re-enabling a trigger never resets its start cap; a disable is not kept."""
+        policy's settings, so changing or re-enabling a trigger never resets its start cap."""
         self._active = other._active
         self._starts = deque(other._starts)
         self._pending = deque(list(other._pending)[-self._queue_limit:]) if self._concurrency == "queue" else deque()
@@ -75,21 +77,33 @@ class TriggerPolicy:
         self._missed_since_start = other._missed_since_start
         if other._last_start is not None and (self._last_start is None or other._last_start > self._last_start):
             self._last_start = other._last_start
+        self._throttled, self._throttle_reported = other._throttled, other._throttle_reported
         return self
 
+    def throttle_started(self) -> bool:
+        """True once when the start cap begins dropping or holding occurrences; a start ends the episode."""
+        if self._throttled and not self._throttle_reported:
+            self._throttle_reported = True
+            return True
+        return False
+
     def offer(self, now: float) -> Decision:
-        """An occurrence arrived; decide whether to start, queue, drop or disable."""
-        if self._disabled:
-            return Decision("disable", reason=RATE_LIMIT)
+        """An occurrence arrived; decide whether to start, queue or drop it.
+
+        Over the start cap the trigger is throttled, never disabled: ``queue`` holds the occurrence until the
+        window allows a start, the others drop it as missed (``reason`` is ``rate limit``)."""
         if self._concurrency == "queue":
-            if self._pending or not self._available(now):
+            if self._pending or not self._available(now) or self._rate_limited(now):
                 self._enqueue(now)
-                return Decision("queued")
-            return self._start(now)
+                return Decision("queued", reason=RATE_LIMIT if self._throttled else None)
+            return self._start_decision()
         if not self._available(now):
             self._drop()
             return Decision("missed")
-        return self._start(now)
+        if self._rate_limited(now):
+            self._drop()
+            return Decision("missed", reason=RATE_LIMIT)
+        return self._start_decision()
 
     def started(self, now: float) -> None:
         """The caller started a run for a ``start`` decision."""
@@ -104,13 +118,10 @@ class TriggerPolicy:
 
     def due(self, now: float) -> Decision | None:
         """Start the oldest queued occurrence when concurrency and cooldown allow it."""
-        if self._disabled or self._concurrency != "queue" or not self._pending:
+        if self._concurrency != "queue" or not self._pending:
             return None
-        if not self._available(now):
+        if not self._available(now) or self._rate_limited(now):
             return None
-        if self._rate_limited(now):
-            self._disabled = True
-            return Decision("disable", reason=RATE_LIMIT)
         self._pending.popleft()
         return self._start_decision()
 
@@ -127,15 +138,13 @@ class TriggerPolicy:
     def _rate_limited(self, now: float) -> bool:
         while self._starts and now - self._starts[0] >= WINDOW_SECONDS:
             self._starts.popleft()
-        return len(self._starts) >= self._starts_per_minute
-
-    def _start(self, now: float) -> Decision:
-        if self._rate_limited(now):
-            self._disabled = True
-            return Decision("disable", reason=RATE_LIMIT)
-        return self._start_decision()
+        if len(self._starts) >= self._starts_per_minute:
+            self._throttled = True
+            return True
+        return False
 
     def _start_decision(self) -> Decision:
+        self._throttled = self._throttle_reported = False
         missed = self._missed_since_start
         self._missed_since_start = 0
         return Decision("start", missed=missed)

@@ -675,7 +675,7 @@ class ScriptService:
             self._watch_owners[owner] = self._watch_owners.get(owner, 0) + 1
         buffer = WatchBuffer(kind)
         try:
-            subscription = self.occurrences.subscribe(kind, canonical, buffer.on_item, buffer.on_gap)
+            subscription = self.occurrences.subscribe(kind, canonical, buffer.on_item, buffer.on_gap, owner=owner)
         except BaseException:
             with self._lock:
                 remaining = self._watch_owners.get(owner, 1) - 1

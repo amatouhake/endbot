@@ -5,6 +5,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 from endbot_core.groups import GroupCommandService, GroupStore
 from endbot_core.i18n import LocalizedError
@@ -15,6 +16,7 @@ from endbot_core.script_inputs import OwnedInputs
 from endbot_core.script_store import ScriptStore
 from endbot_core.scripting import Declaration, ScriptService
 from endbot_core.trigger_store import TriggerStore
+from endbotd import triggers as trigger_module
 from endbotd.occurrences import OccurrenceHub
 from endbotd.triggers import TriggerEngine, params_hash
 from test_command_service import FakeControl
@@ -31,6 +33,14 @@ OTHER = Principal("player", name="Bob", xuid="2535400000000002", player_id="0000
 def change(x=0, y=64, z=0):
     return {"kind": "block.change", "x": x, "y": y, "z": z, "dimension": "overworld", "from": "minecraft:stone",
             "to": "minecraft:air", "cause": "poll"}
+
+
+class TriggerStoreReload:
+    def __init__(self, path):
+        self.store = TriggerStore(path)
+
+    def stats(self, owner, name):
+        return self.store.get(owner, name).stats
 
 
 class Clock:
@@ -145,6 +155,30 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").status == "paused"))
         self.assertEqual(self.trigger_store.get(trigger.owner, "guard").reason, "arguments no longer valid")
 
+    def test_someone_elses_script_runs_only_at_the_approved_revision(self):
+        self.save("shared", "params { param.event('event') }", OTHER)
+        self.store.set_visibility("shared", "shared", self.store.get("shared").revision)
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="shared", kind="block.change", filter_=AREA)
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "shared").stats["starts"] == 1))
+        self.save("shared", "params { param.event('event') } -- r2", OTHER)  # same declaration, new code
+        self.clock.advance(2)  # past the cooldown
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "shared").status == "paused"))
+        stored = self.trigger_store.get(trigger.owner, "shared")
+        self.assertEqual((stored.reason, stored.stats["starts"]), ("script changed", 1))
+        enabled = self.engine.enable(OWNER, "shared")
+        self.assertEqual(enabled.approved["revision"], self.store.get("shared").revision)
+
+    def test_the_owners_own_script_follows_its_current_revision(self):
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
+        self.save("guard", "params { param.event('event') } -- r2", OWNER)
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").status, "armed")
+
     def test_revoking_the_owner_disables_and_a_regrant_does_not_rearm(self):
         self.engine.start()
         trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
@@ -156,18 +190,22 @@ class EngineTests(unittest.TestCase):
         self.engine.grants_changed()
         self.assertEqual(self.trigger_store.get(trigger.owner, "guard").status, "disabled")
 
-    def test_the_start_cap_disables_and_tells_the_owner(self):
+    def test_the_start_cap_throttles_and_tells_the_owner_once(self):
         self.engine.start()
         trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
                                      policy={"cooldown": 0, "startsPerMinute": 1, "concurrency": "parallel"})
         self.hub.raise_occurrence("plugin", change())
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
         self.hub.raise_occurrence("plugin", change())
-        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").status == "disabled"))
-        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").reason, "rate limit")
-        notices = [event for event in self.events if event.kind == "trigger.disabled"]
-        self.assertEqual(notices[0].data["reason"], "rate limit")
-        self.assertEqual(notices[0].to.player_id, OWNER.player_id)
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats.get("missed") == 2))
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").status, "armed")
+        notices = [event for event in self.events if event.kind == "trigger.throttled"]
+        self.assertEqual(len(notices), 1)
+        self.assertEqual((notices[0].data["limit"], notices[0].to.player_id), (1, OWNER.player_id))
+        self.clock.advance(60)
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 2))
 
     def test_a_run_that_ends_while_disabled_does_not_block_the_trigger_after_enable(self):
         trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
@@ -181,6 +219,31 @@ class EngineTests(unittest.TestCase):
         self.hub.raise_occurrence("plugin", change())
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats.get("starts") == 1))
         self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats.get("missed", 0), 0)
+
+    def test_missed_occurrences_do_not_rewrite_the_file_each_time(self):
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
+                                     policy={"cooldown": 72000})
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
+        with patch.object(self.trigger_store, "_save", wraps=self.trigger_store._save) as save:
+            for _ in range(200):
+                self.hub.raise_occurrence("plugin", change())
+            self.assertTrue(self.settle(
+                lambda: self.trigger_store.get(trigger.owner, "guard").stats.get("missed") == 200))
+            self.assertLessEqual(save.call_count, 5)
+        self.engine.close()
+        self.assertEqual(TriggerStoreReload(self.trigger_store.path).stats(trigger.owner, "guard")["missed"], 200)
+
+    def test_occurrences_beyond_the_work_queue_bound_are_counted_as_missed(self):
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
+        with patch.object(trigger_module, "MAX_PENDING_OCCURRENCES", 0):  # the worker is "full"
+            for _ in range(5):
+                self.hub.raise_occurrence("plugin", change())
+            self.assertTrue(self.settle(
+                lambda: self.trigger_store.get(trigger.owner, "guard").stats.get("missed") == 5))
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats.get("starts", 0), 0)
 
     def test_queue_keeps_the_newest_occurrences_and_starts_them_in_order(self):
         self.engine.start()
@@ -233,7 +296,7 @@ class EngineTests(unittest.TestCase):
         self.hub.raise_occurrence("plugin", change())
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
 
-    def test_queued_occurrences_wait_while_unlinked_and_a_queued_cap_disables(self):
+    def test_queued_occurrences_wait_while_unlinked_and_then_for_the_start_cap(self):
         self.engine.start()
         trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
                                      policy={"concurrency": "queue", "cooldown": 100, "startsPerMinute": 1})
@@ -245,9 +308,12 @@ class EngineTests(unittest.TestCase):
         self.clock.advance(6)
         time.sleep(0.6)
         self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats["starts"], 1)
-        self.linked = True  # the queued start is now over the cap of one per minute: disabled, not started
-        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").status == "disabled"))
-        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").reason, "rate limit")
+        self.linked = True  # the queued start is now over the cap of one per minute: it waits, still armed
+        self.assertTrue(self.settle(lambda: any(event.kind == "trigger.throttled" for event in self.events)))
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").status, "armed")
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats["starts"], 1)
+        self.clock.advance(60)
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 2))
 
     def test_changing_the_policy_keeps_the_start_window_and_ignores_the_old_subscription(self):
         self.engine.start()
@@ -257,7 +323,7 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
         self.engine.set_policy(OWNER, "guard", {"cooldown": 0})
         self.hub.raise_occurrence("plugin", change())
-        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").status == "disabled"))
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats.get("missed") == 1))
         self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats["starts"], 1)
 
     def test_a_limit_of_zero_arms_nothing_and_enable_respects_the_owners_limit(self):

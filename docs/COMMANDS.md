@@ -38,7 +38,8 @@ someone who may run the script can arm it. `area=` takes the area values in one 
 (`"100 64 200"`, `"0 64 0 3 65 3"`, `"5 of 0 64 0"`), optionally with `except <values>`; `--` separates the
 script arguments. `trigger set` takes `concurrency`, `cooldown` (ticks), `startsPerMinute` and `queue`. The console
 addresses another owner's trigger as `<owner>/<name>` (display name or owner key). Limits:
-`[limits] max-triggers-per-controller` (default 8, `0` disables triggers). See
+`[limits] max-triggers-per-controller` (default 8, `0` disables triggers) and `max-watched-blocks-per-controller`
+(default 1024). See
 [SCRIPTING.md](SCRIPTING.md#triggers) for pausing, disabling and the policy defaults.
 
 ## Quick start

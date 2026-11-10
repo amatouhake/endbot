@@ -330,6 +330,7 @@ def generate_endbotd_config(server: Path, paths: InstancePaths, config: EndbotCo
     limits["max-bots-per-controller"] = config.limits.max_bots_per_controller
     limits["max-watches-per-controller"] = config.limits.max_watches_per_controller
     limits["max-triggers-per-controller"] = config.limits.max_triggers_per_controller
+    limits["max-watched-blocks-per-controller"] = config.limits.max_watched_blocks_per_controller
     limits["reserved-player-slots"] = config.limits.reserved_player_slots
     document.add("limits", limits)
 

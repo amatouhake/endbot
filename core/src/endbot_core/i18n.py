@@ -1181,11 +1181,19 @@ JA.update({
         "サーバーが watch できるのは最大 {limit} ブロックです。この watch で {count} ブロックになります",
     "Watches need endbotd; they are not available here": "watch には endbotd が必要です。ここでは使えません",
     "A run may hold at most {limit} watches": "1 回の実行で持てる watch は最大 {limit} 個です",
+    "A controller may watch at most {limit} blocks ([limits] max-watched-blocks-per-controller); this watch would "
+    "make it {count}":
+        "コントローラーが watch できるのは最大 {limit} ブロックです ([limits] max-watched-blocks-per-controller)。"
+        "この watch で {count} ブロックになります",
     "A controller may hold at most {limit} watches ([limits] max-watches-per-controller)":
         "コントローラーが持てる watch は最大 {limit} 個です ([limits] max-watches-per-controller)",
     "Unknown or closed watch": "その watch はないか、閉じられています",
-    "Trigger {name} was disabled: {reason}; /botscript trigger enable {name} arms it again":
-        "トリガー {name} は無効になりました: {reason}。/botscript trigger enable {name} で再び有効にできます",
+    "Trigger {name} reached {limit} starts per minute; occurrences wait until the minute allows more":
+        "トリガー {name} は 1 分あたりの開始回数の上限 {limit} に達しました。"
+        "上限に空きができるまで occurrence は待機します",
+    "Trigger {name} reached {limit} starts per minute; occurrences are skipped until the minute allows more":
+        "トリガー {name} は 1 分あたりの開始回数の上限 {limit} に達しました。"
+        "上限に空きができるまで occurrence はスキップされます",
     "Triggers are unavailable": "トリガーは利用できません",
     "Triggers are turned off on this server": "このサーバーではトリガーが無効です",
     "A controller may have at most {limit} armed triggers": "コントローラーが持てる有効なトリガーは最大 {limit} 個です",
@@ -1239,6 +1247,7 @@ JA.update({
     "disabled": "無効",
     "declaration grew": "宣言が広がりました",
     "arguments no longer valid": "引数が無効になりました",
+    "script changed": "他の人のスクリプトが変更されました",
     "script unavailable": "スクリプトを利用できません",
     "kind unavailable": "イベント種別を利用できません",
     "disabled by its owner": "所有者が無効にしました",

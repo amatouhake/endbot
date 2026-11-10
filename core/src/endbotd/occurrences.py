@@ -38,11 +38,12 @@ MAX_UNKNOWN_KINDS = 32
 class Subscription:
     """One watch's or trigger's interest in one kind; delivery goes through its callbacks."""
 
-    __slots__ = ("active", "cells", "created", "dimension", "filter", "kind", "on_gap", "on_item", "source")
+    __slots__ = ("active", "cells", "created", "dimension", "filter", "kind", "on_gap", "on_item", "owner", "source")
 
     def __init__(self, kind: str, source: str, filter_: dict, cells: frozenset, dimension: str | None,
-                 on_item: Callable[[dict], None], on_gap: Callable[[str], None]) -> None:
+                 on_item: Callable[[dict], None], on_gap: Callable[[str], None], owner: str | None = None) -> None:
         self.kind = kind
+        self.owner = owner
         self.source = source
         self.filter = filter_
         self.cells = cells
@@ -128,11 +129,13 @@ class OccurrenceHub:
     """Subscriptions, the interest set and gap tracking for every event source."""
 
     def __init__(self, kinds: dict, send_interest: Callable[[dict], object], *,
-                 max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS, turned_off=(),
-                 log: Callable[[str, str], None] | None = None) -> None:
+                 max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS, max_watched_blocks_per_owner: int = 0,
+                 turned_off=(), log: Callable[[str, str], None] | None = None) -> None:
         self._kinds = kinds
         self._send_interest = send_interest
         self._max_watched_blocks = max_watched_blocks
+        # One controller's share of the cells, so one controller cannot fill the server's budget (0: no share).
+        self._max_watched_blocks_per_owner = max_watched_blocks_per_owner
         # Kinds the operator has not turned on (player.chat without [events] chat = true): refused at subscribe.
         self._turned_off = frozenset(turned_off)
         self._log = log or (lambda level, message: None)
@@ -153,8 +156,10 @@ class OccurrenceHub:
     # -- subscriptions ---------------------------------------------------
 
     def subscribe(self, kind: str, filter_: dict, on_item: Callable[[dict], None],
-                  on_gap: Callable[[str], None]) -> Subscription:
-        """Start delivering ``kind`` occurrences that pass ``filter_``; filters are validated by the caller."""
+                  on_gap: Callable[[str], None], owner: str | None = None) -> Subscription:
+        """Start delivering ``kind`` occurrences that pass ``filter_``; filters are validated by the caller.
+
+        ``owner`` is the controller's owner key; its cells count against its share of the watched blocks."""
         spec = self._kinds.get(kind)
         if spec is None:
             raise LocalizedError("Unknown event kind {kind}", kind=kind)
@@ -164,11 +169,20 @@ class OccurrenceHub:
         filter_ = resolve_filter(kind, spec, filter_)
         cells = area_cells(spec, filter_)
         dimension = _dimension(spec, filter_)
-        subscription = Subscription(kind, spec["source"], filter_, cells, dimension, on_item, on_gap)
+        subscription = Subscription(kind, spec["source"], filter_, cells, dimension, on_item, on_gap, owner)
         with self._lock:
             if cells:
+                added = {(dimension, *cell) for cell in cells}
+                share = self._max_watched_blocks_per_owner
+                if owner is not None and share:
+                    count = len(self._watched_cells(owner) | added)
+                    if count > share:
+                        raise LocalizedError(
+                            "A controller may watch at most {limit} blocks ([limits] "
+                            "max-watched-blocks-per-controller); this watch would make it {count}",
+                            limit=share, count=count)
                 watched = self._watched_cells()
-                total = len(watched | {(dimension, *cell) for cell in cells})
+                total = len(watched | added)
                 if total > self._max_watched_blocks:
                     raise LocalizedError(
                         "The server watches at most {limit} blocks; this watch would make it {count}",
@@ -190,9 +204,10 @@ class OccurrenceHub:
         if subscription.source == "plugin":
             self._publish()
 
-    def _watched_cells(self) -> set:
+    def _watched_cells(self, owner: str | None = None) -> set:
         return {(subscription.dimension, *cell) for listed in self._subscriptions.values()
-                for subscription in listed for cell in subscription.cells}
+                for subscription in listed if owner is None or subscription.owner == owner
+                for cell in subscription.cells}
 
     def watched_blocks(self) -> int:
         with self._lock:

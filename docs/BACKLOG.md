@@ -935,7 +935,7 @@ the human checks (EVENTS.md step 8) are part of the next release's validation pa
 
 Event kinds in the operation registry (`category.action`, filters, payload, source, guarantee, visibility); a generic
 `watch(kind, filter)` with `w:wait{timeout=}`; observation only, never cancel or modify; triggers as separate bindings
-(event + filter → script + arguments) with skip-while-running, cooldown, a per-minute start cap that disables the
+(event + filter → script + arguments) with skip-while-running, cooldown, a per-minute start cap that throttles the
 trigger, and a bounded queue reporting `missed`. Start with `block.change`: measure which block changes Endstone events
 cover on the locked pair and state the guaranteed minimum persistence. Then the other first kinds listed in Decision 5.
 Persistent triggers need endbotd (BOT-020). Visibility and trigger approval follow [PERMISSIONS.md](PERMISSIONS.md).

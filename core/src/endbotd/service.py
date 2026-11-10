@@ -122,6 +122,7 @@ class EndbotService:
         self.occurrences = OccurrenceHub(
             REGISTRY.get("events", {}), lambda interest: self.link.send_interest(interest),
             max_watched_blocks=self._max_watched_blocks(config.events),
+            max_watched_blocks_per_owner=getattr(limits, "max_watched_blocks_per_controller", 1024),
             turned_off=() if config.events.get("chat") is True else ("player.chat",), log=self._log)
         self.link = LinkServer(
             config.link_host, config.link_port, load_token(config.link_token_file), version=__version__,

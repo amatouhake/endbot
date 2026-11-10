@@ -45,6 +45,18 @@ class OccurrenceHubTests(unittest.TestCase):
                                           items.append, gaps.append)
         return subscription, items, gaps
 
+    def test_one_controllers_cells_are_capped_by_its_share(self):
+        hub = OccurrenceHub(KINDS, self.sent.append, max_watched_blocks=600, max_watched_blocks_per_owner=8)
+        ignore = self.logs.append
+        hub.subscribe("block.change", {"area": box(0, 64, 0, 1, 64, 1)}, ignore, ignore, owner="xuid:1")  # 4 cells
+        hub.subscribe("block.change", {"area": box(0, 64, 0, 1, 64, 1)}, ignore, ignore, owner="xuid:1")  # same 4
+        hub.subscribe("block.change", {"area": box(4, 64, 0, 5, 64, 1)}, ignore, ignore, owner="xuid:1")  # 8 in all
+        with self.assertRaisesRegex(LocalizedError, "at most 8 blocks.*make it 12"):
+            hub.subscribe("block.change", {"area": box(8, 64, 0, 9, 64, 1)}, ignore, ignore, owner="xuid:1")
+        hub.subscribe("block.change", {"area": box(8, 64, 0, 9, 64, 1)}, ignore, ignore, owner="xuid:2")
+        hub.subscribe("block.change", {"area": box(8, 64, 0, 9, 64, 1)}, ignore, ignore)  # no owner: server cap only
+        self.assertEqual(hub.watched_blocks(), 12)
+
     def test_the_interest_set_is_the_union_and_follows_every_change(self):
         first, _, _ = self.subscribe()
         self.assertEqual(self.sent, [])  # no plugin linked: nothing to send, the link gets the set

@@ -660,7 +660,8 @@ local n = watch("world.time", {phase = "night"})   -- each time night falls
   `requires { "observe.presence" }` or `requires { "observe.chat" }`; the run form and the trigger form show the
   declaration first. `player.chat` is public chat only: `/tell`, `/msg` and `/w` are never reported. The message is
   cut to 256 characters.
-- Limits: 16 watches per run, `[limits] max-watches-per-controller` (default 32) across one controller's runs, and
+- Limits: 16 watches per run, `[limits] max-watches-per-controller` (default 32) across one controller's runs,
+  `[limits] max-watched-blocks-per-controller` (default 1024) cells across one controller's watches and triggers, and
   the server-wide `[events] max-watched-blocks` (default 2048). A watch over a limit is refused with the limit named.
 
 <!-- BEGIN GENERATED EVENTS -->
@@ -720,22 +721,24 @@ end
   `<owner>/<name>` in `list` and `show`.
 
 **Approval.** Adding or enabling shows the script's declaration and records it with the script revision and its
-parameters; only someone who may run the script may arm it. The trigger then runs the script's current revision
-while its declaration stays within the approved one and its parameters still accept the stored arguments. A
+parameters; only someone who may run the script may arm it. On your own script the trigger then runs the
+current revision while its declaration stays within the approved one and its parameters still accept the stored
+arguments. On someone else's shared script it runs only the approved revision; any new revision pauses it. A
 started run has the owner's authority intersected with the approved declaration and counts toward the owner's
 concurrent-run limit.
 
 | Policy | Default | Bounds | Effect |
 | --- | --- | --- | --- |
 | `concurrency` | `skip` | `skip`, `queue`, `parallel` | `skip` drops an occurrence while a run from this trigger is active or in cooldown and counts it as missed. `queue` keeps the newest `queue` occurrences and starts them in order. `parallel` allows up to 2 runs at once |
-| `cooldown` | 20 ticks | 0-72000 | Minimum time between two starts |
-| `startsPerMinute` | 10 | 1-60 | Starts in a sliding 60-second window; one more disables the trigger (`rate limit`) |
+| `cooldown` | 20 ticks | 0-72000 | Minimum time between two starts; under `skip` an occurrence inside it is dropped, not delayed |
+| `startsPerMinute` | 10 | 1-60 | Starts in a sliding 60-second window; over it the trigger is throttled: `skip` and `parallel` drop the occurrence as missed, `queue` holds it until the window allows a start |
 | `queue` | 4 | 1-16 | Pending occurrences under `queue`; the oldest is dropped and counted as missed |
 
 **Pausing and disabling.** A trigger pauses when its script's declaration grows (`declaration grew`), its
 parameters no longer accept the stored arguments (`arguments no longer valid`), or the script can no longer be
-run by its owner (`script unavailable`); it stays paused until its owner enables it again, which re-approves.
-Going over the start cap disables it (`rate limit`) and tells its owner in chat. Revoking the owner disables it
+run by its owner (`script unavailable`), or someone else's script it runs gets a new revision (`script changed`);
+it stays paused until its owner enables it again, which re-approves. Going over the start cap never stops a
+trigger: it is throttled and its owner is told once in chat until it starts again. Revoking the owner disables it
 (`owner revoked`), and a regrant does not re-enable it. A disabled trigger keeps its state and can be enabled
 again.
 
@@ -745,7 +748,8 @@ starts while the link is down; those occurrences are counted as skipped. Runtime
 runtime comes back.
 
 **Limits.** `[limits] max-triggers-per-controller` (default 8) bounds armed triggers per owner; `0` turns
-triggers off on the server. Every other run limit applies to triggered runs unchanged.
+triggers off on the server. A trigger's area counts toward `max-watched-blocks-per-controller` like a watch. Every
+other run limit applies to triggered runs unchanged.
 
 ## Lifetime, boundaries and unverified gates
 

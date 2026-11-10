@@ -27,6 +27,8 @@ class BotLimits:
     max_watches_per_controller: int = 32
     # Armed triggers one controller may own (EVENTS.md E7); 0 turns triggers off on the server.
     max_triggers_per_controller: int = 8
+    # Block cells one controller's watches and triggers may watch together (EVENTS.md S2); 0: no separate cap.
+    max_watched_blocks_per_controller: int = 1024
 
     @classmethod
     def from_config(cls, table: object) -> BotLimits:
@@ -35,7 +37,8 @@ class BotLimits:
         if not isinstance(table, dict):
             raise ValueError("[limits] must be a table")  # noqa: TRY004 - configuration validation API
         unknown = set(table) - {"max-bots", "reserved-player-slots", "max-bots-per-controller",
-                                "max-watches-per-controller", "max-triggers-per-controller"}
+                                "max-watches-per-controller", "max-triggers-per-controller",
+                                "max-watched-blocks-per-controller"}
         if unknown:
             raise ValueError(f"unknown [limits] key: {min(unknown)}")
 
@@ -50,6 +53,7 @@ class BotLimits:
         per_controller = whole("max-bots-per-controller", 0)
         watches = whole("max-watches-per-controller", 32)
         triggers = whole("max-triggers-per-controller", 8)
+        cells = whole("max-watched-blocks-per-controller", 1024)
         if max_bots < 0:
             raise ValueError("[limits] max-bots must be 0 or a positive integer")
         if reserved < 0:
@@ -60,7 +64,9 @@ class BotLimits:
             raise ValueError("[limits] max-watches-per-controller must be an integer from 0 to 1024")
         if not 0 <= triggers <= 256:
             raise ValueError("[limits] max-triggers-per-controller must be an integer from 0 to 256")
-        return cls(max_bots, reserved, per_controller, watches, triggers)
+        if not 0 <= cells <= 16384:
+            raise ValueError("[limits] max-watched-blocks-per-controller must be an integer from 0 to 16384")
+        return cls(max_bots, reserved, per_controller, watches, triggers, cells)
 
     @property
     def enabled(self) -> bool:

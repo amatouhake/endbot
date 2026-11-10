@@ -582,6 +582,19 @@ class LifecycleTests(unittest.TestCase):
                                                        "chat": True, "skipped": 2}), "chat")
         self.assertTrue(strip_colors(shown[0]).endswith("again (2 log lines not shown)"))
 
+    def test_a_triggers_ordinary_run_end_stays_out_of_chat(self):
+        def ended(outcome, trigger, cleanup=True, skipped=0):
+            return Event(self.source, "run.ended", {"run": "r", "name": "guard", "outcome": {"template": outcome,
+                         "params": {}}, "cleanup": cleanup, "controller": "Alice", "skipped": skipped,
+                         "trigger": trigger})
+
+        self.assertEqual(render(ended("completed", "guard"), "chat"), ())
+        self.assertTrue(render(ended("completed", "guard"), "log"))
+        self.assertTrue(render(ended("completed", None), "chat"))  # a run someone started still reports
+        self.assertTrue(render(ended("stopped", "guard"), "chat"))  # anything but a clean end still reports
+        self.assertTrue(render(ended("completed", "guard", cleanup=False), "chat"))
+        self.assertTrue(render(ended("completed", "guard", skipped=3), "chat"))
+
     def test_operation_replies_follow_the_replies_policy(self):
         accepted = CommandResult(True, ("ok",))
         rejected = CommandResult(True, ("no",), accepted=False)

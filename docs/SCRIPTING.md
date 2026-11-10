@@ -723,7 +723,8 @@ end
 **Approval.** Adding or enabling shows the script's declaration and records it with the script revision and its
 parameters; only someone who may run the script may arm it. On your own script the trigger then runs the
 current revision while its declaration stays within the approved one and its parameters still accept the stored
-arguments. On someone else's shared script it runs only the approved revision; any new revision pauses it. A
+arguments. On someone else's shared script it runs only the approved revision; any new revision pauses it. The
+operator's script files follow their current revision like your own. A
 started run has the owner's authority intersected with the approved declaration and counts toward the owner's
 concurrent-run limit.
 
@@ -738,7 +739,9 @@ concurrent-run limit.
 parameters no longer accept the stored arguments (`arguments no longer valid`), or the script can no longer be
 run by its owner (`script unavailable`), or someone else's script it runs gets a new revision (`script changed`);
 it stays paused until its owner enables it again, which re-approves. Going over the start cap never stops a
-trigger: it is throttled and its owner is told once in chat until it starts again. Revoking the owner disables it
+trigger: it is throttled and its owner is told once in chat until it starts again. A pause, a disable by the
+server and a start refused at the owner's run limit (told once until a start succeeds) are also told to the owner in
+chat. A triggered run that ends cleanly is only logged, not shown in chat. Revoking the owner disables it
 (`owner revoked`), and a regrant does not re-enable it. A disabled trigger keeps its state and can be enabled
 again.
 

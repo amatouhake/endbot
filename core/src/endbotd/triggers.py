@@ -28,11 +28,12 @@ import threading
 import time
 from collections.abc import Callable
 
-from endbot_core.events import Event
+from endbot_core.events import Event, reason as reason_data
 from endbot_core.i18n import LocalizedError
 from endbot_core.ownership import owner_key
 from endbot_core.principal import Principal
 from endbot_core.script_params import declarations, event_parameter, inputs
+from endbot_core.script_store import FILE_OWNER
 from endbot_core.trigger_policy import TriggerPolicy
 from endbot_core.trigger_store import Trigger, policy_from
 from endbot_core.watches import check_kind, validate_filter
@@ -335,9 +336,12 @@ class TriggerEngine:
             self.pause_for(key, "script unavailable")
             return
         found_revision = script.revision
-        if script.owner != trigger.owner and found_revision != trigger.approved.get("revision"):
-            # Someone else's script runs only at the revision its trigger's owner approved (S5): a new revision
-            # would run future code with the owner's authority, so it waits for the owner to enable it again.
+        if (script.owner not in (trigger.owner, FILE_OWNER)
+                and found_revision != trigger.approved.get("revision")):
+            # Someone else's script runs only at the revision its trigger's owner approved (S16): a new revision
+            # would run future code with the owner's authority, so it waits for the owner to enable it again. The
+            # operator's script files follow their current revision like one's own (S17): the operator already
+            # controls the server.
             self.pause_for(key, "script changed")
             return
         try:
@@ -371,10 +375,15 @@ class TriggerEngine:
                                    event=occurrence, trigger=trigger.name,
                                    on_end=lambda run, outcome, key=key: self._work.put(("ended", key)))
             except LocalizedError as error:
-                # At the owner's concurrent-run limit, or scripting is off: the start is skipped and counted (E7).
+                # At the owner's concurrent-run limit, or scripting is off: the start is skipped and counted (E7),
+                # and the owner is told once until a start succeeds again (S18).
                 self._stat(key, lastError=str(error)[:256])
                 self._bump(key, "skipped")
+                if not entry.get("blocked"):
+                    entry["blocked"] = True
+                    self._tell(trigger, "trigger.blocked", reason=reason_data(error))
                 return
+            entry["blocked"] = False
             entry["policy"].started(self._monotonic())
             updated = self.store.update(*key, durable=False,
                                         stats={**current.stats, "starts": current.stats.get("starts", 0) + 1,
@@ -404,6 +413,13 @@ class TriggerEngine:
             updated = self.store.update(*key, status="paused", reason=reason)
             self._log("info", f"trigger {key[1]} of {key[0]} paused: {reason}")
         self._changed(updated)
+        self._tell(updated, "trigger.stopped", status="paused", reason=reason)
+
+    def _tell(self, trigger: Trigger, kind: str, **data) -> None:
+        """Tell a trigger's owner in chat when online, and the Event log, why it stopped or cannot start (S18)."""
+        if self._publish is not None:
+            self._publish(Event(self._principal(trigger), kind,
+                                {"name": trigger.name, "owner": trigger.owner_name or trigger.owner, **data}))
 
     def _throttled(self, key: tuple, policy: TriggerPolicy) -> None:
         """The start cap began dropping or holding occurrences: tell the owner once per episode (E8)."""
@@ -412,11 +428,8 @@ class TriggerEngine:
             return
         self._log("info", f"trigger {trigger.name} of {trigger.owner_name or trigger.owner} throttled: "
                           f"{trigger.policy['startsPerMinute']} starts per minute")
-        if self._publish is not None:
-            self._publish(Event(self._principal(trigger), "trigger.throttled",
-                                {"name": trigger.name, "owner": trigger.owner_name or trigger.owner,
-                                 "limit": trigger.policy["startsPerMinute"],
-                                 "queued": trigger.policy["concurrency"] == "queue"}))
+        self._tell(trigger, "trigger.throttled", limit=trigger.policy["startsPerMinute"],
+                   queued=trigger.policy["concurrency"] == "queue")
 
     def disable_for(self, key: tuple, reason: str) -> None:
         with self._state:
@@ -427,6 +440,7 @@ class TriggerEngine:
             updated = self.store.update(*key, status="disabled", reason=reason)
         self._changed(updated)
         self._log("warning", f"trigger {trigger.name} of {trigger.owner_name or trigger.owner} disabled: {reason}")
+        self._tell(updated, "trigger.stopped", status="disabled", reason=reason)
 
     def grants_changed(self) -> None:
         """A grant changed: every trigger whose owner no longer holds the approved grant is disabled (E7)."""

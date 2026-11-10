@@ -1188,6 +1188,11 @@ JA.update({
     "A controller may hold at most {limit} watches ([limits] max-watches-per-controller)":
         "コントローラーが持てる watch は最大 {limit} 個です ([limits] max-watches-per-controller)",
     "Unknown or closed watch": "その watch はないか、閉じられています",
+    "Trigger {name} paused: {reason}; /botscript trigger enable {name} approves it again":
+        "トリガー {name} が一時停止しました: {reason}。/botscript trigger enable {name} で承認し直せます",
+    "Trigger {name} was disabled: {reason}": "トリガー {name} は無効になりました: {reason}",
+    "Trigger {name} could not start: {reason}; occurrences are skipped until it can":
+        "トリガー {name} を開始できませんでした: {reason}。開始できるようになるまで occurrence はスキップされます",
     "Trigger {name} reached {limit} starts per minute; occurrences wait until the minute allows more":
         "トリガー {name} は 1 分あたりの開始回数の上限 {limit} に達しました。"
         "上限に空きができるまで occurrence は待機します",

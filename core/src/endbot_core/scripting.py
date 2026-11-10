@@ -832,7 +832,7 @@ class ScriptService:
                 cleanup_ok = False
             ended = Event(run.source, "run.ended", {
                 "run": run.identity, "name": run.name, "outcome": outcome, "cleanup": cleanup_ok,
-                "controller": self._owner(run), "skipped": self._skipped_logs(run)})
+                "controller": self._owner(run), "skipped": self._skipped_logs(run), "trigger": run.trigger})
             with self._lock:
                 run.state = outcome_text(ended.data, _language(run.source))
                 self._runs.pop(run.identity, None)

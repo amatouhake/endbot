@@ -433,13 +433,22 @@ class TokenTests(DeployCase):
             raise EOFError
 
         with self.assertRaisesRegex(DeployError, "no Cloudflare API token"):
-            read_token({}, closed)
+            read_token({}, closed, True)
+
+    def test_no_terminal_refuses_without_prompting(self) -> None:
+        def refuse(_prompt: str) -> str:
+            raise AssertionError("prompted")
+
+        with self.assertRaisesRegex(DeployError, "no Cloudflare API token"):
+            read_token({}, refuse, False)
+        self.assertEqual(read_token({"CLOUDFLARE_API_TOKEN": "a"}, refuse, False), "a")
 
     def test_the_environment_wins_and_the_prompt_is_the_fallback(self) -> None:
-        self.assertEqual(read_token({"CLOUDFLARE_API_TOKEN": " a "}, lambda _: "b"), "a")
-        self.assertEqual(read_token({}, lambda _: "b"), "b")
+        self.assertEqual(read_token({"CLOUDFLARE_API_TOKEN": " a "}, lambda _: "b", True), "a")
+        self.assertEqual(read_token({}, lambda _: "b", True), "b")
+        self.assertEqual(read_token({"CLOUDFLARE_API_TOKEN": "  "}, lambda _: "b", True), "b")
         with self.assertRaises(DeployError):
-            read_token({}, lambda _: "  ")
+            read_token({}, lambda _: "  ", True)
 
     def test_there_is_no_token_argument(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:

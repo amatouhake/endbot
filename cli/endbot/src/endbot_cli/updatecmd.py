@@ -52,6 +52,7 @@ from endbot_cli.runstate import RUNNING, STALE, clean_supervisor_pid, inspect_su
 from endbot_cli.stores import StoreError, StoreLayout
 from endbot_cli.stores import migrate as migrate_stores
 from endbot_cli.stores import rollback as rollback_stores
+from endbot_cli.terminal import has_terminal
 
 SUMS_NAME = "SHA256SUMS"
 APP_PREFIX = "app"
@@ -357,15 +358,6 @@ def blocking_failures(results: Sequence[tuple[str, str, str]], paths: InstancePa
 # The web (docs/WEB.md P9)
 
 
-def _has_terminal() -> bool:
-    """False for a service or a scheduled task too, where stdin may be None or closed."""
-
-    try:
-        return sys.stdin is not None and sys.stdin.isatty()
-    except ValueError:
-        return False
-
-
 def read_web_token(
     environ: Mapping[str, str] | None = None,
     prompt: Callable[[str], str] = getpass.getpass,
@@ -379,7 +371,7 @@ def read_web_token(
     token = environ.get(TOKEN_VARIABLE, "").strip()
     if token:
         return token
-    if not (_has_terminal() if interactive is None else interactive):
+    if not (has_terminal() if interactive is None else interactive):
         return None
     _print("update: the web is deployed, so its Worker should match this version")
     try:

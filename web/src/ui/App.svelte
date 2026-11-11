@@ -28,7 +28,9 @@
   let busy = $state(false);
   let error = $state("");
   let notice = $state("");
-  let waiting = $state(false);
+  // Why the page is waiting to connect instead of showing the sign-in page; "" when it is not.
+  let waiting = $state<"" | "rateLimited" | "tooManyTabs" | "notYet">("");
+  let lastRefusal: string | null = null;
   let offline = $state(false);
   let status = $state.raw<any>(null);
   let log = $state.raw<any[]>([]);
@@ -138,6 +140,7 @@
         retryLater();
       }
     });
+    lastRefusal = null;
     try {
       await next.open();
     } catch {
@@ -145,6 +148,7 @@
     }
     const answer = await next.request("query", { what: "status" });
     if (answer.code !== "ok") {
+      lastRefusal = next.closeReason;
       next.close();
       return false;
     }
@@ -225,28 +229,27 @@
   /**
    * The page's socket did not open: signed out, or only refused for now? A refused upgrade shows the page nothing,
    * so ask the session once. A session endbotd still accepts, or a request turned away by the rate limit, means
-   * this is not a signed-out page: say so and try again rather than show the sign-in page to a signed-in person.
+   * this is not a signed-out page: say why and try again rather than show the sign-in page to a signed-in person.
+   * "" means signed out or the server is away: the sign-in page, which also shows the server offline.
    */
-  async function refusedForNow(): Promise<boolean> {
+  async function refusedForNow(): Promise<typeof waiting> {
     try {
       await post("/auth/devices");
-      return true;
     } catch (failure) {
-      return failure instanceof ApiError && failure.code === "rate_limited";
+      return failure instanceof ApiError && failure.code === "rate_limited" ? "rateLimited" : "";
     }
+    // Each session holds a few sockets at most (P7): another tab has to close first.
+    return lastRefusal === "too_many_connections" ? "tooManyTabs" : "notYet";
   }
 
   async function connectWhenAllowed(): Promise<boolean> {
     for (;;) {
       if (await connect()) {
-        waiting = false;
+        waiting = "";
         return true;
       }
-      if (!await refusedForNow()) {
-        waiting = false;
-        return false;
-      }
-      waiting = true;
+      waiting = await refusedForNow();
+      if (!waiting) return false;
       await new Promise((resolve) => setTimeout(resolve, WAIT_FOR_LIMIT_MS));
     }
   }
@@ -273,7 +276,8 @@
 <svelte:window onclick={closeMenuOutside} />
 
 {#if view === "loading"}
-  <div class="center" role="status"><div class="spinner"></div>{waiting ? t("waitingToConnect") : t("loading")}</div>
+  <div class="center" role="status"><div class="spinner"></div>{waiting === "rateLimited" ? t("waitingRateLimited") : waiting === "tooManyTabs" ? t("waitingTooManyTabs")
+    : waiting === "notYet" ? t("waitingToConnect") : t("loading")}</div>
 {:else if view === "signedOut"}
   <SignIn {display} {site} {error} {busy}
           onsignin={() => act(async () => { await signIn(); await afterSignIn(); })}

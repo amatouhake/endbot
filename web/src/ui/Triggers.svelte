@@ -385,6 +385,26 @@
     if (active && live) untrack(() => void show(wanted));
   });
 
+  // The list's counts and states as they change, without a reload: every trigger this page may see, added, changed
+  // or removed (found in the 0.7.0 release pass, where only the open trigger was live). An endbotd without the
+  // topic answers no to the subscription, and the list then updates on arriving as before.
+  $effect(() => {
+    if (!active) return;
+    const stop = connection.listen((event) => {
+      if (event.topic !== "triggers") return;
+      if (event.data?.removed) {
+        triggers = triggers.filter((item) => item.owner !== event.data.owner || item.name !== event.data.name);
+        return;
+      }
+      if (event.data?.trigger) upsert(event.data.trigger);
+    });
+    void connection.request("subscribe", { topic: "triggers" });
+    return () => {
+      stop();
+      void connection.request("unsubscribe", { topic: "triggers" });
+    };
+  });
+
   // Live state and stats for the open trigger, and nothing left subscribed after leaving it.
   $effect(() => {
     const wanted = selected;
@@ -453,9 +473,11 @@
               <small>{trigger.ownerName ?? trigger.owner} · {trigger.script} · {trigger.kind}
                 {#if trigger.visibility === "shared"}· {t("scriptShared")}{/if}</small>
               <small>{statsLine(trigger)}</small>
+              {#if trigger.reason}<small class:bad={badStatus(trigger)}>{statusText(trigger)}</small>{/if}
             </span>
+            <!-- The state alone: a reason beside it made the badge wrap mid-word on narrow cards (0.7.0 release pass). -->
             <span class="tag" class:online={statusClass(trigger) === "online"} class:bad={badStatus(trigger)}>
-              {statusText(trigger)}
+              {statusLabel(trigger)}
             </span>
           </a>
         {/each}

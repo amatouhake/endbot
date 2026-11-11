@@ -449,6 +449,33 @@ class TriggerWebApiTests(unittest.TestCase):
         self.assertEqual((refused["code"], refused["messages"]),
                          ("invalid_argument", ["Trigger guard does not exist"]))
 
+    def test_the_list_topic_hears_every_trigger_it_may_see(self):
+        # Found in the 0.7.0 release pass: the list needed a reload, since only the open trigger was pushed.
+        self.assertEqual(self.ask(type="subscribe", topic="triggers")["code"], "ok")
+        self.assertEqual(self.ask_bob(type="subscribe", topic="triggers")["code"], "ok")
+        self.create(visibility="shared")
+        self.create(name="mine")
+        self.assertEqual([(item["topic"], item["data"]["trigger"]["name"]) for item in self.pushed],
+                         [("triggers", "guard"), ("triggers", "mine")])
+        # Bob sees the shared one only, and never hears of the private one, even when it goes away.
+        self.assertEqual([item["data"]["trigger"]["name"] for item in self.bob_pushed], ["guard"])
+        self.ask(type="trigger.remove", name="mine")
+        self.assertEqual(self.pushed[-1]["data"], {"removed": True, "name": "mine", "owner": f"xuid:{XUID}"})
+        self.assertEqual(len(self.bob_pushed), 1)
+        self.ask(type="trigger.disable", name="guard")
+        self.assertEqual(self.bob_pushed[-1]["data"]["trigger"]["status"], "disabled")
+        self.ask(type="unsubscribe", topic="triggers")
+        count = len(self.pushed)
+        self.ask(type="trigger.enable", name="guard")
+        self.assertEqual(len(self.pushed), count)
+
+    def test_a_page_on_both_topics_hears_each(self):
+        self.create()
+        self.ask(type="subscribe", topic="triggers")
+        self.ask(type="subscribe", topic=f"trigger:xuid:{XUID}/guard")
+        self.ask(type="trigger.disable", name="guard")
+        self.assertEqual(sorted(item["topic"] for item in self.pushed), [f"trigger:xuid:{XUID}/guard", "triggers"])
+
     def test_a_revoked_session_stops_hearing_trigger_changes(self):
         self.create()
         topic = f"trigger:xuid:{XUID}/guard"

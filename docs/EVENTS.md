@@ -259,7 +259,7 @@ trigger = { name, owner (identity id), visibility (private|shared),
   script's params, the same generator the run form uses. Forms mirror the commands and add no meaning.
 - **Web**: BOT-022 adds to the web protocol (WEB P2) `trigger.list|get|create|update|enable|disable|remove` and
   `event.kinds` (the registry `events` object), bumping `web-protocol`; `subscribe trigger:<name>` pushes state and
-  stats. Each message calls the same endbotd trigger operation as the command, so authorization is identical
+  stats, and `subscribe triggers` the same for every visible trigger, for the list (added in the 0.7.0 release pass). Each message calls the same endbotd trigger operation as the command, so authorization is identical
   (principle 1). The UI lists the triggers the principal may see and edits their own, with the editor generated from
   the registry like the WEB step 7 Bot control forms, and shows the declaration before enabling.
 - **Coordination with BOT-021**: WEB step 3a's protocol schema reserves the `trigger.*` and `event.*` namespaces;

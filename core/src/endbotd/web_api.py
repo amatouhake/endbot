@@ -105,11 +105,11 @@ class WebApi:
         if kind == "query":
             return self._query(principal, message.get("what"), message)
         topic = message.get("topic")
-        if kind == "subscribe" and isinstance(topic, str) and topic in {"status", "log"}:
+        if kind == "subscribe" and isinstance(topic, str) and topic in {"status", "log", "triggers"}:
             return self._subscribe(principal, token, conn, topic, push)
         if kind == "subscribe" and isinstance(topic, str) and topic.startswith("trigger:"):
             return self._subscribe_trigger(principal, token, conn, topic, push)
-        if kind == "unsubscribe" and isinstance(topic, str) and topic in {"status", "log"}:
+        if kind == "unsubscribe" and isinstance(topic, str) and topic in {"status", "log", "triggers"}:
             with self._lock:
                 entry = self._subscribers.get(conn)
                 if entry is not None:
@@ -450,18 +450,25 @@ class WebApi:
         return {"type": "result", "code": "ok"}
 
     def trigger_changed(self, trigger, removed: bool = False) -> None:
-        """Push a stored change to the pages subscribed to it that may still see it; a removal says so."""
+        """Push a stored change to the pages subscribed to it, or to the list, that may still see it.
+
+        A removal says so. A trigger that stops being visible to a page (made private) sends that page nothing: a
+        removal would tell it the name of a trigger it may no longer see, so its list keeps the row until it asks
+        ``trigger.list`` again.
+        """
         triggers = self._triggers
         if triggers is None:
             return
         topic = f"trigger:{trigger.owner}/{trigger.name}"
-        for entry in self._live(lambda item: topic in item.topics):
+        for entry in self._live(lambda item: topic in item.topics or "triggers" in item.topics):
             principal = self._auth.principal(entry.token, entry.language, active=False)
             if principal is None or not triggers.visible(trigger, principal):
                 continue
             data = ({"removed": True, "name": trigger.name, "owner": trigger.owner} if removed
                     else {"trigger": self._trigger_data(trigger, principal)})
-            entry.push({"type": "event", "topic": topic, "data": data})
+            for wanted in (topic, "triggers"):
+                if wanted in entry.topics:
+                    entry.push({"type": "event", "topic": wanted, "data": data})
 
     @staticmethod
     def _unavailable(language: str, template: str) -> dict:

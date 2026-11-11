@@ -712,7 +712,8 @@ end
 - `area=` takes the area values in one quoted token, in the same forms as `within`: `"100 64 200"`,
   `"0 64 0 3 65 3"` or `"5 of 0 64 0"`, optionally followed inside the token by `except <values>`. Other filters
   are `name=value`; for `block.change` they are `dimension` (default `overworld`), `from` and `to`. Block names may
-  omit `minecraft:`.
+  omit `minecraft:`. The area is absolute: a trigger has no Bot or player to resolve `~` against, so `~` and the
+  Bot-centred sphere (`"3"`) are refused; write the coordinates.
 - `--` separates the script arguments, which are stored as strings exactly as `/botscript run` takes them. The
   name defaults to the script name. A trigger is private unless `visibility=shared`, which only makes it visible
   in other people's `list` and `show`; it does not let them change it.

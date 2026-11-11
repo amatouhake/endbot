@@ -90,6 +90,16 @@ class TriggerCommandTests(unittest.TestCase):
         self.assertEqual(areas.area_text(trigger.filter["area"]), "within 100 64 200")
         self.assertEqual(trigger.filter["to"], "minecraft:air")
 
+    def test_a_relative_area_is_refused_with_the_reason(self):
+        # Found in the 0.7.0 release pass: `~` reached the store and came back as "must be a JSON-safe object".
+        for value in ('area="3 of ~ ~ ~"', 'area="~ ~-1 ~"', 'area="3"'):
+            with self.subTest(value=value):
+                result = self.command("trigger", "add", "guard", "block.change", value)
+                self.assertFalse(result.accepted)
+                self.assertEqual(self.messages(result),
+                                 ("Endbot: A watched area needs absolute coordinates; build it from a position",))
+                self.assertIsNone(self.stored())
+
     def test_area_except_arguments_and_a_name(self):
         # The stored arguments are checked against the script's parameters when the trigger is armed.
         self.declaration = Declaration([*EVENT_SCHEMA, {"name": "n", "type": "number"},

@@ -55,6 +55,10 @@ class FilterTests(unittest.TestCase):
              "may remove at most 16 areas"),
             ("block.change", {"area": "within 0 64 0 3 67 3" + " except 100 100 100" * 60}, "too long"),
             ("block.change", ["area"], "must be a table"),
+            ("block.change", {"area": "within ~ ~ ~"}, "needs absolute coordinates"),
+            ("block.change", {"area": "within 3 of ~ ~-1 ~"}, "needs absolute coordinates"),
+            ("block.change", {"area": "within 3"}, "needs absolute coordinates"),
+            ("block.change", {"area": "within 0 64 0 3 67 3 except ~ ~ ~"}, "needs absolute coordinates"),
         ):
             with self.subTest(kind=kind, filter=filter_), self.assertRaises(LocalizedError) as raised:
                 validate_filter(kind, filter_, ())

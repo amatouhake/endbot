@@ -654,11 +654,17 @@ def _filter_hint(field):
 
 
 def trigger_filter_screen(script, kind, filters, schema, groups, bots, origin, lang="en", requires=()):
-    """The filters of ``kind`` and the script's parameters; the declaration is approved by Add."""
+    """The trigger's name and visibility, the filters of ``kind`` and the script's parameters.
+
+    The declaration is approved by Add. The name comes first: a kind with no filters or parameters would otherwise
+    leave only the declaration and Add on this last screen, and the form arms a trigger named after the script.
+    """
     schema, choices = parameter_choices(schema, groups, bots)
     controls = []
     if requires:
         controls.append(f.Label(tr(lang, "This script also uses: {names}", names=", ".join(requires))))
+    controls.append(f.TextInput(tr(lang, "Trigger name (empty: {name})", name=script.name), script.name, ""))
+    controls.append(f.Toggle(tr(lang, "Shared: others can see this trigger")))
     filter_names = tuple(filters)
     for name, field in filters.items():
         controls.append(f.TextInput(tr(lang, "{name} ({kind})", name=name, kind=field["type"]),
@@ -667,6 +673,8 @@ def trigger_filter_screen(script, kind, filters, schema, groups, bots, origin, l
 
     def build(response):
         index = 1 if requires else 0
+        trigger_name, shared = f._text(response[index]), f._bool(response[index + 1])
+        index += 2
         filter_values = response[index:index + len(filter_names)]
         found, _ = _parameter_values(schema, choices, groups, bots, response[index + len(filter_names):])
         words = []
@@ -677,6 +685,10 @@ def trigger_filter_screen(script, kind, filters, schema, groups, bots, origin, l
             if filters[name]["type"] == "area":
                 text = areas.clause_from_value(text)
             words.append(_typed_argument(name, text))
+        if trigger_name:
+            words.append(_typed_argument("name", trigger_name))
+        if shared:
+            words.append("visibility=shared")
         command = ["trigger", "add", script.name, kind, *words]
         arguments = [_typed_argument(name, value) for name, value in found.items()]
         if arguments:

@@ -17,6 +17,8 @@ if HAS_LIBRARIES:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
     from endbotd.web_link import (
+        HTTP_OPEN_SECONDS,
+        MAX_HTTP_CONNECTIONS,
         MAX_SESSION_CONNECTIONS,
         MAX_SESSION_REQUESTS_PER_SECOND,
         WEB_PROTOCOL,
@@ -54,9 +56,11 @@ class FakeWeb:
     def __init__(self):
         self.auth = FakeAuth()
         self.requests = []
+        self.buckets = []
 
-    def http(self, path, body, token, *, request_origin=None, site_cookie=None):
+    def http(self, path, body, token, *, request_origin=None, site_cookie=None, ip_bucket=None):
         self.requests.append((path, body, token, request_origin, site_cookie))
+        self.buckets.append(ip_bucket)
         if path == "/boom":
             raise RuntimeError("boom")
         return {"status": 200, "body": {"echo": body}}
@@ -273,6 +277,27 @@ class HttpTests(LinkCase):
         self.relay.http("c2", "/two")
         self.relay.next("close")
         self.assertEqual([request[0] for request in self.web.requests], ["/one", "/two"])
+
+    def test_the_relays_address_bucket_reaches_the_request(self):
+        self.up()
+        self.relay.http("c1", "/one")
+        self.relay.next("close")
+        self.assertEqual(self.web.buckets, ["b"])
+
+    def test_http_opens_that_never_send_a_request_are_bounded_and_age_out(self):
+        self.up()
+        now = [1000.0]
+        self.link._clock = lambda: now[0]
+        for index in range(MAX_HTTP_CONNECTIONS):
+            self.relay.send({"t": "open", "conn": f"idle{index}", "kind": "http", "path": "/x", "origin": None,
+                             "session": None, "siteCookie": None, "ipBucket": "b"})
+        self.relay.send({"t": "open", "conn": "over", "kind": "http", "path": "/x", "origin": None,
+                         "session": None, "siteCookie": None, "ipBucket": "b"})
+        self.assertEqual(self.relay.next("close")["conn"], "over")
+        now[0] += HTTP_OPEN_SECONDS + 1
+        self.relay.http("late", "/late")
+        self.relay.next("close")
+        self.assertEqual([request[0] for request in self.web.requests], ["/late"])
 
     def test_junk_frames_are_ignored(self):
         self.up()

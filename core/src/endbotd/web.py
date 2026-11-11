@@ -104,7 +104,7 @@ class WebService:
     # -- what the relay forwards -------------------------------------------------
 
     def http(self, path: str, body: object, token: str | None = None, *, request_origin: str | None = None,
-             site_cookie: str | None = None) -> dict:
+             site_cookie: str | None = None, ip_bucket: str | None = None) -> dict:
         """One HTTP request from the relay. Nothing in it is trusted until checked here."""
         if self.auth is None:
             return {"status": 503, "body": {"code": "unavailable"}}
@@ -121,7 +121,7 @@ class WebService:
             if path == "/auth/site/options":
                 return self.site.registration(body)
             return {"status": 404, "body": {"code": "not_found"}}
-        return self.auth.handle(path, body, token)
+        return self.auth.handle(path, body, token, bucket=ip_bucket)
 
     # -- /botweb --------------------------------------------------------------
 

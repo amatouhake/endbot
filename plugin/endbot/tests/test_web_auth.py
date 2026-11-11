@@ -183,6 +183,16 @@ class RegistrationTests(WebAuthCase):
         self.clock.now += 121
         self.assertEqual(self.post("/auth/login/options")["status"], 200)
 
+    def test_a_busy_server_does_not_burn_a_link_code(self):
+        code = self.codes.issue(ALICE)
+        for _ in range(MAX_CEREMONIES):
+            self.post("/auth/login/options")
+        reply = self.post("/auth/link/options", {"code": code})
+        self.assertEqual((reply["status"], reply["body"]["code"]), (429, "busy"))
+        self.assertIsNone(self.account())
+        self.clock.now += 121
+        self.assertEqual(self.post("/auth/link/options", {"code": code})["status"], 200)
+
     def test_a_second_account_cannot_take_an_existing_credential(self):
         self.link()
         bob = LinkIdentity("2535400000000002", "00000000-0000-4000-8000-0000000000b2", "Bob")
@@ -457,6 +467,28 @@ class DeviceTests(WebAuthCase):
         passkey = self.store.passkeys(self.account()["id"])[0]["id"]
         self.assertEqual(self.post("/auth/passkey/remove", {"id": passkey}, token)["status"], 200)
         self.assertEqual(self.post("/auth/link/options", {"code": self.codes.issue(ALICE)})["status"], 200)
+
+    def test_removing_a_lost_devices_passkey_ends_the_sessions_it_signed_in(self):
+        lost = SoftAuthenticator(ORIGIN, RP_ID)
+        lost_link = self.link(lost)
+        lost_login = self.login(lost)["session"]
+        kept = self.link(SoftAuthenticator(ORIGIN, RP_ID))
+        passkey = self.store.find_session(hashlib.sha256(lost_link.encode()).hexdigest())["passkey"]
+        self.removed.clear()
+        reply = self.post("/auth/passkey/remove", {"id": passkey}, kept)
+        self.assertEqual(reply["status"], 200)
+        self.assertNotIn("clearSession", reply)
+        self.assertIsNone(self.auth.session(lost_link))
+        self.assertIsNone(self.auth.session(lost_login))
+        self.assertIsNotNone(self.auth.principal(kept))
+        self.assertEqual(len(self.removed), 2)
+
+    def test_removing_the_passkey_this_browser_signed_in_with_signs_it_out(self):
+        token = self.link()
+        passkey = self.store.passkeys(self.account()["id"])[0]["id"]
+        reply = self.post("/auth/passkey/remove", {"id": passkey}, token)
+        self.assertEqual((reply["status"], reply.get("clearSession")), (200, True))
+        self.assertIsNone(self.auth.session(token))
 
     def test_the_list_shows_this_accounts_devices_without_secrets(self):
         token = self.link()

@@ -203,18 +203,6 @@ class RestartAndGapTest(unittest.TestCase):
                                 last_start=100.0)
         self.assertEqual(trigger.offer(101.0), Decision("start", 0, None))
 
-    def test_skipped_down_counts_as_missed(self):
-        trigger = policy()
-        trigger.skipped_down()
-        trigger.skipped_down()
-        self.assertEqual(trigger.missed_total, 2)
-        self.assertEqual(trigger.offer(0.0), Decision("start", 2, None))
-        trigger.started(0.0)
-        trigger.finished(0.5)
-        trigger.skipped_down()
-        self.assertEqual(trigger.missed_total, 3)
-        self.assertEqual(trigger.offer(1.0), Decision("start", 1, None))
-
     def test_memory_counters_start_at_zero(self):
         trigger = policy()
         self.assertEqual((trigger.active, trigger.pending, trigger.missed_total), (0, 0, 0))

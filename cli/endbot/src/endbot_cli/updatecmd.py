@@ -77,6 +77,12 @@ def _on_windows(windows: bool | None) -> bool:
     return os.name == "nt" if windows is None else windows
 
 
+def _next_steps(windows: bool) -> str:
+    """What to type next; PowerShell runs a launcher in the current folder only with ``.\\`` (step 10)."""
+    launcher = ".\\endbot.cmd" if windows else "./endbot"
+    return f"update: next steps: {launcher} doctor, then {launcher} start"
+
+
 def _python_name(windows: bool) -> str:
     return "python/python.exe" if windows else "python/bin/python3"
 
@@ -585,7 +591,7 @@ def _run_update(
         _print(f"update: app/current now names {info.version} (previous {previous} is kept in app/)")
         _print(f"update: launcher {', '.join(info.launchers)} replaced from the archive")
         _redeploy_web(paths, info.version, new_python, web_token, web_deploy)
-        _print("update: next steps: endbot doctor, then endbot start")
+        _print(_next_steps(windows))
         _print("update: note: `endbot update --rollback` switches app/current back to the most recent previous version")
         return 0
     finally:
@@ -684,6 +690,6 @@ def run_rollback(
     atomic_write_text(paths.app_current, f"{previous.name}\n")
     _print(f"update: app/current now names {previous.name} (was {current}; {current} is kept in app/)")
     _redeploy_web(paths, previous.name, previous / _python_name(_on_windows(windows)), web_token, web_deploy)
-    _print("update: next steps: endbot doctor, then endbot start")
+    _print(_next_steps(_on_windows(windows)))
     _print("update: note: doctor refuses to start when the server's BDS does not match the rolled-back version's lock")
     return 0

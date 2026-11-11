@@ -16,6 +16,8 @@ export const REQUEST_MS = 15_000;
 export const MAX_BROWSERS = 64;
 export const MAX_UNAUTHENTICATED = 16;
 export const BUCKET_PER_MINUTE = 10;
+// The sign-in page's public display read: its own count, so it neither eats the sign-in budget nor goes unbounded.
+export const DISPLAY_PER_MINUTE = 60;
 const MAX_BODY_BYTES = MAX_FRAME_BYTES / 2;
 
 class BodyTooLarge extends Error {}
@@ -74,8 +76,13 @@ export class Relay extends DurableObject<Env> {
 
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/api/display") return Response.json(await this.display());
     const bucket = await hashIp(request.headers.get("CF-Connecting-IP") ?? "unknown");
+    if (url.pathname === "/api/display") {
+      if (!this.allow(`display:${bucket}`, DISPLAY_PER_MINUTE)) {
+        return Response.json({ code: "rate_limited" }, { status: 429 });
+      }
+      return Response.json(await this.display());
+    }
     if (url.pathname === "/link") {
       // A separate count: browsers behind the server's own address must not stop it reconnecting.
       if (!this.allow(`link:${bucket}`)) return Response.json({ code: "rate_limited" }, { status: 429 });
@@ -91,7 +98,7 @@ export class Relay extends DurableObject<Env> {
     return configured > 0 ? configured : BUCKET_PER_MINUTE;
   }
 
-  private allow(bucket: string): boolean {
+  private allow(bucket: string, limit = this.bucketLimit()): boolean {
     const minute = Math.floor(Date.now() / 60_000);
     const entry = this.buckets.get(bucket);
     if (!entry || entry.minute !== minute) {
@@ -100,7 +107,7 @@ export class Relay extends DurableObject<Env> {
       return true;
     }
     entry.count += 1;
-    return entry.count <= this.bucketLimit();
+    return entry.count <= limit;
   }
 
   // -- endbotd's link ---------------------------------------------------------------

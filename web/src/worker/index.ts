@@ -13,7 +13,8 @@ export interface Env {
 }
 
 const SECURITY_HEADERS: Record<string, string> = {
-  "Content-Security-Policy": "default-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+  "Content-Security-Policy": "default-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
+    + "form-action 'self'; object-src 'none'",
   "Referrer-Policy": "no-referrer",
   "Strict-Transport-Security": "max-age=31536000",
   "X-Content-Type-Options": "nosniff",

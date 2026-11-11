@@ -446,8 +446,14 @@ def rotate_key(paths: InstancePaths, *, token: str, report: Callable[[str], None
     pending = path.with_name(f"{KEY_FILE}.new")
     # On disk before the secret changes: a crash in between must not lose the key the Worker now expects.
     _write_key(pending, new_key)
-    CloudflareApi(token, config.web.account_id, opener).put_secret(
-        config.web.worker_name, "ENDBOTD_LINK_KEY", link_key_secret(new_key))
+    try:
+        CloudflareApi(token, config.web.account_id, opener).put_secret(
+            config.web.worker_name, "ENDBOTD_LINK_KEY", link_key_secret(new_key))
+    except BaseException:
+        # Nothing reads a leftover key, so it must not linger. Should Cloudflare have taken the secret all the same,
+        # running rotate-key again puts a key on both sides.
+        pending.unlink(missing_ok=True)
+        raise
     # The Worker no longer accepts the old key, so nothing needs it: on a suspected exposure it must not stay on disk.
     os.replace(pending, path)
     path.with_name(f"{KEY_FILE}.old").unlink(missing_ok=True)  # left by earlier versions

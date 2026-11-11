@@ -539,6 +539,8 @@ class RotateTests(DeployCase):
         with self.assertRaises(DeployError):
             self.rotate()
         self.assertEqual(path.read_bytes(), old)
+        # The unused new key does not linger beside it.
+        self.assertFalse(path.with_name("web-link.key.new").exists())
 
     def test_the_key_id_matches_what_endbotd_proves_with(self) -> None:
         key = Ed25519PrivateKey.generate()

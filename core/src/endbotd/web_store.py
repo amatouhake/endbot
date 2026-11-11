@@ -27,8 +27,13 @@ ACCOUNTS, PASSKEYS, SESSIONS = "accounts", "passkeys", "sessions"
 CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 CODE_SYMBOLS = 6
 CODE_SECONDS = 300.0
+# Wrong codes per client address bucket (hashed by the Worker) before that bucket's code entry closes, and for the
+# whole server: one address cannot close linking for everyone, and a 30-bit code with a 5-minute life stays far
+# out of reach of the server-wide count (P7).
 WRONG_CODE_LIMIT = 10
+SERVER_WRONG_CODE_LIMIT = 60
 WRONG_CODE_WINDOW = 600.0
+MAX_WRONG_CODE_BUCKETS = 4096
 _CODE_READING = str.maketrans({"O": "0", "I": "1", "L": "1"})
 
 
@@ -281,11 +286,11 @@ class LinkIdentity:
 
 
 class LinkCodeEntryClosed(ValueError):
-    """Too many wrong codes server-wide; code entry stays closed for a while (P7)."""
+    """Too many wrong codes from this address or server-wide; code entry stays closed for a while (P7)."""
 
 
 class LinkCodes:
-    """Single-use codes, at most one live per XUID, and the server-wide wrong-code limit."""
+    """Single-use codes, at most one live per XUID, and the wrong-code limits per address and server-wide."""
 
     def __init__(self, *, clock: Callable[[], float] = time.monotonic,
                  on_closed: Callable[[], None] | None = None) -> None:
@@ -295,10 +300,15 @@ class LinkCodes:
         self._codes: dict[str, tuple[LinkIdentity, float]] = {}
         self._wrong: list[float] = []
         self._closed_until = 0.0
+        self._bucket_wrong: dict[str, list[float]] = {}
+        self._bucket_closed: dict[str, float] = {}
 
     def _purge(self, now: float) -> None:
         self._codes = {code: entry for code, entry in self._codes.items() if entry[1] > now}
         self._wrong = [moment for moment in self._wrong if moment > now - WRONG_CODE_WINDOW]
+        self._bucket_closed = {bucket: until for bucket, until in self._bucket_closed.items() if until > now}
+        self._bucket_wrong = {bucket: kept for bucket, moments in self._bucket_wrong.items()
+                              if (kept := [moment for moment in moments if moment > now - WRONG_CODE_WINDOW])}
 
     def issue(self, identity: LinkIdentity) -> str:
         """A new code for this XUID, replacing its earlier one; shown as ``K7Q-4M2``."""
@@ -313,20 +323,31 @@ class LinkCodes:
             self._codes[code] = (identity, now + CODE_SECONDS)
         return f"{code[:3]}-{code[3:]}"
 
-    def redeem(self, text: str) -> LinkIdentity | None:
-        """Consume a code; None for a wrong or expired one. Raises while entry is closed."""
+    def redeem(self, text: str, bucket: str | None = None) -> LinkIdentity | None:
+        """Consume a code; None for a wrong or expired one. Raises while entry is closed for ``bucket`` or for all.
+
+        ``bucket`` is the relay's hashed client address: unverified, so the server-wide limit still bounds guesses
+        when a relay spreads them over many buckets."""
         closed = False
+        bucket = bucket or "unknown"
         with self._lock:
             now = self._clock()
-            if now < self._closed_until:
-                raise LinkCodeEntryClosed("too many wrong link codes")
             self._purge(now)
+            if now < self._closed_until or bucket in self._bucket_closed:
+                raise LinkCodeEntryClosed("too many wrong link codes")
             code = text.strip().upper().replace("-", "").replace(" ", "").translate(_CODE_READING)
             entry = self._codes.pop(code, None)
             if entry is not None:
                 return entry[0]
             self._wrong.append(now)
-            if len(self._wrong) >= WRONG_CODE_LIMIT:
+            if len(self._bucket_wrong) >= MAX_WRONG_CODE_BUCKETS and bucket not in self._bucket_wrong:
+                self._bucket_wrong.clear()  # the server-wide count still holds
+            moments = self._bucket_wrong.setdefault(bucket, [])
+            moments.append(now)
+            if len(moments) >= WRONG_CODE_LIMIT:
+                self._bucket_closed[bucket] = now + WRONG_CODE_WINDOW
+                del self._bucket_wrong[bucket]
+            if len(self._wrong) >= SERVER_WRONG_CODE_LIMIT:
                 self._closed_until = now + WRONG_CODE_WINDOW
                 self._wrong = []
                 closed = True

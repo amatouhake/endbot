@@ -108,18 +108,19 @@ class TriggerFormTests(unittest.TestCase):
         self.assertIsInstance(form.controls[0], forms.Label)
         self.assertEqual(form.controls[0].text, "This script also uses: observe.chat")
         labels = [control.label for control in form.controls[1:]]
-        self.assertEqual(labels, ["area (area)", "dimension (dimension)", "from (block)", "to (block)",
+        self.assertEqual(labels, ["Trigger name (empty: guard)", "Shared: others can see this trigger",
+                                  "area (area)", "dimension (dimension)", "from (block)", "to (block)",
                                   "count (number)"])
         self.assertFalse(any("event" in control.label for control in form.controls
                              if isinstance(control, forms.TextInput)))
-        self.assertEqual(form.controls[2].default_value, "overworld")
+        self.assertEqual(form.controls[4].default_value, "overworld")
         self.assertEqual(form.controls[-1].default_value, "2")
 
     def test_a_submitted_form_is_the_same_trigger_command(self):
         kinds = self.screen(self.host.execute(["trigger", "new", "guard"], ALICE))
         (kind_command,) = forms.modal_commands(kinds, json.dumps([0]))
         form = self.screen(self.host.execute(list(kind_command), replace(ALICE, group_guard=kinds.guard)))
-        (command,) = forms.modal_commands(form, json.dumps(["0 64 0", "overworld", "stone", "air", "3"]))
+        (command,) = forms.modal_commands(form, json.dumps(["", False, "0 64 0", "overworld", "stone", "air", "3"]))
         self.assertEqual(command, (
             "trigger", "add", "guard", "block.change",
             'area="within 0 64 0"', "dimension=overworld", "from=stone", "to=air",
@@ -132,6 +133,25 @@ class TriggerFormTests(unittest.TestCase):
         self.assertEqual((trigger.filter["from"], trigger.filter["to"]),
                          ("minecraft:stone", "minecraft:air"))
         self.assertEqual(trigger.arguments, ["count=3"])
+
+    def test_the_form_names_and_shares_a_trigger(self):
+        # Found in the 0.7.0 release pass: the form had no name field, so a kind with no filters armed a trigger
+        # named after the script on the first Add, and a second trigger from the same script could not be made.
+        kinds = self.screen(self.host.execute(["trigger", "new", "guard"], ALICE))
+        (kind_command,) = forms.modal_commands(kinds, json.dumps([list(EVENTS).index("job.finished")]))
+        form = self.screen(self.host.execute(list(kind_command), replace(ALICE, group_guard=kinds.guard)))
+        self.assertEqual([type(control) for control in form.controls[:3]],
+                         [forms.Label, forms.TextInput, forms.Toggle])
+        (command,) = forms.modal_commands(form, json.dumps(["", "my job", True, "", "", "3"]))
+        self.assertEqual(command, ("trigger", "add", "guard", "job.finished", 'name="my job"', "visibility=shared",
+                                   "--", "count=3"))
+        (command,) = forms.modal_commands(form, json.dumps(["", "jobs", False, "Bob", "", "3"]))
+        self.assertEqual(command, ("trigger", "add", "guard", "job.finished", "bot=Bob", "name=jobs", "--",
+                                   "count=3"))
+        result = self.host.execute(list(command), replace(ALICE, group_guard=form.guard))
+        self.assertTrue(result.accepted)
+        trigger = next(trigger for trigger in self.engine.list(ALICE) if trigger.name == "jobs")
+        self.assertEqual((trigger.kind, trigger.visibility), ("job.finished", "private"))
 
 
 if __name__ == "__main__":

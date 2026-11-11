@@ -7,8 +7,10 @@
 gate below passed on 2026-10-30.
 
 Endstone pins its direct Conan requirements, but some transitive ones are version ranges. `scripts/endstone-conan.profile`
-pins those to what the pair was validated with (today `zlib/1.3.2`), and every patched Endstone build uses it as its host
-profile. It is part of the pair: change it only with a compatibility pass, like `endstone.lock`.
+pins each of those (zlib, zstd, libdwarf, and on Linux xz_utils, libunwind and libcurl), with its recipe revision, to what
+the 0.5.0 and 0.6.0 release candidates resolved, and every patched Endstone build uses it as its host profile. It is part
+of the pair: change it only with a compatibility pass, like `endstone.lock`. The direct requirements' own recipe
+revisions are not pinned yet.
 
 - Minecraft 26.60 clients use protocol `2225` and cannot join the `1.26.52` pair, which is why 0.5.0 moves.
 - BDS 1.26.60 refuses players on RakNet ("NetherNet is the only supported transport type", checked on the Linux build

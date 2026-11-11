@@ -140,7 +140,12 @@ class ReleaseWheelContractTests(unittest.TestCase):
     def test_every_endstone_build_pins_transitive_conan_requirements(self) -> None:
         profile = (ROOT / "scripts/endstone-conan.profile").read_text(encoding="utf-8")
         self.assertIn("include(default)", profile)
-        self.assertRegex(profile, r"(?m)^\[replace_requires\]\nzlib/\*: zlib/1\.3\.2$")
+        pins = dict(
+            re.findall(r"(?m)^([a-z0-9_]+)/\*: \1/([0-9.]+#[0-9a-f]{32})$", profile.split("[replace_requires]", 1)[1])
+        )
+        # Every host requirement that upstream recipes leave as a range, pinned with its recipe revision.
+        self.assertEqual(set(pins), {"zlib", "zstd", "libdwarf", "xz_utils", "libunwind", "libcurl"})
+        self.assertTrue(pins["zlib"].startswith("1.3.2#"))
         builder = (ROOT / "scripts/build_endstone_wheel.py").read_text(encoding="utf-8")
         self.assertIn('"scripts" / "endstone-conan.profile"', builder)
         self.assertIn("host-profile={ISOLATED_PROFILE_NAME}", builder)

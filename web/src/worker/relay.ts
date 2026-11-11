@@ -439,10 +439,10 @@ export class Relay extends DurableObject<Env> {
       headers.append("Set-Cookie", `${SESSION_COOKIE}=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
     }
     if (answer.siteCookie) {
+      // Set by the start redirect, and again by a link-mode return to bind its passkey ceremony (P12).
       headers.append("Set-Cookie", `${SITE_COOKIE}=${answer.siteCookie}; Secure; HttpOnly; SameSite=None; Path=/; `
         + `Max-Age=${SITE_MAX_AGE}`);
-    }
-    if (url.pathname === "/auth/site/return") {
+    } else if (url.pathname === "/auth/site/return") {
       headers.append("Set-Cookie", `${SITE_COOKIE}=; Secure; HttpOnly; SameSite=None; Path=/; Max-Age=0`);
     }
     const status = typeof answer.status === "number" && answer.status >= 200 && answer.status < 600 ? answer.status : 502;

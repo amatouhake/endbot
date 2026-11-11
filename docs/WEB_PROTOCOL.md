@@ -51,7 +51,7 @@ or an empty body. endbotd answers with one `msg`, then `close`. The answer's `bo
 | `location` | the redirect target, with status 303 |
 | `session` | a new session token: the Worker sets the cookie and never forwards the token in a body |
 | `clearSession` | true: the Worker clears the session cookie |
-| `siteCookie` | a pending site flow: the Worker sets `__Host-endbot_site` |
+| `siteCookie` | a pending site flow, or a link-mode return binding its passkey ceremony: the Worker sets `__Host-endbot_site` (a return without one clears it) |
 
 A request with no answer within 15 s gets status 504 from the Worker. With no link up it gets 503.
 

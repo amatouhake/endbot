@@ -10,7 +10,8 @@ profile) raises ``bot.offline``, with the new state (or ``removed``) as reason.
 ``job.finished`` is raised from the ``job.ended`` Event the command service
 publishes. ``server.started`` is raised by ``OccurrenceHub.link_changed`` from
 the plugin's boot id and needs no poll. None of these kinds reaches the plugin:
-all four are ``endbotd``-sourced.
+all four are sourced by endbotd (``bot.*`` and ``job.finished`` here,
+``server.started`` in the hub), never by the plugin.
 """
 
 from __future__ import annotations

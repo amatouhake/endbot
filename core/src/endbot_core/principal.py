@@ -13,7 +13,8 @@ from dataclasses import dataclass, replace
 
 # kind values: "player" (typed command or form), "console", "run" (a script
 # run), "job" (work a Bot continues after its command returned, such as a
-# continuous mining loop), "web" (a signed-in web session). "trigger" arrives with BOT-022.
+# continuous mining loop), "web" (a signed-in web session). A trigger's start is a
+# "run" of its owner, bound to the grant revision approved when it was armed (EVENTS.md E7).
 KINDS = frozenset({"player", "console", "run", "job", "web"})
 ROLES = frozenset({None, "scripter", "controller"})
 

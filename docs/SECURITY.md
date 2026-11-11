@@ -225,7 +225,9 @@ Xbox-authenticated join, and that is checked again on every request.
 
 Assertions are compact JWS, ES384 only, audience-bound to the web address, at most 120 s long, single use, and bound by an
 endbotd nonce to the browser that started the flow, so an assertion copied from the site's logs is useless elsewhere. The nonce
-is consumed on the first attempt, valid or not, and dies with an endbotd restart, so no replay cache has to survive one. The
+is consumed on the first attempt, valid or not, and dies with an endbotd restart, so no replay cache has to survive one.
+In link mode the passkey ceremony that follows is named in the address, but its options go only to the browser holding the
+fresh cookie the return set, once. The
 private key stays on the site. Keys rotate by listing two and removing the old one, and removing a key refuses its assertions at
 once. After a suspected exposure, `endbot web revoke --site-sessions` deletes every session and passkey that came through the
 site.

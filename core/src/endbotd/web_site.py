@@ -254,8 +254,10 @@ class TrustedSite:
         if self.config.mode == "link":
             started = self._auth.registration_options(identity, via="site")
             ceremony = started["body"]["ceremony"]
-            self._registrations[ceremony] = (started["body"], self._clock() + NONCE_SECONDS)
-            return {"status": 303, "location": f"/?site_ceremony={ceremony}", "body": {}}
+            # The ceremony id travels in the address; the options go only to the browser holding this cookie.
+            binding = secrets.token_urlsafe(16)
+            self._registrations[ceremony] = (started["body"], self._clock() + NONCE_SECONDS, binding)
+            return {"status": 303, "location": f"/?site_ceremony={ceremony}", "siteCookie": binding, "body": {}}
         account = self._store.ensure_account(identity.xuid, identity.player_id, identity.gamertag)
         # Signing in again refreshes a recent assertion, as a passkey does; the session it replaces ends.
         previous = self._auth.session(token) if token else None
@@ -265,12 +267,14 @@ class TrustedSite:
         self._log("info", f"Web sign-in through the trusted site for {identity.gamertag}")
         return {"status": 303, "location": "/", "session": session, "body": {}}
 
-    def registration(self, body: object) -> dict:
-        """``POST /auth/site/options``: the options for the ceremony the return redirect named."""
+    def registration(self, body: object, cookie: object = None) -> dict:
+        """``POST /auth/site/options``: the options for the ceremony the return redirect named, to the browser the
+        return redirect gave its cookie. Used up on the first attempt, right or wrong."""
         ceremony = body.get("ceremony") if isinstance(body, dict) else None
         self._purge(self._clock())
         entry = self._registrations.pop(ceremony, None) if isinstance(ceremony, str) else None
-        if entry is None:
+        if entry is None or not isinstance(cookie, str) or not secrets.compare_digest(cookie.encode(),
+                                                                                     entry[2].encode()):
             return {"status": 400, "body": {"code": "site_expired"}}
         return {"status": 200, "body": entry[0]}
 

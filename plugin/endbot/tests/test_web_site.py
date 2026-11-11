@@ -344,15 +344,24 @@ class LinkModeTests(SiteCase):
         ceremony = reply["location"].split("=", 1)[1]
         account = self.store.account_for_xuid(XUID)
         self.assertEqual(self.store.sessions(account["id"]), [])
-        started = self.site.registration({"ceremony": ceremony})["body"]
+        binding = reply["siteCookie"]
+        started = self.site.registration({"ceremony": ceremony}, binding)["body"]
         self.assertEqual(started["ceremony"], ceremony)
         # The options go out once.
-        self.assertEqual(self.site.registration({"ceremony": ceremony})["status"], 400)
+        self.assertEqual(self.site.registration({"ceremony": ceremony}, binding)["status"], 400)
         device = SoftAuthenticator(ORIGIN, "endbot.example")
         verified = self.auth.handle("/auth/link/verify", {"ceremony": ceremony,
                                                           "credential": device.register(started["options"])})
         self.assertEqual(verified["status"], 200)
         self.assertEqual(self.store.sessions(account["id"])[0]["via"], "site")
+
+    def test_the_ceremony_in_the_address_is_useless_without_the_browsers_cookie(self):
+        cookie, nonce = self.begin()
+        reply = self.finish(self.sign(self.claims(nonce)), cookie)
+        ceremony = reply["location"].split("=", 1)[1]
+        self.assertEqual(self.site.registration({"ceremony": ceremony})["status"], 400)
+        # A wrong guess uses it up: the browser that holds the cookie starts again.
+        self.assertEqual(self.site.registration({"ceremony": ceremony}, reply["siteCookie"])["status"], 400)
 
     def test_unknown_ceremonies_get_no_options(self):
         for body in ({"ceremony": "nope"}, {"ceremony": 5}, {}, []):

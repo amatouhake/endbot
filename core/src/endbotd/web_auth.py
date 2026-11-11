@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -110,6 +111,8 @@ class WebAuth:
         self._on_sessions_removed = on_sessions_removed or (lambda hashes: None)
         self._on_passkey_added = on_passkey_added or (lambda account: None)
         self._ceremonies: dict[str, _Ceremony] = {}
+        # From the passkey limit and duplicate checks to the insert: the relay serves requests in parallel.
+        self._registering = threading.Lock()
 
     # -- the one entry point -----------------------------------------------------
 
@@ -223,30 +226,33 @@ class WebAuth:
         except (WebAuthnException, ValueError, KeyError, TypeError, AttributeError) as error:
             self._log("warning", f"Web passkey registration refused for {identity.gamertag}: {error}")
             raise AuthError(400, "passkey_refused") from None
-        # Again here: two ceremonies can be open at once.
-        if len(self.store.passkeys(account["id"])) >= MAX_PASSKEYS_PER_ACCOUNT:
-            raise AuthError(409, "passkey_limit")
-        credential_id = bytes_to_base64url(verified.credential_id)
-        if self.store.find_passkey(credential_id) is not None:
-            self._log("warning", f"Web passkey registration refused for {identity.gamertag}: credential already used")
-            raise AuthError(400, "passkey_refused")
-        response = credential.get("response") if isinstance(credential.get("response"), dict) else {}
-        transports = response.get("transports") if isinstance(response.get("transports"), list) else []
-        # Unsigned and browser-supplied: keep only the strings we know.
-        known = {transport.value for transport in AuthenticatorTransport}
-        self.store.add_passkey({
-            "id": credential_id,
-            "account": account["id"],
-            "publicKey": bytes_to_base64url(verified.credential_public_key),
-            "signCount": verified.sign_count,
-            "rpId": self.rp_id,
-            "transports": [transport for transport in transports if isinstance(transport, str) and transport in known],
-            "label": _label(body),
-            "created": self._clock(),
-            "lastUsed": None,
-            # A suspected site key exposure must reach what an assertion created (P12).
-            "via": ceremony.via,
-        })
+        with self._registering:
+            # Again here: two ceremonies can be open at once.
+            if len(self.store.passkeys(account["id"])) >= MAX_PASSKEYS_PER_ACCOUNT:
+                raise AuthError(409, "passkey_limit")
+            credential_id = bytes_to_base64url(verified.credential_id)
+            if self.store.find_passkey(credential_id) is not None:
+                self._log("warning",
+                          f"Web passkey registration refused for {identity.gamertag}: credential already used")
+                raise AuthError(400, "passkey_refused")
+            response = credential.get("response") if isinstance(credential.get("response"), dict) else {}
+            transports = response.get("transports") if isinstance(response.get("transports"), list) else []
+            # Unsigned and browser-supplied: keep only the strings we know.
+            known = {transport.value for transport in AuthenticatorTransport}
+            self.store.add_passkey({
+                "id": credential_id,
+                "account": account["id"],
+                "publicKey": bytes_to_base64url(verified.credential_public_key),
+                "signCount": verified.sign_count,
+                "rpId": self.rp_id,
+                "transports": [transport for transport in transports
+                               if isinstance(transport, str) and transport in known],
+                "label": _label(body),
+                "created": self._clock(),
+                "lastUsed": None,
+                # A suspected site key exposure must reach what an assertion created (P12).
+                "via": ceremony.via,
+            })
         self._log("info", f"Web passkey added for {identity.gamertag}")
         self._on_passkey_added(account)
         return self._signed_in(account, ceremony.via, body, credential_id)

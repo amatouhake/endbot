@@ -289,7 +289,8 @@
       {/if}
       {#if visited.scripts}
         <div class="view" hidden={route.section !== "scripts"}>
-          <Scripts {connection} {log} runs={status?.runs ?? []} selected={chosen.scripts ?? null}
+          <Scripts {connection} {log} runs={status?.runs ?? []} version={status?.scripts ?? null}
+                   selected={chosen.scripts ?? null}
                    active={route.section === "scripts"} onchanged={refreshStatus} />
         </div>
       {/if}

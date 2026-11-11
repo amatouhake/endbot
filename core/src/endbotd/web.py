@@ -119,7 +119,7 @@ class WebService:
                 assertion = body.get("assertion") if isinstance(body, dict) else None
                 return self.site.finish(assertion, site_cookie, request_origin, token)
             if path == "/auth/site/options":
-                return self.site.registration(body)
+                return self.site.registration(body, site_cookie)
             return {"status": 404, "body": {"code": "not_found"}}
         return self.auth.handle(path, body, token, bucket=ip_bucket)
 

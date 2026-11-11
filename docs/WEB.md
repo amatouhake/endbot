@@ -12,7 +12,7 @@ and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linke
 concrete pairing scheme, protocol, account store, supervisor change and step plan. The stack is fixed by
 [web technology](DIRECTION.md#web-technology); permissions are [PERMISSIONS.md](PERMISSIONS.md) (BOT-024); the web
 link terminates in endbotd ([ENDBOTD.md](ENDBOTD.md)). BOT-020 and BOT-024 shipped in 0.5.0 and 0.6.0 carried the
-script-facing work, so BOT-021 is the next release, together with BOT-022, with one validation pass for both
+script-facing work; BOT-021 is released in 0.7.0 together with BOT-022, after one validation pass for both
 ([Delivery](DIRECTION.md#delivery)).
 
 ## Where we start

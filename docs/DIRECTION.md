@@ -320,7 +320,7 @@ discovery (UDP 7551, one owner per machine) leaves Bots unable to reach every se
   Endstone/BDS update for 26.60 once it passes compatibility validation, and direct NetherNet signalling over
   `server-port` (BOT-026) as the default, validated with several BDS instances and a running client on one PC. Each
   of these is required; 0.5.0 waits for all of them, with one validation pass on the new pair.
-- **Next release**: BOT-021 (web) and BOT-022 (events, watches and triggers), then localhost mode.
+- **0.7.0**: BOT-021 (web) and BOT-022 (events, watches and triggers). Localhost mode comes after.
 
 0.5.0 was published on 2026-10-30 (tag `v0.5.0` = `8e81923`, release-candidate run 41063813075). The checks that need
 a real second person were not run; see [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md).
@@ -335,6 +335,10 @@ still BOT-021 and BOT-022.
 pass ran on a build from `main` `ecaea7f`; the update from a published 0.5.0 instance was run after publication and
 passed, while the BDS live smoke on the candidate was not run. Both records are in
 [FINAL_CHECKLIST.md](../release/FINAL_CHECKLIST.md).
+
+0.7.0 was added on 2026-11-12 JST: the web (BOT-021, BOT-034) and events, watches and triggers (BOT-022), on the
+unchanged 0.5.0 pair, after one combined human pass on `0.7.0-rc.5` and `rc.6` ([web](WEB_VALIDATION.md#release-pass),
+[events](EVENTS_VALIDATION.md#release-pass)).
 
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

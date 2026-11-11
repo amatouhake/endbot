@@ -1,6 +1,6 @@
 # Compatibility and releases
 
-## Current baseline (0.5.0 and 0.6.0)
+## Current baseline (0.5.0 to 0.7.0)
 
 `endstone.lock` pins Endstone `v0.11.15` at `b4aaa87d2c5305e7d340168f824ac2e2ea722e44`, with BDS `1.26.60.6`
 (Linux build `52886190`, Windows build `52886189`) and protocol `2225`, `support_status: "validated-baseline"` since the
@@ -47,6 +47,12 @@ revisions are not pinned yet.
 changed, so no new compatibility gate applies and the 2026-10-30 gate and achievement observation stand. Its release
 records the client pass for the new command surface; see
 [MINING_VALIDATION.md](MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst).
+
+0.7.0 (2026-11-12 JST) keeps the pair as well: `endstone.lock`, `patches/endstone/` and the runtime dependencies are
+unchanged. The Conan host profile above is new in 0.7.0; it pins what the 0.6.0 candidate had resolved, after conancenter
+published newer ranges that broke the Windows build, so the built Endstone is the same. The 2026-10-30 gate and
+achievement observation stand; the release pass checked `level.dat` again and found no creative or experiment
+history ([events record](EVENTS_VALIDATION.md#release-pass)).
 
 ## Previous baseline (0.2.1 to 0.4.0)
 

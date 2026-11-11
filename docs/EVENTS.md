@@ -8,7 +8,7 @@ Status: **Steps 1 to 7 on `main`** (2026-11-08 JST, #234 to #247); design agreed
 This document turns [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
 into a registry format, a delivery path, watch and trigger semantics, and a step plan. It builds on endbotd
 ([ENDBOTD.md](ENDBOTD.md)) and the permission model ([PERMISSIONS.md](PERMISSIONS.md)), both released in 0.5.0, and
-on the web ([WEB.md](WEB.md)). BOT-022 ships in the next release after 0.6.0 together with BOT-021, with one
+on the web ([WEB.md](WEB.md)). BOT-022 is released in 0.7.0 together with BOT-021, after one
 validation pass for both ([Delivery](DIRECTION.md#delivery)); the web comes before BOT-022, so BOT-022 adds its
 messages to the web protocol.
 

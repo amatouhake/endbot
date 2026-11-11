@@ -520,6 +520,15 @@ the 0.4.0 script spellings `share <name>` and `private <name>` are refused in fa
 `visibility <name> shared|private`. A script that calls `blocks(type, x, y, z)` passes an area value instead. See
 [areas](COMMANDS.md#areas-within-and-except).
 
+Updating from 0.6.0 to 0.7.0 keeps Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` and protocol `2225`, so no BDS update
+runs, and `endbot.toml` needs no change: `[events]`, `[web]` and the new `[limits]` keys
+(`max-watches-per-controller`, `max-triggers-per-controller`, `max-watched-blocks-per-controller`) are optional. The
+stores are already in `state/` (`stores 2`) and stay there; 0.7.0 adds `state/triggers.json` with the first trigger and
+`state/web/` once the web is deployed. The web stays off until `endbot web deploy` ([guide](WEB_DEPLOY.md)). Before
+`endbot update --rollback` to 0.6.0, remove any `[events]` and `[web]` sections (including `[web.trusted-site]`) and
+those three `[limits]` keys: 0.6.0 refuses keys it does not know. It does not read `state/triggers.json` or
+`state/web/`, so no trigger runs and nobody can sign in to the web until 0.7.0 is current again.
+
 ## 7. Doctor
 
 `endbot doctor` reports, without changing anything:

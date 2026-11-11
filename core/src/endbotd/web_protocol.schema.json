@@ -143,7 +143,7 @@
         "lang": { "enum": ["en", "ja"] },
         "type": { "const": "trigger.create" },
         "script": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
-        "kind": { "type": "string", "pattern": "^[a-z]+\\.[a-z][a-z_]*$" },
+        "kind": { "type": "string", "pattern": "^(?:[a-z]+\\.[a-z][a-z_]*|schedule)$" },
         "filter": {
           "type": "object",
           "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,31}$" },

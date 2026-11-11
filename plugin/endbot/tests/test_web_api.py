@@ -355,6 +355,11 @@ class TriggerWebApiTests(unittest.TestCase):
         answer = self.ask(type="event.kinds")
         self.assertEqual((answer["code"], answer["data"]), ("ok", {"kinds": EVENTS}))
 
+    def test_create_a_schedule_trigger(self):
+        trigger = self.create(kind="schedule", filter={"every": "10m"}, name="tick")
+        self.assertEqual((trigger["kind"], trigger["filter"], trigger["status"]),
+                         ("schedule", {"every": "10m"}, "armed"))
+
     def test_create_lists_and_gets_a_trigger_as_a_plain_object(self):
         self.declaration = Declaration([{"name": "event", "type": "event"}], ("observe.chat",))
         trigger = self.create(visibility="shared", policy={"cooldown": 0})

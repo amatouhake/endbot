@@ -90,6 +90,16 @@ class TriggerCommandTests(unittest.TestCase):
         self.assertEqual(areas.area_text(trigger.filter["area"]), "within 100 64 200")
         self.assertEqual(trigger.filter["to"], "minecraft:air")
 
+    def test_a_schedule_trigger_is_armed(self):
+        # Found in the 0.7.0 release pass: the store took only category.action, and schedule is one word.
+        result = self.command("trigger", "add", "guard", "schedule", "every=1m", "name=tick")
+        self.assertTrue(result.accepted, self.messages(result))
+        trigger = self.stored("tick")
+        self.assertEqual((trigger.kind, trigger.filter, trigger.status), ("schedule", {"every": "1m"}, "armed"))
+        result = self.command("trigger", "add", "guard", "schedule", "at=07:30", "name=morning")
+        self.assertTrue(result.accepted, self.messages(result))
+        self.assertEqual(self.stored("morning").filter, {"at": "07:30"})
+
     def test_a_relative_area_is_refused_with_the_reason(self):
         # Found in the 0.7.0 release pass: `~` reached the store and came back as "must be a JSON-safe object".
         for value in ('area="3 of ~ ~ ~"', 'area="~ ~-1 ~"', 'area="3"'):

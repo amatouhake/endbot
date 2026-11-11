@@ -37,7 +37,7 @@ GROUP_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,15}")
 BOT_NAME = re.compile(r"[A-Za-z0-9_]{1,16}")
 SCRIPT_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 TRIGGER_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
-TRIGGER_KIND = re.compile(r"[a-z]+\.[a-z][a-z_]*")
+TRIGGER_KIND = re.compile(r"[a-z]+\.[a-z][a-z_]*|schedule")
 OWNER_KEY = re.compile(r"(?:console|xuid:[0-9]{1,20}|player:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
                        r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})")
 FILTER_FIELD = re.compile(r"[a-z][a-z0-9_]{0,31}")

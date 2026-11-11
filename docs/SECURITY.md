@@ -168,8 +168,9 @@ host account isolation (above) is the control that matters.
 ## The web
 
 The web is optional and off until an operator runs `endbot web deploy`
-([deployment guide](WEB_DEPLOY.md), [design](WEB.md)). It has not yet been validated on Cloudflare or with a real
-authenticator.
+([deployment guide](WEB_DEPLOY.md), [design](WEB.md)). Its first run on Cloudflare (workers.dev) with real passkeys on
+a PC and a phone is recorded in [WEB_VALIDATION.md](WEB_VALIDATION.md); a custom domain, `endbot update --rollback`, the
+trusted site (P12) and the other items listed there as not run are not validated yet.
 
 **The boundary.** The Worker and its Durable Object in the operator's Cloudflare account are an untrusted relay. endbotd
 on the server PC is the authority: it issues and verifies passkey ceremonies, issues sessions, and authorizes every relayed
@@ -189,7 +190,7 @@ Keep the Cloudflare account protected accordingly.
 
 **Who can have an account.** Only an XUID that holds a controller grant bound by an Xbox-authenticated join. Linking uses a
 code issued in game to that player: 6 symbols, 5 minutes, one use, and code entry closes for 10 minutes after 10 wrong codes
-server-wide. A new passkey always starts in the game or at the trusted site, never from a signed-in browser. The web principal
+from one address, or after 60 server-wide. A new passkey always starts in the game or at the trusted site, never from a signed-in browser. The web principal
 is never the console, even for the operator's own XUID.
 
 **Passkeys and sessions.** endbotd checks the challenge (single use, bound to its ceremony, 2 minutes), the origin and RP ID

@@ -54,4 +54,5 @@ These step 10 items were not checked, and stay open for a later pass:
 - **Open tabs keep the old UI.** A tab left open across an update keeps running the previous version's page until it
   is reloaded. The Worker serves the new assets only to a fresh load.
 - **The next step `endbot update` prints.** It prints `endbot doctor, then endbot start`. In PowerShell the command is
-  `.\endbot.cmd start`, so a bare `endbot start` is not found.
+  `.\endbot.cmd start`, so a bare `endbot start` is not found. Fixed since: on Windows it now prints `.\endbot.cmd doctor, then
+  .\endbot.cmd start`, and `./endbot` elsewhere.

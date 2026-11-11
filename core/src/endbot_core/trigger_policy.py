@@ -125,10 +125,6 @@ class TriggerPolicy:
         self._pending.popleft()
         return self._start_decision()
 
-    def skipped_down(self) -> None:
-        """An occurrence arrived while the link or BDS was down (S3): count it as missed."""
-        self._drop()
-
     def _available(self, now: float) -> bool:
         limit = MAX_PARALLEL if self._concurrency == "parallel" else 1
         if self._active >= limit:

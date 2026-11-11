@@ -465,6 +465,10 @@
       <div class="list-foot">
         <p class="quiet">{t("triggerLimit", { count: limit })}</p>
       </div>
+    {:else if !unavailable && triggers.length > 0}
+      <div class="list-foot">
+        <p class="quiet">{t("triggerOff")}</p>
+      </div>
     {/if}
   </div>
 

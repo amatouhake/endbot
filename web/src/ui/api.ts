@@ -69,7 +69,15 @@ export class Connection {
       this.socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws`);
       this.socket.onopen = () => resolve();
       this.socket.onerror = () => reject(new ApiError("unavailable", 0));
-      this.socket.onmessage = (message) => this.receive(JSON.parse(message.data));
+      this.socket.onmessage = (message) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(message.data);
+        } catch {
+          return; // not JSON: nothing this page can act on
+        }
+        this.receive(parsed);
+      };
       this.socket.onclose = (event) => {
         for (const waiter of this.waiting.values()) waiter({ code: "unavailable" });
         this.waiting.clear();

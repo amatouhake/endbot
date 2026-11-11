@@ -367,7 +367,8 @@ describe("what the Worker refuses by itself", () => {
   it("sets the security headers on a response", async () => {
     const response = await SELF.fetch(`${ORIGIN}/nothing`);
     expect(response.headers.get("Content-Security-Policy")).toBe(
-      "default-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
+      "default-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
+        + "form-action 'self'; object-src 'none'");
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(response.headers.get("Strict-Transport-Security")).toContain("max-age=");
     expect(response.headers.get("Set-Cookie")).toBeNull();

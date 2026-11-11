@@ -10,7 +10,14 @@ from unittest.mock import patch
 
 from endbot_core.principal import Principal
 from endbotd.web import web_origin
-from endbotd.web_store import LinkCodeEntryClosed, LinkCodes, LinkIdentity, WebStore, WebStoreError
+from endbotd.web_store import (
+    SERVER_WRONG_CODE_LIMIT,
+    LinkCodeEntryClosed,
+    LinkCodes,
+    LinkIdentity,
+    WebStore,
+    WebStoreError,
+)
 from test_endbotd_service import OWNER, ServiceHarness
 from test_link import ALICE, FakePlayer, wait_for
 
@@ -150,21 +157,35 @@ class LinkCodeTests(unittest.TestCase):
         self.assertIsNone(self.codes.redeem(first))
         self.assertEqual(self.codes.redeem(second), IDENTITY)
 
-    def test_ten_wrong_codes_close_entry_for_ten_minutes_even_for_a_right_code(self):
+    def test_ten_wrong_codes_close_entry_for_that_address_only_for_ten_minutes(self):
         code = self.codes.issue(IDENTITY)
         for _ in range(9):
-            self.assertIsNone(self.codes.redeem("AAAAAA"))
-        self.assertEqual(self.closed, [])
-        self.assertIsNone(self.codes.redeem("AAAAAA"))
-        self.assertEqual(self.closed, [True])
+            self.assertIsNone(self.codes.redeem("AAAAAA", "attacker"))
+        self.assertIsNone(self.codes.redeem("AAAAAA", "attacker"))
         with self.assertRaises(LinkCodeEntryClosed):
-            self.codes.redeem(code)
+            self.codes.redeem(code, "attacker")
         self.clock.now += 599
         with self.assertRaises(LinkCodeEntryClosed):
-            self.codes.redeem(code)
+            self.codes.redeem(code, "attacker")
+        # Everyone else links as usual: one address cannot close linking for the server.
+        self.assertEqual(self.codes.redeem(self.codes.issue(IDENTITY), "player"), IDENTITY)
+        self.assertEqual(self.closed, [])
         self.clock.now += 1
         fresh = self.codes.issue(IDENTITY)
-        self.assertEqual(self.codes.redeem(fresh), IDENTITY)
+        self.assertEqual(self.codes.redeem(fresh, "attacker"), IDENTITY)
+
+    def test_wrong_codes_spread_over_addresses_close_entry_server_wide_even_for_a_right_code(self):
+        code = self.codes.issue(IDENTITY)
+        for index in range(SERVER_WRONG_CODE_LIMIT - 1):
+            self.assertIsNone(self.codes.redeem("AAAAAA", f"bucket-{index}"))
+        self.assertEqual(self.closed, [])
+        self.assertIsNone(self.codes.redeem("AAAAAA", "one-more"))
+        self.assertEqual(self.closed, [True])
+        with self.assertRaises(LinkCodeEntryClosed):
+            self.codes.redeem(code, "player")
+        self.clock.now += 600
+        fresh = self.codes.issue(IDENTITY)
+        self.assertEqual(self.codes.redeem(fresh, "player"), IDENTITY)
 
     def test_old_wrong_codes_age_out_of_the_limit(self):
         for _ in range(9):

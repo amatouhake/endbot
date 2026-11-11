@@ -46,6 +46,9 @@ TICK_SECONDS = 0.25
 MAX_PENDING_OCCURRENCES = 1024
 # Stats (starts, missed, skipped, last start) reach triggers.json at most this often; state changes at once.
 STATS_FLUSH_SECONDS = 1.0
+# A failed inspection of one revision is remembered this long: a broken script under an armed trigger must not hold
+# the single decision worker for an inspection on every occurrence, while a passing failure is retried soon.
+FAILED_INSPECTION_SECONDS = 60.0
 
 
 def params_hash(schema) -> str:
@@ -88,6 +91,9 @@ class TriggerEngine:
         # Held from the last check before a start to the start, and by every state change: no start after a
         # disable, remove or pause has returned.
         self._state = threading.RLock()
+        # Held from the armed-limit count to the store write that arms, so concurrent creates or enables (the web
+        # serves several at once) cannot pass the same count together.
+        self._admit = threading.Lock()
         self._notices: queue.Queue = queue.Queue()
         self._notifier: threading.Thread | None = None
         self._work: queue.Queue = queue.Queue()
@@ -262,7 +268,7 @@ class TriggerEngine:
             return
         policy = entry["policy"]
         if not self._linked():
-            policy.skipped_down()
+            # Skipped, not missed (S3): it never reaches the policy, so the next start's `a.event.missed` excludes it.
             self._bump(key, "skipped")
             return
         decision = policy.offer(self._monotonic())
@@ -395,9 +401,19 @@ class TriggerEngine:
         with self._lock:
             entry = self._armed.get(key) or {}
             cached = entry.get("declaration")
+            failed = entry.get("failed")
         if cached is not None and cached[0] == script.revision:
             return cached[1]
-        found = self.scripts.inspect(script, principal)
+        if failed is not None and failed[0] == script.revision and self._monotonic() < failed[1]:
+            raise failed[2]
+        try:
+            found = self.scripts.inspect(script, principal)
+        except LocalizedError as error:
+            with self._lock:
+                if key in self._armed:
+                    self._armed[key]["failed"] = (script.revision, self._monotonic() + FAILED_INSPECTION_SECONDS,
+                                                  error)
+            raise
         with self._lock:
             if key in self._armed:
                 self._armed[key]["declaration"] = (script.revision, found)
@@ -515,7 +531,10 @@ class TriggerEngine:
             kind=kind, filter=canonical, script=found_script.name, arguments=[str(value) for value in arguments or []],
             approved=approved, status="armed", reason=None, policy=policy_from(policy or {}),
             stats={"starts": 0, "missed": 0, "skipped": 0, "lastStart": None, "lastGap": None, "lastError": None})
-        self.store.add(trigger)
+        with self._admit:
+            if not principal.console and self.store.count_armed(owner) >= self.max_triggers:
+                raise LocalizedError("A controller may have at most {limit} armed triggers", limit=self.max_triggers)
+            self.store.add(trigger)
         try:
             self._arm(trigger)
         except BaseException:
@@ -548,7 +567,11 @@ class TriggerEngine:
             acting = principal
         _, _, _, _, approved = self._approve(acting, trigger.script, trigger.kind, trigger.filter, trigger.arguments,
                                              stored=True)
-        with self._state:
+        with self._admit, self._state:
+            current = self.store.get(trigger.owner, name)
+            if (current is not None and current.status != "armed" and trigger.owner != "console"
+                    and self.store.count_armed(trigger.owner) >= self.max_triggers):
+                raise LocalizedError("A controller may have at most {limit} armed triggers", limit=self.max_triggers)
             trigger = self.store.update(trigger.owner, name, status="armed", reason=None, approved=approved)
             self._arm(trigger)
         self._changed(trigger)

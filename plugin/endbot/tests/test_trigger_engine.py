@@ -326,6 +326,50 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["skipped"] == 1))
         self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats["starts"], 0)
 
+    def test_an_occurrence_while_unlinked_is_skipped_and_not_also_missed(self):
+        """EVENTS.md S3: counted once, as skipped; the next start's a.event.missed does not include it."""
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
+        self.linked = False
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["skipped"] == 1))
+        self.linked = True
+        events = []
+        real = self.scripts.start
+
+        def start(*args, **kwargs):
+            events.append(kwargs["event"])
+            return real(*args, **kwargs)
+
+        with patch.object(self.scripts, "start", side_effect=start):
+            self.hub.raise_occurrence("plugin", change())
+            self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 1))
+        self.assertEqual(events[0]["missed"], 0)
+        self.assertEqual(self.trigger_store.get(trigger.owner, "guard").stats["missed"], 0)
+
+    def test_a_failing_inspection_is_not_retried_on_every_occurrence(self):
+        """A broken script under an armed trigger must not hold the single decision worker each time."""
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
+                                     policy={"cooldown": 0})
+        self.save("guard", "params { param.event('event') } -- edited", OWNER)
+        calls = []
+
+        def broken(script, source):
+            calls.append(script.revision)
+            raise LocalizedError("Script inspection timed out")
+
+        self.scripts.inspect = broken
+        for expected in (1, 2, 3):
+            self.hub.raise_occurrence("plugin", change())
+            self.assertTrue(self.settle(lambda expected=expected: self.trigger_store.get(
+                trigger.owner, "guard").stats["skipped"] == expected))
+        self.assertEqual(len(calls), 1)
+        self.clock.advance(61)
+        self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["skipped"] == 4))
+        self.assertEqual(len(calls), 2)
+
     def test_a_restart_keeps_state_and_stats_and_records_the_gap(self):
         self.engine.start()
         trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,

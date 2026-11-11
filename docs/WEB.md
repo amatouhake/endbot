@@ -188,7 +188,7 @@ whose stored RP ID differs from the current one.
 | Controller grant revoked (grant revision bumps), or removed from `endbot.toml` and seen at the next start | endbotd deletes the XUID's sessions and closes their connections (`close` frames). Account and passkeys stay; after a regrant the player signs in again |
 | Role changed | Sessions stay; every later request uses the new role |
 | `/botweb unlink`, `endbot web revoke <GamerTag>` | Account, passkeys and sessions deleted; connections closed |
-| Passkey or session removed on the web | That one item deleted; a removed session's connections closed |
+| Passkey or session removed on the web | That one item deleted; a removed session's connections closed. Removing a passkey also ends the sessions signed in or registered with it (and closes their connections); a trusted-site session (P12) has no passkey and is not affected |
 | Domain change (P4) | All passkeys and sessions deleted; accounts kept |
 
 Because every request rechecks the grant revision, a revoke takes effect even if a `close` frame is lost.
@@ -196,11 +196,15 @@ Because every request rechecks the grant revision, a revoke takes effect even if
 ### P7. Rate limits at both ends
 
 - **Worker / Durable Object (coarse, in memory):** per client IP (`CF-Connecting-IP`, hashed, never stored) token
-  buckets on `/auth/*` (10 per minute) and WebSocket upgrades (10 per minute); at most 64 browser connections and 16
-  unauthenticated ones relayed at a time. Counters are not persisted. They keep floods off the link; they are not the
+  count of 10 per minute shared by `/auth/*` and WebSocket upgrades, a separate one for endbotd's own `/link`, and 60
+  per minute for the sign-in page's `/api/display`; at most 64 browser connections and 16 unauthenticated ones relayed
+  at a time. Counters are not persisted. They keep floods off the link; they are not the
   security control.
-- **endbotd (authoritative):** wrong link codes: 10 per 10 minutes server-wide, after which code entry is closed for
-  10 minutes and the console logs it (a 30-bit code with 5-minute life is then far out of reach); at most 100
+- **endbotd (authoritative):** wrong link codes: 10 per 10 minutes from one client address (the relay's hashed
+  bucket) close code entry for that address for 10 minutes, so one address cannot stop everyone linking; 60 per 10
+  minutes server-wide, whatever the bucket (the relay is not trusted to report it), close it for everyone for 10
+  minutes and the console logs it (a 30-bit code with 5-minute life is then far out of reach); a link code is used
+  only once there is room for its ceremony; at most 256 HTTP requests from the relay wait unanswered, for at most 30 s; at most 100
   outstanding challenges; per session 4 connections and 20 requests per second; script saves are bounded by the
   existing size limits. Existing per-controller limits (runs, Bots, triggers) apply unchanged.
 

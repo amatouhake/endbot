@@ -13,7 +13,9 @@ runtime batch. They include menus, bounded operation summaries and per-controlle
 operation history with full result inspection. The exercised menu/query flows have passed reported Windows client checks;
 see the Group guide for remaining manual validation gates.
 Controller-written Luau [scripts](docs/SCRIPTING.md) are on main for 0.4.0, off by default; start with the
-[tutorial](docs/SCRIPTING_TUTORIAL.md). A [web page](docs/WEB_DEPLOY.md) for controllers is on main, not yet validated on Cloudflare. Work tasks, Discord, blueprints
+[tutorial](docs/SCRIPTING_TUTORIAL.md). A [web page](docs/WEB_DEPLOY.md) for controllers is on main; its first run on Cloudflare with real passkeys passed
+(workers.dev, [validation record](docs/WEB_VALIDATION.md)), while a custom domain, rollback and the trusted site are not
+validated yet. Work tasks, Discord, blueprints
 and AI behavior are not implemented.
 
 ## Quick start (server operators)

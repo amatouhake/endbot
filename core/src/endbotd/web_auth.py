@@ -113,7 +113,7 @@ class WebAuth:
 
     # -- the one entry point -----------------------------------------------------
 
-    def handle(self, path: str, body: object, token: str | None = None) -> dict:
+    def handle(self, path: str, body: object, token: str | None = None, *, bucket: str | None = None) -> dict:
         """``{status, body}`` plus ``session`` (a new token) or ``clearSession`` for the relay's cookie."""
         routes = {
             "/auth/link/options": self._link_options,
@@ -126,6 +126,9 @@ class WebAuth:
             "/auth/passkey/remove": self._remove_passkey,
         }
         route = routes.get(path)
+        if path == "/auth/link/options":
+            def route(body, token):
+                return self._link_options(body, token, bucket)
         if route is None:
             return {"status": 404, "body": {"code": "not_found"}}
         if not isinstance(body, dict):
@@ -143,12 +146,16 @@ class WebAuth:
 
     # -- ceremonies --------------------------------------------------------------
 
-    def _begin(self, kind: str, challenge: bytes, identity: LinkIdentity | None = None,
-               via: str = "passkey") -> str:
+    def _room(self) -> None:
         now = self._clock()
         self._ceremonies = {key: entry for key, entry in self._ceremonies.items() if entry.expires > now}
         if len(self._ceremonies) >= MAX_CEREMONIES:
             raise AuthError(429, "busy")
+
+    def _begin(self, kind: str, challenge: bytes, identity: LinkIdentity | None = None,
+               via: str = "passkey") -> str:
+        now = self._clock()
+        self._room()
         ceremony = secrets.token_urlsafe(16)
         self._ceremonies[ceremony] = _Ceremony(kind, challenge, now + CEREMONY_SECONDS, identity, via)
         return ceremony
@@ -165,12 +172,14 @@ class WebAuth:
         with self._authority.lock:
             return self._authority.control_decision(gamertag, xuid, player_id)[0]
 
-    def _link_options(self, body: dict, token: str | None) -> dict:
+    def _link_options(self, body: dict, token: str | None, bucket: str | None = None) -> dict:
         code = body.get("code")
         if not isinstance(code, str) or len(code) > 32:
             raise AuthError(400, "invalid_code")
+        # Before the code is used: a busy server must not burn it and send the player back to the game.
+        self._room()
         try:
-            identity = self.codes.redeem(code)
+            identity = self.codes.redeem(code, bucket)
         except LinkCodeEntryClosed:
             raise AuthError(429, "link_closed") from None
         if identity is None:
@@ -240,7 +249,7 @@ class WebAuth:
         })
         self._log("info", f"Web passkey added for {identity.gamertag}")
         self._on_passkey_added(account)
-        return self._signed_in(account, ceremony.via, body)
+        return self._signed_in(account, ceremony.via, body, credential_id)
 
     def _login_options(self, body: dict, token: str | None) -> dict:
         options = generate_authentication_options(
@@ -276,16 +285,18 @@ class WebAuth:
         previous = self.session(token) if token else None
         if previous is not None and previous["account"] == account["id"]:
             self.end_session(previous)
-        return self._signed_in(account, "passkey", body)
+        return self._signed_in(account, "passkey", body, passkey["id"])
 
     # -- sessions ----------------------------------------------------------------
 
-    def _signed_in(self, account: dict, via: str, body: dict) -> dict:
-        token = self.issue_session(account, via, _label(body))
+    def _signed_in(self, account: dict, via: str, body: dict, passkey: str | None = None) -> dict:
+        token = self.issue_session(account, via, _label(body), passkey)
         return {"status": 200, "body": {"gamertag": account["gamertag"]}, "session": token}
 
-    def issue_session(self, account: dict, via: str, label: str = "") -> str:
-        """A new session; the token leaves here once and only its SHA-256 is stored (P5)."""
+    def issue_session(self, account: dict, via: str, label: str = "", passkey: str | None = None) -> str:
+        """A new session; the token leaves here once and only its SHA-256 is stored (P5).
+
+        ``passkey`` is the credential it was signed in or registered with: removing that passkey ends it (P6)."""
         token = secrets.token_urlsafe(32)
         now = self._clock()
         self.store.add_session({
@@ -298,6 +309,7 @@ class WebAuth:
             "lastSeen": now,
             "assertedAt": now,
             "grantRevision": self._authority.grant_revisions.get(account["uuid"]),
+            **({"passkey": passkey} if passkey else {}),
         })
         return token
 
@@ -396,4 +408,9 @@ class WebAuth:
         if target is None:
             raise AuthError(404, "not_found")
         self.store.delete_passkey(target["id"])
-        return {"status": 200, "body": {}}
+        # A lost device's passkey is removed to shut it out: the sessions it signed in end with it.
+        ended = [entry for entry in self.store.sessions(session["account"]) if entry.get("passkey") == target["id"]]
+        for entry in ended:
+            self.end_session(entry)
+        current = any(entry["hash"] == session["hash"] for entry in ended)
+        return {"status": 200, "body": {}, **({"clearSession": True} if current else {})}

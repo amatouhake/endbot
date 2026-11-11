@@ -47,6 +47,10 @@ TOO_MANY = 429
 MAX_SESSION_CONNECTIONS = 4
 MAX_SESSION_REQUESTS_PER_SECOND = 20
 MAX_REQUEST_WORKERS = 8
+# The relay is not trusted (P1): an HTTP open that never sends its request is dropped after this long, and no more
+# than this many wait at once.
+HTTP_OPEN_SECONDS = 30.0
+MAX_HTTP_CONNECTIONS = 256
 MAX_RATE_WINDOWS = 1024
 PROOF_PREFIX = "endbot-link-v1"
 
@@ -104,6 +108,8 @@ class _Connection:
     origin: str | None
     session: str | None
     site_cookie: str | None
+    ip_bucket: str | None = None
+    opened: float = 0.0
     hash: str | None = None
     answered: bool = False
     # Which link this connection came from: a conn id means something only for the life of its link.
@@ -318,7 +324,17 @@ class WebLink:
             return
         session = self._text(frame, "session")
         connection = _Connection(conn, kind, path, self._text(frame, "origin"), session,
-                                 self._text(frame, "siteCookie"), generation=self._generation)
+                                 self._text(frame, "siteCookie"), self._text(frame, "ipBucket"),
+                                 opened=self._clock(), generation=self._generation)
+        if kind == "http":
+            with self._lock:
+                stale = self._clock() - HTTP_OPEN_SECONDS
+                self._connections = {key: entry for key, entry in self._connections.items()
+                                     if entry.kind != "http" or entry.answered or entry.opened > stale}
+                waiting = sum(1 for entry in self._connections.values() if entry.kind == "http")
+            if waiting >= MAX_HTTP_CONNECTIONS:
+                self.send_close(conn, "busy")
+                return
         if kind == "ws":
             # Authenticated when it opens and again per message (P5).
             if self._web.auth is None or self._web.auth.principal(session) is None:
@@ -377,7 +393,7 @@ class WebLink:
     def _http(self, connection: _Connection, identifier: int, body: object) -> None:
         try:
             result = self._web.http(connection.path, body, connection.session, request_origin=connection.origin,
-                                    site_cookie=connection.site_cookie)
+                                    site_cookie=connection.site_cookie, ip_bucket=connection.ip_bucket)
         except Exception as error:  # noqa: BLE001 - one request must not end the link
             self._log("error", f"Web request {connection.path} failed: {type(error).__name__}: {error}")
             result = {"status": 500, "body": {"code": "unavailable"}}

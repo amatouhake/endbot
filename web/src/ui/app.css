@@ -236,7 +236,9 @@ dialog input:not([type="checkbox"]) { width: 100%; }
 @media (max-width: 760px) {
   .topbar { flex-wrap: wrap; gap: 0 .5rem; padding: 0 .5rem; }
   .brand { flex: 1; min-height: 2.6rem; }
-  .brand small { display: none; }
+  /* The words stay with the dot: a colour alone reads as a failure (BOT-034); a long name gives way instead. */
+  .brand h1 { min-width: 0; }
+  .brand small { flex-shrink: 0; }
   .tabs { order: 3; flex: 1 0 100%; min-height: 2.4rem; }
   .split { grid-template-columns: minmax(0, 1fr); }
   .split.showing .list-pane { display: none; }

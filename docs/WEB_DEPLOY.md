@@ -200,7 +200,7 @@ the Worker, so protect that account with its own strong sign-in ([what that risk
 | The sign-in page says "Server stopped" | BDS is stopped, endbotd is stopped, or the link is down, for up to 90 s after a power cut. Run `endbot doctor --live` on the PC |
 | The browser does not offer the passkey | The passkey was made for another address, or removed. Run `/botweb link` for a new one |
 | "Too many wrong codes on this server" | After 10 wrong codes in 10 minutes, code entry closes for 10 minutes for the whole server, and the console logs it |
-| "Too many attempts" | The Worker limits sign-in requests and new connections to 10 per minute per client address. Wait a minute |
+| "Too many attempts" | The Worker limits sign-in requests to 10 and new connections to 30 per minute per client address. Wait a minute; an open page connects again by itself |
 
 ## The optional trusted site
 

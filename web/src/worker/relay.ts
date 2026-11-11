@@ -16,6 +16,10 @@ export const REQUEST_MS = 15_000;
 export const MAX_BROWSERS = 64;
 export const MAX_UNAUTHENTICATED = 16;
 export const BUCKET_PER_MINUTE = 10;
+// WebSocket upgrades count apart from /auth/*: a session cookie is all they carry, endbotd refuses a wrong one, and
+// the connection caps bound them. Sharing the sign-in count refused the page's own socket after two sign-ins in a
+// minute, and the page then looked signed out.
+export const WS_PER_MINUTE = 30;
 // The sign-in page's public display read: its own count, so it neither eats the sign-in budget nor goes unbounded.
 export const DISPLAY_PER_MINUTE = 60;
 const MAX_BODY_BYTES = MAX_FRAME_BYTES / 2;
@@ -88,8 +92,14 @@ export class Relay extends DurableObject<Env> {
       if (!this.allow(`link:${bucket}`)) return Response.json({ code: "rate_limited" }, { status: 429 });
       return this.acceptLink();
     }
+    if (url.pathname === "/ws") {
+      if (!this.allow(`ws:${bucket}`, Math.max(WS_PER_MINUTE, this.bucketLimit()))) {
+        return Response.json({ code: "rate_limited" }, { status: 429 });
+      }
+      return this.acceptBrowser(request, bucket);
+    }
     if (!this.allow(bucket)) return Response.json({ code: "rate_limited" }, { status: 429 });
-    return url.pathname === "/ws" ? this.acceptBrowser(request, bucket) : this.relayHttp(request, url, bucket);
+    return this.relayHttp(request, url, bucket);
   }
 
   private bucketLimit(): number {

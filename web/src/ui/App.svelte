@@ -17,6 +17,8 @@
   ];
   const RETRY_FIRST_MS = 3000;
   const RETRY_LONGEST_MS = 30_000;
+  // The Worker counts per clock minute; a few tries a minute cost little of the sign-in count.
+  const WAIT_FOR_LIMIT_MS = 15_000;
   // Each read is one Worker request; often enough to see a server start or stop without reloading (step 10).
   const DISPLAY_EVERY_MS = 30_000;
 
@@ -26,6 +28,7 @@
   let busy = $state(false);
   let error = $state("");
   let notice = $state("");
+  let waiting = $state(false);
   let offline = $state(false);
   let status = $state.raw<any>(null);
   let log = $state.raw<any[]>([]);
@@ -219,12 +222,41 @@
     return route.section === section || (section === "scripts" && route.section === "triggers");
   }
 
+  /**
+   * The page's socket did not open: signed out, or only refused for now? A refused upgrade shows the page nothing,
+   * so ask the session once. A session endbotd still accepts, or a request turned away by the rate limit, means
+   * this is not a signed-out page: say so and try again rather than show the sign-in page to a signed-in person.
+   */
+  async function refusedForNow(): Promise<boolean> {
+    try {
+      await post("/auth/devices");
+      return true;
+    } catch (failure) {
+      return failure instanceof ApiError && failure.code === "rate_limited";
+    }
+  }
+
+  async function connectWhenAllowed(): Promise<boolean> {
+    for (;;) {
+      if (await connect()) {
+        waiting = false;
+        return true;
+      }
+      if (!await refusedForNow()) {
+        waiting = false;
+        return false;
+      }
+      waiting = true;
+      await new Promise((resolve) => setTimeout(resolve, WAIT_FOR_LIMIT_MS));
+    }
+  }
+
   async function start(): Promise<void> {
     const params = new URLSearchParams(location.search);
     const siteError = params.get("site_error");
     const ceremony = params.get("site_ceremony");
     if (siteError || ceremony) history.replaceState(null, "", "/");
-    if (await connect()) return;
+    if (await connectWhenAllowed()) return;
     await showSignIn();
     if (siteError) error = errorText(siteError);
     if (ceremony) {
@@ -241,7 +273,7 @@
 <svelte:window onclick={closeMenuOutside} />
 
 {#if view === "loading"}
-  <div class="center" role="status"><div class="spinner"></div>{t("loading")}</div>
+  <div class="center" role="status"><div class="spinner"></div>{waiting ? t("waitingToConnect") : t("loading")}</div>
 {:else if view === "signedOut"}
   <SignIn {display} {site} {error} {busy}
           onsignin={() => act(async () => { await signIn(); await afterSignIn(); })}

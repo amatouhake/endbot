@@ -339,6 +339,30 @@ describe("HTTP through the relay", () => {
     await answerNext(link, { status: 200, body: {} });
     expect((await other).status).toBe(200);
   }, 20_000);
+
+  it("counts WebSocket upgrades apart from sign-in requests", async () => {
+    const intoMinute = Date.now() % 60_000;
+    if (intoMinute > 50_000) await new Promise((resolve) => setTimeout(resolve, 60_000 - intoMinute + 200));
+    const link = await provenLink();
+    const answering = (async () => {
+      for (let index = 0; index < 10; index += 1) await answerNext(link, { status: 200, body: {} });
+    })();
+    const headers = { "CF-Connecting-IP": "203.0.113.30" };
+    for (let index = 0; index < 10; index += 1) expect((await post("/auth/info", {}, headers)).status).toBe(200);
+    await answering;
+    expect((await post("/auth/info", {}, headers)).status).toBe(429);
+    // The sign-in count is spent, yet the page's socket still opens, up to its own count.
+    const socket = { ...headers, Origin: ORIGIN, Cookie: "__Host-endbot_session=tok" };
+    for (let index = 0; index < 30; index += 1) {
+      const response = await upgrade("/ws", socket);
+      expect(response.status).toBe(101);
+      response.webSocket!.accept();
+      response.webSocket!.close(1000, "done");
+    }
+    const refused = await upgrade("/ws", socket);
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toEqual({ code: "rate_limited" });
+  }, 30_000);
 });
 
 describe("what the Worker refuses by itself", () => {

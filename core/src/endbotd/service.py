@@ -21,7 +21,7 @@ from endbot_core.control import RuntimeControlClient
 from endbot_core.enrollment import _is_xuid
 from endbot_core.events import LoggerSink
 from endbot_core.groups import GroupCommandService, GroupStore
-from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, tr
+from endbot_core.i18n import DEFAULT_LANGUAGE_SETTING, LocalizedError, language_setting, resolve_language, tr
 from endbot_core.limits import BotLimits
 from endbot_core.link import LinkError, LinkServer, Submission, load_token
 from endbot_core.operations import REGISTRY
@@ -192,7 +192,8 @@ class EndbotService:
             authorize=self.authority.authorize, role=self._role, grant_revision=self._grant_revision,
             linked=lambda: self.link.connected,
             publish=lambda event: self.scripts.publish(event) if self.scripts.publish else None,
-            max_triggers=getattr(limits, "max_triggers_per_controller", DEFAULT_MAX_TRIGGERS), log=self._log)
+            max_triggers=getattr(limits, "max_triggers_per_controller", DEFAULT_MAX_TRIGGERS), log=self._log,
+            language=self._player_language)
         # The /botscript trigger commands and forms call this engine; it is None outside endbotd.
         self.scripts.triggers = self.triggers
         # A stored trigger change reaches open pages that subscribed to it (BOT-022 step 7a).
@@ -441,7 +442,7 @@ class EndbotService:
             if not allowed:
                 self.deliver(to, [f"Endbot: {tr(principal.language, 'you do not have Bot control permission')}"])
                 return {"accepted": False, "code": "unauthorized"}
-            # Presence carries no language: what a player last used is what a later notice to them speaks.
+            # What a player last used is what a later notice to them speaks while they are offline.
             if record.get("xuid"):
                 self._languages[record["xuid"]] = principal.language
         if submission.root == "botcontrollers":
@@ -481,11 +482,7 @@ class EndbotService:
         record = next((record for record in self.link.presence.online() if record.get("xuid") == account["xuid"]),
                       None)
         if record is not None:
-            # The language of the player's last command, such as the /botweb link just before: the plugin already
-            # applied [ui] language to it. With none since endbotd started, "auto" falls back to English.
-            language = self._languages.get(account["xuid"]) or (
-                "en" if self._language_setting == DEFAULT_LANGUAGE_SETTING else self._language_setting)
-            line = tr(language, "A passkey was added to your web account")
+            line = tr(self._player_language(account["xuid"]), "A passkey was added to your web account")
             self.deliver(record["playerId"], [f"Endbot: {line}"])
 
     # -- the endbot CLI (its connection's ordered thread) ---------------------
@@ -531,6 +528,19 @@ class EndbotService:
         return self.web.revoke(target)
 
     # -- toward the plugin (the delivery thread) ----------------------------
+
+    def _player_language(self, xuid: str) -> str:
+        """The language a notice to this player speaks when no command of theirs carries one (a trigger's).
+
+        The language of their last command since endbotd started (the plugin already applied [ui] language to it);
+        before any, their client locale under [ui] language while online; otherwise "auto" falls back to English.
+        """
+        if self._languages.get(xuid):
+            return self._languages[xuid]
+        record = next((record for record in self.link.presence.online() if record.get("xuid") == xuid), None)
+        if record is not None and record.get("locale"):
+            return resolve_language(self._language_setting, record["locale"])
+        return "en" if self._language_setting == DEFAULT_LANGUAGE_SETTING else self._language_setting
 
     def _resolve_sender(self, source: Principal):
         if source.player_id is None:

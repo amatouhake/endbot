@@ -78,6 +78,7 @@ class TriggerEngine:
                  publish: Callable[[Event], None] | None = None,
                  max_triggers: int = DEFAULT_MAX_TRIGGERS,
                  log: Callable[[str, str], None] | None = None,
+                 language: Callable[[str], str] = lambda xuid: "en",
                  monotonic: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time) -> None:
         self.store, self.hub, self.scripts = store, hub, scripts
         self._authorize, self._role, self._linked = authorize, role, linked
@@ -85,6 +86,8 @@ class TriggerEngine:
         self._publish = publish
         self.max_triggers = max_triggers
         self._log = log or (lambda level, message: None)
+        # A run principal is made here, not from a command, so it has no language of its own: the owner's.
+        self._language = language
         self._monotonic, self._wall = monotonic, wall
         self._lock = threading.RLock()
         self._armed: dict[tuple, dict] = {}  # key -> {"policy", "subscription", "generation", "declaration"}
@@ -356,7 +359,8 @@ class TriggerEngine:
         if player_id is None:
             player_id = "unknown"  # authorizes nothing: no grant is recorded for it
         return Principal("run", name=trigger.owner_name, xuid=xuid, player_id=player_id,
-                         grant_revision=approved.get("grantRevision"), role=self._role(xuid) if xuid else None)
+                         grant_revision=approved.get("grantRevision"), role=self._role(xuid) if xuid else None,
+                         language=self._language(xuid) if xuid else "en")
 
     def _start(self, key: tuple, item: dict, missed: int) -> None:
         trigger = self.store.get(*key)

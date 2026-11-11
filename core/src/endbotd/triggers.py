@@ -46,6 +46,9 @@ TICK_SECONDS = 0.25
 MAX_PENDING_OCCURRENCES = 1024
 # Stats (starts, missed, skipped, last start) reach triggers.json at most this often; state changes at once.
 STATS_FLUSH_SECONDS = 1.0
+# A stats-only change reaches the listener (an open trigger page) at most this often per trigger: an event storm
+# must not become a push storm. The last change in a burst follows within about a second.
+STATS_NOTICE_SECONDS = 1.0
 # A failed inspection of one revision is remembered this long: a broken script under an armed trigger must not hold
 # the single decision worker for an inspection on every occurrence, while a passing failure is retried soon.
 FAILED_INSPECTION_SECONDS = 60.0
@@ -95,6 +98,8 @@ class TriggerEngine:
         # serves several at once) cannot pass the same count together.
         self._admit = threading.Lock()
         self._notices: queue.Queue = queue.Queue()
+        self._stats_noticed: dict[tuple, float] = {}  # key -> when its last stats notice was queued
+        self._stats_waiting: set[tuple] = set()  # keys with a stats change not yet noticed
         self._notifier: threading.Thread | None = None
         self._work: queue.Queue = queue.Queue()
         self._pending_occurrences = 0
@@ -156,6 +161,32 @@ class TriggerEngine:
                 self._notifier = threading.Thread(target=self._notify_loop, name="endbotd-trigger-notices",
                                                   daemon=True)
                 self._notifier.start()
+
+    def _stats_changed(self, trigger: Trigger | None) -> None:
+        """A change of stats only: noticed at once, or with the next stats notice of this trigger."""
+        if self.on_changed is None or trigger is None:
+            return
+        key, now = _key(trigger), time.monotonic()
+        with self._lock:
+            if now - self._stats_noticed.get(key, float("-inf")) < STATS_NOTICE_SECONDS:
+                self._stats_waiting.add(key)
+                return
+            self._stats_noticed[key] = now
+            self._stats_waiting.discard(key)
+        self._changed(trigger)
+
+    def _stats_due(self) -> None:
+        now = time.monotonic()
+        with self._lock:
+            due = [key for key in self._stats_waiting
+                   if now - self._stats_noticed.get(key, float("-inf")) >= STATS_NOTICE_SECONDS]
+            for key in due:
+                self._stats_waiting.discard(key)
+                self._stats_noticed[key] = now
+            self._stats_noticed = {key: moment for key, moment in self._stats_noticed.items()
+                                   if now - moment < STATS_NOTICE_SECONDS or key in self._stats_waiting}
+        for key in due:
+            self._changed(self.store.get(*key))  # the latest stats; None once removed, which notices nothing
 
     def _notify_loop(self) -> None:
         while True:
@@ -244,6 +275,7 @@ class TriggerEngine:
             overflow, self._overflow = self._overflow, {}
         for key, count in overflow.items():
             self._bump(key, "missed", count)
+        self._stats_due()
         if time.monotonic() - self._flushed >= STATS_FLUSH_SECONDS:
             self._flushed = time.monotonic()
             self.store.flush()
@@ -253,13 +285,13 @@ class TriggerEngine:
     def _stat(self, key: tuple, **changes) -> None:
         trigger = self.store.get(*key)
         if trigger is not None:
-            self._changed(self.store.update(*key, durable=False, stats={**trigger.stats, **changes}))
+            self._stats_changed(self.store.update(*key, durable=False, stats={**trigger.stats, **changes}))
 
     def _bump(self, key: tuple, name: str, count: int = 1) -> None:
         trigger = self.store.get(*key)
         if trigger is not None and count:
-            self._changed(self.store.update(*key, durable=False,
-                                            stats={**trigger.stats, name: trigger.stats.get(name, 0) + count}))
+            self._stats_changed(self.store.update(*key, durable=False,
+                                                  stats={**trigger.stats, name: trigger.stats.get(name, 0) + count}))
 
     def _occurrence(self, key: tuple, item: dict, generation: int) -> None:
         with self._lock:
@@ -394,7 +426,7 @@ class TriggerEngine:
             updated = self.store.update(*key, durable=False,
                                         stats={**current.stats, "starts": current.stats.get("starts", 0) + 1,
                                                "lastStart": self._wall(), "lastError": None})
-        self._changed(updated)
+        self._stats_changed(updated)
 
     def _declaration(self, key: tuple, script, principal):
         """The script's declaration at its current revision, inspected once per revision."""

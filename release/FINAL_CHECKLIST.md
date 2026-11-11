@@ -388,6 +388,21 @@ BOT-031 ran on the same code (only versions and documentation differ), as 0.3.0 
 - [x] Publish the tested draft unchanged (2026-11-03: tag `v0.6.0` = `1d1b8ce`, published as the latest release;
   every re-downloaded asset matches `SHA256SUMS`, which is identical to the candidate's).
 
+### 0.7.0 release — the web, events and triggers (in preparation)
+
+Scope: everything merged since `v0.6.0` — the web (BOT-021, BOT-034), events, watches and triggers (BOT-022), and the
+fixes from the pre-release reviews (#254, #255 and their follow-up). Not decided or built yet; the items below are what
+the release notes must say, recorded so they are not lost before the candidate.
+
+- [ ] Release notes say that a trigger on one's own script, or on an operator's script file, follows the script's
+  current revision as long as its declaration stays within the approved one and its parameters are unchanged
+  (EVENTS.md S17): its code can change under the trigger without a new approval. A trigger on someone else's script
+  is pinned to the approved revision and pauses when it changes (S16).
+- [ ] Release notes say that removing a passkey on the web now also ends the sessions signed in or registered with it
+  (WEB.md P6); trusted-site sessions have no passkey and stay until removed or revoked.
+- [ ] Release notes list the web paths not validated yet ([WEB_VALIDATION.md](../docs/WEB_VALIDATION.md#not-run)) as
+  known limitations, with the other remaining manual gates.
+
 ### After 0.1.0 (direction)
 
 - 0.2.0: opt-in direct-loopback RakNet transport — released 2026-10-09 (see `docs/RAKNET_VALIDATION.md`).

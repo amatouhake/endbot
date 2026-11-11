@@ -414,6 +414,15 @@ describe("the trusted site routes", () => {
     expect(cookies.some((cookie) => cookie.startsWith("__Host-endbot_site=;"))).toBe(true);
   });
 
+  it("sets the fresh cookie a link-mode return binds its ceremony to", async () => {
+    const link = await provenLink();
+    const pending = formPost({ Origin: "https://alice.example", Cookie: "__Host-endbot_site=pending" });
+    await answerNext(link, { status: 303, location: "/?site_ceremony=c1", siteCookie: "bound", body: {} });
+    const cookies = (await pending).headers.getSetCookie();
+    expect(cookies.filter((cookie) => cookie.startsWith("__Host-endbot_site="))).toHaveLength(1);
+    expect(cookies.some((cookie) => cookie.startsWith("__Host-endbot_site=bound;"))).toBe(true);
+  });
+
   it("refuses a return POST without an Origin, and redirects one without the cookie", async () => {
     const link = await provenLink();
     expect((await formPost({ Cookie: "__Host-endbot_site=pending" })).status).toBe(403);

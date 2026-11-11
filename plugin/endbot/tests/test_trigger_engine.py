@@ -370,6 +370,22 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["skipped"] == 4))
         self.assertEqual(len(calls), 2)
 
+    def test_a_burst_of_stats_changes_reaches_the_listener_once_and_then_its_latest(self):
+        """An event storm must not become a push storm on an open trigger page."""
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA)
+        noticed = []
+        self.engine.on_changed = lambda changed, removed=False: noticed.append(changed.stats["skipped"])
+        key = (trigger.owner, trigger.name)
+        for _ in range(5):
+            self.engine._bump(key, "skipped")
+        self.engine.flush_notices()
+        self.assertEqual(noticed, [1])
+        time.sleep(1.1)
+        self.engine._stats_due()
+        self.engine.flush_notices()
+        self.assertEqual(noticed, [1, 5])
+
     def test_a_restart_keeps_state_and_stats_and_records_the_gap(self):
         self.engine.start()
         trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,

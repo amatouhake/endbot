@@ -312,7 +312,8 @@ session issued through the site and every passkey registered through it (P5 mark
 3. Worker   accepts this POST only with an Origin and the site cookie; relays both to endbotd, which compares the
             Origin with the issuer (the Worker does not know the issuer, and is not trusted to check it)
 4. endbotd  verifies (below), consumes the nonce, then links, registers a passkey, or issues a session (mode)
-            ◀── 303 to /?site_ceremony=<id> (link: the page fetches the options with POST /auth/site/options),
+            ◀── 303 to /?site_ceremony=<id> and a fresh site cookie (link: the page fetches the options once with
+                 POST /auth/site/options, which needs that cookie),
                  / with the session cookie (sign-in), or /?site_error=<code>
 ```
 

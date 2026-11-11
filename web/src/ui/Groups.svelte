@@ -10,7 +10,7 @@
     connection: Connection;
     status: any;
     selected: string | null;
-    onchanged: () => void;
+    onchanged: () => void | Promise<void>;
   } = $props();
 
   let search = $state("");
@@ -50,7 +50,8 @@
     });
     if (!name) return;
     error = "";
-    onchanged();
+    // The new Group is in the status before its page opens, or the page says it no longer exists.
+    await onchanged();
     navigate("groups", bare(name));
   }
 

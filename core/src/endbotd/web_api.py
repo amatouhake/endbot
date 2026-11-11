@@ -8,6 +8,7 @@ language the page asks for.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shlex
@@ -520,7 +521,17 @@ class WebApi:
             "bots": self._bots(principal, profiles),
             "groups": self._groups(principal, profiles),
             "runs": self._runs(principal),
+            "scripts": self._scripts_version(principal),
         }
+
+    def _scripts_version(self, principal) -> str | None:
+        """A fingerprint of the scripts this principal sees: an open Scripts tab reloads its list when it moves,
+        whoever saved, renamed or deleted a script, here or in game."""
+        try:
+            listing = self._scripts.listing(principal)
+        except Exception:  # noqa: BLE001 - scripting off or refused: the tab asks and shows why itself
+            return None
+        return hashlib.sha256(json.dumps(listing, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
     def _bots(self, principal, profiles: object = ...) -> list[dict] | None:
         """The Bots this principal may see, unknown while the runtime is down."""

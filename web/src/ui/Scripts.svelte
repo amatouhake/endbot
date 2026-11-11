@@ -9,10 +9,11 @@
   import { formatDate, t } from "./i18n";
   import { href, navigate } from "./route.svelte";
 
-  let { connection, log, runs, selected, active, onchanged }: {
+  let { connection, log, runs, version, selected, active, onchanged }: {
     connection: Connection;
     log: any[];
     runs: { id: string; name: string }[];
+    version: string | null;
     selected: string | null;
     active: boolean;
     onchanged: () => void;
@@ -65,8 +66,10 @@
     }
   }
 
-  // On arriving, and again whenever the connection came back.
+  // On arriving, again whenever the connection came back, and when the scripts this page can see changed
+  // (someone saved, renamed or deleted one, here or in game).
   $effect(() => {
+    void version;
     if (active && connection) untrack(() => void refresh());
   });
 

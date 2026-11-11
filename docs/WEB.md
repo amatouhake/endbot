@@ -196,10 +196,13 @@ Because every request rechecks the grant revision, a revoke takes effect even if
 ### P7. Rate limits at both ends
 
 - **Worker / Durable Object (coarse, in memory):** per client IP (`CF-Connecting-IP`, hashed, never stored) token
-  count of 10 per minute shared by `/auth/*` and WebSocket upgrades, a separate one for endbotd's own `/link`, and 60
-  per minute for the sign-in page's `/api/display`; at most 64 browser connections and 16 unauthenticated ones relayed
-  at a time. Counters are not persisted. They keep floods off the link; they are not the
-  security control.
+  count of 10 per minute for `/auth/*`, 30 per minute for WebSocket upgrades, a separate one for endbotd's own `/link`,
+  and 60 per minute for the sign-in page's `/api/display`; at most 64 browser connections and 16 unauthenticated ones
+  relayed at a time. Counters are not persisted. They keep floods off the link; they are not the
+  security control. (Until the 0.7.0 release pass, upgrades shared the `/auth/*` count: signing out and in twice in a
+  minute then refused the page's own socket.) A page whose socket is refused asks `/auth/devices` once; while the
+  session is still good, or that request is rate limited too, it says why it is waiting (the rate limit, the session's
+  socket cap, or not known) and tries again every 15 s instead of showing the sign-in page.
 - **endbotd (authoritative):** wrong link codes: 10 per 10 minutes from one client address (the relay's hashed
   bucket) close code entry for that address for 10 minutes, so one address cannot stop everyone linking; 60 per 10
   minutes server-wide, whatever the bucket (the relay is not trusted to report it), close it for everyone for 10

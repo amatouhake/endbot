@@ -52,6 +52,8 @@ type Listener = (event: { topic: string; data: any }) => void;
 /** One WebSocket with request ids. `onClose` reports why it ended; the page decides whether to sign in again. */
 export class Connection {
   private socket!: WebSocket;
+  /** Why endbotd closed this socket (`signed_out`, `too_many_connections`, ...), once it has. */
+  closeReason: string | null = null;
   private next = 1;
   private readonly waiting = new Map<number, (answer: any) => void>();
   private readonly listeners = new Set<Listener>();
@@ -79,6 +81,7 @@ export class Connection {
         this.receive(parsed);
       };
       this.socket.onclose = (event) => {
+        if (event.code === 4010) this.closeReason = event.reason;
         for (const waiter of this.waiting.values()) waiter({ code: "unavailable" });
         this.waiting.clear();
         this.onClose(event.code === 4010 && event.reason === "signed_out");

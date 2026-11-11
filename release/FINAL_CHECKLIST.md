@@ -388,20 +388,40 @@ BOT-031 ran on the same code (only versions and documentation differ), as 0.3.0 
 - [x] Publish the tested draft unchanged (2026-11-03: tag `v0.6.0` = `1d1b8ce`, published as the latest release;
   every re-downloaded asset matches `SHA256SUMS`, which is identical to the candidate's).
 
-### 0.7.0 release — the web, events and triggers (in preparation)
+### 0.7.0 release — the web, events and triggers (decided 2026-11-12)
 
-Scope: everything merged since `v0.6.0` — the web (BOT-021, BOT-034), events, watches and triggers (BOT-022), and the
-fixes from the pre-release reviews (#254, #255 and their follow-up). Not decided or built yet; the items below are what
-the release notes must say, recorded so they are not lost before the candidate.
+Scope: everything merged since `v0.6.0` — the web (BOT-021, BOT-034), events, watches and triggers (BOT-022), the
+fixes from the pre-release reviews (#254, #255 and their follow-up), and the fixes from the release pass (#257 to
+#264). `endstone.lock`, `patches/endstone/` and the runtime dependencies are unchanged from 0.6.0; the new Conan host
+profile (#257) pins what the 0.6.0 candidate resolved, so no compatibility gate is required and the 2026-10-30
+human/Xbox observation stands.
 
-- [ ] Release notes say that a trigger on one's own script, or on an operator's script file, follows the script's
+The combined BOT-021/BOT-022 human pass ran 2026-11-11 to 2026-11-12 JST on `0.7.0-rc.5` and `0.7.0-rc.6`, built
+from scratch branches that were never merged (rc.6 = `main` `2def0cc` with the version set). The release commit
+differs from rc.6 only in versions and documentation.
+
+- [x] Web release pass: protocol mismatch, `rotate-key`, power cut, update and rollback, custom domain and the change
+  back, the trusted site, rate limits ([record](../docs/WEB_VALIDATION.md#release-pass)).
+- [x] Events human checks, EVENTS.md step 8 ([record](../docs/EVENTS_VALIDATION.md#release-pass)), with
+  `state/triggers.json` carried through update, rollback and `--force`.
+- [x] `level.dat` with no creative or experiment history after the pass. Actual Xbox achievement unlocks were not
+  part of it.
+
+- [x] Release notes say that a trigger on one's own script, or on an operator's script file, follows the script's
   current revision as long as its declaration stays within the approved one and its parameters are unchanged
   (EVENTS.md S17): its code can change under the trigger without a new approval. A trigger on someone else's script
   is pinned to the approved revision and pauses when it changes (S16).
-- [ ] Release notes say that removing a passkey on the web now also ends the sessions signed in or registered with it
+- [x] Release notes say that removing a passkey on the web now also ends the sessions signed in or registered with it
   (WEB.md P6); trusted-site sessions have no passkey and stay until removed or revoked.
-- [ ] Release notes list the web paths not validated yet ([WEB_VALIDATION.md](../docs/WEB_VALIDATION.md#not-run)) as
+- [x] Release notes list the web paths not validated yet ([WEB_VALIDATION.md](../docs/WEB_VALIDATION.md#not-run)) as
   known limitations, with the other remaining manual gates.
+- [x] Release notes say that a rollback to 0.6.0 needs `[events]`, `[web]` and the three new `[limits]` keys removed
+  first, because 0.6.0 refuses keys it does not know; that rollback was not run (the pass rolled back between 0.7.0
+  candidates).
+- [ ] Build `release-candidate.yml` for `0.7.0` from `main` after this commit.
+- [ ] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.7.0`, re-download and compare, and verify the
+  attestations.
+- [ ] Publish the tested draft unchanged.
 
 ### After 0.1.0 (direction)
 

@@ -37,6 +37,7 @@ from endbot_cli.fsutil import atomic_write_text
 from endbot_cli.instance import InstancePaths
 from endbot_cli.processes import _app_dir
 from endbot_cli.runstate import RUNNING, inspect_supervisor
+from endbot_cli.terminal import has_terminal
 
 API = "https://api.cloudflare.com/client/v4"
 KEY_FILE = "web-link.key"
@@ -53,11 +54,17 @@ class DeployError(ValueError):
     """One line for the operator; it never carries the token."""
 
 
-def read_token(environ: Mapping[str, str], prompt: Callable[[str], str] = getpass.getpass) -> str:
-    try:
-        token = environ.get(TOKEN_VARIABLE) or prompt("Cloudflare API token (input hidden): ")
-    except EOFError:  # no terminal to ask on
-        token = ""
+def read_token(
+    environ: Mapping[str, str],
+    prompt: Callable[[str], str] = getpass.getpass,
+    interactive: bool | None = None,
+) -> str:
+    token = environ.get(TOKEN_VARIABLE, "")
+    if not token.strip() and (has_terminal() if interactive is None else interactive):
+        try:
+            token = prompt("Cloudflare API token (input hidden): ")
+        except EOFError:  # the terminal went away
+            token = ""
     token = token.strip()
     if not token:
         raise DeployError(f"no Cloudflare API token: enter it at the prompt or set {TOKEN_VARIABLE}")

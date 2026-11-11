@@ -7,8 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
+from endbot_core.commands import reply
+from endbot_core.events import render
 from endbot_core.groups import GroupCommandService, GroupStore
-from endbot_core.i18n import LocalizedError
+from endbot_core.i18n import LocalizedError, tr
 from endbot_core.operations import EVENTS
 from endbot_core.principal import Principal
 from endbot_core.script_config import ScriptConfig
@@ -264,6 +266,26 @@ class EngineTests(unittest.TestCase):
         self.clock.advance(60)
         self.hub.raise_occurrence("plugin", change())
         self.assertTrue(self.settle(lambda: self.trigger_store.get(trigger.owner, "guard").stats["starts"] == 2))
+
+    def test_a_notice_speaks_the_owners_language(self):
+        # Found in the 0.7.0 release pass: the throttle notice reached a Japanese player in English, because the
+        # trigger's run principal carried no language.
+        languages = []
+        self.engine = self.make_engine(language=lambda xuid: languages.append(xuid) or "ja")
+        self.engine.start()
+        trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,
+                                     policy={"cooldown": 0, "startsPerMinute": 1, "concurrency": "parallel"})
+        for _ in range(3):
+            self.hub.raise_occurrence("plugin", change())
+        self.assertTrue(self.settle(lambda: any(event.kind == "trigger.throttled" for event in self.events)))
+        notice = next(event for event in self.events if event.kind == "trigger.throttled")
+        self.assertEqual(notice.to.language, "ja")
+        self.assertIn(OWNER.xuid, languages)
+        self.assertEqual(render(notice, "chat"),
+                         (reply(tr("ja", "Trigger {name} reached {limit} starts per minute; occurrences are skipped "
+                                         "until the minute allows more", name="guard", limit=1)),))
+        self.assertNotEqual(render(notice, "chat"), render(notice, "chat", "en"))
+        self.assertEqual(trigger.name, "guard")
 
     def test_a_run_that_ends_while_disabled_does_not_block_the_trigger_after_enable(self):
         trigger = self.engine.create(OWNER, script="guard", kind="block.change", filter_=AREA,

@@ -219,9 +219,9 @@ class BotWebCommandTests(ServiceHarness):
     def start_service(self, permissions=None, web=None):
         super().start_service(permissions, web={"enabled": True, "origin": ORIGIN} if web is None else web)
 
-    def joined_alice(self, *, grant=True):
+    def joined_alice(self, *, grant=True, locale="en_US"):
         link = self.link()
-        alice = FakePlayer(ALICE, "Alice", xuid=OWNER)
+        alice = FakePlayer(ALICE, "Alice", xuid=OWNER, locale=locale)
         self.join(link, alice)
         if grant:
             self.console(link, "add", "Alice")
@@ -375,6 +375,15 @@ class BotWebCommandTests(ServiceHarness):
         self.submit(link, Principal("player", player_id=ALICE, language="ja"), "botweb", "status")
         self.service._passkey_added({"xuid": OWNER})
         self.message(alice, "Web アカウントにパスキーが追加されました")
+
+    def test_a_notice_without_a_command_speaks_the_online_players_locale(self):
+        # A trigger's notice has no command to take a language from: the player's client locale decides.
+        self.service._language_setting = "auto"
+        _link, alice = self.joined_alice(locale="ja_JP")
+        self.assertEqual(self.service._player_language(OWNER), "ja")
+        self.service._passkey_added({"xuid": OWNER})
+        self.message(alice, "Web アカウントにパスキーが追加されました")
+        self.assertEqual(self.service._player_language("2535400000000002"), "en")
 
     def test_status_says_the_link_is_off_without_a_key(self):
         result = self.service._cli_web({"operation": "status"})

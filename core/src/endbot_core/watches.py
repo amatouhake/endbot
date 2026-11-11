@@ -88,6 +88,10 @@ def _value(name: str, field: dict, value):
         if len(area.get("except") or ()) > MAX_AREA_EXCEPTS:
             raise LocalizedError("Watch filter {field} may remove at most {limit} areas", field=name,
                                  limit=MAX_AREA_EXCEPTS)
+        # EVENTS.md S7: nothing to resolve `~` against. Refused here, with the reason, before the area reaches a
+        # store that only knows it is not plain JSON.
+        if areas.has_relative(area):
+            raise LocalizedError("A watched area needs absolute coordinates; build it from a position")
         return area
     if kind == "block":
         block = _block(value)

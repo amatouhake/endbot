@@ -906,7 +906,8 @@ cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-
 ## BOT-021: Web on an operator-deployed Cloudflare Worker
 
 Status: **Design agreed in [WEB.md](WEB.md); steps 1 to 9 are on `main`; the real validation ran on `workers.dev`
-(2026-11-07 JST, [record](WEB_VALIDATION.md)), with the custom-domain, rollback and trusted-site items still open; the next release after 0.6.0, together with BOT-022, see [delivery](DIRECTION.md#delivery)** (design agreed 2026-10-30 JST;
+(2026-11-07 JST) and the custom-domain, rollback, power-loss and trusted-site items in the release pass
+(2026-11-12 JST, [record](WEB_VALIDATION.md)); the next release after 0.6.0, together with BOT-022, see [delivery](DIRECTION.md#delivery)** (design agreed 2026-10-30 JST;
 scope updated 2026-11-03 JST).
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:
@@ -929,7 +930,8 @@ UI from endbotd without Cloudflare ([other hosts](DIRECTION.md#other-hosts)); ot
 Status: **Steps 1 to 7 on `main`** (2026-11-08 JST, #234 to #247): event kinds in the registry, `block.change`,
 watches, triggers with commands, forms and the web, presence and opt-in public chat, runtime and server kinds,
 `schedule` and `world.time`. The Bot-only live smoke passed ([record](EVENTS_VALIDATION.md#bot-only-live-smoke));
-the human checks (EVENTS.md step 8) are part of the next release's validation pass with BOT-021. Framework agreed in
+the human checks (EVENTS.md step 8) passed in the release pass with BOT-021
+([record](EVENTS_VALIDATION.md#release-pass)). Framework agreed in
 [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
 (2026-10-28 JST), design in [EVENTS.md](EVENTS.md) (2026-10-29 JST).
 

@@ -25,11 +25,9 @@ BOT-022 release pass (EVENTS.md step 8) on the locked Endstone/BDS pair.
   in its `hello` whether this is that process's first link, so a reconnect, or endbotd restarting under a running
   BDS, raises nothing, while a restarted BDS (a new plugin process) raises once.
 
-### Not yet run
-
-The live check for these four kinds is part of the release pass and has not been run yet. It covers: a Bot
-connecting and disconnecting while a watch is open; a profile removed while its Bot is online; a mining job ending
-while a watch is open; and a BDS restart raising `server.started` exactly once with a reconnect raising nothing.
+Measured in the [release pass](#release-pass): a Bot connecting and disconnecting, a mining job ending, and a BDS
+restart raising `server.started` once while an endbotd restart raised nothing. A profile removed while its Bot is
+online (`reason=removed`) was not run.
 
 ## Schedule and world time
 
@@ -45,12 +43,8 @@ while a watch is open; and a BDS restart raising `server.started` exactly once w
   appears is the baseline, so a watch opened mid-phase sees only later changes; phases last at least 1000 ticks,
   well over the poll period.
 
-### Not yet run
-
-The live checks for these two kinds belong to the combined BOT-021/BOT-022 release pass (EVENTS.md step 8) and
-have not been run yet. They cover: `every` firing at its interval and `at` at its local minute while a watch and a
-trigger are open; a `schedule` trigger being skipped and counted while BDS is stopped; and `world.time` reporting
-each phase change within 20 ticks across a full day cycle.
+Measured in the [release pass](#release-pass): `every` and `at` firing on time, a `schedule` trigger skipped and
+counted while BDS was stopped, and `world.time` phase changes within 20 ticks of their boundary.
 
 ## Presence and chat
 
@@ -66,10 +60,8 @@ each phase change within 20 ticks across a full day cycle.
   `chatSend` before-event and its chat filter, so a message a behavior pack mutes, or BDS rejects, may still reach a
   `player.chat` watch or trigger although no player saw it.
 
-### Not yet run
-
-A human joining and leaving; a human's public chat delivered once; a `/tell`, `/msg` and `/w` never delivered; a
-chat muted by a behavior pack (the known limit above).
+Measured in the [release pass](#release-pass): a human joining and leaving, public chat delivered once, and
+`/tell`, `/msg` and `/w` never delivered. A chat muted by a behavior pack (the known limit above) was not run.
 
 ## Bot-only live smoke
 
@@ -101,3 +93,45 @@ trigger, the trigger forms and their declaration confirm in the Windows client, 
 the web trigger editor from a phone, `bot.online`/`bot.offline`/`bot.died`/`job.finished`/`server.started`,
 `schedule` and `world.time` live, BDS restarted with watches open, update and rollback with `state/triggers.json`, and
 achievement history.
+
+## Release pass
+
+The human checks of EVENTS.md step 8, run 2026-11-11 to 2026-11-12 JST in the combined BOT-021/BOT-022 release pass,
+on `0.7.0-rc.5` and then `0.7.0-rc.6` (`main` at #264), Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, Windows 11.
+One Xbox account played in the Windows client; the console stood in for a second owner where that was enough. The
+web side ran on a phone and a PC ([web record](WEB_VALIDATION.md#release-pass)). Probe scripts logged every
+occurrence they received; the logs stay out of the repository.
+
+| Check | Result |
+| --- | --- |
+| A human breaks and places blocks a trigger watches | `cause=player-break` (dirt to air) and `cause=player-place` (air to dirt), with no player name in the payload. A block falling by physics came as `cause=poll`, and so did bamboo growing (a state change only) |
+| A relative watched area | `area="3 of ~ ~ ~"` used to fail with an internal store error; since #260 it is refused with the reason (a watched area needs absolute coordinates) |
+| `player.join`, `player.leave` | once each when the player left and joined again |
+| `player.chat` with `[events] chat = true` | each public `hello` delivered once; `/tell`, `/msg` and `/w` to the player never delivered |
+| `bot.online`, `bot.offline` | once per spawn and despawn, `reason=offline` |
+| `bot.died` | `death.attack.player` and `death.attack.mob` |
+| `job.finished` | `bot=Bob job=mining reason=duration elapsed` after `/bot Bob destroy for 40` |
+| BDS stopped with a watch open | the waiting run got `unavailable: source restarted` once |
+| BDS started again | `server.started` once |
+| endbotd killed under a running BDS | the supervisor restarted it within a second, no `server.started`, the triggers came back armed, and the open run ended with "Endbot service restarted" (runs do not survive a restart) |
+| `schedule` (rc.6) | `every=1m` fired each minute and `at=HH:MM` once at its local minute. With BDS stopped, two starts were skipped and counted (`skipped=2`), and the trigger went on after the relink. Before #261 a `schedule` trigger could not be created at all (its kind has no dot) |
+| `world.time` | `sunset time=12005` and `night time=13005`, within 20 ticks of the boundary |
+| Start cap | `startsPerMinute=2` throttled the trigger with one chat notice and left it armed. Before #262 the notice was English; on rc.6 it is in the player's language |
+| Cells per controller | a 512-block trigger was accepted; a second one was refused because the controller would watch 1160 blocks, over the 1024 of `[limits] max-watched-blocks-per-controller` |
+| Revoke and regrant | `endbot controllers remove` disabled every trigger of the player with `owner revoked` and ended the web session; after `controllers add` they stayed disabled. Enabling one from the web after signing in again made it run in the game |
+| Trigger forms in the Windows client | the Triggers form adds a trigger and shows what the script will use. Before #263 the last screen had no name or visibility field, so the trigger took the script's name; on rc.6 both fields are there |
+| Web trigger screens from the phone | create, change, disable, enable and remove worked. The open trigger's counters updated live; since #264 the list updates live too, the status badge no longer wraps, and the history lists the newest entry last |
+| `endbot update`, `--rollback` and `--force` | `state/triggers.json` came through rc.5 → rc.6 → rc.5 → rc.6 with every trigger's state and counters unchanged |
+| Achievement history | `endbot doctor` reported `level.dat` with no creative or experiment history after the pass |
+
+Not run:
+
+- a shared script's declaration growing under another player's trigger (`script changed`), and a player refused a
+  change to another player's trigger: both need a second Xbox account;
+- a chat muted by a behavior pack still reaching `player.chat` (the known limit above): no pack was prepared;
+- a profile removed while its Bot is online (`bot.offline` with `reason=removed`).
+
+Actual Xbox achievement unlocks were not part of this pass.
+
+Caveat found: a trigger made private stays in another viewer's open trigger list until that page is reloaded
+(`trigger_changed` only reaches viewers who may still see it).

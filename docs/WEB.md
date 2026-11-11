@@ -3,8 +3,9 @@
 Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
 the answers to the former open points (see [settled points](#settled-points)). Steps 1 to 9 are implemented: the supervisor policy, accounts, passkeys, the trusted site, the relay, deploy and its
 redeploy during an update (checked against a fake API only), the screens, script editing, Bot control and the
-[deployment guide](WEB_DEPLOY.md). Step 10 ran on Cloudflare with real passkeys on 2026-11-07 JST; what it checked,
-what it left open and what it found are in the [validation record](WEB_VALIDATION.md).
+[deployment guide](WEB_DEPLOY.md). Step 10 ran on Cloudflare with real passkeys on 2026-11-07 JST and in the 0.7.0
+release pass on 2026-11-11 and 2026-11-12 JST; what it checked, what it left open and what it found are in the
+[validation record](WEB_VALIDATION.md).
 
 This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
 and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
@@ -481,8 +482,9 @@ Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024
     stopped within 90 s of the PC losing power or network. With the operator's
     real site: both modes, key rotation with two keys, a replayed or foreign-browser assertion refused, an XUID
     without a grant refused, `endbot web revoke` while the site still vouches. Recorded in
-    [WEB_VALIDATION.md](WEB_VALIDATION.md): the `workers.dev` items ran on 0.7.0-rc.1 to rc.3, and the items not run
-    yet (protocol mismatch, domain change, rollback, power loss, the trusted site) are listed there.
+    [WEB_VALIDATION.md](WEB_VALIDATION.md): the `workers.dev` items ran on 0.7.0-rc.1 to rc.3, and the protocol
+    mismatch, domain change, rollback, power loss and the trusted site in the release pass on rc.5 and rc.6. The items
+    that need a second Xbox account are listed there as not run.
 
 ## Not in BOT-021
 

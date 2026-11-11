@@ -4,10 +4,10 @@ The web lets your controllers sign in from a phone or a PC to see the server, ed
 Cloudflare Worker in **your own** Cloudflare account, and your server PC opens no inbound port. The design and its
 reasons are in [WEB.md](WEB.md); the security boundary is in [SECURITY.md](SECURITY.md#the-web).
 
-> **Partly validated.** A `workers.dev` deploy, redeploy, `rotate-key`, an update's redeploy and real passkeys on a
-> phone and a PC were checked on Cloudflare in [step 10](WEB.md#steps); see the [validation record](WEB_VALIDATION.md).
-> A custom domain, a domain change, `endbot update --rollback` and the trusted site have not been checked yet. If
-> Cloudflare behaves differently from what is written here, trust what you see and report it.
+> **Validated on Cloudflare.** A `workers.dev` deploy, redeploy, `rotate-key`, an update's redeploy and its rollback, a
+> custom domain and a change back, the trusted site, and real passkeys on a phone and a PC were checked in
+> [step 10](WEB.md#steps); see the [validation record](WEB_VALIDATION.md). If Cloudflare behaves differently from what
+> is written here, trust what you see and report it.
 
 ## What you need
 
@@ -40,8 +40,12 @@ This was checked on Cloudflare in step 10: deploy, redeploy and `rotate-key` all
 second policy fails with `GET /workers/subdomain failed (403)`. Instead of both policies, the Admin role on all Workers
 also works and can create the Worker itself, but it can change or delete every Worker in the account.
 
-For a custom domain the token also needs access to that zone. This path is not validated yet; expect Zone → Workers Routes:
-Edit and Zone → DNS: Edit, and report what Cloudflare actually asks for.
+**A custom domain needs much more.** Attaching it (`PUT /workers/domains`) is refused (403) unless the token has
+**Editor on all of the account's Workers**; Editor on the chosen Worker is not enough. The release pass used that
+together with Workers Routes: Edit and DNS: Edit on the zone, and did not test whether the zone permissions are also
+needed. Editor on all Workers can change every Worker in the account, so for a deploy that attaches or changes a domain,
+create a separate token with a short expiry, use it once, and delete it. Later redeploys and `rotate-key` keep the
+attached domain and work with the narrow token above.
 
 Endbot never stores the token and never takes it as an argument. It reads the token from a hidden prompt or from
 `CLOUDFLARE_API_TOKEN`. You need it for `endbot web deploy`, `endbot web rotate-key` and to redeploy during

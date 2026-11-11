@@ -323,6 +323,9 @@ describe("HTTP through the relay", () => {
   });
 
   it("limits requests per client address", async () => {
+    // The count is per clock minute: crossing into the next one mid-test resets it, so start clear of the edge.
+    const intoMinute = Date.now() % 60_000;
+    if (intoMinute > 50_000) await new Promise((resolve) => setTimeout(resolve, 60_000 - intoMinute + 200));
     const link = await provenLink();
     const answering = (async () => {
       for (let index = 0; index < 10; index += 1) await answerNext(link, { status: 200, body: {} });
@@ -335,7 +338,7 @@ describe("HTTP through the relay", () => {
     const other = post("/auth/info", {}, { "CF-Connecting-IP": "203.0.113.10" });
     await answerNext(link, { status: 200, body: {} });
     expect((await other).status).toBe(200);
-  });
+  }, 20_000);
 });
 
 describe("what the Worker refuses by itself", () => {

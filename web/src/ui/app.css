@@ -134,7 +134,7 @@ button.primary.danger-fill { background: var(--bad); border-color: var(--bad); }
 /* A trigger's status can name a pause reason and its stats need a line of their own, so both wrap. */
 .item.trigger { align-items: flex-start; }
 .item.trigger .name { white-space: normal; overflow: visible; }
-.item.trigger .tag { white-space: normal; text-align: right; }
+.item.trigger .tag { flex: none; }
 .empty { padding: 1rem; color: var(--quiet); }
 .detail { min-height: 0; overflow: auto; padding: .9rem; }
 .back { display: none; }

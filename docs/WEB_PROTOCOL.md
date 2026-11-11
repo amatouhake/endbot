@@ -70,7 +70,7 @@ the page reloads. Every request is authorized again at execution time with the `
 |---|---|---|
 | `query` | `what`: `status`, `bots`, `groups`, `runs`, `log` | `{id, type: "result", code, data}` |
 | `query` | `what`: `bot`, `name` | the Bot's status as fields in `data`; it stays out of the history |
-| `subscribe` | `topic`: `status`, `log`, or `trigger:<owner>/<name>` | `{id, type: "result", code}`, then `{type: "event", topic, data}` |
+| `subscribe` | `topic`: `status`, `log`, `triggers`, or `trigger:<owner>/<name>` | `{id, type: "result", code}`, then `{type: "event", topic, data}` |
 | `unsubscribe` | `topic` | `{id, type: "result", code}` |
 | `op` | `operation`: `{op, target, params}`, one registry operation | `{id, type: "result", code, messages, data}` |
 | `group.create`, `group.delete` | `name`, without `#` | `code`, `messages` |
@@ -98,7 +98,10 @@ also carries the script's current declaration as `requires`, for the confirmatio
 
 A `trigger:<owner>/<name>` subscription pushes `{type: "event", topic, data: {trigger}}` after every stored state or
 stats change of that trigger, to pages whose current principal may still see it; a revoked session gets nothing.
-A removed trigger is pushed once as `data: {removed: true, name, owner}`. Notices are sent from their own thread,
+A removed trigger is pushed once as `data: {removed: true, name, owner}`. The `triggers` subscription pushes the
+same `data` with `topic: "triggers"` for every trigger the page may see, created, changed or removed, so the list
+stays current; a trigger that becomes invisible to the page (made private) pushes it nothing, and the page keeps that
+row until it asks `trigger.list` again, because a removal would name a trigger it may no longer see. Notices are sent from their own thread,
 never from the one that starts runs, and a page that cannot keep up may miss some; `trigger.list` and `trigger.get`
 always answer the current state.
 

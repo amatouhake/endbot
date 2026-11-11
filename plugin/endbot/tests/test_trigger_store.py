@@ -143,6 +143,14 @@ class TriggerStoreTest(unittest.TestCase):
         self.assertEqual(TriggerStore(self.path).list(), self.store.list())
         self.assertEqual(list(self.path.parent.glob(".triggers-*")), [])
 
+    def test_a_schedule_trigger_round_trips_and_other_one_word_kinds_are_refused(self):
+        # Found in the 0.7.0 release pass: schedule is the one kind without a dot.
+        self.store.add(trigger(name="tick", kind="schedule", filter={"every": "1m"}))
+        self.assertEqual(TriggerStore(self.path).get(OWNER, "tick").kind, "schedule")
+        for kind in ("block", "Schedule", "schedule.", "scheduled"):
+            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "Trigger kind"):
+                self.store.add(trigger(name="other", kind=kind))
+
     def test_missing_file_is_an_empty_store(self):
         self.assertEqual(load_triggers(self.path), [])
         self.assertEqual(self.store.list(), [])

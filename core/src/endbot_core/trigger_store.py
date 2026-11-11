@@ -36,7 +36,8 @@ MAX_REASON_LENGTH = 128
 MAX_LAST_ERROR_LENGTH = 256
 
 _NAME = re.compile(r"[A-Za-z0-9_-]{1,32}\Z")
-_KIND = re.compile(r"[a-z]+\.[a-z][a-z_]*\Z")
+# category.action, and the wall-clock kind, which EVENTS.md names with one word (the registry schema agrees).
+_KIND = re.compile(r"(?:[a-z]+\.[a-z][a-z_]*|schedule)\Z")
 _TRIGGER_FIELDS = frozenset(
     {
         "name",
@@ -214,7 +215,7 @@ def _validate_trigger(trigger) -> None:
     if trigger.visibility not in VISIBILITIES:
         raise ValueError("Trigger visibility must be private or shared")
     if not isinstance(trigger.kind, str) or _KIND.fullmatch(trigger.kind) is None:
-        raise ValueError("Trigger kind must be an event kind named category.action")
+        raise ValueError("Trigger kind must be an event kind named category.action, or schedule")
     if not isinstance(trigger.filter, dict) or not _json_safe(trigger.filter):
         raise ValueError("Trigger filter must be a JSON-safe object")
     if not isinstance(trigger.script, str) or not 1 <= len(trigger.script) <= MAX_SCRIPT_LENGTH:

@@ -116,7 +116,7 @@ python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip build cibuildwheel==3.4.1 conan ninja uv
 cd build/endstone-patched
-conan install . --build=missing
+conan install . --build=missing -pr:h ../../scripts/endstone-conan.profile
 . build/RelWithDebInfo/generators/conanbuild.sh
 cmake --preset conan-relwithdebinfo -DENDSTONE_GENERATE_STUBS=OFF
 cmake --build --preset conan-relwithdebinfo

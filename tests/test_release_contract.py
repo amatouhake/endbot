@@ -137,6 +137,25 @@ class ReleaseWheelContractTests(unittest.TestCase):
         self.assertIn("cwd=isolated_source", builder)
         self.assertNotIn('"-m", "build"', builder)
 
+    def test_every_endstone_build_pins_transitive_conan_requirements(self) -> None:
+        profile = (ROOT / "scripts/endstone-conan.profile").read_text(encoding="utf-8")
+        self.assertIn("include(default)", profile)
+        pins = dict(
+            re.findall(r"(?m)^([a-z0-9_]+)/\*: \1/([0-9.]+#[0-9a-f]{32})$", profile.split("[replace_requires]", 1)[1])
+        )
+        # Every host requirement that upstream recipes leave as a range, pinned with its recipe revision.
+        self.assertEqual(set(pins), {"zlib", "zstd", "libdwarf", "xz_utils", "libunwind", "libcurl"})
+        self.assertTrue(pins["zlib"].startswith("1.3.2#"))
+        builder = (ROOT / "scripts/build_endstone_wheel.py").read_text(encoding="utf-8")
+        self.assertIn('"scripts" / "endstone-conan.profile"', builder)
+        self.assertIn("host-profile={ISOLATED_PROFILE_NAME}", builder)
+        for name in ("release-candidate.yml", "full-validation.yml"):
+            workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            installs = re.findall(r"conan install [^\n]*", workflow)
+            self.assertTrue(installs, name)
+            for install in installs:
+                self.assertIn("-pr:h ../../scripts/endstone-conan.profile", install, name)
+
     def test_full_validation_uses_repaired_wheel_for_paired_install(self) -> None:
         workflow = (ROOT / ".github/workflows/full-validation.yml").read_text(encoding="utf-8")
         build = workflow.index("python scripts/build_endstone_wheel.py")
@@ -268,6 +287,7 @@ class CICacheContractTests(unittest.TestCase):
             "patches/endstone/**",
             "scripts/prepare_endstone.py",
             "scripts/build_endstone_wheel.py",
+            "scripts/endstone-conan.profile",
             ".github/workflows/full-validation.yml",
         ):
             self.assertIn(required_input, fingerprinted)

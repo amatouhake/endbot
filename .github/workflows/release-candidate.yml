@@ -66,7 +66,7 @@ jobs:
       - name: Build and test patched Endstone
         working-directory: build/endstone-patched
         run: |
-          conan install . --build=missing
+          conan install . --build=missing -pr:h ../../scripts/endstone-conan.profile
           . build/RelWithDebInfo/generators/conanbuild.sh
           cmake --preset conan-relwithdebinfo -DENDSTONE_GENERATE_STUBS=OFF
           cmake --build --preset conan-relwithdebinfo

@@ -6,12 +6,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# Pins transitive Conan requirements that upstream leaves as ranges (see the file).
+CONAN_HOST_PROFILE = ROOT / "scripts" / "endstone-conan.profile"
+ISOLATED_PROFILE_NAME = "endbot-host.profile"
 
 LINUX_PLATFORM_TAG = "manylinux_x86_64"
 WINDOWS_PLATFORM_TAG = "win_amd64"
@@ -86,6 +91,12 @@ def build(source: Path, output_directory: Path, build_selector: str) -> Path:
             "CIBW_CACHE_PATH": environment.get("CIBW_CACHE_PATH", str(ROOT / "build" / ".cibuildwheel-cache")),
         }
     )
+    # conan-py-build takes the host profile as a build config setting; the build
+    # profile stays "default", so it still detects the compiler. The path is
+    # relative to the project, which cibuildwheel also copies into its Linux
+    # container.
+    settings = environment.get("CIBW_CONFIG_SETTINGS", "").strip()
+    environment["CIBW_CONFIG_SETTINGS"] = f"{settings} host-profile={ISOLATED_PROFILE_NAME}".strip()
     # Clone the committed prepared tree so generated host build state (notably
     # its local Conan cache) cannot leak into the wheel build. On Linux pinned
     # Endstone's pyproject selects its manylinux_2_31 image and invokes
@@ -98,6 +109,7 @@ def build(source: Path, output_directory: Path, build_selector: str) -> Path:
     with tempfile.TemporaryDirectory(prefix="endbot-endstone-wheel-", dir=isolated_parent) as temporary:
         isolated_source = Path(temporary) / "source"
         run("git", "clone", "--quiet", "--local", "--no-hardlinks", str(source), str(isolated_source))
+        shutil.copyfile(CONAN_HOST_PROFILE, isolated_source / ISOLATED_PROFILE_NAME)
         run(
             sys.executable,
             "-m",

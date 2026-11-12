@@ -418,10 +418,14 @@ differs from rc.6 only in versions and documentation.
 - [x] Release notes say that a rollback to 0.6.0 needs `[events]`, `[web]` and the three new `[limits]` keys removed
   first, because 0.6.0 refuses keys it does not know; that rollback was not run (the pass rolled back between 0.7.0
   candidates).
-- [ ] Build `release-candidate.yml` for `0.7.0` from `main` after this commit.
-- [ ] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.7.0`, re-download and compare, and verify the
-  attestations.
-- [ ] Publish the tested draft unchanged.
+- [x] Build `release-candidate.yml` for `0.7.0` from `main` after this commit (2026-11-12: run `43068641583` from
+  `main` `8a7a876`; the `windows`, `linux` and `assemble` jobs and both clean-consumer E2E legs passed).
+- [x] Attach the exact candidate files and `SHA256SUMS` to a draft `v0.7.0`, re-download and compare, and verify the
+  attestations (2026-11-12: 13 files on the draft; every asset digest matched `SHA256SUMS`, and
+  `compatibility-manifest.json` records revision `8a7a876`, Endbot `0.7.0` and `bds_binary_included: false`).
+- [x] Publish the tested draft unchanged (2026-11-12: tag `v0.7.0` = `8a7a876`, published 02:09 UTC as the latest
+  release; every re-downloaded asset matches `SHA256SUMS`, which is identical to the draft's, and
+  `gh attestation verify` passed for all 13 files, `SHA256SUMS` included).
 
 ### After 0.1.0 (direction)
 

@@ -78,7 +78,7 @@ static Confinement arguments(int argc, char** argv)
         auto parsed = std::from_chars(value.data(), value.data() + value.size(), *target);
         if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos
             || parsed.ec != std::errc() || parsed.ptr != value.data() + value.size() || *target > maximum
-            || (bit == 4 && *target == 0) || (bit == 8 && *target != 10))
+            || (bit == 4 && *target == 0) || (bit == 8 && *target != 0 && *target != 10))
             throw std::runtime_error("invalid value for " + flag);
         seen |= bit;
     }
@@ -115,8 +115,9 @@ static void confine(const Confinement& limits)
     if (limits.cpu) limitResource(RLIMIT_CPU, limits.cpu, limits.cpu + 1);
     if (prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0) != 0) systemFailure("PR_SET_PDEATHSIG");
     if (getppid() != pid_t(limits.parent)) throw std::runtime_error("parent PID changed");
+    // 10 for a run, so it yields to BDS; 0 for a declaration check, which a person is waiting on.
     errno = 0;
-    if (nice(int(limits.priority)) == -1 && errno != 0) systemFailure("nice");
+    if (limits.priority && nice(int(limits.priority)) == -1 && errno != 0) systemFailure("nice");
     // RLIMIT_NPROC is per UID, not per run; deliberately leave it unchanged.
 #else
     (void)limits; // Windows uses the plugin's Job Object, not runner-side limits.

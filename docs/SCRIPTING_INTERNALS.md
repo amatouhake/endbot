@@ -167,14 +167,14 @@ The host passes the limits as runner command-line arguments; Python runs no call
 native runner applies them at the start of `main`, before reading stdin:
 
 ```text
---max-address-space BYTES --max-cpu-seconds N --parent-pid PID --nice 10
+--max-address-space BYTES --max-cpu-seconds N --parent-pid PID --nice 10|0
 ```
 
 - Pass all four flags together, or none (the standalone harness, or `os-confinement = false`).
 - Values are unsigned decimal integers. Memory `0` disables `RLIMIT_AS` and CPU `0` disables `RLIMIT_CPU`. Memory must
   be below 18446744073709551615 and fit the native rlimit type; CPU and PID at most 2147483647; PID positive.
-- The runner accepts only `--nice 10` (`runner/main.cpp`, and `runner/confinement.test.mjs` asserts that `--nice 0` is
-  refused). The host passes `--nice 0` for a declaration check (`script_confine.py`).
+- `--nice` is `10` for a run, which calls `nice(+10)`, or `0` for a declaration check (`foreground`), which keeps the
+  inherited priority, for the same reason as on Windows (BOT-032). The runner refuses every other value.
 - After `prctl(PR_SET_PDEATHSIG, SIGKILL)` the runner compares `getppid()` with `--parent-pid` before reading stdin.
   The signal also fires when the creating thread exits.
 - Unknown, missing, duplicate, partial or invalid arguments, and any confinement failure, emit one NDJSON `error` with

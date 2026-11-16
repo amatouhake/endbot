@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { executable } from './host.mjs';
 
 const linux = process.platform === 'linux';
-const flags = ({ memory = 256 * 1024 * 1024, cpu = 0, parent = process.pid } = {}) => [
+const flags = ({ memory = 256 * 1024 * 1024, cpu = 0, parent = process.pid, nice = 10 } = {}) => [
   '--max-address-space', String(memory), '--max-cpu-seconds', String(cpu),
-  '--parent-pid', String(parent), '--nice', '10',
+  '--parent-pid', String(parent), '--nice', String(nice),
 ];
 const bootstrap = await readFile(new URL('./api.luau', import.meta.url), 'utf8');
 const load = (source, limits = {}) => JSON.stringify({ type: 'load', source, bootstrap, limits }) + '\n';
@@ -41,7 +41,7 @@ test('invalid CLI arguments fail before reading stdin, with one NDJSON error', {
     }
   }
   for (const [flag, value] of [
-    ['--parent-pid', '0'], ['--parent-pid', '2147483648'], ['--nice', '0'], ['--nice', '11'],
+    ['--parent-pid', '0'], ['--parent-pid', '2147483648'], ['--nice', '1'], ['--nice', '9'], ['--nice', '11'],
     ['--max-cpu-seconds', '2147483648'], ['--max-address-space', '18446744073709551615'],
   ]) {
     const args = flags(); args[args.indexOf(flag) + 1] = value; invalid.push(args);
@@ -98,6 +98,23 @@ test('Linux applies nice +10, RLIMIT_AS and optional RLIMIT_CPU before input', {
   const stat = await readFile(`/proc/${child.pid}/stat`, 'utf8');
   const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
   assert.ok(Number(fields[16]) >= 10, `nice was ${fields[16]}`); // field 19, after pid/comm.
+  child.kill();
+  await closed;
+});
+
+test('Linux --nice 0 keeps the inherited priority for a declaration check', { skip: !linux, timeout: 5000 }, async t => {
+  const own = await readFile('/proc/self/stat', 'utf8');
+  const inherited = Number(own.slice(own.lastIndexOf(')') + 2).split(' ')[16]);
+  const { child, closed } = launch(t, flags({ nice: 0 }));
+  child.stdin.write(load('params{}'));
+  let output = '';
+  for await (const chunk of child.stdout.iterator({ destroyOnReturn: false })) {
+    output += chunk; if (output.includes('\n')) break;
+  }
+  assert.equal(JSON.parse(output.trim()).type, 'params');
+  const stat = await readFile(`/proc/${child.pid}/stat`, 'utf8');
+  const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+  assert.equal(Number(fields[16]), inherited);
   child.kill();
   await closed;
 });

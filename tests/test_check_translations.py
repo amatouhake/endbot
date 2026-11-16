@@ -85,6 +85,17 @@ class CheckTranslationsTests(unittest.TestCase):
         self.assertIn("link to missing anchor OTHER.md#nowhere", err)
         self.assertIn("link to missing anchor #here", err)
 
+    def test_hard_wrapped_paragraph_fails_and_unwrap_fixes_it(self) -> None:
+        path = self.translate("# ガイド\n\n一行目の文が\n二行目に続きます。\n")
+        code, _, err = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("paragraph lines are hard-wrapped", err)
+        code, _, _ = self.run_main("--unwrap", str(path))
+        self.assertEqual(code, 0)
+        self.assertIn("一行目の文が二行目に続きます。", path.read_text(encoding="utf-8"))
+        code, _, err = self.run_main()
+        self.assertEqual(code, 0, err)
+
     def test_anchor_into_english_file_is_not_checked(self) -> None:
         self.translate("[その他](../OTHER.md#any-slug)\n")
         code, _, err = self.run_main()
@@ -113,6 +124,31 @@ class CheckTranslationsTests(unittest.TestCase):
         self.assertIn("# ガイド", path.read_text(encoding="utf-8"))
         code, out, _ = self.run_main("--strict")
         self.assertEqual(code, 0, out)
+
+
+class UnwrapTests(unittest.TestCase):
+    def test_joins_japanese_without_a_space_and_ascii_with_one(self) -> None:
+        text = "これは長い\n段落です。Bot は\n`/bot` を使います\nand more.\n"
+        self.assertEqual(ct.unwrap(text), "これは長い段落です。Bot は `/bot` を使います and more.\n")
+
+    def test_looks_past_links_emphasis_and_full_width_punctuation(self) -> None:
+        self.assertEqual(ct.unwrap("詳しくは\n[コマンド](COMMANDS.md)へ\n"), "詳しくは[コマンド](COMMANDS.md)へ\n")
+        self.assertEqual(ct.unwrap("**注意。**\n次へ。\n[UI](UI.md)\n"), "**注意。**次へ。[UI](UI.md)\n")
+
+    def test_keeps_blocks_and_list_items_apart(self) -> None:
+        text = (
+            '<a id="x"></a>\n# 見出し\n本文\n\n- 項目 1\n  の続き\n- 項目 2\n1. 番号\n'
+            "| a | b |\n| --- | --- |\n```text\n/bot Alice\n  stop\n```\n"
+        )
+        expected = (
+            '<a id="x"></a>\n# 見出し\n本文\n\n- 項目 1 の続き\n- 項目 2\n1. 番号\n'
+            "| a | b |\n| --- | --- |\n```text\n/bot Alice\n  stop\n```\n"
+        )
+        self.assertEqual(ct.unwrap(text), expected)
+
+    def test_unwrapped_text_is_stable(self) -> None:
+        once = ct.unwrap("一行目\n二行目\n\n- a\n  b\n")
+        self.assertEqual(ct.unwrap(once), once)
 
 
 class RepositoryTranslationsTests(unittest.TestCase):

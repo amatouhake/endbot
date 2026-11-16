@@ -26,8 +26,7 @@ revisions are not pinned yet.
 - Release-candidate runs 41023533108 and 41024591616 cold-built and upstream-tested the patched Endstone on Linux and
   Windows. The bundle consumer E2E (fresh setup acquiring BDS `1.26.60.6` through Endstone, a Bot joining through
   local-bot trust, console, `doctor --live`, update and rollback) passed on both platforms, with LAN discovery and
-  with direct signalling; the Linux rollback start then exposed the server-port TIME-WAIT wait now in `endbot start`
-  (BOT-026).
+  with direct signalling; the Linux rollback start then exposed the server-port TIME-WAIT wait now in `endbot start`.
 - Windows live smoke (`scripts/raknet_spike.py --mining --inventory --item-use --entity --groups --scripting`, direct
   signalling, BDS build `52886189`) passed: movement, jump, chunk radius, reconnect, mining, pickups and drops, timed
   item use, feeding and riding, Groups, Luau scripts, controller management across a BDS restart, and the wrong-key,

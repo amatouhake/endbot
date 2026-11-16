@@ -305,12 +305,12 @@ again before forms or execution.
 A script that needs a capability beyond the basic set declares it with `requires { "name", ... }`, called once and
 before `params` (see [PERMISSIONS.md](PERMISSIONS.md#two-layers-the-person-and-the-script)). The basic set —
 operating Bots, reading the world, waiting and logging (`act.bot`, `read.world`, `wait`, `log`) — needs no
-declaration, and naming it changes nothing. No other capability exists yet: events add the first ones
-(`observe.chat`, `observe.presence`), so any other name is an inspection error naming it. A second call, a call after
+declaration, and naming it changes nothing. The other capabilities come from event kinds
+(`observe.chat`, `observe.presence`); any other name is an inspection error naming it. A second call, a call after
 `params`, or anything but a list of distinct strings is a declaration error. The `params` request carries the list as
 `requires` (`[]` when there is no call); inspection returns it with the schema as a set, so order does not matter. A
 run started from an inspection (the run form, which carries the declaration in its guard, the parameterless menu
-start, later a trigger) stops before its first operation if its own `requires {}` differs from what that inspection
+start, a trigger) stops before its first operation if its own `requires {}` differs from what that inspection
 read, so a conditional call cannot widen what was shown. The run form shows the declaration on its first line, and a
 run submitted from that form is held to it.
 
@@ -422,8 +422,8 @@ A radius-12 search took about 23 ms of server-thread time in the live check (202
 
 ### Areas
 
-One area value narrows the blocks `blocks`, typed `destroy`, `destroy` continuous loops and typed `interact` may pick
-(BOT-027). Build it with `area`, then pass it as `{area = a}`:
+One area value narrows the blocks `blocks`, typed `destroy`, `destroy` continuous loops and typed `interact` may pick.
+Build it with `area`, then pass it as `{area = a}`:
 
 | Luau | Chat | Shape |
 | --- | --- | --- |
@@ -457,7 +457,7 @@ target is refused by the command layer with "An area applies to a block type …
 
 ### Targeting blocks
 
-Three questions about a block have one answer each (BOT-028, BOT-030). Block properties come from minecraft-data
+Three questions about a block have one answer each. Block properties come from minecraft-data
 for the locked Bedrock version (`scripts/generate_block_properties.py`).
 
 | Question | Rule | Used by |
@@ -617,7 +617,7 @@ crosshair operation right after it uses the new view; if BDS does not report it 
 ## Event kinds
 
 The event kinds a script may watch come from the same registry. Triggers, which start a run for an occurrence,
-arrive later in BOT-022.
+use the same kinds and filters.
 
 ### Watches
 

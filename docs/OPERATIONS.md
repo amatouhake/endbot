@@ -120,8 +120,8 @@ items only and takes effect on the next start. Someone else's private Bot or Gro
 resolves as not found), and `forget`, `rename` and `visibility` on someone else's Bot stay with its owner and the
 console even when it is shared (see [PERMISSIONS.md](PERMISSIONS.md)).
 
-`[web] enabled` is a boolean and defaults to false; start with the [deployment guide](WEB_DEPLOY.md). The web has not
-been validated on Cloudflare yet ([WEB.md](WEB.md#steps)). The setting keeps endbotd running when BDS exits (see the supervision policy in section 5a) and, with `[web] origin` set
+`[web] enabled` is a boolean and defaults to false; start with the [deployment guide](WEB_DEPLOY.md); what was
+checked on Cloudflare is in [COMPATIBILITY.md](COMPATIBILITY.md#web). The setting keeps endbotd running when BDS exits (see the supervision policy in section 5a) and, with `[web] origin` set
 (`https://host`, normally written by `endbot web deploy`), lets `/botweb link` issue codes and opens the outbound link
 when `state/secrets/web-link.key` exists. `[web] display-name` (empty by default) is shown on the sign-in page and is
 the one thing of yours Cloudflare keeps.

@@ -13,12 +13,12 @@ KINDS = {
                     "dimension": {"type": "dimension", "default": "overworld"},
                     "from": {"type": "block"}, "to": {"type": "block"}},
         "require": [["area"]], "payload": {},
-        "guarantee": {"class": "persist", "ticks": 4, "each": [], "record": "EVENTS.md#target"},
+        "guarantee": {"class": "persist", "ticks": 4, "each": [], "record": "EVENTS.md#overview"},
     },
     "bot.online": {
         "source": "runtime", "capability": "read.world", "visibility": "public",
         "filters": {"bot": {"type": "bot"}}, "require": [], "payload": {},
-        "guarantee": {"class": "each", "ticks": None, "each": [], "record": "EVENTS.md#target"},
+        "guarantee": {"class": "each", "ticks": None, "each": [], "record": "EVENTS.md#overview"},
     },
 }
 

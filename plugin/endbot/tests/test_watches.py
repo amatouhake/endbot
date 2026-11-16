@@ -24,7 +24,7 @@ from test_scripting import FakeRunner
 AREA = "within 0 64 0 1 64 1"
 OBSERVED = {"observe.kind": {
     "source": "runtime", "capability": "observe.chat", "visibility": "public", "filters": {}, "require": [],
-    "payload": {}, "guarantee": {"class": "each", "ticks": None, "each": [], "record": "EVENTS.md#target"}}}
+    "payload": {}, "guarantee": {"class": "each", "ticks": None, "each": [], "record": "EVENTS.md#overview"}}}
 
 
 def change(x=0, y=64, z=0, **extra):

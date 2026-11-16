@@ -12,8 +12,11 @@ plugin's `for <ticks>` and `count <blocks>` limits: the tick budget counts input
 between blocks), while the block budget counts completed targets and is unaffected by waiting; a loop that sets both
 ends at whichever comes first. `status.mining` also exposes
 `continuous`, `loopId`, `waiting`, `blocksBroken` and `blockCount` state, and a finished loop keeps its final
-`blocksBroken` count. See [commands](../docs/COMMANDS.md#mining-blocks)
-and [validation](../docs/MINING_VALIDATION.md).
+`blocksBroken` count. See [commands](../docs/COMMANDS.md#mining-blocks).
+
+The runtime sends one `start_break` per block and no per-tick `continue_break`: repeating it made BDS restart the
+break every tick, so observers saw the crack overlay reset. A loop counts a block when the watched target changes, so
+another actor breaking that block counts too.
 
 The runtime owns persistent Bot profiles and accountless Bedrock client sessions. A profile contains an immutable UUID,
 a unique user-visible Minecraft name, desired lifecycle state, and an optional Bot-specific chunk radius preference.
@@ -53,7 +56,7 @@ left in an older configuration is ignored, and an old `bds-nethernet.pin` file c
 The transport is NetherNet; `endbot setup/start` never generate anything else, because BDS 1.26.60 refuses players
 on RakNet. The runtime still accepts an explicit `"transport": "raknet"` in runtime JSON for the older pair: the
 direct-loopback path with `raknet-native`, no LAN discovery, no ping, and no advertised-port following. It reuses the
-same local-bot authentication. The [RakNet validation record](../docs/RAKNET_VALIDATION.md) covers that older path.
+same local-bot authentication. The [RakNet validation record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/RAKNET_VALIDATION.md) covers that older path.
 
 `endbot start` writes `"nethernetSignalling": "direct"` by default. Direct signalling skips discovery and exchanges
 the WebRTC offer and answer over HTTP on the configured loopback `serverPort` (`POST /v1/join/<network id>`), so it
@@ -74,12 +77,30 @@ and invalid/unknown observations are rejected without replacing good state. This
 never writes BDS inventory; normal transactions perform item actions. Full snapshots use 40 KiB fragments under the
 60 KiB packet bound, with a 2 MiB total bound and atomic decoding. `drop` accepts selected one/stack, slot, item/count,
 and all selectors through legacy container-to-world transactions without stack IDs. BDS validates every request;
-predicted cache changes are corrected by the next authoritative observation. See [validation](../docs/INVENTORY_VALIDATION.md).
+predicted cache changes are corrected by the next authoritative observation.
+
+- **Rejected requests converge on the next observation.** The runtime predicts a drop or swap in its cache. When BDS
+  rejects one, the cache is corrected by the next changed observation, at most `hotbar-sync-interval-ticks`
+  later (default 4). An unchanged inventory is re-sent every `hotbar-sync-resend-ticks` (default 20).
+- **Native and observed items compare by item, not bookkeeping.** Stack network ids and the block runtime id are
+  ignored. Wheat shares the crop's block name, so the plugin cannot tell its wire block id (0). Native NBT longs
+  (`[high, low]`) equal the observed BigInt. An equal observation therefore never replaces the native item and its
+  stack id. A changed count keeps the native block runtime id.
+- **Stack ids in transactions.** Drop and swap send legacy `inventory_transaction`s without stack ids, on window 0
+  slots 0-35, window 119 slot 0 (offhand) and window 120 slots 0-3 (armor); BDS rejects them otherwise. Use, attack
+  and release keep the native held item as BDS sent it, stack id included.
+- **Non-finite NBT floats** (`NaN`, `±Infinity`) are spelled out as strings in the observation and restored by the
+  runtime, so one odd tag does not stop the whole observation.
+- `drop all`, `drop <slot>` and `drop <item>` before BDS sent the inventory fail with "not synchronized yet" instead
+  of reporting zero drops; `drop <item>` with no match fails with "No <item> in the inventory"; `drop 0`/`drop 37`
+  are slot typos, not item names.
+- On a dimension change the runtime adopts the new position, clears old targets, interactions and motion, acknowledges
+  the change and the loading screen with the supplied ID, and resumes input and gravity. `set_entity_motion` for the
+  Bot feeds its predictor; authoritative corrections replace prediction.
 
 `use for <ticks>` schedules a bounded hold followed by one release; existing once/continuous/interval modes remain.
 Native selected-slot updates and plugin observations share a deduplicated equipment announcer whose state is separate
-from the inventory cache, so a native delta cannot suppress a later empty-hand announcement. See
-[timed-use and synchronization validation](../docs/ITEM_USE_SYNC_VALIDATION.md).
+from the inventory cache, so a native delta cannot suppress a later empty-hand announcement.
 
 ```bash
 npm run check --prefix runtime

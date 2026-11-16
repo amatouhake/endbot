@@ -169,8 +169,8 @@ host account isolation (above) is the control that matters.
 
 The web is optional and off until an operator runs `endbot web deploy`
 ([deployment guide](WEB_DEPLOY.md), [design](WEB.md)). Its runs on Cloudflare with real passkeys on a PC and a phone,
-including a custom domain, `endbot update --rollback` and the trusted site (P12), are recorded in
-[WEB_VALIDATION.md](WEB_VALIDATION.md); the items listed there as not run are not validated yet.
+including a custom domain, `endbot update --rollback` and the trusted site (P12, against a test signer), are summarized in
+[COMPATIBILITY.md](COMPATIBILITY.md#web); the items listed there as not run are not validated yet.
 
 **The boundary.** The Worker and its Durable Object in the operator's Cloudflare account are an untrusted relay. endbotd
 on the server PC is the authority: it issues and verifies passkey ceremonies, issues sessions, and authorizes every relayed

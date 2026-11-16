@@ -41,7 +41,7 @@ Bundle assembly and self-tests require `raknet-native` to load after production 
 The consumer E2E workflow runs both `nethernet` and `raknet` on Windows and Linux, including fresh setup,
 Bot join/resume, clean stop, and synthetic same-code update/rollback. RakNet is exercised with UDP 7551
 occupied. Passing those jobs is artifact evidence; it does not replace human/Xbox gates or deliberately
-update the compatibility lock. See `docs/RAKNET_VALIDATION.md` for observed and still-pending results.
+update the compatibility lock. 
 
 The eventual release job must add built artifact checksums and include the licenses/notices described in
 `THIRD_PARTY_NOTICES.md`. It must not include BDS and must not publish solely because CI is green.
@@ -53,3 +53,40 @@ provenance attestation in the `assemble` job (`actions/attest-build-provenance`)
 `gh attestation verify <file> --repo amatouhake/endbot`; the attestation binds its SHA-256 to this repository, the
 `release-candidate.yml` workflow, and the commit it ran on. Publish every attested file unchanged, the
 `endbot-ui-*.mcpack` included: players download the UI pack from the release on its own.
+
+## Release checklist
+
+Do not tag or publish until every item holds. A green build never stands in for a manual gate.
+
+1. **Scope.** List what is merged since the last tag. If `endstone.lock`, `patches/endstone/`, the runtime
+   dependencies or `scripts/endstone-conan.profile` changed, run the
+   [compatibility change gate](../docs/COMPATIBILITY.md#compatibility-change-gate) first; otherwise say that the pair
+   is unchanged and which earlier human/Xbox observation stands.
+2. **Manual gates.** Run the human checks for the new features on a release candidate built by
+   `release-candidate.yml`, and summarize them under
+   [validation status](../docs/COMPATIBILITY.md#validation-status): what was checked, on which candidate, and what was
+   not run. Open an issue for each check that was not run.
+3. **World history.** After the pass, `endbot doctor` reports `level.dat` with no creative or experiment history. Say
+   whether an actual Xbox achievement unlock was part of the pass.
+4. **Versions and install guide.** Bump the versions `scripts/check_release_version.py` checks (runtime, plugin, plugin
+   module, CLI, CLI module) and update the artifact table and examples in `docs/INSTALL.md`.
+5. **Release notes.** Name breaking changes, what a rollback to the previous release needs, and the paths not
+   validated yet.
+6. **Candidate.** Build `release-candidate.yml` for the version from `main` after the release commit. The `windows`,
+   `linux` and `assemble` jobs and both clean-consumer E2E legs pass.
+7. **Draft.** Attach the exact candidate files and `SHA256SUMS` to a draft release, download them again, compare
+   every digest and run `gh attestation verify` on each file.
+8. **Publish** the tested draft unchanged.
+
+Standing invariants at publication:
+
+- `online-mode=true`, `allow-cheats=false`, no experiments or packs, and the normal Microsoft/Xbox path for people.
+  Local-bot trust stays disabled in the patched Endstone default config; only `endbot start` enables it, pinned to the
+  instance's own owner public key.
+- BDS stays external and is never bundled.
+- Scripting stays off after setup and for old configs without `[scripting]`.
+- Both platform bundles carry the checksum-pinned Luau runner, `api.luau` and the Luau and JSON licence texts.
+- An observation made on one patched package is never attributed to another.
+
+The records of releases 0.1.0 to 0.7.0, with their run numbers and dates, are kept
+[as they stood at 0.7.0](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/release/FINAL_CHECKLIST.md). Later releases record theirs in the GitHub release notes.

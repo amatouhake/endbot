@@ -1,7 +1,7 @@
 # endbotd design (BOT-020)
 
 Status: **Implemented and released in 0.5.0** (2026-10-30 JST): design agreed 2026-10-29 JST, steps 1 to 6 done,
-and the live and human-client gates recorded in [ENDBOTD_VALIDATION.md](ENDBOTD_VALIDATION.md).
+and the live and human-client gates summarized in [COMPATIBILITY.md](COMPATIBILITY.md#permissions-and-endbotd).
 
 This document turns [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-and-its-centre-moves-out-of-bds)
 into a concrete process split, protocol, migration and step plan. It changes nothing players can see, adds no web code

@@ -268,7 +268,7 @@ the same message at warning level, also for controllers who are offline. Success
 Targeting works on whole block cells: a partial shape such as a slab or fence stops an aimed line as a full block would,
 while `blocks` treats it as see-through ([targeting blocks](SCRIPTING.md#targeting-blocks)).
 
-See [mining validation](MINING_VALIDATION.md) for the exact real-server coverage. `attack` remains entity attack; use
+See [validation status](COMPATIBILITY.md#bot-operations) for the real-server coverage. `attack` remains entity attack; use
 `destroy` for blocks. The name follows the game's "Attack/Destroy" control.
 
 ## Managing access
@@ -371,8 +371,8 @@ the teleport height.
 
 Dimension changes now reset old movement prediction and entity targets, acknowledge the dimension/loading transition,
 and request the configured chunk radius. Server motion is incorporated into movement prediction for knockback.
-The reported cross-dimension symptoms remain subject to the real-server and multi-player checks in
-[BOT-002](BACKLOG.md#bot-002-restore-physics-movement-and-position-synchronization-after-dimension-changes).
+Two human clients agreeing on the Bot's position after dimension changes, portal travel and knockback after a
+transition have not been checked ([#274](https://github.com/amatouhake/endbot/issues/274)).
 
 ## Chunk loading range
 
@@ -466,7 +466,7 @@ correct an optimistic drop if BDS rejected it; an unchanged correction can take 
 Native inventory updates also announce changed held equipment, independent of periodic observations.
 Unknown/invalid observations are ignored as a whole; an unknown or empty
 selected slot still fails with `Selected hotbar slot is empty`. Without the matching plugin, reconnect remains the
-recovery for missing native deltas. See [pickup validation](INVENTORY_VALIDATION.md).
+recovery for missing native deltas.
 
 `swap <a> <b>` requests an exchange of the two whole stacks, with the same hotbar 1-9 and main 10-36 labels as
 `inventory`. One empty side makes it a move. Equal slots and two empty slots are errors. Offhand and armor are
@@ -484,8 +484,8 @@ stack IDs. The runtime predicts both slots until the next authoritative observat
 selected equipment after a changed selection or held stack. **Inventory... / Hold item...** accepts an item ID and
 **Swap slots...** offers two 1-36 dropdowns. These forms echo the equivalent typed command, including any item prefix.
 Group swap/hold use the existing UUID-pinned batch input path with bounded request replies, audit and saved history.
-Live acceptance of swap/hold passed on the locked pair over Windows RakNet (2026-10-22); human-client forms, native
-hints and other-client equipment rendering remain manual gates. See [the validation record](INVENTORY_VALIDATION.md).
+BDS accepted swap/hold live on the earlier pair (Windows RakNet); human-client forms, native
+hints and other-client equipment rendering remain manual gates ([#275](https://github.com/amatouhake/endbot/issues/275)).
 The native `EndbotSwap`/`EndbotHold` typed overloads provide hints; enum-free required message tails continue to carry
 execution under the pinned BDS declaration rules. Native client hints and form rendering still require live checks.
 
@@ -511,8 +511,8 @@ cover the entire inventory. Size bounds and the remaining live gates are describ
 simulation-tick interactions in the same authoritative input stream. `use stop` or global `stop` releases it, for example
 to throw a charged trident or shoot a bow. Food use requires vanilla eating conditions. `use once` and `use interval`
 remain short press/release actions; they do not hold long enough to eat or fully charge an item. Switching hotbar slots
-also releases the previous item. Real item outcomes and dimension-transition behavior are tracked in
-[the backlog](BACKLOG.md); historical generic use/release smoke does not cover every item.
+also releases the previous item. Trident, bow and golden apple were checked against BDS; other items and use after a
+dimension change were not ([#275](https://github.com/amatouhake/endbot/issues/275), [#274](https://github.com/amatouhake/endbot/issues/274)).
 
 `use for <ticks>` holds use for 1–72000 runtime input ticks and then releases automatically. For example,
 `/bot Alice use for 40` requests one two-second hold/release sequence, suitable for charging a bow or trident.
@@ -573,8 +573,7 @@ death and disconnect, and they never resume after reconnect. Each release confir
 
 The Jump, Attack, Use item, Move and Destroy blocks forms offer the same `interval`, `hold` and `for` clauses (the
 Destroy blocks form adds `count` for its continuous mode) (see
-[control forms](#control-forms)). See [item-use/sync validation](ITEM_USE_SYNC_VALIDATION.md) and
-[the backlog](BACKLOG.md).
+[control forms](#control-forms)).
 
 `use` means using or holding the selected item in the air, such as food, a bow, or a trident. `interact` is a normal
 right-click on the named block face. It sends the protocol-2193 press, server-authoritative item-interaction tick, and

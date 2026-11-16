@@ -1,7 +1,7 @@
 # Product direction: from one plugin to a small distribution
 
 Status: **Accepted direction; BOT-019, BOT-020 and BOT-024 released in 0.5.0** (2026-10-30 JST; accepted 2026-10-28). This records decisions and their reasons; the work
-items are BOT-019 to BOT-024 in the [backlog](BACKLOG.md). [Architecture](ARCHITECTURE.md) describes what exists today.
+items were BOT-019 to BOT-024; open work is in the [issues](https://github.com/amatouhake/endbot/issues/). [Architecture](ARCHITECTURE.md) describes what exists today.
 
 ## Goals
 
@@ -323,7 +323,7 @@ discovery (UDP 7551, one owner per machine) leaves Bots unable to reach every se
 - **0.7.0**: BOT-021 (web) and BOT-022 (events, watches and triggers). Localhost mode comes after.
 
 0.5.0 was published on 2026-10-30 (tag `v0.5.0` = `8e81923`, release-candidate run 41063813075). The checks that need
-a real second person were not run; see [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md).
+a real second person were not run ([#272](https://github.com/amatouhake/endbot/issues/272)).
 
 0.6.0 was added on 2026-11-02 JST: the finished script-facing work (BOT-027 to BOT-031 — areas, one block-targeting
 contract, `look` completion, translucent blocks, the throttling rate limit) plus the removal of the 0.4.0
@@ -334,11 +334,11 @@ still BOT-021 and BOT-022.
 0.6.0 was published on 2026-11-03 JST (tag `v0.6.0` = `1d1b8ce`, release-candidate run 41466589712). A human client
 pass ran on a build from `main` `ecaea7f`; the update from a published 0.5.0 instance was run after publication and
 passed, while the BDS live smoke on the candidate was not run. Both records are in
-[FINAL_CHECKLIST.md](../release/FINAL_CHECKLIST.md).
+[the release record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/release/FINAL_CHECKLIST.md).
 
 0.7.0 was added on 2026-11-12 JST: the web (BOT-021, BOT-034) and events, watches and triggers (BOT-022), on the
-unchanged 0.5.0 pair, after one combined human pass on `0.7.0-rc.5` and `rc.6` ([web](WEB_VALIDATION.md#release-pass),
-[events](EVENTS_VALIDATION.md#release-pass)).
+unchanged 0.5.0 pair, after one combined human pass on `0.7.0-rc.5` and `rc.6` ([web](COMPATIBILITY.md#web),
+[events](COMPATIBILITY.md#events-watches-and-triggers)).
 
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
 validation pass, not a shorter one.

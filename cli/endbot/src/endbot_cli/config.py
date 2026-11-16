@@ -99,7 +99,8 @@ class PermissionsConfig:
     groups_default: str = "shared"
 
 
-# Positions the server watches for block.change, all watches and triggers together (BLOCK_EVENTS_SPIKE.md#result).
+# Positions the server watches for block.change, all watches and triggers together
+# (EVENT_MEASUREMENTS.md#block-changes).
 DEFAULT_MAX_WATCHED_BLOCKS = 2048
 # The interest set lists every watched cell in one 1 MiB link frame (endbotd.occurrences.MAX_WATCHED_BLOCKS).
 MAX_WATCHED_BLOCKS = 16384
@@ -108,7 +109,8 @@ MAX_WATCHED_BLOCKS = 16384
 @dataclass(frozen=True, slots=True)
 class EventsConfig:
     max_watched_blocks: int = DEFAULT_MAX_WATCHED_BLOCKS
-    # player.chat is opt-in: the locked Endstone raises chat before a pack's mute runs (EVENTS_VALIDATION.md).
+    # player.chat is opt-in: the locked Endstone raises chat before a pack's mute runs
+    # (EVENT_MEASUREMENTS.md#presence-and-chat).
     chat: bool = False
 
 

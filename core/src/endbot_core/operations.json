@@ -928,7 +928,7 @@
           "player-break",
           "player-place"
         ],
-        "record": "BLOCK_EVENTS_SPIKE.md#result"
+        "record": "EVENT_MEASUREMENTS.md#block-changes"
       }
     },
     "player.join": {
@@ -948,7 +948,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#presence-and-chat"
+        "record": "EVENT_MEASUREMENTS.md#presence-and-chat"
       }
     },
     "player.leave": {
@@ -968,7 +968,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#presence-and-chat"
+        "record": "EVENT_MEASUREMENTS.md#presence-and-chat"
       }
     },
     "player.chat": {
@@ -989,7 +989,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#presence-and-chat"
+        "record": "EVENT_MEASUREMENTS.md#presence-and-chat"
       }
     },
     "bot.online": {
@@ -1009,7 +1009,7 @@
         "class": "persist",
         "ticks": 40,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+        "record": "EVENT_MEASUREMENTS.md#runtime-and-server-kinds"
       }
     },
     "bot.offline": {
@@ -1030,7 +1030,7 @@
         "class": "persist",
         "ticks": 40,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+        "record": "EVENT_MEASUREMENTS.md#runtime-and-server-kinds"
       }
     },
     "bot.died": {
@@ -1051,7 +1051,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "BLOCK_EVENTS_SPIKE.md#presence-chat-and-death"
+        "record": "EVENT_MEASUREMENTS.md#bot-death"
       }
     },
     "job.finished": {
@@ -1076,7 +1076,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+        "record": "EVENT_MEASUREMENTS.md#runtime-and-server-kinds"
       }
     },
     "server.started": {
@@ -1090,7 +1090,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+        "record": "EVENT_MEASUREMENTS.md#runtime-and-server-kinds"
       }
     },
     "schedule": {
@@ -1120,7 +1120,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#schedule-and-world-time"
+        "record": "EVENT_MEASUREMENTS.md#schedule-and-world-time"
       }
     },
     "world.time": {
@@ -1147,7 +1147,7 @@
         "class": "each",
         "ticks": null,
         "each": [],
-        "record": "EVENTS_VALIDATION.md#schedule-and-world-time"
+        "record": "EVENT_MEASUREMENTS.md#schedule-and-world-time"
       }
     }
   },

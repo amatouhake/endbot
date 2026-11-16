@@ -548,6 +548,8 @@ test("Groups follow the Bots in the list and offer only what a Group can do", as
   await page.getByRole("link", { name: "Manage this Group" }).click();
   await page.getByRole("button", { name: "Delete Group" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  // The delete answers before the page leaves the Group; a tab chosen earlier would be undone by that navigation.
+  await expect(page.getByRole("heading", { name: "#crew" })).toBeHidden();
   await tab(page, "Bots");
   await expect(page.getByText("This Group no longer exists")).toBeVisible();
 });

@@ -24,7 +24,7 @@ from collections.abc import Callable
 from endbot_core import areas
 from endbot_core.i18n import LocalizedError
 
-# BLOCK_EVENTS_SPIKE.md#result: a quarter of these read per tick costs about 1 to 2 ms.
+# EVENT_MEASUREMENTS.md#block-changes: a quarter of these read per tick costs about 1 to 2 ms.
 DEFAULT_MAX_WATCHED_BLOCKS = 2048
 # The interest set lists every watched cell in one link frame (1 MiB); at about 25 bytes a cell this keeps it
 # well inside, and is the most [events] max-watched-blocks may be set to.

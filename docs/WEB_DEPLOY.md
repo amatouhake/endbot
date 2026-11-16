@@ -5,9 +5,9 @@ Cloudflare Worker in **your own** Cloudflare account, and your server PC opens n
 reasons are in [WEB.md](WEB.md); the security boundary is in [SECURITY.md](SECURITY.md#the-web).
 
 > **Validated on Cloudflare.** A `workers.dev` deploy, redeploy, `rotate-key`, an update's redeploy and its rollback, a
-> custom domain and a change back, the trusted site, and real passkeys on a phone and a PC were checked in
-> [step 10](WEB.md#steps); see the [validation record](WEB_VALIDATION.md). If Cloudflare behaves differently from what
-> is written here, trust what you see and report it.
+> custom domain and a change back, the trusted site (against a test signer), and real passkeys on a phone and a PC were
+> checked; see [what was checked](COMPATIBILITY.md#web). If Cloudflare behaves differently from what is written here,
+> trust what you see and report it.
 
 ## What you need
 
@@ -198,10 +198,13 @@ the Worker, so protect that account with its own strong sign-in ([what that risk
 | `a Worker named ... already exists` | Another Worker has that name, or a first deploy stopped partway. Choose another `--worker-name`, or see [Deploy](#deploy) for `--replace-worker` |
 | `the origin would change from ...` | You asked for another address. Read [changing the domain](#changing-the-domain) first |
 | `the Worker ... no longer exists on Cloudflare` | It was deleted, so the custom domain must be attached again. Repeat with `--domain` and `--zone-id` |
-| `The link is not up yet: ...` | The message names the reason. Check that the PC can reach the address over HTTPS, then run `endbot doctor --live` |
+| `The link is not up yet: ...` | The message names the reason. Right after a deploy the check can still reach the old Worker for about 30 s; the link then comes up by itself, so do not deploy again. Otherwise check that the PC can reach the address over HTTPS, then run `endbot doctor --live` |
 | `The link is not up yet: ... ProofRefused ... (4003)` after `rotate-key` or a deploy | Cloudflare has not started using the new key yet; it took over 3 minutes once. endbotd keeps trying every 10 s for 10 minutes, so wait and check with `endbot doctor --live` |
 | `FAIL web: [web] origin ...` or `web-link.key is missing` | Run `endbot web deploy`. `endbot start` still runs, with the web off |
-| The sign-in page says "Server stopped" | BDS is stopped, endbotd is stopped, or the link is down, for up to 90 s after a power cut. Run `endbot doctor --live` on the PC |
+| The sign-in page says "Server stopped" | BDS is stopped, endbotd is stopped, or the link is down, for up to 90 s after a power cut. A Worker and endbotd from different versions look the same on the page; the log names that case. Run `endbot doctor --live` on the PC |
+| A page opened just after the server PC lost power keeps loading | The relay takes about a minute to retire the dead link. After that the page shows the server as offline at once |
+| The page looks unchanged after an update | A tab left open across an update keeps running the previous version's page. Reload it |
+| Registering a second passkey fails in the browser, with nothing in Endbot's log | The authenticator already holds a passkey for this address and WebAuthn refuses a duplicate. Remove the old passkey from the authenticator first |
 | The browser does not offer the passkey | The passkey was made for another address, or removed. Run `/botweb link` for a new one |
 | "Too many wrong codes on this server" | After 10 wrong codes in 10 minutes, code entry closes for 10 minutes for the whole server, and the console logs it |
 | "Too many attempts" | The Worker limits sign-in requests to 10 and new connections to 30 per minute per client address. Wait a minute; an open page connects again by itself |

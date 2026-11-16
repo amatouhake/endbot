@@ -212,6 +212,5 @@ Each platform installs its own Endstone wheel from the candidate; the remaining 
    the required human/live gate (normal Microsoft/Xbox login, local Bot login and coexistence, the command/input
    matrix, and the actual Xbox achievement observation), with the manifest and evidence updated accordingly.
 - World pickup → same-session runtime inventory synchronization remains a known limitation with reconnect as the
-   documented recovery path; same-session pickup inference and sneak ledge simulation stay deferred (see
-   [`M2_VALIDATION.md`](M2_VALIDATION.md)). Block breaking/mining shipped in 0.3.0 as `destroy`; see
+   documented recovery path; same-session pickup inference and sneak ledge simulation stay deferred. Block breaking/mining shipped in 0.3.0 as `destroy`; see
    [`COMMANDS.md`](COMMANDS.md).

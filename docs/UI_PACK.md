@@ -16,7 +16,7 @@ Two client limits make in-game script editing hard (BOT-009, 2026-10-24/25 Windo
 - The form text field is short and **drops line breaks**, so multi-line source has to go through a book and quill.
 
 Neither is fixed by anything a server can put in a form. A resource pack can restyle the form screens on the client.
-This pack is the in-game stopgap. [BOT-013](BACKLOG.md#bot-013-web-script-editor), the web editor, stays the
+This pack is the in-game stopgap. The [web editor](WEB_DEPLOY.md) stays the
 long-term authoring path: it is the only one that can give syntax highlighting, completion and diffs.
 
 ## What it changes
@@ -201,7 +201,7 @@ client (1.26.60.5) at default GUI scale, 1080p, with the pack active as a global
 11. **Settings → Global Resources** lists *Endbot UI*: the name, a two-line description that is not clipped, and the
     abstract-E icon. The list truncates descriptions, so a longer one would show an ellipsis.
 
-Record results in [BACKLOG.md](BACKLOG.md#bot-018-optional-ui-resource-pack-for-forms-and-multi-line-editing). If 3–5
+Record results in [#277](https://github.com/amatouhake/endbot/issues/277). If 3–5
 fail because the client does not use the pack's input element, keep the window and button changes and leave
 `ui-pack-editor` off.
 

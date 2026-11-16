@@ -40,13 +40,12 @@ revisions are not pinned yet.
 - People, on Windows with Minecraft 26.60: one client joined three instances on the same PC by address while their
   Bots were online, two of them at once, with UDP 7551 held by one BDS; `/bot list` and `/bot <Bot> tp me` worked on
   each. On an instance updated from 0.4.0 the player unlocked the Xbox achievement **Body Guard** with no
-  achievements-disabled notice, and `level.dat` stayed clean (see
-  [PERMISSIONS_VALIDATION.md](PERMISSIONS_VALIDATION.md#050-human-pass-with-one-account--2026-10-30-jst)).
+  achievements-disabled notice, and `level.dat` stayed clean
+  ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/PERMISSIONS_VALIDATION.md#050-human-pass-with-one-account--2026-10-30-jst)).
 
 0.6.0 (2026-11-02 JST) keeps this pair unchanged: no `endstone.lock`, `patches/endstone/` or runtime dependency
 changed, so no new compatibility gate applies and the 2026-10-30 gate and achievement observation stand. Its release
-records the client pass for the new command surface; see
-[MINING_VALIDATION.md](MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst).
+pass covered the new command surface on a client; see [bot operations](#bot-operations).
 
 0.7.0 (2026-11-12 JST) keeps the pair as well: `endstone.lock`, `patches/endstone/` and the runtime dependencies are
 unchanged. The Conan host profile above is new in 0.7.0; it pins what the 0.6.0 candidate had resolved, after conancenter
@@ -54,106 +53,23 @@ published newer ranges that broke the Windows build, so the built Endstone is th
 achievement observation stand; the release pass checked `level.dat` again and found no creative or experiment
 history ([events](#events-watches-and-triggers)).
 
-## Previous baseline (0.2.1 to 0.4.0)
+## Previous baselines
 
-Endstone `v0.11.13` at `3491c609ddfde392cee2b062e3063e39aae87274`, with BDS `1.26.52.3` (Linux build `51798919`,
-Windows build `51798905`) and protocol `2193`.
+A patched package never inherits an earlier package's human or Xbox observations, even on the same upstream pair.
 
-Upstream `v0.11.13` adds BDS `1.26.52` support with the same protocol `2193`, so the runtime schema is unchanged. The
-Endbot patch series needed only a context rebase (the new upstream `stun-servers` default line beside
-`[local-bot-auth]`). Upstream also marks every command as not requiring cheats: operators can run `/give` and similar
-commands with `allow-cheats=false`, the world keeps achievements enabled, and `level.dat` records no cheat or command
-history. See `SECURITY.md` and the `operators` doctor check.
+| Endbot | Endstone | BDS | Protocol | Human and Xbox observation |
+| --- | --- | --- | --- | --- |
+| 0.2.1 to 0.4.0 | `v0.11.13` (`3491c609`), package `0.11.13+endbot.1` | `1.26.52.3` | 2193 | 2026-10-09: on a vanilla server adopted with `setup --existing`, an Xbox-authenticated human joined beside a Bot, ran `/bot ping` and unlocked **Rabbit Season**. Operator `/give` and `/effect` were used in the same session, so it is not evidence of a cheat-free session |
+| 0.1.0 to 0.2.0 | `v0.11.12` (`1c71186c`), package `0.11.12+endbot.1` | `1.26.51.1` | 2193 | 2026-09-27: on the exact 0.1.0 release files, the operator unlocked **Archer** after driving Bots with `/bot` |
+| before 0.1.0 | `v0.11.11`, package `0.11.11+endbot.1` | `1.26.51.1` | 2193 | M0 (2026-09-18): `/bot ping` and an unlock in one session, with ten external Bots tested. M2 (2026-09-19): an unlock after lifecycle, input and dimension-teleport operations |
 
-### 0.11.13 / 1.26.52.3 compatibility gate — 2026-10-09
+0.2.0 to 0.4.0 also offered an opt-in RakNet transport. BDS 1.26.60 refuses players on RakNet, so `endbot setup` and
+`endbot start` have not offered it since 0.5.0.
 
-Candidate run 37835410128 (branch `feat/endstone-0.11.13`) built and upstream-tested the patched Endstone on Linux and
-Windows and passed the consumer E2E for NetherNet and RakNet on both platforms. On the Windows candidate bundle:
-
-- Fresh setup acquired BDS `1.26.52.3` through Endstone (`version.txt` `26.52`), and a Bot joined over NetherNet and
-  over RakNet.
-- Against real BDS over RakNet, a wrong owner key, a wrong issuer, a wrong audience, and a valid token with
-  `[local-bot-auth] enabled = false` (after a real BDS restart) each sent Login, were kicked, never spawned, and
-  produced no accepted-local-bot entry. Replay, expiry, and `cpk` binding remain covered by the patch's unit tests.
-- An official vanilla `1.26.52.3` server (no `version.txt`) with a world was adopted with `setup --existing`: the plan
-  backed up 2885 files with a SHA-256 manifest, re-acquired the same BDS through Endstone, kept the world and
-  settings, and doctor passed the world and version checks.
-- On that migrated server an Xbox-authenticated human joined alongside the Bot, bound as controller, and ran
-  `/bot ping` and `/bot Alice tp me`. As an operator they then ran `/give` and `/effect`, saw no
-  achievements-disabled notice, and unlocked the previously locked vanilla Xbox achievement **Rabbit Season** in that
-  session. After a clean stop, every `level.dat` history flag was still false with `GameType=0`.
-
-That unlock shows actual Xbox achievement unlocks work on this pair. Because operator cheat commands were used in the
-same session, it is also direct evidence that upstream operator commands do not disable achievements; it is not
-evidence of a cheat-free session.
-
-### Previous baseline (`v0.11.12` / BDS `1.26.51.1`)
-
-Endstone `v0.11.12` at `1c71186cba896c5e0bc432384a8a8e72dfb2a626`, with BDS `1.26.51.1` build `51061372` and protocol
-`2193`, was the baseline for Endbot 0.1.0 through 0.2.0.
-
-Upstream `v0.11.12` keeps the same BDS `1.26.51.1` / protocol `2193` pair as `v0.11.11`. It stops narrowing
-NetherNet to a single UDP port, fixes cross-dimension Actor/Player teleport, adds `network.stun-servers`, and fixes
-further map/scoreboard regressions. The upstream Brigadier-style command tree work is still an open PR and is not
-part of this baseline.
-
-The modified wheel uses the separate package version `0.11.12+endbot.1`. Preparation creates that exact local tag on
-the disposable patched commit for `setuptools_scm`; the plugin requires the same exact version. This prevents pip from
-substituting official unpatched `0.11.12` while leaving the upstream compatibility baseline unambiguous.
-`endstone.lock` `support_status: "validated-baseline"` refers to the pinned upstream Endstone/BDS pair above, not to
-human validation of the exact patched package; exact patched-package human validation is tracked below and in the
-compatibility manifest.
-
-The following live evidence was obtained against historical patched package `0.11.11+endbot.1` (same BDS pair,
-older Endstone `v0.11.11`), not the current `0.11.12+endbot.1` artifact. The local-auth behavior was live-tested with ten concurrent external bots while online mode remained
-enabled, cheats and commands remained disabled, experiments/packs were absent, and creative/experiment history stayed
-zero. M0 was subsequently completed at Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97`: a normally
-Microsoft/Xbox-authenticated client executed `/bot ping`, received `Endbot: pong`, and unlocked a previously locked
-vanilla Xbox achievement in the same survival world. Post-session world-history fields remained zero. This evidence
-does not prove a future Endstone/BDS pair.
-
-M2 runtime behavior was live-smoked on Linux against the same pinned pair, followed on 2026-09-19 by the authenticated
-Windows Bedrock command/achievement gate. The human session covered representative M2 lifecycle, input, and dimension
-teleport behavior and ended with a new locked vanilla Survival Xbox achievement unlock. Later Linux remediation smoke
-separately verified command roots, same-dimension fall physics, hotbar selection, BDS-authoritative block placement and
-inventory decrement, and item drop. See [`M2_VALIDATION.md`](M2_VALIDATION.md) for the evidence boundary. At the time of
-those `0.11.11+endbot.1` observations, native Windows hosting of the Endbot runtime was designed for but not
-claimed as validated; the Windows game client was the human operator in that gate. These M2 observations were also
-against `0.11.11+endbot.1`; see [`M2_VALIDATION.md`](M2_VALIDATION.md).
-
-Current status after PR #4: native Windows hosting has been live-smoked successfully (Windows host, patched Endstone
-`0.11.11+endbot.2`, official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Endbot plugin/runtime, Alice
-local Bot with `iss = endbot://local-bot` and `aud = endstone://local-bot` via `owner-public.pem`). Alice stayed
-online while a normal Microsoft/Xbox human client joined with a populated XUID, with no human `Accepted local bot`
-entry, no Kelp/Timeout/stutter, and normal Survival with no achievement-disabled warning. Linux nevertheless remains
-the CI/release-artifact baseline: the Windows smoke does not give Windows identical CI/release coverage. The PR #4
-smoke added no new Xbox-achievement observation; the then-current `+endbot.2` manifest observation remained false.
-
-Current patched package `0.11.12+endbot.1` is the `v0.11.12` rebase and has NOT yet received
-a new human/Xbox achievement observation. A new exact package does not inherit historical observations; see the
-compatibility manifest and the release gate below.
-
-### Local-bot auth defaults migration
-
-Old defaults:
-
-```text
-iss: ownerbot://local
-aud: endstone://local-ownerbot
-Endstone default public key filename: ownerbot-public.pem
-```
-
-New defaults:
-
-```text
-iss: endbot://local-bot
-aud: endstone://local-bot
-Endstone default public key filename: owner-public.pem
-```
-
-Runtime and Endstone issuer/audience must match exactly; update both sides together. No legacy alias was added.
-Explicit custom values remain supported if both sides use the same values. Owner-key terminology and
-`owner-private.pem` / `owner-public.pem` are intentional: the key pair remains the server-owner-controlled trust root.
+The gates, their negative controls and what each left open are in the records as they stood at 0.7.0:
+[compatibility](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/COMPATIBILITY.md#previous-baseline-021-to-040),
+[achievements](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ACHIEVEMENTS.md), [M2](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/M2_VALIDATION.md), [RakNet](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/RAKNET_VALIDATION.md) and the
+[release record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/release/FINAL_CHECKLIST.md).
 
 ## Validation status
 
@@ -180,8 +96,8 @@ passkeys on a Windows PC and an Android phone ([record](https://github.com/amato
 Not run:
 
 - a trigger made private disappearing from another viewer's open list, and the web refusing a change to another
-  player's trigger: both need a second Xbox account;
-- a rollback from 0.7.0 to 0.6.0. It needs `[events]`, `[web]` and the three new `[limits]` keys removed first,
+  player's trigger: both need a second Xbox account ([#272](https://github.com/amatouhake/endbot/issues/272));
+- a rollback from 0.7.0 to 0.6.0 ([#278](https://github.com/amatouhake/endbot/issues/278)). It needs `[events]`, `[web]` and the three new `[limits]` keys removed first,
   because 0.6.0 refuses keys it does not know.
 
 ### Events, watches and triggers
@@ -210,10 +126,53 @@ With one Xbox account in the Windows client, on `0.7.0-rc.5` and `rc.6`
 Not run:
 
 - a shared script's declaration growing under another player's trigger (`script changed`), and a player refused a
-  change to another player's trigger: both need a second Xbox account;
-- a chat muted by a behavior pack still reaching `player.chat`;
-- a profile removed while its Bot is online (`bot.offline` with `reason=removed`);
+  change to another player's trigger: both need a second Xbox account ([#272](https://github.com/amatouhake/endbot/issues/272));
+- a chat muted by a behavior pack still reaching `player.chat` ([#273](https://github.com/amatouhake/endbot/issues/273));
+- a profile removed while its Bot is online (`bot.offline` with `reason=removed`) ([#273](https://github.com/amatouhake/endbot/issues/273));
 - actual Xbox achievement unlocks, which were not part of this pass.
+
+### Bot operations
+
+On the current pair:
+
+- The 2026-10-30 compatibility gate's Windows smoke covers movement, jump, chunk radius, reconnect, mining, pickups
+  and drops, timed item use, feeding and riding, Groups and Luau scripts (see [the gate](#current-baseline-050-to-070)).
+- 2026-11-02, Bots only ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md#look-observation-gate-2026-11-02-jst)): `look`
+  completing when BDS observes the rotation; a named block reached through grass, a block wrapped in leaves listed
+  but refused with the obstruction named, and reach up to 6 blocks; boxes, spheres and `except` narrowing `blocks`
+  and `destroy`, with the removed `radius` spelling refused.
+- 2026-11-02, one human Windows client
+  ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst)): the Japanese help pages, the Find
+  blocks form, `look` then crosshair `destroy`, and the removed spelling refused.
+
+On the earlier pair (`1.26.52.3`), not repeated since:
+[mining](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md), including a human client watching continuous mining and a live revoke and
+regrant; [pickups, drops, swap and hold](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/INVENTORY_VALIDATION.md);
+[timed item use and equipment](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ITEM_USE_SYNC_VALIDATION.md), including a human client confirming the trident
+throw; and [dimension changes, radius and controller policy](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/BOT_BEHAVIOR_VALIDATION.md), Bots only.
+
+Not run:
+
+- dimension changes watched by human clients, portal travel and knockback after a transition ([#274](https://github.com/amatouhake/endbot/issues/274));
+- item use and held-item rendering beyond the trident case, other-client rendering of `swap` and `hold`, low TPS and
+  large NBT ([#275](https://github.com/amatouhake/endbot/issues/275));
+- a felling script on a real tree, live Luau `area.*` values and the script-facing reach and look fields
+  ([#276](https://github.com/amatouhake/endbot/issues/276));
+- boats and horses, a revocation in the middle of a Group batch, the UI pack on a mobile client, and sustained
+  multi-Bot load ([#277](https://github.com/amatouhake/endbot/issues/277)).
+
+### Permissions and endbotd
+
+Checked for 0.5.0:
+
+- endbotd ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ENDBOTD_VALIDATION.md)): the Bot-only live smoke, then a human Windows client finding
+  commands, forms, script menus and messages unchanged, and a command issued while endbotd restarts refused with a
+  reason and working afterwards. One observation stayed unexplained ([#279](https://github.com/amatouhake/endbot/issues/279)).
+- The permission model ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/PERMISSIONS_VALIDATION.md)): the Bot-only live smoke, and a human pass with
+  one account covering the update from 0.4.0, roles and ownership as far as one person can see them.
+
+Not run: every check that needs a real second person ([#272](https://github.com/amatouhake/endbot/issues/272)). 0.5.0 shipped without them; their logic is
+covered by unit tests, and with the default `shared` nothing changes for players until someone makes an item private.
 
 ## Compatibility change gate
 

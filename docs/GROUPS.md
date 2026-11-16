@@ -184,7 +184,7 @@ Two limitations were observed in that initial build:
 
 - `/botgroup` shows generic `<action: string>` / `<arguments: message>` usage instead of useful management-operation
   suggestions. Command acceptance passed; completion usability did not. The locked baseline's generic-overload and
-  dynamic-name completion limits also apply (see BOT-008 in [the backlog](BACKLOG.md)).
+  dynamic-name completion limits also apply ([#283](https://github.com/amatouhake/endbot/issues/283)).
 - `/bot #miners jump` starts the Bots visibly one after another. This matched the original sequential implementation;
   it does not validate synchronized group actions. Ordered chat replies alone are not timing evidence; the user's
   observation of the Bot actions establishes the visible skew. No timing measurement was taken.

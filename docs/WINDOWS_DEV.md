@@ -11,7 +11,7 @@ loopback-only native topology. It is not a release or packaging path, it does no
 and every safety invariant in the README applies unchanged: `online-mode=true`, `allow-cheats=false`, no experiments,
 Beta APIs, GameTest, or required packs, the normal Microsoft/Xbox path for people, and local bot auth disabled unless
 the operator enables it with the runtime-generated owner public key. The transport is `nethernet`: BDS 1.26.60 refuses players on RakNet, so the earlier RakNet path and its
-[validation record](RAKNET_VALIDATION.md) are history (`scripts/preflight.py` does not check the transport).
+[validation record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/RAKNET_VALIDATION.md) are history (`scripts/preflight.py` does not check the transport).
 
 Native Windows hosting of the runtime and server was designed for but was not part of the recorded M2 validation; see
 [`COMPATIBILITY.md`](COMPATIBILITY.md).

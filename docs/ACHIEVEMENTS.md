@@ -48,103 +48,19 @@ locked. Record the Endbot revision and the generated compatibility manifest.
 Until steps 7–10 are completed and reviewed for a baseline, report `/bot ping` as automatically registered/unit-tested
 but manually unvalidated under the full achievement requirement.
 
-## Completed M0 record
+## Recorded observations
 
-On 2026-09-18 JST, Endbot revision `f509ac4e8677d9bc870b341f001b8e42f512df97` was tested with patched Endstone
-`0.11.11+endbot.1` on official BDS `1.26.51.1` build `51061372`, protocol `2193`.
+Each observation belongs to the exact patched package it was made on. A later package or Endstone/BDS pair does not
+inherit it, and each compatibility change needs the gate again.
 
-- A Windows Bedrock client joined through normal Microsoft/Xbox authentication with the explicitly allowlisted XUID.
-  Server logs contained the populated Xbox identity and no local-ownerbot acceptance entry.
-- `/bot` appeared in client slash-command completion and `/bot ping` returned exactly `Endbot: pong` without granting
-  operator or vanilla command permissions.
-- The world settings UI showed no achievement-disabled warning. In the same world/session, the previously locked
-  vanilla Xbox achievement `「毛刈り日和」` unlocked successfully.
-- A post-session save still reported survival game type, commands disabled, no creative history, no experiment history,
-  no locked behavior/resource packs, and no required texture packs. The server pack stack was empty.
-- An [unlisted YouTube recording](https://youtu.be/QfCVA7I9Y1w) provides a convenient view of `/bot ping` returning
-  `Endbot: pong` and the achievement unlocking in the same session. The retained source recording is the integrity
-  reference: 96,830,900 bytes, 76.966016 seconds, created 2026-09-18 20:11:35 JST, SHA-256
-  `9b9790db2835674f96505f1b7353f85c03cf26c1d2ade50fff8d13a569c94925`. The upload is a transcoded convenience copy,
-  not a replacement for that source digest.
-- No video, player identity, world, private key, token, credential, or machine-local path is committed as evidence.
+| Date | Patched Endstone / BDS | Observation |
+| --- | --- | --- |
+| 2026-09-18 (M0) | `0.11.11+endbot.1` / `1.26.51.1` | `/bot ping` returned `Endbot: pong` and a locked vanilla achievement unlocked in the same session, with no operator or cheat permissions |
+| 2026-09-19 (M2) | `0.11.11+endbot.1` / `1.26.51.1` | An unlock after lifecycle, input and dimension-teleport operations |
+| 2026-09-27 (0.1.0) | `0.11.12+endbot.1` / `1.26.51.1` | **Archer**, on the exact release files, after driving Bots with `/bot` |
+| 2026-10-09 | `0.11.13+endbot.1` / `1.26.52.3` | **Rabbit Season**, in a session that also used operator `/give` and `/effect` |
+| 2026-10-30 | `0.11.15+endbot.1` / `1.26.60.6` | **Body Guard**, on an instance updated from 0.4.0 |
 
-This establishes the M0 result for the exact baseline above. It does not establish compatibility for a later
-Endstone/BDS pair, prove every Xbox achievement, or replace the repeatable release gate for future compatibility bumps.
-
-## Completed M2 gate
-
-On 2026-09-19 JST, the same Survival world and pinned BDS/Endstone pair were exercised from a normal Windows Bedrock
-client after representative M2 lifecycle, input, and dimension-teleport operations. The human joined through the
-Microsoft/Xbox path, remained non-operator, and unlocked a still-locked vanilla Survival Xbox achievement; its in-game
-notification was captured on video. `online-mode=true`, `allow-cheats=false`, no experiments, and the empty pack stack
-were preserved. This completes the M2 achievement-compatibility gate for this exact pinned pair.
-
-The session also exposed ordinary correctness defects, later repaired without changing the authentication patch or
-safety settings. Post-remediation Linux smoke is recorded separately in [`M2_VALIDATION.md`](M2_VALIDATION.md); it does
-not replace or retroactively alter the recorded human achievement observation. Future revisions and compatibility-pair
-updates still require the explicit release gate rather than inheriting this result automatically.
-
-## Completed 0.1.0 release gate
-
-On 2026-09-27 JST, the exact draft `v0.1.0` artifacts were exercised by the operator. These artifacts were built once
-from `main` `b51fc3c4e3ff1220a6c8b598d3ea0d6946155b33` by release-candidate run `36189148021`, and the same bytes
-were then published without a rebuild.
-
-| Artifact | SHA-256 |
-| --- | --- |
-| `endbot-0.1.0-windows-x86_64.zip` | `8e50ff30d6b63fc8c60a2f591e310c11f2b3e31e2c808cc56955b24126e28e22` |
-| `endbot-0.1.0-linux-x86_64.tar.gz` | `e74c67cbfcf90e84e4a0536e8130fabe6c6d1975aa009ae98383a486038bbecb` |
-
-The full per-asset list is the release's `SHA256SUMS`. It is covered by a build-provenance attestation, like both
-bundles.
-
-Pinned pair: patched Endstone `0.11.12+endbot.1` on official BDS `1.26.51.1` (protocol `2193`), obtained through
-Endstone.
-
-### What the operator did on the Windows bundle
-
-1. Ran `endbot setup --fresh --controller <GamerTag> --apply` and then `endbot start`, using only the operator commands.
-   No Python or Node.js was installed manually.
-2. Joined from a normal Windows Bedrock client through Microsoft/Xbox authentication. No manual `allowlist add` was
-   needed.
-3. The GamerTag bound to the XUID on this first join. `doctor` recorded the binding as `2026-09-26T17:35:10Z` (UTC).
-4. Exercised `/bot` from the client: `spawn`, `move`, `jump`, `look`, `look at`, `tp me`, `tp x y z`, nether `tp`,
-   `reconnect`, `rename`, and `despawn`.
-5. In the same session, unlocked the still-locked vanilla Survival Xbox achievement **Archer** ("Kill a Creeper with Bow
-   and Arrows", 10 Gamerscore). The in-game notification was recorded on video. The Xbox achievement view shows it
-   completed on 09/27/26.
-6. Afterwards, briefly exercised `bot ...` from the server console.
-
-The [unlisted YouTube recording](https://youtu.be/l8YEslnEBjY) is a convenience copy of that session.
-
-### Post-session `endbot doctor`
-
-- Every check passed: `online-mode=true`, `allow-cheats=false`, the level.dat creative/experiment history, and GameType
-  0 (Survival).
-- Local-bot auth uses a P-384 owner key pair.
-- The controller is bound.
-- `allow-list=true` with the controller listed.
-- The installed Endstone and BDS versions match the lock.
-
-### Checked by Claude on the same artifacts
-
-- SHA256SUMS and the attestations verify.
-- Negative local-bot auth on the Windows bundle against a real BDS: an owner-signed Bot is accepted. A wrong owner key,
-  a wrong issuer, a wrong audience, and local-bot-auth disabled are each refused.
-- The CI clean-consumer E2E, with update and rollback, passed for both platform bundles.
-
-### Not exercised in this gate
-
-The following were not run on the 0.1.0 artifacts:
-
-- A second Xbox account.
-- A second LAN device.
-- Joining from outside the LAN.
-- A human session on Linux; the Linux bundle is covered by CI E2E only.
-
-Evidence for the allow-list behaviour comes from the rc.3 operator pre-check. It showed a non-allowlisted human being
-rejected, then joining after being added, while Bots join regardless of the list. That a non-controller cannot use
-`/bot` is covered by tests.
-
-The build-time compatibility manifest inside the artifacts keeps its observation flags `false` by design; this section
-is the observation record. No player identity, world, key, token, or machine-local path is committed.
+After each session `level.dat` still showed Survival and no creative or experiment history. The full records, with the
+recording digests and what each gate did not exercise, are kept [as they stood at 0.7.0](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ACHIEVEMENTS.md);
+the current pair's gate is in [COMPATIBILITY.md](COMPATIBILITY.md#current-baseline-050-to-070).

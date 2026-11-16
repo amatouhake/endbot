@@ -40,5 +40,4 @@ changing generators. MSVC links the host and Luau with the static CRT.
 
 Downloads and native outputs stay in ignored `.deps/` and `.build/`; keep custom
 staging directories under ignored `build/`. Never commit binaries or dependencies.
-The [original research and protocol record](../docs/LUAU_RUNNER_SPIKE.md) is historical;
-the [scripting guide](../docs/SCRIPTING.md) tracks deployment and validation limits.
+The [scripting guide](../docs/SCRIPTING.md) tracks deployment and validation limits.

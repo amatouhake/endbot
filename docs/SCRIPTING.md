@@ -792,7 +792,7 @@ memory pressure, cumulative CPU termination and parent-death cleanup. Mocked and
 `plugin/endbot/tests/test_script_confine.py`; real probes run only on their matching OS and the native
 runner CPU probe skips when a matching build is unavailable. These new Python/OS probes have not been
 run in the implementation sandbox. Tests never establish world achievement
-history, actual Xbox achievement unlocks or another Endstone/BDS pair's support. See [the spike](LUAU_RUNNER_SPIKE.md).
+history, actual Xbox achievement unlocks or another Endstone/BDS pair's support.
 
 ## Live validation
 

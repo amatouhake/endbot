@@ -42,7 +42,6 @@ is queued. A target the runtime rejects (reach/dimension recheck) keeps the loop
 Each loop is bound to a runtime session token and to its initiating controller's identity. Unlike queued commands, a
 loop survives that controller's logoff and is ended only when the controller loses permission. Conditional stop/
 continue messages cannot affect a newer loop, and a runtime lease bounds orphaned mining after plugin/control loss.
-See [mining validation](MINING_VALIDATION.md).
 
 ## Control boundary
 

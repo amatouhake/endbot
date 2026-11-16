@@ -1,8 +1,7 @@
 # Operator contract
 
 This describes the Endbot operator contract on the current main. The transport is NetherNet only (BDS 1.26.60 refuses
-players on RakNet); the 0.2.0 to 0.4.0 RakNet record is `RAKNET_VALIDATION.md`. The first-release record is in
-`release/FINAL_CHECKLIST.md`.
+players on RakNet).
 
 The goal: a plain BDS operator runs Endbot as one product. Endbot internally uses Python (patched Endstone + plugin)
 and Node.js (headless Bedrock runtime), but the operator never installs Python or Node.js, never creates a venv, and
@@ -165,7 +164,8 @@ Longer read intervals reduce SDK/NBT/JSON work but delay recognizing pickups. Lo
 packets but can delay correcting a predicted drop rejected by BDS, whose inventory then stayed unchanged. Neither
 setting disables native inventory/equipment updates. Unchanged observations are suppressed between resends and block
 palette lookups are cached; all nine slots and item NBT are still read on every scheduled scan. There is no automatic
-load adjustment or per-Bot override. See [measured scope and limits](ITEM_USE_SYNC_VALIDATION.md).
+load adjustment or per-Bot override. One idle Bot with one occupied hotbar slot cost about 0.2 ms per read at the
+defaults on the earlier pair; that sample is not a capacity benchmark and says nothing about many Bots or large NBT.
 
 Generated on every `endbot start` (overwritten, never hand-edited):
 
@@ -345,8 +345,8 @@ restriction and the Bot token are unchanged. BDS answers that request with `Conn
 every join by address (a Bot's or a person's) leaves `server-port` in TCP TIME-WAIT for up to 60 s. On Linux the
 patched BDS cannot listen on the port again until then, so `endbot start` waits for it ("waiting for TCP <port> ...")
 before starting anything, and refuses after 75 s when another program really holds the port. Windows binds through
-TIME-WAIT and skips the wait. Validation against real BDS is recorded under
-[BOT-026](BACKLOG.md#bot-026-several-nethernet-instances-on-one-machine). Set `nethernet-signalling = 'lan'` to
+TIME-WAIT and skips the wait. The 0.5.0 compatibility gate checked it against real BDS, with three instances and the
+game client on one PC ([record](COMPATIBILITY.md#current-baseline-050-to-070)). Set `nethernet-signalling = 'lan'` to
 return to discovery; it then needs UDP 7551 free, as below.
 
 ## 5a. Process lifecycle

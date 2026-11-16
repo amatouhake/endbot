@@ -46,7 +46,7 @@ def main() -> int:
     lock = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))
     # Current-artifact safety state must not inherit historical human/Xbox
     # observations. Historical M0/M2 gates were recorded against
-    # 0.11.11+endbot.1 (see docs/ACHIEVEMENTS.md, docs/M2_VALIDATION.md);
+    # 0.11.11+endbot.1 (see docs/ACHIEVEMENTS.md);
     # observations of later packages (0.11.13+endbot.1, docs/COMPATIBILITY.md)
     # are recorded against artifact checksums in the docs, not baked into the
     # build-time manifest. Historical provenance is preserved explicitly below.

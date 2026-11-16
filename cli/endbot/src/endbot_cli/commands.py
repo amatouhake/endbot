@@ -1,7 +1,7 @@
 """Instance lifecycle commands: ``start``, ``stop``, ``console``, ``controllers reset``.
 
-``endbot start`` implements docs/OPERATIONS.md section 5a: regenerate the
-derived configs (section 2), run the fail-fast doctor checks (section 7),
+``endbot start`` implements docs/OPERATIONS.md, "Start and stop": regenerate the
+derived configs ("Generated files"), run the fail-fast doctor checks ("Checking health"),
 refuse on any FAIL or on a ``<server>/version.txt`` mismatch with the lock,
 start the runtime, wait for ``endbot_runtime_ready``, re-check
 ``[local-bot-auth]`` (the owner keys are created by the runtime on the very
@@ -93,7 +93,7 @@ def run_start(
     restart_max_failures: int = 5,
     restart_failure_window: float = 300.0,
 ) -> int:
-    """Run the section 5a start sequence and supervise in the foreground.
+    """Run the start sequence (docs/OPERATIONS.md, "Start") and supervise in the foreground.
 
     The ``*_command`` and timing parameters are internal test hooks; production
     callers get the real child commands and the documented timeouts.
@@ -233,7 +233,7 @@ def _install_signal_handlers(supervisor: Supervisor) -> None:
 
 
 def _report_stopped(paths: InstancePaths, previous: dict | None) -> int:
-    """Report the supervisor's own exit record; an UNCLEAN stop is a failure (section 5a)."""
+    """Report the supervisor's own exit record; an UNCLEAN stop is a failure (docs/OPERATIONS.md, "Stop")."""
 
     record = read_last_exit(paths.state_run)
     if record is None or record == previous:
@@ -249,7 +249,7 @@ def _report_stopped(paths: InstancePaths, previous: dict | None) -> int:
 
 
 def run_stop(paths: InstancePaths, *, timeout: float = 120.0, poll_interval: float = 0.25) -> int:
-    """Request a stop and wait for the supervisor to exit (section 5a)."""
+    """Request a stop and wait for the supervisor to exit (docs/OPERATIONS.md, "Stop")."""
 
     state = inspect_supervisor(paths.state_run)
     if state.status == STALE:
@@ -277,7 +277,7 @@ def run_stop(paths: InstancePaths, *, timeout: float = 120.0, poll_interval: flo
 
 
 def run_console(paths: InstancePaths, line: str) -> int:
-    """Queue one BDS console line for the supervisor (section 5a)."""
+    """Queue one BDS console line for the supervisor (docs/OPERATIONS.md, "Start and stop")."""
 
     if "\n" in line or "\r" in line:
         return _fail("FAIL console: the request must be a single line")
@@ -296,7 +296,7 @@ def run_console(paths: InstancePaths, line: str) -> int:
 
 
 def run_controllers_reset(paths: InstancePaths, gamertag: str) -> int:
-    """Return one controller binding to pending (section 3)."""
+    """Return one controller binding to pending (docs/OPERATIONS.md, "Granting access")."""
 
     state = inspect_supervisor(paths.state_run)
     if state.status == RUNNING:

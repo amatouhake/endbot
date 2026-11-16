@@ -1,10 +1,14 @@
 # Scripting internals
 
 For developers. This backs the player-facing [Luau scripting reference](SCRIPTING.md) and uses the same headings, so
-each section here explains how the behavior described there is implemented. Material already stated elsewhere is not
+each section here explains how the behavior described there is implemented; the last section,
+[Runner process and OS confinement](#runner-process-and-os-confinement), backs the operator's
+[SCRIPTING_SETUP.md](SCRIPTING_SETUP.md). Material already stated elsewhere is not
 repeated:
 
-- Enabling, limits, OS confinement and the protocol frame bounds: [SCRIPTING_SETUP.md](SCRIPTING_SETUP.md).
+- Enabling, settings, limits, what OS confinement applies and the protocol frame bounds:
+  [SCRIPTING_SETUP.md](SCRIPTING_SETUP.md). How the runner is started and confined is
+  [below](#runner-process-and-os-confinement).
 - The declaration model (`requires {}`, inspection, roles): [PERMISSIONS.md](PERMISSIONS.md#two-layers-the-person-and-the-script).
 - Watch buffering and delivery, trigger storage, approval and restarts: [EVENTS.md](EVENTS.md) (E5 to E9).
 - Building the runner: [runner/README.md](../runner/README.md).
@@ -137,3 +141,66 @@ Storage, approval, pausing, policies and restarts: [EVENTS.md](EVENTS.md) E6 to 
 - Shutdown cleanup uses the existing bounded runtime control timeout.
 - If an input's acknowledgement is lost, the plugin conservatively keeps its pinned cleanup ownership, because
   acceptance is unknown. A later input from another caller still replaces that ownership.
+
+## Runner process and OS confinement
+
+What each platform applies, and the messages an operator sees, are in
+[SCRIPTING_SETUP.md](SCRIPTING_SETUP.md#os-resource-confinement). This is how `core/src/endbot_core/script_confine.py`,
+`script_process.py` and `runner/main.cpp` do it.
+
+### Windows
+
+- The host creates and configures the Job Object first, starts the trusted executable with `Popen`, then assigns the
+  process handle at once, before starting pipe readers or writing the load frame.
+- Native loader and startup code can run before assignment; **this startup race is not eliminated**. The runner blocks
+  on its first NDJSON frame, so no supplied script runs in that interval.
+- Job creation, configuration or assignment failure (including an incompatible enclosing job) kills and reaps the
+  runner and fails closed, never retrying unconfined.
+- The job handle is non-inheritable. Runs start with `BELOW_NORMAL_PRIORITY_CLASS`; a declaration check
+  (`foreground`) starts at normal priority, because below normal gets no CPU while every core is busy (BOT-032).
+- References: Microsoft's [job limits](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information)
+  and [assignment semantics](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject).
+
+### Linux
+
+The host passes the limits as runner command-line arguments; Python runs no callback between fork and exec. The
+native runner applies them at the start of `main`, before reading stdin:
+
+```text
+--max-address-space BYTES --max-cpu-seconds N --parent-pid PID --nice 10
+```
+
+- Pass all four flags together, or none (the standalone harness, or `os-confinement = false`).
+- Values are unsigned decimal integers. Memory `0` disables `RLIMIT_AS` and CPU `0` disables `RLIMIT_CPU`. Memory must
+  be below 18446744073709551615 and fit the native rlimit type; CPU and PID at most 2147483647; PID positive.
+- The runner accepts only `--nice 10` (`runner/main.cpp`, and `runner/confinement.test.mjs` asserts that `--nice 0` is
+  refused). The host passes `--nice 0` for a declaration check (`script_confine.py`).
+- After `prctl(PR_SET_PDEATHSIG, SIGKILL)` the runner compares `getppid()` with `--parent-pid` before reading stdin.
+  The signal also fires when the creating thread exits.
+- Unknown, missing, duplicate, partial or invalid arguments, and any confinement failure, emit one NDJSON `error` with
+  `phase = "confinement"` and a message beginning `confinement failed:`, then exit nonzero. The host reports this as a
+  confinement failure and never retries unconfined.
+- Windows validates these flags if supplied but ignores their effects; the host omits them there.
+- References: [Linux resource limits](https://man7.org/linux/man-pages/man2/getrlimit.2.html) and
+  [parent-death signal semantics](https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html).
+
+### Exit attribution
+
+`Confinement.failure` maps an exit to a cap only when the evidence is explicit:
+
+- Linux `-SIGXCPU`, or a Windows nonzero exit with job user time at the cap: CPU limit.
+- Windows `STATUS_NO_MEMORY` (`0xC0000017`) or `STATUS_COMMITMENT_LIMIT` (`0xC000012D`), or `ENOMEM` from `Popen`:
+  allocation failure.
+- Everything else, including `SIGKILL`, `SIGSEGV` and native `bad_alloc` or abort, is a plain runner failure. A runner
+  the host killed (watchdog or stop) is never attributed to a cap.
+
+### Tests
+
+- Fast CI builds and tests the runner on Ubuntu. Release-candidate jobs build and test both platform runners, and the
+  bundle self-tests smoke-run a params-only script without BDS.
+- Mocked and real-OS confinement probes are in `plugin/endbot/tests/test_script_confine.py`. A real probe runs only on
+  its matching OS, and the native runner CPU probe skips when no matching build is available.
+- Live checks against BDS and clients are in [validation status](COMPATIBILITY.md#scripting).
+- Tests never establish world achievement history, actual Xbox achievement unlocks or another Endstone/BDS pair's
+  support. Keep `online-mode=true`, `allow-cheats=false`, no experiments, Beta APIs or GameTest, and the normal
+  Microsoft/Xbox authentication.

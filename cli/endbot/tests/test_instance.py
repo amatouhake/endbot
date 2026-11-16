@@ -1,4 +1,4 @@
-"""Tests for instance directory resolution and section 1 layout paths."""
+"""Tests for instance directory resolution and the layout paths (docs/OPERATIONS.md, "Directory layout")."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from endbot_cli.instance import INSTANCE_ENV_VAR, InstanceError, InstancePaths, 
 
 
 class InstancePathsTests(unittest.TestCase):
-    def test_for_root_covers_the_section_1_layout(self) -> None:
+    def test_for_root_covers_the_directory_layout(self) -> None:
         paths = InstancePaths.for_root(Path("X"))
         self.assertEqual(paths.endbot_toml, Path("X/endbot.toml"))
         self.assertEqual(paths.app_current, Path("X/app/current"))

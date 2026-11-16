@@ -23,8 +23,8 @@ Signing in to the web starts in game with `/botweb link` ([commands](COMMANDS.md
 
 | Document | What it is |
 | --- | --- |
-| [Install](INSTALL.md) | Installing from a release bundle |
-| [Operations](OPERATIONS.md) | Directory layout, `endbot.toml`, granting access, start and stop, update and rollback, `doctor` |
+| [Install](INSTALL.md) | Installing from a release bundle: a new server or adopting an existing one |
+| [Operations](OPERATIONS.md) | Start and stop, granting access, `endbot.toml` settings, update and rollback, `doctor`, directory layout and release files |
 | [Scripting setup](SCRIPTING_SETUP.md) | Turning scripting on, its limits and how runs are confined |
 | [Deploying the web](WEB_DEPLOY.md) | The Cloudflare Worker, passkeys, the optional trusted site, troubleshooting |
 | [Security](SECURITY.md) | The trust boundary and what is enforced where |
@@ -81,3 +81,15 @@ Player documents are looked up, not read through. They follow these rules:
   states or cases is a list or a table, never a run of sentences.
 - **Lead with the common case.** The usual way first; exceptions, edge cases and console-only behavior after it,
   marked as such.
+
+### Operator documents
+
+Operator documents follow the same rules, with these differences:
+
+- **Ordered by the operator's work.** Install, start and stop, grant players access, configure, update, check
+  health, then reference material (layout, files, trust details).
+- **Only what an operator does or decides.** Why a design was chosen and how a component works inside belong in a
+  developer document; the operator document keeps the consequence and links there.
+- **Settings as tables.** Each setting with its default, what it changes and when it applies.
+- **Records stay records.** COMPATIBILITY.md and ACHIEVEMENTS.md keep every check and its boundary, written as lists
+  and tables rather than long paragraphs.

@@ -1,4 +1,4 @@
-"""Tests for the isolated Endstone BDS acquisition helper (section 6).
+"""Tests for the isolated Endstone BDS acquisition helper (docs/INSTALL.md, "Adopting an existing server").
 
 No network and no real BDS: the exact bootstrap arguments are asserted against
 a fake importer, and the ``<python> -m endbot_cli.bds`` subprocess contract is

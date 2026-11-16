@@ -211,8 +211,9 @@ Because every request rechecks the grant revision, a revoke takes effect even if
 - `endbot web deploy`, `rotate-key` and the redeploy during `endbot update` read the token from a hidden prompt, or
   from `CLOUDFLARE_API_TOKEN` for non-interactive use. It is never taken from argv (visible in process lists),
   never written to disk, never logged; API errors are printed with the `Authorization` header removed.
-- The deployment guide lists the minimal token permissions: Account → Workers Scripts: Edit; for a custom domain also
-  Zone → Workers Routes: Edit and DNS: Edit on that zone. The account id is not secret and is kept in `endbot.toml`.
+- The deployment guide lists the token permissions ([Create the API token](WEB_DEPLOY.md#create-the-api-token)):
+  Editor on the chosen Worker plus account-wide Workers Metadata Read-Only; attaching a custom domain needs Editor on
+  all of the account's Workers. The account id is not secret and is kept in `endbot.toml`.
 - **`endbot update` with web enabled:** after the app switch it asks for the token and redeploys the matching bundle.
   Without a token it completes the update and says that the web stays offline until `endbot web deploy` runs; endbotd
   refuses the old Worker (P2). `--rollback` does the same with the older bundle.

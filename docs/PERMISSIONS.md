@@ -116,7 +116,7 @@ The line is what an ordinary player in game can see.
 
 Per controller: concurrent runs, armed triggers, watches, watched blocks and Bots (`[limits] max-bots-per-controller`,
 `0` meaning no limit). Server-wide: Bot slots and the reserve for players. Limits are the answer to amplification,
-not extra permissions. The settings are in [OPERATIONS.md](OPERATIONS.md#2-configuration).
+not extra permissions. The settings are in [OPERATIONS.md](OPERATIONS.md#settings).
 
 ## Revocation and role changes
 

@@ -1,4 +1,4 @@
-"""``endbot update`` — install a new application version or roll back (section 6a).
+"""``endbot update`` — install a new application version or roll back (docs/OPERATIONS.md, "Updating and rolling back").
 
 A platform bundle archive (``.zip`` on Windows, ``.tar.gz`` on Linux) produced
 by the release pipeline holds one ``endbot-<version>/`` directory with
@@ -9,7 +9,7 @@ those, never touching ``state/``, ``endbot.toml``, the server directory, or the
 current application, runs the NEW version's doctor against the instance with
 the new interpreter, and switches ``app/current`` (a text file) atomically only
 when that doctor is clean. A ``bds-version`` FAIL is handled specially: the
-section 6 backup runs first, then the new version's Endstone acquisition step
+backup (docs/OPERATIONS.md, "Backups") runs first, then the new version's Endstone acquisition step
 moves the server to the new lock. Any other doctor FAIL keeps the old version
 current. ``--rollback`` switches ``app/current`` back to the most recent
 previous version directory still present in ``app/``.
@@ -325,7 +325,7 @@ def verify_against_sums(archive: Path, sums_path: Path) -> str:
 def run_doctor_subprocess(
     python: Path, instance_root: Path, *, runner: Callable[..., object] = subprocess.run
 ) -> tuple[int, list[str]]:
-    """Run the NEW version's doctor with the new interpreter (section 6a)."""
+    """Run the NEW version's doctor with the new interpreter."""
 
     command = [str(python), "-m", "endbot_cli", "--instance", str(instance_root), "doctor"]
     try:
@@ -349,7 +349,7 @@ def parse_doctor_lines(lines: Sequence[str]) -> list[tuple[str, str, str]]:
 
 
 def blocking_failures(results: Sequence[tuple[str, str, str]], paths: InstancePaths) -> list[tuple[str, str, str]]:
-    """FAILs that block the switch; first-start-tolerable FAILs are allowed (section 6a)."""
+    """FAILs that block the switch; first-start-tolerable FAILs are allowed."""
 
     return [result for result in results if result[0] == "FAIL" and not first_start_tolerable(result[1], paths)]
 
@@ -451,7 +451,7 @@ def run_update(
     web_token: Callable[[], str | None] = read_web_token,
     web_deploy: Callable[[Path, Path, str], int] = run_web_deploy_subprocess,
 ) -> int:
-    """Run the section 6a update sequence (see the module docstring)."""
+    """Run the update sequence (see the module docstring)."""
 
     refusal = _check_refusals(paths)
     if refusal is not None:
@@ -606,7 +606,7 @@ def _bds_change(
     backup_worlds: bool,
     acquire: Callable[[Path, Path], None],
 ) -> None:
-    """Section 6 backup, then the new version's Endstone acquisition step (section 6a)."""
+    """Backup, then the new version's Endstone acquisition step (docs/OPERATIONS.md, "Update")."""
 
     config = load_config(paths.endbot_toml)
     server = config.server.resolve(paths.root)

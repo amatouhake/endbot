@@ -28,7 +28,7 @@ const control = new ControlServer({
   token,
   lifecycle,
   requestTimeoutMs: config.controlRequestTimeoutMs,
-  // `shutdown` control method (docs/OPERATIONS.md section 5a): respond first,
+  // `shutdown` control method (docs/OPERATIONS.md, "Stop"): respond first,
   // then reuse the signal-driven stop path and exit 0.
   onShutdown: () => { void stop().then(() => process.exit(0)) }
 })

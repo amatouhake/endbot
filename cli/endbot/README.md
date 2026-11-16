@@ -169,7 +169,7 @@ While it runs:
 `0` clean, `1` refused/failed/UNCLEAN stop. Per-start logs are kept for the
 last 10 starts in `state/run/logs/`; exit codes land in
 `state/run/last-exit.json`. The supervision and restart policy is documented in
-docs/OPERATIONS.md section 5a.
+docs/OPERATIONS.md, "Start and stop".
 
 ## Development
 

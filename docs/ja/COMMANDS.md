@@ -1,9 +1,9 @@
-<!-- source: docs/COMMANDS.md 7b9a007adca80114d2e1e0fff56fecb08965c6ad -->
+<!-- source: docs/COMMANDS.md 03b2188f94b2a97171c53a69949594b15cef107a -->
 
 <a id="endbot-commands"></a>
 # Endbot のコマンド
 
-コントローラー権限を持つプレイヤーがゲーム内で入力したり押したりできるもの、つまり `/bot`、`/botgroup`、`/botscript`、`/botweb` の説明です。権限はサーバーのオペレーターが与えます ([コントローラーの登録](../OPERATIONS.md#3-controller-enrollment))。ロールと、それぞれができることは [PERMISSIONS.md](../PERMISSIONS.md) にあります。
+コントローラー権限を持つプレイヤーがゲーム内で入力したり押したりできるもの、つまり `/bot`、`/botgroup`、`/botscript`、`/botweb` の説明です。権限はサーバーのオペレーターが与えます ([コントローラーの登録](../OPERATIONS.md#granting-access))。ロールと、それぞれができることは [PERMISSIONS.md](../PERMISSIONS.md) にあります。
 
 これらのコマンドの実装は [BOT_CONTROL.md](../BOT_CONTROL.md) にあります。実際のサーバーで確かめた範囲は[検証状況](../COMPATIBILITY.md#bot-operations)にあります。
 
@@ -167,7 +167,7 @@ Bot についての返事は、エラーや書き方の誤りも含めて、す�
 | `"en"` | すべてのプレイヤーで英語 |
 | `"ja"` | すべてのプレイヤーで日本語 |
 
-この設定はオペレーターが決めます ([OPERATIONS.md](../OPERATIONS.md) の 2 節)。
+この設定はオペレーターが決めます ([設定](../OPERATIONS.md#settings))。
 
 変わるのは言葉づかいだけです。コマンドの単語と書き方は、どの言語でも英語のままです:
 
@@ -319,7 +319,7 @@ Bot の作成、接続、切断、名前の変更、削除をします。
 <a id="limits"></a>
 #### 上限
 
-`spawn`、`resume`、`reconnect` は、オペレーターの `[limits]` に従います ([設定](../OPERATIONS.md#2-configuration))。
+`spawn`、`resume`、`reconnect` は、オペレーターの `[limits]` に従います ([設定](../OPERATIONS.md#bot-limits))。
 
 - 人間のプレイヤー用に確保された枠を Bot が使うことになるとき、または `max-bots` を超えるときは、今の数を示して拒否されます。
 - グループやスクリプトでは、該当するメンバーだけが失敗します。
@@ -392,9 +392,9 @@ Bot の周りの何チャンクをサーバーが送るかを設定します。
 - Bot ごとの値は、再接続、名前の変更、runtime の再起動の後も残ります。
 - 変更の直後は、返事が `サーバの確認待ち` になります。もう一度問い合わせる (または `status` を使う) と、確定した範囲が表示されます。
 
-止まっている Bot には小さい範囲を、探索する Bot には大きい範囲を使ってください。BDS はどちらの要求も調整することがあります。今の基準の組み合わせでは、3 の要求が 5 になりました。
+止まっている Bot には小さい範囲を、探索する Bot には大きい範囲を使ってください。BDS はどちらの要求も調整することがあります。以前の Endstone と BDS の組み合わせでは、3 の要求が 5 になりました ([検証状況](../COMPATIBILITY.md#bot-operations))。
 
-この範囲は、サーバーのシミュレーション距離を変えません。また、Bot を動かしたり、地形の生成を保証したりもしません。[オペレーター向けの設定](../OPERATIONS.md)を見てください。
+この範囲は、サーバーのシミュレーション距離を変えません。また、Bot を動かしたり、地形の生成を保証したりもしません。[オペレーター向けの設定](../OPERATIONS.md#chunk-radius)を見てください。
 
 <a id="movement-and-actions"></a>
 ## 移動とアクション

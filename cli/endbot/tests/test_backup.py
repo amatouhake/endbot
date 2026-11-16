@@ -1,4 +1,4 @@
-"""Tests for section 6 backups and the SHA-256 manifest."""
+"""Tests for setup and update backups (docs/OPERATIONS.md, "Backups") and the SHA-256 manifest."""
 
 from __future__ import annotations
 

@@ -1,66 +1,77 @@
 # Scripting setup for operators
 
-How to turn Luau scripting on, what limits it runs under, and how each run is confined. Players and scripters read
-[SCRIPTING.md](SCRIPTING.md) instead.
+How to turn Luau scripting on, the settings and limits it runs under, and how each run is confined. Players and
+scripters read [SCRIPTING.md](SCRIPTING.md) instead; how the runner works inside is in
+[SCRIPTING_INTERNALS.md](SCRIPTING_INTERNALS.md#runner-process-and-os-confinement).
 
-Each run is one native child process started by endbotd. The Node Bedrock runtime and the Endstone core are not
-involved. Scripting is **off by default**, and no process starts merely because it is enabled.
+Scripting is **off by default**. Each run is one native child process started by endbotd; the Node Bedrock runtime
+and the Endstone core are not involved. No process starts merely because scripting is enabled.
+
+**Contents**
+
+- [Install and enable](#install-and-enable)
+- [Settings](#settings)
+  - [Settings in `endbot.toml`](#settings-in-endbottoml)
+  - [Fixed limits](#fixed-limits)
+- [How the limits behave](#how-the-limits-behave)
+- [OS resource confinement](#os-resource-confinement)
+  - [What each platform applies](#what-each-platform-applies)
+  - [When confinement fails or a cap is hit](#when-confinement-fails-or-a-cap-is-hit)
+- [What the sandbox is and is not](#what-the-sandbox-is-and-is-not)
+- [Building the runner from source](#building-the-runner-from-source)
 
 ## Install and enable
 
-Windows and Linux operator bundles include `app/<version>/runner/endbot-luau-runner[.exe]` and its
-**trusted `api.luau` sidecar**. No developer tools or downloads are needed to enable scripting.
-In the instance's `endbot.toml`, add or change:
+The Windows and Linux operator bundles include `app/<version>/runner/endbot-luau-runner[.exe]` and its trusted
+`api.luau` sidecar. No developer tools or downloads are needed.
 
-```toml
-[scripting]
-enabled = true
-```
+1. In the instance's `endbot.toml`, add or change:
 
-Restart with `endbot start`. The CLI writes the boolean and the running app version's absolute runner
-path to the generated plugin config on each start, so update/rollback selects that version's runner.
-Fresh setup writes `enabled = false`; omission also means false. Controller authorization still applies.
-Managed instances edit `endbot.toml`; their plugin config is overwritten on start. An optional
-`[scripting] runner = 'path'` overrides the bundled path. Relative runner paths resolve from the plugin
-data folder. With no bundled runner and no override, the plugin's existing default lookup is retained.
+   ```toml
+   [scripting]
+   enabled = true
+   ```
 
-For a manual plugin install, build from a standalone clone with `node runner/build.mjs --out build/runner-stage`
-(Node 24+, CMake, Ninja, `tar`, C++17 toolchain; MSVC developer shell on Windows, GCC on Ubuntu 22.04).
-Install `build/runner-stage/endbot-luau-runner[.exe]` and `api.luau` together, then set `[scripting] runner`
-and `enabled = true` directly in the plugin's `config.toml` and restart. Empty `runner` looks for
-`endstone_endbot/runner/endbot-luau-runner[.exe]` beside the plugin package. Missing executable/sidecar reports
-`scripting runner not built/installed`. See [runner build options](../runner/README.md), including local MinGW.
+2. Restart with `endbot start`.
 
-Official Luau **0.743** remains pinned by commit/SHA-256 in `runner/luau.lock.json`, without source changes.
-The build verifies/restores pinned dependencies and copies the bootstrap beside the binary in
-`runner/.build/native/bin/`. `--out` (or `ENDBOT_RUNNER_OUT`) also stages the binary, bootstrap and MIT texts.
-Only the two pinned source URLs are fetched; checksum mismatches fail the build. Bundles carry
-`licenses/LUAU_LICENSE.txt` (from the verified archive) and `licenses/NLOHMANN_JSON_LICENSE.txt`, listed in
-`THIRD_PARTY_NOTICES.md`. Preserve these when distributing builds. Source inputs are pinned; compilers and byte-identical output are not.
-Dependencies and build artifacts remain ignored.
+Controller grants and roles still decide who may save and run scripts ([PERMISSIONS.md](PERMISSIONS.md)).
 
-Startup limits (integers from 1 to 2147483647, except the zero/boolean settings below):
+What `endbot start` does with this section:
 
-| Setting | Default | Meaning |
-| --- | ---: | --- |
-| `controller-runs` | 2 | Concurrent runs per controller |
-| `server-runs` | 8 | Concurrent runs server-wide |
-| `wall-seconds` | 0 | No total run deadline; positive values limit declarations, waits and IPC in wall seconds |
-| `slice-ms` | 100 | Cooperative VM deadline between yields |
-| `interrupt-budget` | 1000000 | Safepoint callbacks per VM slice between yields, not exact instructions |
-| `operations-per-second` | 20 | Sliding one-second host operation limit; an operation over it waits for a free slot |
-| `max-script-bytes` | 32768 | UTF-8 source limit on save/run, maximum 65536 (protocol bound) |
-| `max-scripts` | 64 | Stored-script creation limit |
-| `memory-bytes` | 33554432 | VM allocator bound, minimum 1 MiB; excludes compiler/process allocations |
-| `os-confinement` | true | Boolean; fail the run if OS confinement cannot be applied; explicit false opts out of OS confinement |
-| `process-memory-bytes` | 268435456 | 256 MiB process cap; 0 disables this cap; nonzero requires at least `memory-bytes + 67108864` (64 MiB native headroom) |
-| `cpu-seconds` | 60 | Cumulative CPU seconds per run, independently of wall time and VM slices; waits use none, so long-waiting macros are unaffected. It is what ends a run stuck inside one C library call (`string.rep`, `string.gsub`), which the per-slice budget cannot interrupt. 0 disables the cap |
+- It writes `[scripting]` into the generated `state/generated/endbotd.toml` on every start. Edit `endbot.toml`, never
+  the generated file: it is overwritten.
+- It writes the absolute path of the **running app version's** runner, so `endbot update` and `--rollback` select
+  that version's runner.
+- `endbot setup` writes `enabled = false`. A missing key or section also means off.
 
-Managed instances also accept `os-confinement`, `process-memory-bytes`, `cpu-seconds`, `book-export`, `chat-logs`,
-`ui-pack-editor` and `replies` in
-`endbot.toml` under `[scripting]`; the CLI forwards overrides into the generated plugin config.
-Other limits in this table are plugin `config.toml` settings. Managed instances retain the default
-32 MiB VM bound, so a nonzero process cap must be at least 96 MiB there. For example:
+To use another runner, set `[scripting] runner = 'path'` (see [Settings](#settings-in-endbottoml)). The runner
+executable and `api.luau` must sit together; if either is missing, a run or save fails with
+`scripting runner not built/installed`.
+
+## Settings
+
+All scripting settings are read at start. Restart Endbot after changing any of them.
+
+### Settings in `endbot.toml`
+
+The `[scripting]` keys an instance accepts. Any other key in this section is refused with `is not recognized`.
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `enabled` | `false` | Turns scripting on |
+| `runner` | empty | Runner executable to use instead of the bundled one. A relative path resolves from `state/generated/` (the directory of `endbotd.toml`), so give an absolute path. Empty with no bundled runner looks for `endbot_core/runner/endbot-luau-runner[.exe]` beside the installed `endbot_core` package |
+| `os-confinement` | `true` | Applies the [OS resource confinement](#os-resource-confinement) and fails the run if it cannot be applied. `false` opts out of every OS mechanism |
+| `process-memory-bytes` | `268435456` (256 MiB) | Memory cap for the runner process. `0` disables it. A nonzero value must be at least `100663296` (96 MiB: the 32 MiB VM bound plus 64 MiB native headroom) |
+| `cpu-seconds` | `60` | Cumulative CPU seconds per run, separate from wall time and VM slices. `0` disables it. See below |
+| `book-export` | `true` | Lets controllers write a script into the book and quill they hold (`/botscript export`). `false` means the plugin never changes a held item. Import from a book is always available |
+| `chat-logs` | `true` | `false` keeps a script's `log` output in the server log only, not in the invoker's chat |
+| `ui-pack-editor` | `false` | Offers the whole-script field that needs the optional [UI pack](UI_PACK.md#for-operators). Turn it on only if players install the pack |
+| `replies` | `"failures"` | What a script's operation replies echo to the invoker's chat: `all`, `failures` (refused operations only) or `none` ([details](SCRIPTING.md#operation-replies-in-chat)) |
+
+`cpu-seconds` counts CPU time only, so waits use none and long-waiting macros are unaffected. It is what ends a run
+stuck inside one C library call (`string.rep`, `string.gsub`), which the per-slice budget cannot interrupt.
+
+Example:
 
 ```toml
 [scripting]
@@ -70,97 +81,144 @@ process-memory-bytes = 268435456
 cpu-seconds = 30
 ```
 
+### Fixed limits
+
+These limits cannot be set in `endbot.toml`: it refuses them, and `endbot start` regenerates `endbotd.toml` without
+them, so a managed instance runs with these defaults. Only a developer who runs endbotd with their own config file
+(`python -m endbotd --config ...`) can change them, under that file's `[scripting]`.
+
+| Limit | Default | Meaning |
+| --- | ---: | --- |
+| `controller-runs` | 2 | Concurrent runs per controller |
+| `server-runs` | 8 | Concurrent runs server-wide |
+| `wall-seconds` | 0 | `0` sets no total run deadline. A positive value limits each run, including declarations, waits and IPC, in wall seconds |
+| `slice-ms` | 100 | Cooperative VM deadline between yields |
+| `interrupt-budget` | 1000000 | Safepoint callbacks per VM slice between yields, not exact instructions |
+| `operations-per-second` | 20 | Sliding one-second limit on host operations; an operation over it waits for a free slot |
+| `max-script-bytes` | 32768 | UTF-8 source limit on save and run; at most 65536 (the protocol bound) |
+| `max-scripts` | 64 | Stored-script creation limit |
+| `memory-bytes` | 33554432 (32 MiB) | VM allocator bound, at least 1 MiB. Excludes compiler and process allocations, which `process-memory-bytes` covers |
+
+Where a developer config sets them: values are integers from 1 to 2147483647 (`wall-seconds` from 0), and a nonzero
+`process-memory-bytes` must be at least `memory-bytes + 67108864`. An invalid `[scripting]` section in `endbotd.toml`
+is logged and turns scripting off; `/bot` keeps working.
+
+## How the limits behave
+
+**Run lifetime.**
+
+- With `wall-seconds = 0`, a run ends on completion, `/botscript stop`, authority revocation, or plugin or server
+  shutdown.
+- The per-slice interrupt and time budget, VM memory, the operation rate and the concurrency limits always apply.
+
+**Operation rate.**
+
+- An operation over `operations-per-second` waits on the host until the one-second window has room, then runs.
+- The wait counts against `wall-seconds` and ends on `/botscript stop`, like `wait`. The run log notes the first such
+  wait.
+- All IPC events, including logs and zero waits, are bounded separately by `4 * operations-per-second` in a sliding
+  one-second window. Exceeding that bound fails the run with `Script operation rate limit reached`.
+
+**Logs.**
+
+- Each run logs at most 2000 lines or 512 KiB. Past that, one notice is logged and further `log` output is dropped.
+- Script text reaching the log or chat (logs and error messages) has color codes and control characters (CR, LF,
+  ESC) replaced, so it cannot forge log lines or drive a terminal.
+
+**Saves and declaration checks.**
+
+- A form or save declaration check has a deadline of at most 5 seconds and needs free concurrency capacity.
+- The protocol bounds each frame to 256 KiB and bounds nesting, string and object sizes. Highly escaped source may
+  hit the frame bound before `max-script-bytes`.
+
+**Changing limits.**
+
+- Changes apply on restart.
+- Disabling scripting or lowering storage limits keeps stored source. A stored script over the new size limit cannot
+  run until it is edited or the limit is raised.
+
 ## OS resource confinement
 
-Each run, including declaration inspection, gets its own confinement object. OS setup failure rejects
-the run before supplied script execution, kills/reaps any started runner, releases handles and logs the error.
-Players receive a localized error. `os-confinement = false` is an explicit opt-out of all mechanisms
-in this table; it leaves VM, IPC, wall-time, authority and concurrency limits in force. Zero disables
-only the configured memory or CPU cap; it does not raise inherited OS limits.
+Each run, including a declaration check, gets its own confinement object. It bounds resources and lifetime; it is not
+a filesystem or network sandbox (see [What the sandbox is and is not](#what-the-sandbox-is-and-is-not)).
 
-| Resource | Windows | Linux |
+- Confinement is supported on Windows and Linux. With `os-confinement = true` on another OS, every run fails.
+- `os-confinement = false` turns off every mechanism in the table below. VM, IPC, wall-time, authority and
+  concurrency limits stay in force.
+- A setting of `0` disables only that memory or CPU cap. It never raises a limit the process inherited from the OS.
+
+### What each platform applies
+
+| Resource | Windows (Job Object) | Linux (applied by the runner before it reads input) |
 | --- | --- | --- |
-| Process memory | Job Object `JOB_OBJECT_LIMIT_PROCESS_MEMORY` bounds committed bytes | Native runner sets `RLIMIT_AS` at startup to bound virtual address space; allocation may fail with `ENOMEM` |
-| Child processes | Job `JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1`, no breakaway flags; descendants cannot start after assignment | No per-run OS child-process prohibition. `RLIMIT_NPROC` is per UID and is deliberately unused. The trusted runner never spawns; Luau exposes no spawning API |
-| Parent lifetime | Non-inheritable job handle and `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`; closing the job or BDS process exit kills the runner | Native startup calls `prctl(PR_SET_PDEATHSIG, SIGKILL)`, then checks `getppid()` against the supplied parent PID before reading stdin. Also kills on creator-thread exit |
-| Cumulative CPU | Optional `JOB_OBJECT_LIMIT_PROCESS_TIME`, user CPU seconds, periodically checked by Windows | Optional `RLIMIT_CPU`, user + system CPU seconds; `SIGXCPU` at the soft cap, `SIGKILL` one second later if ignored |
-| Priority | `BELOW_NORMAL_PRIORITY_CLASS` at process creation | Native startup calls `nice(+10)` before reading stdin; already lower priorities stay lower |
+| Process memory | `JOB_OBJECT_LIMIT_PROCESS_MEMORY` bounds committed bytes | `RLIMIT_AS` bounds virtual address space; an allocation may fail with `ENOMEM` |
+| Child processes | `JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1`, no breakaway: the runner cannot start descendants | No per-run prohibition (`RLIMIT_NPROC` is per user and deliberately unused). The trusted runner never spawns, and Luau has no spawning API |
+| Parent lifetime | `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: closing the job or BDS exiting kills the runner | `PR_SET_PDEATHSIG` with `SIGKILL`, and a check that the parent is still the expected process |
+| Cumulative CPU | Optional `JOB_OBJECT_LIMIT_PROCESS_TIME`, user CPU seconds, checked periodically by Windows | Optional `RLIMIT_CPU`, user and system CPU seconds: `SIGXCPU` at the cap, `SIGKILL` one second later |
+| Priority | Below normal for runs; a declaration check runs at normal priority, because a person is waiting | `nice(+10)` for runs; an already lower priority stays lower |
 
-Windows configures the job first, starts the trusted executable with `Popen`, then immediately assigns
-the process handle before starting pipe readers or writing its load frame. Native loader/startup code
-can run before assignment; **this startup race is not eliminated**. The runner blocks on its first
-NDJSON frame, so no supplied script runs in that interval. If job creation/configuration/assignment
-fails (including incompatible enclosing jobs), the run fails closed without retrying unconfined.
-See Microsoft's [job limits](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information)
-and [assignment semantics](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject).
+Notes:
 
-Linux passes OS limits as runner command-line arguments; Python performs no child callback between
-fork and exec. The native runner applies confinement at the start of `main`, before reading any stdin,
-and preserves stricter inherited soft/hard limits. Native loader/startup code executes before these
-controls, but supplied script input is not read until they succeed. The flags are:
+- On Linux, stricter inherited soft or hard limits are kept.
+- On Windows, the runner's native startup code can run in the short interval before it is assigned to its job. It
+  waits for its first input frame, so no script runs in that interval.
+- The parent-death signal assumes the normal, unprivileged runner executable. Set-ID bits, file capabilities or
+  credential changes can clear it.
 
-```text
---max-address-space BYTES --max-cpu-seconds N --parent-pid PID --nice 10
-```
+### When confinement fails or a cap is hit
 
-Pass all four flags together, or omit all four for the standalone harness or `os-confinement = false`.
-Values must be unsigned decimal integers: memory 0 disables `RLIMIT_AS`, CPU 0 disables `RLIMIT_CPU`,
-PID must be positive, and the nice increment must be 10. Memory must be below 18446744073709551615
-and fit the native rlimit type; CPU and PID must be at most 2147483647.
-Unknown, missing, duplicate, partial or invalid arguments fail before reading stdin. Any argument or
-confinement failure emits one NDJSON `error` with `phase = "confinement"` and a message beginning
-`confinement failed:`, then exits nonzero. The plugin treats this as a localized startup failure and
-never retries unconfined. Windows validates these flags if supplied but ignores their effects; the
-plugin omits them and applies the Job Object instead. Real embedded Python/BDS validation remains pending.
+If confinement cannot be set up, the run is rejected before any script code runs. Any started runner is killed, the
+error is logged, and the run is never retried unconfined. This includes a Windows job that cannot be created or
+assigned, for example inside an incompatible enclosing job.
 
-The parent-death signal assumes the normal, unprivileged runner executable: set-ID/file capabilities
-or credential changes can clear it. See [Linux resource limits](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
-and [parent-death signal semantics](https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html).
+| Message the player sees | Cause |
+| --- | --- |
+| `Script runner OS confinement failed; see the server log` | Confinement could not be applied; the server log has the reason |
+| `Script runner exceeded the CPU time limit` | `cpu-seconds` was reached (Linux `SIGXCPU`, or Windows job CPU accounting at the cap) |
+| `Script runner process memory allocation failed` | Startup `ENOMEM`, or a Windows no-memory or commitment-limit status. It cannot tell which memory limit was hit |
+| `Script runner failed: ...` | Anything ambiguous: Linux `SIGKILL` (hard CPU cap, OOM killer, parent death, external kill), `SIGSEGV`, a native abort |
+| `Script stopped or time limit reached` | `wall-seconds` was reached, or `/botscript stop` |
+| `Script runner did not respond in time; the server may be busy, try again` | The host stopped a runner that had not read its input in time, such as a declaration check on a busy PC |
 
-Linux `SIGXCPU` and Windows nonzero exits with job user-time accounting at the cap report a CPU limit
-failure. Startup `ENOMEM` and explicit Windows no-memory/commitment-limit native statuses report allocation failure;
-they cannot prove which memory constraint was hit. Memory limits generally reject allocations rather
-than guaranteeing a special exit code. Linux `SIGKILL` (hard CPU cap, OOM killer, parent death or an
-external kill), `SIGSEGV`, native `bad_alloc`/abort and other ambiguous exits remain runner failures.
-Host stop/watchdog kills are never attributed to an OS cap. The memory floor is validation headroom,
-not a promise that every source or loader/library combination fits; validate on both target systems.
+A runner the host stops itself is never reported as an OS cap.
 
-These are resource and lifetime controls, **not a filesystem/network OS sandbox**. Luau's `io`, `os`,
-`require`, loaders, debug/environment access and script-managed coroutines are removed at VM level.
-The native executable still has its account's filesystem/network privileges. Restricted accounts,
-seccomp/namespaces/cgroups and Windows restricted tokens/AppContainer are not installed here.
-
-The protocol also bounds frames to 256 KiB and bounds nesting/string/object sizes. Highly escaped source may
-hit the frame bound earlier. Form/save declaration inspection has a deadline of at most five seconds and
-requires available concurrency capacity. Changes apply on restart. Disabling scripting or lowering storage
-limits retains stored source; oversized stored scripts cannot run until edited or the limit is raised.
-An operation over `operations-per-second` waits on the host until the window has room, then runs; the wait counts
-against `wall-seconds` and ends on `/botscript stop` like `wait`, and the run log notes the first such wait. IPC events
-(including logs and zero waits) are bounded by `4 * operations-per-second` in a sliding one-second window,
-independently of run lifetime; exceeding that bound still fails the run. Each run logs at most 2000 lines or 512 KiB; past that one
-notice is logged and further `log` output is dropped. Script text reaching the log or chat (logs and error
-messages) has color codes and control characters (CR, LF, ESC) replaced, so it cannot forge log lines or
-drive a terminal. Negative `wall-seconds` values are rejected.
-With zero, runs still end on completion, `/botscript stop`, authority revocation, or plugin/server shutdown.
-Per-slice interrupt/time, memory, operation rate and concurrency limits always apply.
+Memory caps usually refuse allocations rather than produce a special exit code. The 64 MiB headroom over
+`memory-bytes` is a validation margin, not a promise that every script and library combination fits; check your
+settings on each platform you run.
 
 ## What the sandbox is and is not
 
-Runner VM/IPC/time budgets isolate failures to a run. io/os/require, file loaders, debug/environment access and
-script-managed coroutines are removed. The executable/bootstrap are trusted installation assets. Native compiler/JSON
-allocations are outside VM memory accounting and covered by the optional process cap described above.
-OS resource confinement does not restrict native filesystem/network access; restricted accounts and further
-distribution hardening remain deployment work. The Node runtime and Endstone core are unchanged.
-Keep `online-mode=true`, `allow-cheats=false`, no experiments/Beta APIs/GameTest and normal Microsoft/Xbox authentication.
+What isolates a run:
 
-## What is checked
+- The runner's VM, IPC and time budgets keep a failure inside one run.
+- Luau's `io`, `os`, `require`, file loaders, debug and environment access, and script-managed coroutines are removed
+  at VM level.
+- The runner executable and `api.luau` are trusted installation assets.
+- Native compiler and JSON allocations are outside VM memory accounting and covered by `process-memory-bytes`.
 
-Fast CI builds and tests the runner on Ubuntu; release-candidate jobs build and test both platform runners, and the
-bundle self-tests smoke-run a params-only script without BDS. Mocked and real-OS confinement probes live in
-`plugin/endbot/tests/test_script_confine.py`; a real probe runs only on its matching OS, and the native runner CPU
-probe skips when no matching build is available. The live checks against BDS and on clients are under
-[validation status](COMPATIBILITY.md#scripting).
+What it does not do:
 
-Tests never establish world achievement history, actual Xbox achievement unlocks or another Endstone/BDS pair's
-support. Keep `online-mode=true`, `allow-cheats=false`, no experiments, Beta APIs or GameTest, and the normal
-Microsoft/Xbox authentication.
+- OS confinement does not restrict filesystem or network access. The runner has the privileges of the account that
+  runs Endbot.
+- Restricted accounts, seccomp, namespaces, cgroups, and Windows restricted tokens or AppContainer are not installed.
+  Running Endbot under a restricted account is deployment work for you.
+
+Scripting changes neither the Node runtime nor the Endstone core. Keep `online-mode=true`, `allow-cheats=false`, no
+experiments, Beta APIs or GameTest, and the normal Microsoft/Xbox authentication.
+
+What was checked on real servers and clients is in [validation status](COMPATIBILITY.md#scripting).
+
+## Building the runner from source
+
+Bundles carry a prebuilt runner. Build one only for a development install:
+
+1. From a standalone clone, run `node runner/build.mjs --out build/runner-stage`. It needs Node 24+, CMake, Ninja,
+   `tar` and a C++17 toolchain (an MSVC developer shell on Windows, GCC on Ubuntu 22.04).
+2. Install `build/runner-stage/endbot-luau-runner[.exe]` and `api.luau` together.
+3. In `endbot.toml`, set `[scripting] runner` to the executable's absolute path and `enabled = true`, then restart.
+
+Build options, local MinGW and the pinned dependencies are in [runner/README.md](../runner/README.md). Official Luau
+0.743 is pinned by commit and SHA-256 in `runner/luau.lock.json`, without source changes.
+
+If you distribute a build, keep `licenses/LUAU_LICENSE.txt` and `licenses/NLOHMANN_JSON_LICENSE.txt` with it; bundles
+list them in `THIRD_PARTY_NOTICES.md`.

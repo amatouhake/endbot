@@ -45,8 +45,8 @@ update the compatibility lock.
 
 The eventual release job must add built artifact checksums and include the licenses/notices described in
 `THIRD_PARTY_NOTICES.md`. It must not include BDS and must not publish solely because CI is green.
-See `docs/INSTALL.md` for the candidate contents and the Linux/Windows installation, start, configuration, and
-update paths supported by the current artifact model.
+See `docs/ARCHITECTURE.md`, "Manual install from release-candidate artifacts", for the candidate contents and the
+manual Linux/Windows installation; the operator path is `docs/INSTALL.md`.
 
 Every file in the candidate (bundles, wheels, tarballs, UI pack, manifest, `SHA256SUMS`) receives a GitHub build
 provenance attestation in the `assemble` job (`actions/attest-build-provenance`). Anyone can verify a downloaded file with
@@ -69,7 +69,8 @@ Do not tag or publish until every item holds. A green build never stands in for 
 3. **World history.** After the pass, `endbot doctor` reports `level.dat` with no creative or experiment history. Say
    whether an actual Xbox achievement unlock was part of the pass.
 4. **Versions and install guide.** Bump the versions `scripts/check_release_version.py` checks (runtime, plugin, plugin
-   module, CLI, CLI module) and update the artifact table and examples in `docs/INSTALL.md`.
+   module, CLI, CLI module) and update the candidate table and examples in `docs/ARCHITECTURE.md` ("Candidate
+   contents") and the release files table in `docs/OPERATIONS.md`.
 5. **Release notes.** Name breaking changes, what a rollback to the previous release needs, and the paths not
    validated yet.
 6. **Candidate.** Build `release-candidate.yml` for the version from `main` after the release commit. The `windows`,

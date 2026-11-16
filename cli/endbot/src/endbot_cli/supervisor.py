@@ -1,4 +1,4 @@
-"""Foreground supervisor for the Endbot runtime, endbotd and Endstone/BDS (docs/OPERATIONS.md section 5a).
+"""Foreground supervisor for the Endbot runtime, endbotd and Endstone/BDS (docs/OPERATIONS.md, "Start and stop").
 
 ``endbot start`` runs one supervisor in the foreground. It starts the Endbot
 runtime (Node) and waits for its ``endbot_runtime_ready`` line, then endbotd

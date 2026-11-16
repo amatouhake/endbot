@@ -1,583 +1,875 @@
-# Operator contract
+# Operating Endbot
 
-This describes the Endbot operator contract on the current main. The transport is NetherNet only (BDS 1.26.60 refuses
-players on RakNet).
+How to run an Endbot server day to day, and the reference for its files and settings. To get a server running from a
+release bundle first, see [INSTALL.md](INSTALL.md).
 
-The goal: a plain BDS operator runs Endbot as one product. Endbot internally uses Python (patched Endstone + plugin)
-and Node.js (headless Bedrock runtime), but the operator never installs Python or Node.js, never creates a venv, and
-never runs pip or npm.
+Endbot runs as one product. It uses a private Python (patched Endstone and the Endbot plugin) and a private Node.js
+(the Bot runtime), but you never install Python or Node.js, create a venv, or run pip or npm. The transport is
+NetherNet only: BDS 1.26.60 refuses players on RakNet.
 
-## 1. Directory layout
+How the processes work inside is in [ARCHITECTURE.md](ARCHITECTURE.md#operator-cli-and-supervisor-internals) and
+[ENDBOTD.md](ENDBOTD.md).
 
-One instance directory, chosen at setup (`<instance>` below). Everything Endbot owns lives under it; the BDS server
-directory may live inside it (fresh setup) or anywhere else (existing server).
+**Contents**
+
+- [Start and stop](#start-and-stop)
+  - [Start](#start)
+  - [Stop](#stop)
+  - [Send a line to the BDS console](#send-a-line-to-the-bds-console)
+  - [When a process exits](#when-a-process-exits)
+  - [With the web enabled](#with-the-web-enabled)
+  - [Logs](#logs)
+- [Granting access](#granting-access)
+  - [Controllers in endbot.toml](#controllers-in-endbottoml)
+  - [Runtime grants and revocations](#runtime-grants-and-revocations)
+  - [What a grant change does](#what-a-grant-change-does)
+  - [Policy files](#policy-files)
+  - [Web accounts](#web-accounts)
+- [The web](#the-web)
+- [Configuration](#configuration)
+  - [Example endbot.toml](#example-endbottoml)
+  - [Settings](#settings)
+  - [Bot limits](#bot-limits)
+  - [Chunk radius](#chunk-radius)
+  - [Hotbar sync](#hotbar-sync)
+  - [Block watches and chat events](#block-watches-and-chat-events)
+  - [Generated files](#generated-files)
+- [Updating and rolling back](#updating-and-rolling-back)
+  - [Update](#update)
+  - [Roll back](#roll-back)
+  - [The web after an update or rollback](#the-web-after-an-update-or-rollback)
+  - [Store layout moves](#store-layout-moves)
+  - [Version notes](#version-notes)
+- [Checking health](#checking-health)
+- [Reference](#reference)
+  - [Directory layout](#directory-layout)
+  - [What is replaced and what is kept](#what-is-replaced-and-what-is-kept)
+  - [Backups](#backups)
+  - [NetherNet signalling](#nethernet-signalling)
+  - [Server trust](#server-trust)
+  - [Local Bots and the BDS allow-list](#local-bots-and-the-bds-allow-list)
+  - [Release files](#release-files)
+
+<a id="5a-process-lifecycle"></a>
+
+## Start and stop
+
+### Start
 
 ```text
-<instance>/
-├─ endbot.toml               operator config (the only file operators edit)
-├─ app/<version>/            replaceable application, one directory per installed version
-│  ├─ python/                private CPython 3.12 with patched Endstone + endstone-endbot + the endbot CLI installed
-│  ├─ node/                  private Node.js runtime
-│  ├─ runtime/               Endbot runtime with production node_modules, prebuilt in CI
-│  └─ runner/                native endbot-luau-runner[.exe] and trusted api.luau, prebuilt in CI
-├─ app/current               text file naming the active <version> (no symlink privileges needed on Windows)
-├─ state/                    persistent Endbot state, never replaced by update
-│  ├─ secrets/               owner-private.pem, owner-public.pem, control.token, endbotd.token
-│  ├─ profiles/              Bot profiles (<uuid>.json)
-│  ├─ controllers.json       controller enrollment state (generated, see §3)
-│  ├─ controller-policy.json console-managed grants/revocations (generated, see §3)
-│  ├─ grant-revisions.json   grant revision per revoked controller identity (generated, see §3)
-│  ├─ controller-roles.json  controller role per XUID (generated, see §3)
-│  ├─ ownership.json         owner and visibility per Bot and Group (written by endbotd, see §3)
-│  ├─ groups.json            Groups (written by endbotd)
-│  ├─ scripts.json           stored scripts (written by endbotd)
-│  ├─ migrations.json        store layout marker ({"stores": 2}, see §6a)
-│  ├─ generated/             files derived from endbot.toml on every start (runtime JSON, endbotd.toml)
-│  └─ run/                   PID files and logs
-├─ scripts/                  the operator's <name>.luau script files (read by endbotd)
-├─ backups/                  setup/update backups of operator-owned BDS files; stores-<direction>-<time>/ store copies
-└─ endbot / endbot.cmd       launcher: execs app/<current>/python with the endbot CLI
+endbot start
+endbot start --exit-with-bds
 ```
 
-Ownership rules:
+`endbot start` runs in the foreground and supervises three children: the runtime, endbotd and Endstone/BDS. Run the
+other `endbot` commands from another terminal.
 
-- **App** (`app/`): created by setup/update, deletable and reinstallable. Holds no secrets and no state.
-- **State** (`state/`): created on first setup, carried across updates. Holds the only secrets. Never world data.
-- **Operator-owned BDS** (worlds, `server.properties`, `allowlist.json`, `permissions.json`, packs): Endbot only
-  reads these, except for the explicit, backed-up, previewed changes in §6. Updates never touch worlds.
-- **The instance directory is not relocatable as it stands.** Generated files hold absolute paths: the plugin's
-  `config.toml` names `state/secrets/endbotd.token` by full path. A copied or moved instance therefore fails
-  `endbot update` and `doctor` on `plugin-port` (the plugin is told to read the old path) until `endbot start`
-  regenerates that file, which it does on every start; deleting `<server>/plugins/endbot/config.toml` has the same
-  effect. Restore backups at the original path, or start once and re-run `doctor` after moving the directory.
+What it does, in order:
 
-## 2. Configuration
+1. Loads `endbot.toml` and refuses if a supervisor is already running (a stale `state/run/supervisor.pid` is removed
+   with a warning).
+2. Moves the Group and script stores into `state/` if they are still in the old layout
+   ([store layout moves](#store-layout-moves)).
+3. Regenerates every [generated file](#generated-files).
+4. Runs the doctor checks (without `--live`) and refuses on any FAIL. Two exceptions are printed as WARN instead:
+   - a missing control token or owner key on the very first start (the runtime creates them during this start);
+   - a FAIL of the `web` or `web-trusted-site` check: that part of the web stays off and the server starts anyway.
+5. Checks the network ports:
+   - with `nethernet-signalling = 'lan'`, refuses when another program holds UDP 7551;
+   - on Linux, waits up to 75 s for TCP `server-port` to leave TIME-WAIT ("waiting for TCP <port> ...") and refuses
+     if another program really holds it. Windows skips this wait.
+6. Starts the runtime, then endbotd, then Endstone/BDS, each after the previous one reports ready.
+7. Bots that were online when the server last stopped reconnect.
 
-`endbot.toml` is the single operator-edited file. Everything else Endbot needs is generated from it plus `state/`.
+The `bds-version` doctor check fails when `<server>/version.txt` is not the locked BDS version. Start then refuses
+and points at `endbot update`; it never lets Endstone update BDS on its own.
+
+### Stop
+
+```text
+endbot stop
+endbot stop --timeout <seconds>
+```
+
+`endbot stop` asks the running supervisor to stop and waits for it to exit (default 120 s). Ctrl+C in the
+`endbot start` terminal runs the same stop sequence.
+
+The stop sequence:
+
+| Step | Process | Waits up to |
+| --- | --- | --- |
+| 1 | `stop` on the BDS console | 60 s |
+| 2 | endbotd (ends its script runs, Group work and mining loops) | 20 s |
+| 3 | Runtime, through a graceful `shutdown` | 15 s |
+
+- A step that times out kills that process tree. The stop is then reported as UNCLEAN and `endbot stop` exits with 1.
+- Bots keep their desired-online state and reconnect on the next start.
+
+Which commands need a running supervisor:
+
+| Command | Needs |
+| --- | --- |
+| `endbot stop`, `endbot console` | A running supervisor |
+| `endbot controllers add`, `remove`, `list` | A running supervisor and endbotd |
+| `endbot web revoke` | A running supervisor and endbotd |
+| `endbot controllers reset`, `endbot setup`, `endbot update` | No supervisor running |
+
+### Send a line to the BDS console
+
+```text
+endbot console <line>
+```
+
+Sends one line to the BDS console of the running server, for example `endbot console allowlist add <GamerTag>`.
+Lines typed in the `endbot start` terminal reach the BDS console as well.
+
+### When a process exits
+
+| What exits | What the supervisor does |
+| --- | --- |
+| BDS, on its own | Stops endbotd and the runtime gracefully and exits with BDS's exit code. BDS is never restarted automatically. With the web enabled, see [below](#with-the-web-enabled). |
+| The runtime or endbotd, while BDS runs | Restarts it after 1 s, 2 s, 4 s ... (at most 30 s). A replacement that does not become ready counts as another failure. |
+| The same child, 5 times within 5 minutes | Stops BDS and exits non-zero. |
+
+While endbotd restarts:
+
+- every Endbot command is refused with "Endbot service is restarting";
+- the plugin keeps the control permissions it last applied and reconnects on its own;
+- script runs and mining loops end (mining stops at the runtime lease).
+
+### With the web enabled
+
+With `[web] enabled = true`, BDS exiting (a console `stop` or a crash) stops only the runtime. endbotd keeps running
+so the web stays up, and the supervisor logs BDS's exit code. Two console lines then apply, typed in the
+`endbot start` terminal or sent with `endbot console`:
+
+| Line | Effect |
+| --- | --- |
+| `start` | Starts the runtime and then BDS, with the checks a first start runs. Stays stopped if one fails. |
+| `exit` | Stops endbotd and exits with BDS's last exit code. |
+
+- Other lines are refused while BDS is stopped.
+- `endbot stop` stops everything, as always.
+- `start` keeps the configuration of the running supervisor. After editing `endbot.toml`, use `endbot stop` and
+  `endbot start`.
+- `endbot start --exit-with-bds` restores the whole-instance stop, for a service manager that restarts on exit.
+
+### Logs
+
+| File | Contents |
+| --- | --- |
+| `state/run/logs/<start>/runtime.log` | Runtime output |
+| `state/run/logs/<start>/endbotd.log` | endbotd output: audit lines, script run logs, run ends, controller bindings |
+| `state/run/logs/<start>/server.log` | Endstone/BDS output |
+| `state/run/last-exit.json` | The latest exit codes |
+
+- The last 10 starts are kept.
+- The supervisor echoes runtime and endbotd lines in its terminal with `[runtime]` and `[endbotd]` prefixes.
+- Audit lines and script logs are not in the BDS console or `server.log`.
+
+<a id="3-controller-enrollment"></a>
+
+## Granting access
+
+Controllers are the players allowed to control Bots. You name them by Xbox GamerTag, either in `endbot.toml` (the
+bootstrap list) or at runtime with `endbot controllers`. What each role may do is in [PERMISSIONS.md](PERMISSIONS.md).
+
+A controller must also pass the BDS allow-list to join at all. Controller commands never edit `allowlist.json`.
+
+### Controllers in endbot.toml
 
 ```toml
-[server]
-path = 'server'            # BDS directory, relative to <instance> or absolute (TOML literal string)
-transport = 'nethernet'    # the only value from 0.5.0; omitted in old configs means nethernet
-nethernet-signalling = 'direct' # direct (HTTP on server-port, default) or lan (UDP 7551 discovery)
-
 [controllers]
-gamertags = ["ExampleTag"] # Xbox GamerTags allowed to control Bots; bound to XUID on first join (§3)
-
-[runtime]
-control-port = 19142       # loopback only
-chunk-radius = 5           # requested Bot chunk radius, integer 2..32
-hotbar-sync-interval-ticks = 4  # server-side hotbar reads, integer 1..1200
-hotbar-sync-resend-ticks = 20   # unchanged corrections, integer 1..72000
-
-[endbotd]
-link-port = 19143          # loopback port where endbotd accepts the plugin link; must differ from control-port
-
-[limits]
-max-bots = 0               # Bots online or connecting; 0 = no separate Bot cap, N = cap
-max-bots-per-controller = 0  # Bots one controller may own; 0 = no per-controller cap, N = cap
-reserved-player-slots = 1  # server slots kept free for human players
-
-[ui]
-language = "auto"          # auto (each player's game language), en, or ja
-
-[scripting]
-enabled = false            # opt in to controller Luau scripts; restart to apply
-
-[permissions]
-bots-default = "shared"    # shared or private: visibility of a Bot someone creates
-groups-default = "shared"  # shared or private: visibility of a Group someone creates
-
-[events]
-max-watched-blocks = 2048  # positions watched for block changes, all watches and triggers together; 0 turns them off
-chat = false               # true lets scripts that declare observe.chat watch public chat (player.chat)
+gamertags = ["ExampleTag"]
 ```
 
-`[events] max-watched-blocks` bounds the server thread's cost of `block.change` watches: every watched position is
-read once every 4 ticks, a quarter of them per tick, which cost about 1 ms per tick per 2000 positions on the PC that
-measured it ([record](EVENT_MEASUREMENTS.md#block-changes)). A watch that would exceed it is refused with the limit named.
+1. Each listed GamerTag starts as **pending**.
+2. When a player joins through normal Microsoft/Xbox authentication with a non-empty XUID and a name matching a pending
+   GamerTag (case-insensitive), endbotd binds that GamerTag to the player's XUID and UUID in `state/controllers.json`
+   and logs the binding in `endbotd.log`.
+3. From then on control follows the XUID, not the name. A GamerTag change keeps control; another account that later
+   takes the old GamerTag gets nothing.
 
-`[events] chat` is off by default. When it is on, scripts that declare `observe.chat` can watch public chat. On the
-locked Endstone the chat event comes before a behavior pack's `chatSend` mute and BDS's chat filter run, so a message
-those block may still reach such a script although no player saw it ([record](EVENT_MEASUREMENTS.md#presence-and-chat));
-leave it off on a server that mutes chat with a pack.
+- Players with an empty XUID, including every local Bot, can never bind.
+- Removing a GamerTag from the list removes its bootstrap grant on the next start. Runtime grants are separate.
+- `endbot controllers reset <GamerTag>` returns one bootstrap binding to pending. It needs the instance stopped and
+  does not change runtime grants or revocations.
+- **Bind early.** Until the owner's first join, whoever currently holds a pending GamerTag can claim it. `endbot doctor`
+  shows pending entries, and setup tells you to join once.
 
-`[scripting].enabled` is a boolean and defaults to false, including when the section is absent.
-Bundles ship the runner, so enabling it requires no build or toolchain. On each start the CLI writes this setting
-and the absolute path of the running app version's runner into the generated plugin config. An optional
-`[scripting] runner = 'path'` overrides that path (relative paths resolve from the plugin data folder).
-Manual plugin installations set `[scripting]` directly in their plugin config. See [SCRIPTING.md](SCRIPTING.md).
-`[scripting] book-export` (default true) lets controllers write a script into the book and quill they hold
-(`/botscript export`) to edit it there. No item is created; a book that already has writing is replaced only with
-`export <name> overwrite`, which the menu confirms first. Set it to false if the plugin must never change a held
-item. Importing from a book is always available while scripting is enabled.
+The allow-list:
 
-`[permissions]` sets the initial visibility of Bots and Groups that controllers create: `shared` (the default,
-also when the section or a key is absent) keeps today's behavior, and `private` keeps a new item visible and
-usable only by its owner. The owner is recorded in `state/ownership.json`; an item with no entry there is
-unowned and shared, and Bots and Groups created from the console stay unowned. The setting applies to new
-items only and takes effect on the next start. Someone else's private Bot or Group is refused (a private Group
-resolves as not found), and `forget`, `rename` and `visibility` on someone else's Bot stay with its owner and the
-console even when it is shared (see [PERMISSIONS.md](PERMISSIONS.md)).
+- `endbot setup --fresh` adds every `--controller` GamerTag to `<server>/allowlist.json`.
+- On an adopted server with `allow-list=true`, add each controller yourself: `endbot console allowlist add <GamerTag>`
+  while the server runs, or edit `allowlist.json` while it is stopped.
+- The `allowlist` doctor check reports bootstrap controllers missing from it. Allow-list runtime grants separately.
 
-`[web] enabled` is a boolean and defaults to false; start with the [deployment guide](WEB_DEPLOY.md); what was
-checked on Cloudflare is in [COMPATIBILITY.md](COMPATIBILITY.md#web). The setting keeps endbotd running when BDS exits (see the supervision policy in section 5a) and, with `[web] origin` set
-(`https://host`, normally written by `endbot web deploy`), lets `/botweb link` issue codes and opens the outbound link
-when `state/secrets/web-link.key` exists. `[web] display-name` (empty by default) is shown on the sign-in page and is
-the one thing of yours Cloudflare keeps.
-
-`[limits]` keeps a controller who spawns many Bots from filling every server slot. `reserved-player-slots`
-(default 1) is subtracted from the BDS `max-players`; `max-bots = 0` adds no separate Bot cap, and a positive value
-caps online-or-connecting Bots. `max-bots-per-controller = 0` adds no per-controller cap; a positive value refuses a
-new `spawn` by a controller who already owns that many Bots, while reconnecting an existing Bot is never limited and
-the console is never limited. The count comes from `state/ownership.json`, so `forget` frees a place. `spawn`, `resume`
-and `reconnect` are refused — per member for a Group or script — when the Bot would take a reserved slot or exceed
-`max-bots`. Existing Bots are never despawned by the limit; `max-bots = 0` with `reserved-player-slots = 0` restores
-no slot limit. `endbot doctor` prints the resulting budget and warns when it cannot apply. Managed instances write
-this section into the plugin config on start; manual plugin installs edit the same keys there.
-
-`[ui].language` sets the language of player-facing replies, help and forms. `auto` (the default, also when omitted)
-gives Japanese clients Japanese and every other client English; `en` or `ja` fixes one language for everyone. Command
-words, the server console and logs stay English (see [COMMANDS.md](COMMANDS.md#reply-language)). Managed instances
-generate it into the plugin config; manual plugin installs use the same key under `[ui]` there. It applies after a
-server restart.
-
-`[runtime].chunk-radius` defaults to 5 chunks when omitted (previously the protocol library requested 10).
-It is the shared default for Bots without an override; restart the runtime after editing this file.
-`/bot <name> radius <2-32>` overrides one Bot, including while online. `/bot <name> radius default` removes that override.
-The preference is stored with the Bot's immutable profile and survives reconnect, rename, and runtime restart. It can
-also be set while the registered Bot is offline. `/bot <name> radius` reports the requested value, its source, and the
-last server-confirmed value (unconfirmed until BDS replies, or while offline).
-Endbot requests that Bot's chosen radius at spawn, reconnect, and dimension changes. BDS can clamp the request.
-This controls the Bot client's requested chunk range; it does not change BDS `view-distance` or `tick-distance` and does
-not guarantee that chunks loaded by other players or server systems will be unloaded.
-On the tested BDS baseline, a request for 3 chunks was raised to 5; the default follows that observed effective range.
-
-`hotbar-sync-interval-ticks` controls how often the plugin reads each online Bot's nine hotbar slots on the server
-thread. `hotbar-sync-resend-ticks` controls periodic unchanged-state corrections; changes are sent at the next read.
-Both settings are shared across Bots, default to 4/20 when omitted, and apply after a restart. Managed instances
-generate them into `state/generated/endbotd.toml` (`[plugin]`), and endbotd hands them to the plugin when it links.
-Resends happen only at reads, so their spacing rounds up to a multiple of the read interval (and is never shorter than
-one read interval). At 20 TPS, 4 ticks is about 0.2 seconds and 20 ticks about one second; low TPS increases wall time.
-
-Longer read intervals reduce SDK/NBT/JSON work but delay recognizing pickups. Longer resend intervals reduce unchanged
-packets but can delay correcting a predicted drop rejected by BDS, whose inventory then stayed unchanged. Neither
-setting disables native inventory/equipment updates. Unchanged observations are suppressed between resends and block
-palette lookups are cached; all nine slots and item NBT are still read on every scheduled scan. There is no automatic
-load adjustment or per-Bot override. One idle Bot with one occupied hotbar slot cost about 0.2 ms per read at the
-defaults on the earlier pair; that sample is not a capacity benchmark and says nothing about many Bots or large NBT.
-
-Generated on every `endbot start` (overwritten, never hand-edited):
-
-- `state/generated/endbot-runtime.json` — runtime config pointing at `state/secrets`, `state/profiles`, and the BDS
-  port read from `server.properties`.
-- `state/generated/endbotd.toml` — endbotd's config ([ENDBOTD.md](ENDBOTD.md)): authorization (pointing at
-  `state/controllers.json` and the policy files), limits, permissions defaults, UI language, scripting, the
-  runtime it drives (`state/secrets/control.token`), its plugin link and `[stores]`: Groups and stored scripts
-  in `state/`, script files in `<instance>/scripts/`.
-- `<server>/plugins/endbot/config.toml` — plugin config with only the `[endbotd]` link settings (loopback host,
-  `link-port`, `state/secrets/endbotd.token`). The plugin no longer receives the runtime token.
-- `state/secrets/endbotd.token` — created once, like the runtime's control token; never printed or logged.
-- The `[local-bot-auth]` table in `<server>/endstone.toml` — `enabled = true`, current issuer/audience defaults, and
-  `public-key-file` pointing at `state/secrets/owner-public.pem`. Other `endstone.toml` tables are left as the
-  operator wrote them.
-
-Identifiers are always strings. Paths are written as TOML literal strings so Windows backslashes need no escaping.
-`endbot doctor` rejects configs that violate either rule with a message naming the key.
-
-`[server].transport` must be `nethernet` and match `server.properties` `transport`. BDS 1.26.60 refuses players
-on RakNet, so the opt-in RakNet of 0.2.0 to 0.4.0 is gone: `transport = "raknet"` is a configuration error, and
-existing-server setup refuses a BDS set to RakNet without editing it. Generated JSON is never the place to select a
-transport.
-
-`[server].nethernet-signalling` chooses how NetherNet Bots reach BDS. `direct` (the default from 0.5.0, also when
-omitted) signals over HTTP on `server-port` (§5): it needs a valid `server-port` and no advertisement names, and start
-skips the UDP 7551 check, so several instances and a game client can share one machine. `lan` keeps the LAN discovery
-path of 0.4.0 and earlier. Neither changes anything in `server.properties`.
-
-## 3. Controller enrollment
-
-Operators name controllers by GamerTag. GamerTags are a bootstrap identifier, never the security key.
-
-- `endbot.toml [controllers].gamertags` lists wanted controllers. Each entry without a binding is **pending**.
-- When a player joins through normal Microsoft/Xbox authentication with a non-empty XUID and a name matching a pending
-  GamerTag (case-insensitive), the plugin binds that GamerTag to the player's XUID and UUID in
-  `state/controllers.json` and logs the binding to the server console.
-- Authorization (`endbot.command.control`) is granted only to bound XUIDs. After binding, the GamerTag no longer
-  matters: a GamerTag change keeps control; another account later taking the old GamerTag gets nothing.
-- Players with an empty XUID (including every local Bot) can never bind.
-- Removing a GamerTag from `endbot.toml` removes its bootstrap grant on the next start. Runtime grants have their own
-  persistence described below. `endbot controllers reset <tag>` resets only the bootstrap binding while stopped;
-  it does not change runtime grants or revocations.
-- Joining at all requires passing the BDS allow-list (§4). `endbot setup --fresh` adds every `--controller` GamerTag to
-  `<server>/allowlist.json`; on an adopted server with `allow-list=true` the operator must add each controller first
-  (`endbot console allowlist add <GamerTag>` after `endbot start`, or by editing `allowlist.json` while the server is
-  stopped). The `allowlist` doctor check (§7) reports any controller missing from it.
-- The old `[authorization] allowed-uuids / allowed-xuids` lists remain accepted for normally authenticated players;
-  runtime identity revocations override them. An empty/invalid XUID never grants control, including via a UUID entry.
-
-Risk accepted: between setup and the owner's first join, a pending GamerTag can be claimed by whoever currently holds
-that GamerTag. Pending entries are therefore shown by `endbot doctor`, and setup tells the operator to join once.
-
-### Web accounts
-
-`endbot web revoke <GamerTag|xuid:id>` deletes one player's web account, passkeys and sessions while `endbot start` is
-running. The controller grant stays, so the player can link again; to keep someone out, remove the grant. Removing a grant
-ends that player's web sessions at once and keeps the account and passkeys for a later regrant. The store is
-`state/web/` (owner-only), and endbotd is its only writer. See [WEB.md](WEB.md#p6-revocation-reaches-the-web-at-once).
-`endbot web revoke --site-sessions` ends every session and removes every passkey that came through the optional trusted
-site, for a suspected key exposure ([P12](WEB.md#p12-trusted-external-site-optional-off-by-default)); `endbot doctor` checks that site's configuration.
-
-### Deploying the web
-
-The [deployment guide](WEB_DEPLOY.md) is the walkthrough; this is the contract.
-
-`endbot web deploy --account-id <id>` uploads the prebuilt Worker to your own Cloudflare account through its API; no Node
-or Wrangler is needed. It creates the link key once, in `state/secrets/web-link.key`, and installs only its public half.
-It writes `[web]` into `endbot.toml` and waits for the link. The API token comes from a hidden prompt or
-`CLOUDFLARE_API_TOKEN`, is never an argument and is never stored. `--domain <host> --zone-id <id>` uses a custom domain.
-Running it again with no `--domain` keeps a custom domain as it is. Moving to another origin makes every passkey
-unusable, so it needs `--confirm-domain-change` and then deletes all passkeys and sessions. `endbot web rotate-key` replaces the link key. `endbot doctor --live` reports the link. A web
-problem is a FAIL in `endbot doctor` but only a warning for `endbot start`: the broken part stays off, and the server runs.
+Old configurations: the `[authorization] allowed-uuids` and `allowed-xuids` lists of early versions are still accepted
+for normally authenticated players. Runtime identity revocations override them, and an empty or invalid XUID never
+grants control, including through a UUID entry. The `controllers-legacy` doctor check counts them.
 
 ### Runtime grants and revocations
 
-While `endbot start` is running, use another terminal:
+While `endbot start` is running, from another terminal:
 
 ```text
 endbot controllers add "Player With Spaces"
 endbot controllers add "Player With Spaces" --role scripter
 endbot controllers remove "Player With Spaces"
+endbot controllers remove xuid:<id>
 endbot controllers list
 ```
 
-`--role scripter` or `--role controller` sets the grant's role. A new grant without the option is a **controller**, and
-an existing grant keeps its role unless the option is given. The console command takes the same option, for example
-`botcontrollers add "Player With Spaces" --role controller`.
+| Command | Effect |
+| --- | --- |
+| `add <GamerTag>` | Grants control. A new grant is a **controller**; an existing grant keeps its role. |
+| `add <GamerTag> --role scripter\|controller` | Grants control with that role, or changes the role of an existing grant |
+| `remove <GamerTag>` | Revokes control |
+| `remove xuid:<id>`, `remove uuid:<id>` | Revokes a legacy identity entry |
+| `list` | Shows each identity's effective state and reason |
 
-The CLI connects to endbotd's loopback endpoint (the `[endbotd] link-port`, authenticated with
-`state/secrets/endbotd.token`), runs the change in endbotd as the server console and prints the result in that terminal.
-Success exits with 0; a rejected change exits with 1. Changes are also recorded in `endbotd.log`. While endbotd is down
-(the supervisor restarts it) the CLI says so at once instead of waiting. A timeout or a connection lost after the
-request was sent reports an unknown outcome; inspect `controllers list` before retrying a mutation. Requests are not
-automatically retried, and endbotd refuses a request id that was already used on the connection. The same
-`botcontrollers add|remove|list` commands work directly on the BDS console. Only a real server console sender may
-administer access; controllers and operator players cannot grant or revoke access. Which Bots a controller may operate
-follows ownership and visibility (`[permissions]` above).
+The same commands work on the BDS console as `botcontrollers add|remove|list`, with the same `--role` option. Only a
+real server console may administer access; controllers and operator players cannot grant or revoke.
 
-`controllers list` shows effective states (`allowed`, `revoked`, `pending`, `denied`, or `conditional`) and their reasons,
-including runtime grants, bootstrap bindings and explicit identity revocations. Online authenticated players use the
-same decision as the command handler. Unresolved legacy identity entries are conditional: their full identity/name
-checks happen on an authenticated join. `endbot doctor` combines saved config, bindings, runtime policy and legacy
-allowlists for the next start; `endbot doctor --live` queries the running endbotd when a supervisor is present. It labels
-the source so an un-reloaded TOML edit is not confused with current server access. Corrupt saved policy fails doctor.
+Results:
 
-An online authenticated target is bound by XUID immediately. An unknown offline GamerTag is pending until its first
-normal Microsoft/Xbox-authenticated join. An offline already-bound GamerTag keeps its existing XUID when regranted.
-Removing an offline unknown name fails; use a known bound name or `remove xuid:<id>` / `remove uuid:<id>` for legacy
-identity entries. Name matching is case-insensitive; spaces may be quoted. Joining still requires the normal BDS
-allow-list, which controller commands do not edit. Doctor's allow-list check covers bootstrap configuration;
-inspect runtime entries with `controllers list` and allow-list those human accounts separately when required.
+- The CLI runs the change in endbotd as the server console and prints the result. Success exits with 0, a rejected
+  change with 1, and every change is recorded in `endbotd.log`.
+- While endbotd is down (the supervisor restarts it), the CLI says so at once instead of waiting.
+- A timeout, or a connection lost after the request was sent, means the outcome is unknown. Check `controllers list`
+  before retrying. Requests are never retried automatically.
 
-The plugin atomically saves overrides in `state/controller-policy.json` (`controller-policy-file` for manual installs).
-It is the sole writer; the CLI does not rewrite configuration or live player state. Keep this file with the private
-instance state and include it in backups. Missing policy means no overrides; corrupt policy prevents plugin loading.
-Explicit identity revocations override bootstrap bindings and legacy UUID/XUID allowlists, survive name changes and
-restart, and prevent a rejoin from restoring access. A pending GamerTag never enrolls a revoked XUID/UUID, even if that
-account renames itself to the pending name; run `add` while that account is online to clear its revocation. Runtime grants
-survive edits to the bootstrap list; use runtime `remove` to revoke them. Do not edit policy files while BDS runs.
+How targets are matched:
 
-Each revoke also bumps that identity's grant revision in `state/grant-revisions.json`, beside the policy file, written
-atomically by the plugin. Work captured under an earlier revision stays refused after a regrant, including across
-restarts. The plugin reads the file only at start-up; a missing file counts every revision as 0, which is safe because
-no earlier work is running then. A corrupt file prevents plugin loading; with Endbot stopped, deleting it is a safe
-reset. Versions before this file ignore it.
+- An online authenticated player is bound by XUID at once.
+- An unknown offline GamerTag stays pending until its first normal Microsoft/Xbox-authenticated join.
+- An offline GamerTag that is already bound keeps its XUID when granted again.
+- Removing an offline unknown name fails. Use a bound name, or `xuid:<id>` / `uuid:<id>` for legacy entries.
+- Names match case-insensitively; quote names with spaces.
 
-Changes update online players' control permission and command visibility immediately and recheck pending commands on
-the server thread. A revoke/regrant cycle also invalidates commands queued under the earlier grant and ends
-continuous `destroy` loops and script runs started under it. An operation
-already started by the command worker may finish; revocation does not undo dispatched operations or stop existing Bot
-movement/actions. Use `/bot <name> stop` from the console if those actions must stop too. No operator or vanilla
-command permission is granted.
+`controllers list` states:
 
-## 4. Local Bots and the BDS allow-list
+| State | Meaning |
+| --- | --- |
+| `allowed` | May control Bots |
+| `revoked` | Explicitly revoked |
+| `pending` | Waiting for the first authenticated join |
+| `denied` | Not allowed |
+| `conditional` | A legacy entry whose identity and name are checked on an authenticated join |
 
-Humans keep vanilla allow-list behaviour. A Bot accepted by the local-bot trust path needs no `allowlist.json` entry.
+`endbot doctor` combines the saved configuration, bindings, runtime policy and legacy lists to predict the next start.
+`endbot doctor --live` asks the running endbotd instead. Each result names its source, so an edited but not yet
+reloaded `endbot.toml` is not confused with current access.
 
-Observed on the 0.1.x baseline (patched Endstone `0.11.12+endbot.1`, BDS 1.26.51.1): with `allow-list=true` and
-an empty `allowlist.json`, a Bot accepted by the local-bot path joins, and nothing is written to `allowlist.json`. The
-authentication result the existing hook returns (a local identity with `is_local` set and no XUID) is already exempt,
-so no additional Endstone core hook is needed. Logins that are not accepted by the local-bot path take the stock BDS validator and allow-list unchanged.
+### What a grant change does
 
-Release gates for this behaviour: a non-allowlisted human is still rejected with `allow-list=true`; an allowlisted
-human joins; a Bot with a wrong issuer, wrong owner signature, or with local-bot-auth disabled is rejected; the accepted
-Bot has member (not operator) permissions.
+- Online players' control permission and command visibility change at once, and pending commands are rechecked.
+- A revoke followed by a regrant invalidates commands queued under the earlier grant and ends continuous `destroy`
+  loops and script runs started under it.
+- An operation the command worker already started may finish. A revoke does not undo dispatched operations or stop
+  Bot movement; run `/bot <name> stop` from the console if that must stop too.
+- A revoke ends that player's web sessions at once (see [web accounts](#web-accounts)).
+- No operator or vanilla command permission is ever granted.
+- Which Bots a controller may operate follows ownership and visibility (`[permissions]`, see
+  [PERMISSIONS.md](PERMISSIONS.md)).
 
-## 5. Server trust and transport selection
+Revocations are sticky:
 
-Decided: no server identity pin. BDS generates a new NetherNet DTLS identity on every start, so rc.1's persistent
-trust-on-first-use pin (`bds-nethernet.pin`) failed closed after every BDS restart, and upstream `bedrock-protocol`
-3.60.x / `nethernet` 1.1.x expose no hook to verify the identity. The runtime instead refuses any non-loopback BDS host,
-and the local-bot token (owner-signed, audience-bound, short-lived, single-use `jti`, bound to the Bot's `cpk`) keeps a
-same-host impostor from turning a captured token into a real login. The full rationale lives in `docs/SECURITY.md`
-("Runtime → BDS connection"). `endbot start` therefore needs no per-start trust state.
+- An explicit identity revocation overrides bootstrap bindings and legacy UUID/XUID lists, survives name changes and
+  restarts, and is not undone by rejoining.
+- A pending GamerTag never enrolls a revoked XUID or UUID, even if that account renames itself to the pending name.
+  Run `add` while that account is online to clear its revocation.
+- Runtime grants survive edits to the bootstrap list. Use `remove` to revoke them.
 
-NetherNet server selection with `nethernet-signalling = 'lan'`. Bots find BDS through LAN discovery on UDP 7551, and the advertisement carries no port, so
-other NetherNet hosts on the machine (a Minecraft client with a world open to LAN, another BDS) answer as well. The
-runtime connects only to the host advertising this instance's `server.properties` `server-name` and world display
-name (`worlds/<level-name>/level.dat` `LevelName`, falling back to `server.properties` `level-name` before the
-world exists; written into the generated runtime config on every start); otherwise the Bot stays disconnected with
-a `lastError` naming the advertisements it saw. The advertised display name can differ from the world directory
-name, so renaming a world to match is never required. Only one program can own UDP 7551: when another one holds
-it, BDS cannot answer discovery at all, so `endbot start` checks the port before starting anything and refuses with
-that explanation. Use the default `direct` signalling (below) when several Endbot instances, or a game client, share
-a machine.
+### Policy files
 
-Direct NetherNet signalling (`nethernet-signalling = 'direct'`, the default from 0.5.0). BDS 1.26.60 turns RakNet
-into an error, and LAN discovery lets only one program on a machine own UDP 7551 (a running game client holds it
-too), so several Endbot instances on one machine need a NetherNet path without discovery. A client that joins by address signals over HTTP instead: it POSTs its SDP
-offer, with every ICE candidate in it, to `http://<host>:<server-port>/v1/join/<client network id>` and receives the
-SDP answer in the response (a bare number is a NetherNet error code). The Bot does the same against the configured
-loopback `server-port`, so each instance is selected by its own port: no discovery, no advertisement names, and no
-UDP 7551 check before start. Upstream `bedrock-protocol` only signals over LAN or the online services, so the runtime
-replaces the NetherNet client's signal handler (`runtime/src/direct-signalling.js`); authentication, the loopback
-restriction and the Bot token are unchanged. BDS answers that request with `Connection: close` and closes first, so
-every join by address (a Bot's or a person's) leaves `server-port` in TCP TIME-WAIT for up to 60 s. On Linux the
-patched BDS cannot listen on the port again until then, so `endbot start` waits for it ("waiting for TCP <port> ...")
-before starting anything, and refuses after 75 s when another program really holds the port. Windows binds through
-TIME-WAIT and skips the wait. The 0.5.0 compatibility gate checked it against real BDS, with three instances and the
-game client on one PC ([record](COMPATIBILITY.md#current-baseline-050-to-070)). Set `nethernet-signalling = 'lan'` to
-return to discovery; it then needs UDP 7551 free, as below.
+endbotd is the only writer of these files and writes each one atomically. Keep them with the private instance state,
+include them in backups, and never edit them while the server runs.
 
-## 5a. Process lifecycle
+| File | Contents | Missing | Corrupt |
+| --- | --- | --- | --- |
+| `state/controller-policy.json` | Runtime grants and revocations | No overrides | endbotd does not start |
+| `state/grant-revisions.json` | A revision per revoked identity; work captured under an earlier revision stays refused after a regrant, also across restarts | Every revision is 0 | endbotd does not start; with Endbot stopped, deleting it is a safe reset |
+| `state/controller-roles.json` | Role per XUID; a grant with no entry (for example from before 0.5.0) is a scripter | Every controller is a scripter | endbotd does not start |
+| `state/ownership.json` | Owner and visibility per Bot and Group | Everything is unowned and shared | endbotd does not start |
 
-`endbot start`:
+The `grant-revisions` file is read only when endbotd starts. Versions that predate it ignore it.
 
-1. Load `endbot.toml`; regenerate `state/generated/*` and the plugin/Endstone config (§2).
-2. Run the doctor checks that can fail fast (§7). Refuse to start on any safety invariant violation.
-3. Check `<server>/version.txt` equals the locked BDS version. On mismatch, refuse and point at `endbot update`
-   (never let Endstone update BDS implicitly during start).
-4. Start the runtime, wait for its `endbot_runtime_ready` line.
-5. Start endbotd (`python -m endbotd --config state/generated/endbotd.toml` from the same `app/<version>/python`),
-   wait for its `endbotd_ready` line. endbotd owns authorization, Groups, scripting and Bot command execution; the
-   plugin inside BDS links to it and refuses every Endbot command ("Endbot service is restarting") while it is down.
-6. Start Endstone/BDS (Endstone's own `python -m endstone -s <server>` entry, non-interactive, through
-   `endbot_cli.endstone_entry`, which only repoints the relocated interpreter's `LIBDIR` on Linux), record PIDs, stdout/stderr logs, and exit
-   codes under `state/run/`.
-7. Desired-online Bots reconnect through the runtime's existing lifecycle.
+### Web accounts
 
-`endbot start` stays in the foreground and supervises all three children. Lines typed on its stdin and lines queued in
-`state/run/console.request` (appended by `endbot console`, one line per request, forwarded to the BDS console and
-truncated by the supervisor) reach the BDS console. `endbot stop` writes `state/run/stop.request` and waits (default
-120 s) for the supervisor recorded in `state/run/supervisor.pid` to exit; Ctrl+C triggers the same stop sequence
-locally. `endbot stop` and `endbot console` require a live supervisor, and `endbot controllers add|remove|list` a
-live supervisor and endbotd;
-`endbot controllers reset` requires it to be stopped. Stale supervisor PIDs are diagnosed/cleaned as appropriate.
+```text
+endbot web revoke <GamerTag|xuid:id>
+endbot web revoke --site-sessions
+```
 
-Stop sequence: `stop` on the BDS console (up to 60 s), then endbotd (its stdin is closed; it ends its script runs,
-Group work and mining loops, up to 20 s), then a graceful runtime `shutdown` over the control port (up to 15 s). A
-timeout escalates to killing that process tree and is reported as an UNCLEAN stop with exit code 1. Bots keep their
-desired-online state and resume on the next start. Per-start logs live in `state/run/logs/<start>/` (`runtime.log`,
-`endbotd.log`, `server.log`; the last 10 starts are kept) and the latest exit codes in `state/run/last-exit.json`.
-The supervisor echoes runtime and endbotd lines with `[runtime]` and `[endbotd]` prefixes. Audit lines, script run
-logs and run ends are written by endbotd, so they appear in `endbotd.log`, not in the BDS console or `server.log`.
+- `endbot web revoke <GamerTag|xuid:id>` deletes one player's web account, passkeys and sessions while `endbot start`
+  runs. The controller grant stays, so the player can link again; to keep someone out, remove the grant.
+- Removing a grant ends that player's web sessions at once and keeps the account and passkeys for a later regrant.
+- `--site-sessions` ends every session and removes every passkey that came through the optional trusted site, for a
+  suspected key exposure ([WEB.md P12](WEB.md#p12-trusted-external-site-optional-off-by-default)).
+- The store is `state/web/` (owner-only); endbotd is its only writer
+  ([WEB.md P6](WEB.md#p6-revocation-reaches-the-web-at-once)).
 
-Supervision policy: when BDS exits on its own, endbotd and the runtime are stopped gracefully and `endbot start`
-exits with BDS's exit code; BDS is never auto-restarted. When the runtime or endbotd exits unexpectedly while BDS
-runs, the supervisor restarts it with exponential backoff (1 s, 2 s, 4 s ... capped at 30 s); a replacement that
-does not become ready counts as another failure, and after 5 failures of one child within a 5-minute window it stops
-BDS and exits non-zero. While endbotd restarts, the plugin keeps the control permissions it last applied and
-reconnects on its own; endbotd's script runs and mining loops end with it (mining stops at the runtime lease).
+## The web
 
-With `[web] enabled = true`, BDS exiting (console `stop` or a crash) stops only the runtime: endbotd keeps running and
-the supervisor logs BDS's exit code. Two console lines then apply, typed at the supervisor or sent with
-`endbot console`: `start` starts the runtime and then BDS, with the checks a first start runs, and stays stopped if one
-fails; `exit` stops endbotd and exits with BDS's last exit code. Other lines are refused. `endbot stop` stops
-everything, as always. `endbot start --exit-with-bds` restores the whole-instance stop, for a service manager that
-restarts on exit. A `start` keeps the configuration of the running supervisor: after editing `endbot.toml`, use
-`endbot stop` and `endbot start`.
+The [deployment guide](WEB_DEPLOY.md) is the walkthrough. The commands:
 
-## 6. Setup
+```text
+endbot web deploy --account-id <id>
+endbot web deploy --account-id <id> --domain <host> --zone-id <id>
+endbot web rotate-key
+endbot doctor --live
+```
 
-`endbot setup` has two paths and is always dry-run first: it prints every planned change (files to create or modify
-with a short reason, backups to take, and whether BDS will be downloaded or overwritten) and applies nothing until the
-operator confirms (`--apply` is the confirmation; the CLI never prompts). Setup refuses to run when `endbot.toml`
-already exists or when a supervisor is running.
+- `endbot web deploy` uploads the prebuilt Worker to your own Cloudflare account through its API; no Node or Wrangler
+  is needed. It writes `[web]` into `endbot.toml` and waits for the link.
+- It creates the link key once, in `state/secrets/web-link.key`, and installs only its public half.
+  `endbot web rotate-key` replaces it.
+- The Cloudflare API token comes from a hidden prompt or `CLOUDFLARE_API_TOKEN`. It is never an argument and never
+  stored.
+- `--domain <host> --zone-id <id>` uses a custom domain. A later deploy without `--domain` keeps it.
+- Moving to another origin makes every passkey unusable, so it needs `--confirm-domain-change` and then deletes all
+  passkeys and sessions.
+- `endbot doctor --live` reports the link. A web problem is a FAIL in `endbot doctor` but only a warning for
+  `endbot start`: the broken part stays off and the server runs.
 
-**Fresh BDS.** Creates `<instance>/server`, lets Endstone download the locked BDS through its normal acquisition path
-(Endbot never bundles BDS), applies the safety defaults (`online-mode=true`, `allow-cheats=false`, no experiments)
-plus `transport=nethernet`,
-creates `state/`, and writes `endbot.toml` with the given controller GamerTags. It also adds every `--controller`
-GamerTag to `<server>/allowlist.json` right after the BDS acquisition — a fresh BDS enables `allow-list=true` with an
-empty list and would otherwise reject the controllers on join. Each entry uses the format `allowlist add <name>` writes
-on the console, `{"ignoresPlayerLimit": false, "name": "<GamerTag>"}` with no `xuid` (BDS fills it on the first join);
-every existing entry and its order is preserved, the write is atomic, and a name already listed (case-insensitively) is
-not added again. A `allowlist.json` that is not a JSON list of entry objects FAILs the plan and is never overwritten.
-The world is not created here — BDS
-creates it on the first `endbot start`, which is also what generates the owner keys and control token (setup's doctor
-report marks those two checks as expected-not-yet-present).
+<a id="2-configuration"></a>
 
-**Existing BDS.** Points `[server].path` at the existing directory. Before any change:
+## Configuration
 
-- Detect the BDS version. Endstone treats a directory without `version.txt` as older than supported and, when
-  confirmed, re-downloads the server binary and the vanilla `behavior_packs/`, `resource_packs/`, and `definitions/`
-  over the existing ones (worlds, `server.properties` values, `allowlist.json`, `permissions.json` are kept). A BDS
-  newer than the locked version is refused.
-- Back up `server.properties`, `allowlist.json`, `permissions.json`, `endstone.toml` if present,
-  `packetlimitconfig.json` if present, the server executable, and the pack directories that Endstone may overwrite
-  into `backups/<UTC timestamp>/`, with a `manifest.json` listing every backed-up file's SHA-256. Worlds are not
-  copied by default (size); setup requires the operator to confirm they have a world backup
-  (`--i-have-a-world-backup`), or to pass `--backup-worlds`.
-- Verify the safety invariants on the existing `server.properties` and world, plus the runtime transport
-  requirement. An existing server's `server.properties` is checked, never silently flipped
-  (`online-mode=false` / `allow-cheats=true` / missing or unsupported `transport` FAIL the plan). A BDS set to
-  `transport=raknet` FAILs the plan (BDS 1.26.60 refuses players on RakNet; set `transport=nethernet` first),
-  and a world that already has creative, cheat, or experiment history FAILs the plan; Endbot does not change world
-  flags. Unknown experiment keys are reported as warnings.
-- Never edit `allowlist.json`. While `allow-list=true`, the plan prints for each controller GamerTag missing from the
-  allow-list how to fix it: `endbot console allowlist add <GamerTag>` after `endbot start` (or add it to
-  `allowlist.json` while the server is stopped).
-- List the planned changes (BDS binary update if needed, `endstone.toml` `[local-bot-auth]`, `plugins/endbot/` — the
-  latter two are generated on the first start), then apply only on confirmation.
+`endbot.toml` in the instance directory is the only file you edit. Everything else Endbot needs is
+[generated](#generated-files) from it and `state/` on every `endbot start`.
 
-After `--apply`, both paths run `endbot doctor` (non-live) and print the report plus the next steps (`endbot doctor`,
-`endbot start`, and joining once with each controller GamerTag to bind it).
+Rules:
 
-## 6a. Update
+- `[server]` and `[controllers]` are required; every other section and key is optional.
+- Unknown sections and keys are refused, with the known keys listed.
+- Identifiers are strings: quote GamerTags, even all-digit ones.
+- Write paths as TOML literal strings (`'C:\endbot\server'`), so Windows backslashes need no escaping.
+- `endbot start` and `endbot doctor` refuse an invalid file with a message naming the key and the fix.
+- Changes apply on the next `endbot start` (the **Applies** column). With the web enabled, a console `start` after BDS
+  stopped keeps the running configuration; use `endbot stop` and `endbot start`.
 
-`endbot update <artifact>` installs a new `app/<version>` next to the current one, runs its doctor against the
-existing `state/` and server, switches `app/current`, and keeps the previous version for rollback. The artifact is a
-platform bundle archive (`.zip` on Windows, `.tar.gz` on Linux) holding `app/<newversion>/` and the `endbot` /
-`endbot.cmd` launcher at its root; only those are extracted — `state/`, `endbot.toml`, the server directory, and the
-current application are never touched, and the launcher is replaced from the archive when the switch succeeds. The
-archive is verified against `--sums PATH` (or `SHA256SUMS` beside the archive when present); a mismatch refuses the
-update. If the new version locks a different BDS version (its doctor reports a `bds-version` FAIL), it performs the §6
-backup and preview before letting Endstone update BDS; any other doctor FAIL keeps the old version current and is
-reported. `endbot update --rollback` switches `app/current` back to the most recent previous version directory present
-in `app/`. Updates refuse to run while a supervisor is running.
+### Example endbot.toml
 
-With the web deployed, both directions then redeploy the Worker of the version now current, so a Worker and the endbotd
-it talks to stay matched ([WEB.md](WEB.md#p9-the-cloudflare-api-token-is-entered-by-the-operator-and-never-stored)). The
-token comes from `CLOUDFLARE_API_TOKEN` or a hidden prompt; Enter skips it, and with no terminal and no variable it is
-skipped without asking. The app has already switched by then, so a skipped or failed deploy is a warning and the command
-still succeeds: the old Worker keeps serving, and if its web protocol differs from the new endbotd's, the web is offline
-until `endbot web deploy` runs. Rolling back to a version with no web leaves the Worker in place with nothing connected.
+```toml
+[server]
+path = 'server'                  # BDS directory, relative to the instance or absolute
+transport = 'nethernet'
+nethernet-signalling = 'direct'
 
-Store layout ([ENDBOTD.md](ENDBOTD.md) P7). From the first endbotd version, Groups and stored scripts live in
-`state/groups.json` and `state/scripts.json`, and script files in `<instance>/scripts/`; `state/migrations.json`
-(`{"stores": 2}`) marks that layout as authoritative. Before it, they lived in `<server>/plugins/endbot/`
-(`groups.json`, `scripts.json`, `scripts/*.luau`). Moving between the layouts:
+[controllers]
+gamertags = ["ExampleTag"]
 
-- An update from a version before endbotd is driven by that version's CLI, so the new version moves the stores on
-  its first `endbot start` (or `endbot setup`): it backs up both layouts under `backups/stores-update-<time>/`,
-  copies the data files into `state/` and leaves the originals in place, moves the script files to
-  `<instance>/scripts/` with a `README.txt` left in the old folder, and writes the marker last. Later updates do the
-  same right before `app/current` switches.
-- `endbot update --rollback` first writes `state/groups.json` and `state/scripts.json` back to the plugin data
-  folder, moves the script files back to `<server>/plugins/endbot/scripts/`, removes the `README.txt` and sets the
-  marker to `{"stores": 1}` (backups under `backups/stores-rollback-<time>/`), then switches `app/current`. Group
-  and script changes made since the update are therefore kept.
-- Every step is idempotent: an interrupted move reports the cause, the old layout stays authoritative until the
-  marker is written, and running the same command again finishes it. `endbot doctor` reports the outcome (`stores`).
+[runtime]
+control-port = 19142
+chunk-radius = 5
+hotbar-sync-interval-ticks = 4
+hotbar-sync-resend-ticks = 20
 
-Updating from 0.1.0: 0.1.1 doctor also requires `transport=nethernet` in `server.properties` (#36) and FAILs a world
-directory that exists without `level.dat` (#37). An instance missing either keeps 0.1.0 current and the update
-reports the FAIL; add `transport=nethernet` (BDS only accepts NetherNet in this release, so such an instance could not
-take Bot or human connections anyway) or restore `level.dat`, then rerun `endbot update --force` (the refused attempt left `app/0.1.1` in place).
+[endbotd]
+link-port = 19143
 
-Updating from 0.2.0 to 0.2.1 also moves the locked BDS from `1.26.51.1` to `1.26.52.3`. The new version's doctor reports
-the `bds-version` mismatch, so `endbot update` performs the §6 backup and preview and lets Endstone update BDS; the world
-is opened by the newer BDS afterwards. Back up `worlds/` first: rolling back to 0.2.0 would put an older BDS in front of
-a world the newer one has saved.
+[limits]
+max-bots = 0
+max-bots-per-controller = 0
+reserved-player-slots = 1
 
-Updating from 0.2.1 to 0.3.0 keeps Endstone `0.11.13+endbot.1`, BDS `1.26.52.3` and protocol `2193`, so no BDS update
-runs. An existing `endbot.toml` without `[ui]` keeps working and uses `language = "auto"`.
+[ui]
+language = "auto"
 
-Updating from 0.3.0 to 0.3.1 changes only Endbot plugin/runtime/CLI code and versions: `destroy count <blocks>` is
-added to continuous mining, and `for` and `count` can be combined. Endstone `0.11.13+endbot.1`, BDS `1.26.52.3`
-and protocol `2193` remain pinned; no BDS/world format migration is needed.
+[scripting]
+enabled = false
 
-Updating from 0.3.1 to 0.4.0 keeps the same pinned Endstone, BDS and protocol, so no BDS update runs. It adds shared
-Groups, inventory commands, entity interaction and opt-in Luau scripts. An existing `endbot.toml` without
-`[scripting]` or `[limits]` keeps working: scripting stays off, and `[limits]` defaults keep one server slot free for
-players (`reserved-player-slots = 1`), so a server already full of Bots refuses new Bot sessions until a slot is
-free. See [scripting](SCRIPTING.md) to enable scripts, and [installation](INSTALL.md) before rolling back to 0.3.x
-(a fresh 0.4.0 setup writes sections that 0.3.x rejects).
+[permissions]
+bots-default = "shared"
+groups-default = "shared"
 
-Updating from 0.4.0 to 0.5.0 moves the locked pair to Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` and protocol
-`2225`, which Minecraft 26.60 clients need. The new doctor reports the `bds-version` mismatch, so `endbot update`
-performs the §6 backup and preview and lets Endstone update BDS; back up `worlds/` first, because rolling back to 0.4.0
-would put an older BDS in front of a world the newer one has saved. BDS 1.26.60 refuses players on RakNet: an instance
-set up with `--transport raknet` keeps 0.4.0 current and the update reports the FAIL; stop it, set
-`transport=nethernet` in `server.properties` and `[server] transport = "nethernet"` in `endbot.toml`, then rerun
-`endbot update --force`.
+[events]
+max-watched-blocks = 2048
+chat = false
+```
 
-Updating from 0.5.0 to 0.6.0 keeps Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` and protocol `2225`, so no BDS update
-runs and `endbot.toml` needs no change. The command surface changes: areas replace `blocks ... radius` and
-`blocks ... at` (use `within <r>` and `within <r> of <x> <y> <z>`; the old spellings are refused with a message naming
-the new ones), `look` answers after BDS has the rotation, `destroy` reaches 6 blocks, `blocks` sees through leaves, and
-the 0.4.0 script spellings `share <name>` and `private <name>` are refused in favour of
-`visibility <name> shared|private`. A script that calls `blocks(type, x, y, z)` passes an area value instead. See
-[areas](COMMANDS.md#areas-within-and-except).
+### Settings
 
-Updating from 0.6.0 to 0.7.0 keeps Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` and protocol `2225`, so no BDS update
-runs, and `endbot.toml` needs no change: `[events]`, `[web]` and the new `[limits]` keys
-(`max-watches-per-controller`, `max-triggers-per-controller`, `max-watched-blocks-per-controller`) are optional. The
-stores are already in `state/` (`stores 2`) and stay there; 0.7.0 adds `state/triggers.json` with the first trigger and
-`state/web/` once the web is deployed. The web stays off until `endbot web deploy` ([guide](WEB_DEPLOY.md)). Before
-`endbot update --rollback` to 0.6.0, remove any `[events]` and `[web]` sections (including `[web.trusted-site]`) and
-those three `[limits]` keys: 0.6.0 refuses keys it does not know. It does not read `state/triggers.json` or
-`state/web/`, so no trigger runs and nobody can sign in to the web until 0.7.0 is current again.
+**`[server]`** (required)
 
-## 7. Doctor
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `path` | none (required) | The BDS directory, relative to the instance or absolute | Next start |
+| `transport` | `nethernet` | Must be `nethernet` and match `transport` in `server.properties`. `raknet` is an error: BDS 1.26.60 refuses players on RakNet. | Next start |
+| `nethernet-signalling` | `direct` | How Bots reach BDS: `direct` (HTTP on `server-port`) or `lan` (UDP 7551 discovery). See [NetherNet signalling](#nethernet-signalling). Neither changes `server.properties`. | Next start |
 
-`endbot doctor` reports, without changing anything:
+**`[controllers]`** (required)
 
-- `endbot.toml` parses; identifiers are strings; paths exist.
-- Safety invariants: `online-mode=true`, `allow-cheats=false`, no experiments, no Beta APIs / GameTest, world history
-  flags (existing `scripts/preflight.py` checks move here); plus the runtime transport requirement
-  `transport=nethernet` matching `[server].transport` (separate from safety).
-- `endstone.toml [local-bot-auth]` enabled with a readable P-384 public key matching `state/secrets/owner-private.pem`.
-- Control token present and readable. endbotd token present (`endbotd-token`); `state/generated/endbotd.toml` matches
-  the ports in `endbot.toml` (`endbotd-config`); the plugin config links to endbotd's port with endbotd's token and
-  no longer carries runtime settings (`plugin-port`). `endbotd-link` reads the latest `endbotd.log`: a plugin link
-  refused for a protocol or operation-registry mismatch is a FAIL (mixed Endbot versions). A missing endbotd token
-  or a plugin config written before endbotd is a WARN, since `endbot start` regenerates both.
-- Stores (`stores`): PASS when `state/migrations.json` makes `state/` authoritative; WARN while the plugin data
-  folder still is (the next `start` migrates) or when script files were left in the old folder; FAIL for an
-  unreadable marker or one written by a newer Endbot. Both layouts' contents are listed.
-- `<server>/version.txt` matches the lock; installed Endstone package version matches the lock.
-- Controllers: bootstrap bindings and pending entries; `controllers-effective` combines saved config/policy/legacy
-  entries with decision reasons, or queries the running endbotd with `--live` and a live supervisor. Legacy entries
-  lacking a resolved authenticated identity are conditional. Invalid policy is FAIL, and so is an invalid
-  `grant-revisions.json` (`grant-revisions`).
-- Allow-list: when `allow-list` is not `true`, PASS (controllers are not filtered); when it is, PASS while every
-  configured controller GamerTag is in `allowlist.json` (case-insensitive name match, or a bound controller's XUID in
-  an entry's `xuid`), otherwise WARN naming each missing GamerTag and the fix (`endbot console allowlist add
-  <GamerTag>` while the server runs, or an `allowlist.json` edit while it is stopped). An unreadable or malformed
-  `allowlist.json` WARNs only — BDS treats it as its own file. The check never writes.
-- Operators: WARN when `permissions.json` lists an `operator` entry or `default-player-permission-level=operator`,
-  because the locked Endstone lets operators run cheat commands without disabling achievements (`SECURITY.md`);
-  PASS otherwise. An unreadable `permissions.json` WARNs only. The check never writes.
-- When running: runtime reachable over the control port, BDS process alive, each desired-online Bot's state and last
-  error.
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `gamertags` | none (required; `[]` allowed) | GamerTags allowed to control Bots, bound to an XUID on first join ([granting access](#controllers-in-endbottoml)) | Next start |
 
-## 8. Release artifacts
+**`[runtime]`**
 
-Per platform (`linux-x86_64`, `windows-x86_64`), built only in CI:
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `control-port` | `19142` | Loopback TCP port of the runtime's control endpoint (1 to 65535) | Next start |
+| `chunk-radius` | `5` | Default chunk radius a Bot requests, 2 to 32 ([chunk radius](#chunk-radius)) | Next start; `/bot <name> radius` changes one Bot at once |
+| `hotbar-sync-interval-ticks` | `4` | How often the plugin reads each online Bot's hotbar, 1 to 1200 ([hotbar sync](#hotbar-sync)) | Next start |
+| `hotbar-sync-resend-ticks` | `20` | How often an unchanged hotbar is resent as a correction, 1 to 72000 | Next start |
 
-- `endbot-<version>-<platform>.zip|tar.gz`: private CPython 3.12 with the patched Endstone wheel, `endstone-endbot`,
-  and the `endbot` CLI preinstalled; private Node.js; `runtime/` with production `node_modules`;
-  `runner/endbot-luau-runner[.exe]` with `api.luau`; launcher; licenses
-  and third-party notices for every bundled component.
-- `compatibility-manifest.json` and `SHA256SUMS` covering every file above.
+**`[endbotd]`**
 
-The standalone wheels and runtime tarball stay available for developers but are not the operator path.
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `link-port` | `19143` | Loopback TCP port where endbotd accepts the plugin link and the CLI. Must differ from `control-port`. | Next start |
 
-Release-candidate jobs build the runner with `node runner/build.mjs --out build/runner-stage`, run
-`node --test` in `runner/`, and require `--runner-dir build/runner-stage` on `scripts/build_bundle.py`.
-The builder checks the binary, sidecar, both MIT notices and Linux executable permission before copying them.
-The notices go to `licenses/LUAU_LICENSE.txt` and `licenses/NLOHMANN_JSON_LICENSE.txt`.
-Bundle self-tests smoke-run `params{}` without BDS. Local bundle builds may omit `--runner-dir`; those bundles
-have no runner and cannot enable scripting without installing one. For such local bundles only,
-`scripts/test_bundle.py --allow-missing-runner` skips an absent runner directory.
+**`[limits]`** ([Bot limits](#bot-limits))
+
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `max-bots` | `0` | Cap on Bots online or connecting; `0` means no separate cap | Next start |
+| `max-bots-per-controller` | `0` | Bots one controller may own; `0` means no cap | Next start |
+| `reserved-player-slots` | `1` | Server slots kept free for human players | Next start |
+| `max-watches-per-controller` | `32` | Watches across one controller's script runs, 0 to 1024; `0` turns watches off ([SCRIPTING.md](SCRIPTING.md)) | Next start |
+| `max-triggers-per-controller` | `8` | Armed triggers per owner, 0 to 256; `0` turns triggers off | Next start |
+| `max-watched-blocks-per-controller` | `1024` | Watched positions across one controller's watches and triggers, 0 to 16384; `0` leaves only the server-wide `[events] max-watched-blocks` | Next start |
+
+**`[ui]`**
+
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `language` | `auto` | Language of player-facing replies, help and forms. `auto` gives Japanese clients Japanese and every other client English; `en` or `ja` fixes one language for everyone. Command words, the server console and logs stay English ([COMMANDS.md](COMMANDS.md#reply-language)). | Next start |
+
+**`[scripting]`** (setup and every option: [SCRIPTING_SETUP.md](SCRIPTING_SETUP.md))
+
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `enabled` | `false` | Lets controllers run Luau scripts ([SCRIPTING.md](SCRIPTING.md)). Bundles ship the runner, so no build is needed. | Next start |
+| `runner` | the running version's bundled runner | Path to another runner executable. A relative path resolves from `state/generated/`. | Next start |
+| `book-export` | `true` | Lets `/botscript export` write a script into the book and quill a controller holds. No item is created; a book that already has writing is replaced only with `export <name> overwrite`, which the menu confirms first. Importing from a book always works while scripting is on. | Next start |
+| `os-confinement` | `true` | See [SCRIPTING_SETUP.md](SCRIPTING_SETUP.md) | Next start |
+| `process-memory-bytes` | `268435456` | `0`, or at least `100663296`. See SCRIPTING_SETUP.md. | Next start |
+| `cpu-seconds` | `60` | See SCRIPTING_SETUP.md | Next start |
+| `chat-logs` | `true` | See SCRIPTING_SETUP.md | Next start |
+| `ui-pack-editor` | `false` | See [UI_PACK.md](UI_PACK.md) | Next start |
+| `replies` | `failures` | `all`, `failures` or `none`. See SCRIPTING_SETUP.md. | Next start |
+
+**`[permissions]`** ([PERMISSIONS.md](PERMISSIONS.md))
+
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `bots-default` | `shared` | Visibility of a Bot a controller creates: `shared` or `private` (visible and usable only by its owner) | Items created after the next start |
+| `groups-default` | `shared` | The same for Groups | Items created after the next start |
+
+- Existing items keep their visibility.
+- The owner is recorded in `state/ownership.json`. An item with no entry there is unowned and shared, and Bots and
+  Groups created from the console stay unowned.
+- Someone else's private Bot or Group is refused (a private Group resolves as not found).
+- `forget`, `rename` and `visibility` on a Bot stay with its owner and the console, even when it is shared.
+
+**`[events]`** ([block watches and chat events](#block-watches-and-chat-events))
+
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `max-watched-blocks` | `2048` | Positions watched for block changes, all watches and triggers together, 0 to 16384; `0` turns block watches off | Next start |
+| `chat` | `false` | Lets scripts that declare `observe.chat` watch public chat (`player.chat`) | Next start |
+
+**`[web]`** ([WEB_DEPLOY.md](WEB_DEPLOY.md))
+
+| Setting | Default | Effect | Applies |
+| --- | --- | --- | --- |
+| `enabled` | `false` | Turns the web on. Also keeps endbotd running when BDS exits ([with the web enabled](#with-the-web-enabled)). | Next start |
+| `origin` | empty | `https://host`, normally written by `endbot web deploy`. With it set, `/botweb link` issues codes and the outbound link opens when `state/secrets/web-link.key` exists. | Next start |
+| `display-name` | empty | Shown on the sign-in page, at most 64 printable characters. It is the one thing of yours Cloudflare keeps. | Next start |
+| `account-id`, `worker-name` | empty | Written by `endbot web deploy`; not secret | Written by `endbot web deploy` |
+| `[web.trusted-site]` | absent | The optional trusted site ([WEB.md P12](WEB.md#p12-trusted-external-site-optional-off-by-default)); `endbot doctor` checks it | Next start |
+
+### Bot limits
+
+`[limits]` keeps a controller who spawns many Bots from filling every server slot.
+
+- `reserved-player-slots` is subtracted from the BDS `max-players`. `spawn`, `resume` and `reconnect` are refused when
+  the Bot would take a reserved slot or go over `max-bots`, per member for a Group or a script.
+- `max-bots-per-controller` refuses a new `spawn` by a controller who already owns that many Bots. Reconnecting an
+  existing Bot and the console are never limited. The count comes from `state/ownership.json`, so `forget` frees a
+  place.
+- Existing Bots are never despawned by a limit.
+- `max-bots = 0` with `reserved-player-slots = 0` removes the slot limit.
+
+The `capacity` doctor check prints the resulting budget and warns when it cannot apply. It reads `[limits]` from
+`<server>/plugins/endbot/config.toml`, which a managed instance generates without `[limits]`, so on such an instance it
+reports the defaults rather than your `endbot.toml` values.
+
+### Chunk radius
+
+`[runtime] chunk-radius` is the radius every Bot requests unless it has its own. BDS can lower or raise the request.
+
+```text
+/bot <name> radius <2-32>
+/bot <name> radius default
+/bot <name> radius
+```
+
+- `/bot <name> radius <2-32>` overrides one Bot, also while it is online or offline. `default` removes the override.
+- The override is stored with the Bot's profile and survives reconnect, rename and runtime restart.
+- `/bot <name> radius` reports the requested value, its source and the last value BDS confirmed (unconfirmed until
+  BDS replies, or while offline).
+- Endbot requests the radius at spawn, reconnect and dimension changes.
+- It does not change BDS `view-distance` or `tick-distance`, and does not unload chunks other players or server
+  systems keep loaded.
+
+### Hotbar sync
+
+The plugin reads each online Bot's nine hotbar slots on the server thread. Changes are sent at the next read;
+unchanged state is resent only as a periodic correction.
+
+| Setting | At 20 TPS | Longer values |
+| --- | --- | --- |
+| `hotbar-sync-interval-ticks = 4` | About 0.2 s between reads | Less SDK, NBT and JSON work, but pickups are recognized later |
+| `hotbar-sync-resend-ticks = 20` | About one correction per second | Fewer unchanged packets, but a predicted drop that BDS rejected is corrected later |
+
+- Resends happen only at reads, so their spacing rounds up to a multiple of the read interval.
+- Low TPS stretches the wall time.
+- Both apply to all Bots; there is no per-Bot override and no automatic load adjustment.
+- Neither disables the native inventory and equipment updates.
+- All nine slots and their item NBT are read on every scan. Unchanged observations are suppressed between resends.
+
+### Block watches and chat events
+
+`[events] max-watched-blocks` bounds what `block.change` watches cost the server thread. Every watched position is
+read once every 4 ticks, a quarter of them per tick. That cost about 1 ms per tick per 2000 positions on the PC that
+measured it ([record](EVENT_MEASUREMENTS.md#block-changes)). A watch that would exceed the limit is refused with the
+limit named.
+
+`[events] chat` is off by default. On the locked Endstone the chat event comes before a behavior pack's `chatSend` mute
+and BDS's chat filter run, so a message those block may still reach a script although no player saw it
+([record](EVENT_MEASUREMENTS.md#presence-and-chat)). Leave it off on a server that mutes chat with a pack.
+
+### Generated files
+
+`endbot start` overwrites these on every start. Never edit them by hand.
+
+| File | Contents |
+| --- | --- |
+| `state/generated/endbot-runtime.json` | Runtime configuration: `state/` as its data directory, the control token and owner keys in `state/secrets/`, the control port, chunk radius, transport and signalling, and the BDS `server-port` from `server.properties` |
+| `state/generated/endbotd.toml` | endbotd's configuration ([ENDBOTD.md](ENDBOTD.md)): its link, the runtime it drives, authorization files, `[limits]`, `[permissions]`, `[events]`, `[ui]`, `[scripting]` (with the runner path), `[web]`, hotbar sync, and the stores (`state/` and `<instance>/scripts/`) |
+| `<server>/plugins/endbot/config.toml` | Only how the plugin reaches endbotd: loopback host, `link-port` and `state/secrets/endbotd.token` |
+| `[local-bot-auth]` in `<server>/endstone.toml` | `enabled = true`, the issuer and audience defaults, and `public-key-file` pointing at `state/secrets/owner-public.pem`. Other tables stay as you wrote them. |
+| `state/secrets/endbotd.token` | Created once if missing; never printed or logged |
+
+- With `direct` signalling, start refuses when `server.properties` has no valid `server-port`.
+- With `lan` signalling, the runtime configuration also names the server and world to look for
+  ([NetherNet signalling](#nethernet-signalling)).
+- Generated files hold absolute paths, so a moved instance needs one start before `update` and `doctor` pass
+  ([directory layout](#directory-layout)).
+- Generated JSON is never the place to choose a transport.
+
+## Updating and rolling back
+
+### Update
+
+```text
+endbot update <archive>
+endbot update <archive> --sums <path>
+endbot update <archive> --backup-worlds
+endbot update <archive> --force
+```
+
+The archive is the platform bundle from a release: `.zip` on Windows, `.tar.gz` on Linux. Stop the server first;
+update refuses while a supervisor runs.
+
+1. Verifies the archive against `--sums`, or against `SHA256SUMS` beside the archive when present. A mismatch refuses.
+2. Extracts only `app/<new version>/` and the launcher. `state/`, `endbot.toml`, the server directory and the current
+   application are never touched.
+3. Runs the new version's doctor against the existing instance.
+4. If the new version locks a different BDS (a `bds-version` FAIL), prints what Endstone will overwrite, takes a
+   [backup](#backups), runs the new version's Endstone acquisition and runs its doctor again. There is no separate
+   confirmation step, so back up `worlds/` first or pass `--backup-worlds`.
+5. On any other doctor FAIL, keeps the old version current and reports the FAIL.
+6. Moves the stores if needed ([store layout moves](#store-layout-moves)), switches `app/current` to the new version
+   and replaces the launcher. The previous version stays in `app/`.
+
+`--force` replaces an `app/<version>/` that an earlier, refused attempt already extracted.
+
+### Roll back
+
+```text
+endbot update --rollback
+```
+
+Switches `app/current` back to the most recently modified previous version directory in `app/`, after writing the
+stores back to the old layout ([store layout moves](#store-layout-moves)). It does not edit `endbot.toml`; see the
+[version notes](#version-notes) for keys an older version refuses.
+
+### The web after an update or rollback
+
+With the web deployed, both directions then redeploy the Worker of the version now current, so the Worker and endbotd
+stay matched ([WEB.md P9](WEB.md#p9-the-cloudflare-api-token-is-entered-by-the-operator-and-never-stored)).
+
+- The token comes from `CLOUDFLARE_API_TOKEN` or a hidden prompt. Enter skips it; with no terminal and no variable it
+  is skipped without asking.
+- The app has already switched by then, so a skipped or failed deploy is a warning and the command still succeeds.
+- The old Worker keeps serving. If its web protocol differs from the new endbotd's, the web is offline until
+  `endbot web deploy` runs.
+- Rolling back to a version without the web leaves the Worker in place with nothing connected.
+
+### Store layout moves
+
+Since 0.5.0 (the first version with endbotd), Groups, stored scripts and script files live in the instance:
+
+| Before 0.5.0 | Since 0.5.0 |
+| --- | --- |
+| `<server>/plugins/endbot/groups.json` | `state/groups.json` |
+| `<server>/plugins/endbot/scripts.json` | `state/scripts.json` |
+| `<server>/plugins/endbot/scripts/*.luau` | `<instance>/scripts/*.luau` |
+
+`state/migrations.json` (`{"stores": 2}`) marks the new layout as authoritative. Endbot moves the stores for you:
+
+| When | What happens |
+| --- | --- |
+| Update from a version before 0.5.0 | That version's CLI cannot move them, so the new version does it on its first `endbot start` or `endbot setup` |
+| Later updates | Right before `app/current` switches |
+| Moving in | Backs up both layouts under `backups/stores-update-<time>/`, copies the data files into `state/` (originals stay), moves the script files with a `README.txt` left in the old folder, and writes the marker last |
+| `endbot update --rollback` | Writes the stores back to the plugin data folder, moves the script files back, removes the `README.txt` and sets the marker to `{"stores": 1}` (backups under `backups/stores-rollback-<time>/`), then switches. Changes made since the update are kept. |
+
+Every step is idempotent. An interrupted move reports the cause, the old layout stays authoritative until the marker
+is written, and running the same command again finishes it. The `stores` doctor check reports the outcome.
+
+### Version notes
+
+What each update needs beyond `endbot update`. A BDS change means `endbot update` moves BDS with a [backup](#backups);
+back up `worlds/` first, because rolling back would put an older BDS in front of a world the newer one has saved.
+
+**0.6.0 to 0.7.0**
+
+- Endstone `0.11.15+endbot.1`, BDS `1.26.60.6`, protocol `2225` stay; no BDS update.
+- `endbot.toml` needs no change: `[events]`, `[web]` and the new `[limits]` keys (`max-watches-per-controller`,
+  `max-triggers-per-controller`, `max-watched-blocks-per-controller`) are optional.
+- The stores are already in `state/` and stay there. 0.7.0 adds `state/triggers.json` with the first trigger and
+  `state/web/` once the web is deployed. The web stays off until `endbot web deploy` ([guide](WEB_DEPLOY.md)).
+- Before rolling back to 0.6.0, remove any `[events]` and `[web]` sections (including `[web.trusted-site]`) and those
+  three `[limits]` keys: 0.6.0 refuses keys it does not know. It does not read `state/triggers.json` or `state/web/`,
+  so no trigger runs and nobody can sign in to the web until 0.7.0 is current again.
+
+**0.5.0 to 0.6.0**
+
+- Endstone `0.11.15+endbot.1`, BDS `1.26.60.6`, protocol `2225` stay; no BDS update and no `endbot.toml` change.
+- Areas replace `blocks ... radius` and `blocks ... at`: use `within <r>` and `within <r> of <x> <y> <z>`. The old
+  spellings are refused with a message naming the new ones ([areas](COMMANDS.md#areas-within-and-except)).
+- `look` answers after BDS has the rotation, `destroy` reaches 6 blocks, and `blocks` sees through leaves.
+- The 0.4.0 script spellings `share <name>` and `private <name>` are refused in favour of
+  `visibility <name> shared|private`. A script that calls `blocks(type, x, y, z)` passes an area value instead.
+
+**0.4.0 to 0.5.0**
+
+- Moves to Endstone `0.11.15+endbot.1`, BDS `1.26.60.6` and protocol `2225`, which Minecraft 26.60 clients need.
+  `endbot update` moves BDS with a backup.
+- First version with endbotd: the stores move into `state/` ([store layout moves](#store-layout-moves)).
+- BDS 1.26.60 refuses players on RakNet. An instance set up with `--transport raknet` keeps 0.4.0 current and the
+  update reports the FAIL. Stop it, set `transport=nethernet` in `server.properties` and `[server] transport =
+  "nethernet"` in `endbot.toml`, then run `endbot update --force`.
+
+**0.3.1 to 0.4.0**
+
+- Same Endstone, BDS and protocol; no BDS update.
+- Adds shared Groups, inventory commands, entity interaction and opt-in Luau scripts ([scripting](SCRIPTING.md)).
+- An `endbot.toml` without `[scripting]` or `[limits]` keeps working: scripting stays off, and `[limits]` keeps one
+  server slot free for players, so a server already full of Bots refuses new Bot sessions until a slot is free.
+- A fresh 0.4.0 setup writes `[scripting]` and `[limits]`, which 0.3.x refuses as unknown. Before rolling back to
+  0.3.x, stop the instance and remove both sections, then roll back and start. Stored scripts and script files are
+  kept and come back with 0.4.0.
+
+**0.3.0 to 0.3.1**
+
+- Only Endbot code changes. Endstone `0.11.13+endbot.1`, BDS `1.26.52.3` and protocol `2193` stay; no BDS or world
+  migration.
+- `destroy count <blocks>` is added to continuous mining, and `for` and `count` can be combined.
+
+**0.2.1 to 0.3.0**
+
+- Endstone `0.11.13+endbot.1`, BDS `1.26.52.3` and protocol `2193` stay; no BDS update.
+- An `endbot.toml` without `[ui]` keeps working and uses `language = "auto"`.
+
+**0.2.0 to 0.2.1**
+
+- Moves the locked BDS from `1.26.51.1` to `1.26.52.3`; `endbot update` moves BDS with a backup.
+
+**0.1.0 to 0.1.1**
+
+- The 0.1.1 doctor requires `transport=nethernet` in `server.properties` and FAILs a world directory without
+  `level.dat`. An instance missing either keeps 0.1.0 current and the update reports the FAIL.
+- Add `transport=nethernet` or restore `level.dat`, then run `endbot update --force` (the refused attempt left
+  `app/0.1.1` in place).
+
+## Checking health
+
+```text
+endbot doctor
+endbot doctor --live
+```
+
+`endbot doctor` reports the instance's health and never changes anything. It exits with 1 when any check FAILs.
+The safety invariants it enforces are `online-mode=true`, `allow-cheats=false`, and a world with no experiments (Beta
+APIs and GameTest included).
+Before the first `endbot start`, a missing control token or owner key is a WARN. `--live` also asks the running
+processes.
+
+Checks, in the order they run:
+
+| Check | What it reports |
+| --- | --- |
+| `config` | `endbot.toml` loads and is valid |
+| `server-dir` | The BDS directory exists |
+| `server-properties` | `online-mode=true` and `allow-cheats=false` (safety), and `transport=nethernet` matching `[server] transport` |
+| `world` | The world must have no experiments (Beta APIs and GameTest included), no creative history and no cheats. FAIL for achievement-disabling world history in `level.dat` (`hasBeenLoadedInCreative`, `commandsEnabled`, `experiments_ever_used`, `saved_with_toggled_experiments`), an unreadable `level.dat`, or a world directory without one. WARN for `cheatsEnabled`, a non-survival game type or unknown experiment keys. Skipped before the world exists. |
+| `capacity` | The Bot slot budget ([Bot limits](#bot-limits)) |
+| `bds-version` | `<server>/version.txt` matches the locked BDS |
+| `local-bot-auth` | `[local-bot-auth]` in `endstone.toml` is enabled with a readable P-384 public key matching `state/secrets/owner-private.pem` |
+| `plugin-port` | The plugin config links to endbotd's port with endbotd's token and carries no runtime settings. A config written before endbotd is a WARN. |
+| `controllers-legacy` | Legacy `[authorization]` entries, with a pointer to `[controllers] gamertags` |
+| `endstone-version` | The installed Endstone package matches the lock |
+| `control-token` | The runtime control token is present and readable |
+| `endbotd-token` | The endbotd token is present (missing is a WARN; start creates it) |
+| `endbotd-config` | `state/generated/endbotd.toml` matches the ports in `endbot.toml` |
+| `web` | The web configuration and link key; with `--live`, whether the web link is up |
+| `web-trusted-site` | The optional trusted site's configuration |
+| `endbotd-link` | The latest `endbotd.log`: a plugin link refused for a protocol or operation-registry mismatch (mixed Endbot versions) is a FAIL |
+| `controllers` | Bootstrap bindings and pending GamerTags |
+| `controllers-effective` | Each identity's effective state and reason, from saved files, or from the running endbotd with `--live`. An invalid `controller-policy.json` is a FAIL. |
+| `grant-revisions`, `controller-roles`, `ownership`, `triggers` | Each file is valid ([policy files](#policy-files)); a corrupt one is a FAIL because endbotd will not start |
+| `stores` | PASS when `state/` is authoritative; WARN while the old layout still is (the next start moves it) or script files were left in the old folder; FAIL for an unreadable marker or one written by a newer Endbot |
+| `allowlist` | PASS when `allow-list` is off, or when every bootstrap controller is in `allowlist.json` (by name, case-insensitive, or by a bound XUID). Otherwise WARN naming each missing GamerTag and the fix. An unreadable `allowlist.json` is only a WARN. |
+| `operators` | WARN when `permissions.json` has an `operator` entry or `default-player-permission-level=operator`: the locked Endstone lets operators run cheat commands without disabling achievements ([SECURITY.md](SECURITY.md#operators-and-achievements)) |
+| `runtime` | With `--live` only: the runtime answers on the control port |
+
+## Reference
+
+### Directory layout
+
+Everything Endbot owns lives under one instance directory, chosen at setup. The BDS directory may be inside it (fresh
+setup) or anywhere else (adopted server).
+
+```text
+<instance>/
+├─ endbot.toml               your configuration (the only file you edit)
+├─ endbot / endbot.cmd       launcher: runs the endbot CLI from app/<current>/python
+├─ app/
+│  ├─ current                text file naming the active <version>
+│  └─ <version>/             one directory per installed version
+│     ├─ python/             private CPython 3.12 with patched Endstone, the plugin and the endbot CLI
+│     ├─ node/               private Node.js
+│     ├─ runtime/            Endbot runtime with its production node_modules
+│     ├─ runner/             endbot-luau-runner[.exe] and its trusted api.luau
+│     └─ web/                the prebuilt web that endbot web deploy uploads
+├─ licenses/                 licenses and third-party notices for every bundled component
+├─ state/                    persistent Endbot state, never replaced by an update
+│  ├─ secrets/               owner-private.pem, owner-public.pem, control.token, endbotd.token, web-link.key
+│  ├─ profiles/              Bot profiles (<uuid>.json)
+│  ├─ controllers.json       bootstrap controller bindings
+│  ├─ controller-policy.json runtime grants and revocations
+│  ├─ grant-revisions.json   grant revision per revoked identity
+│  ├─ controller-roles.json  role per XUID
+│  ├─ ownership.json         owner and visibility per Bot and Group
+│  ├─ groups.json            Groups
+│  ├─ scripts.json           stored scripts
+│  ├─ triggers.json          triggers (from the first trigger)
+│  ├─ migrations.json        store layout marker
+│  ├─ web/                   web accounts, passkeys and sessions (once the web is deployed)
+│  ├─ generated/             files generated from endbot.toml on every start
+│  └─ run/                   PID files, request files and logs
+├─ scripts/                  your <name>.luau script files
+├─ backups/                  setup and update backups, store copies
+└─ server/                   the BDS directory, after a fresh setup
+```
+
+- The `endbot` commands find the instance from `--instance`, then `$ENDBOT_INSTANCE`, then the launcher's directory,
+  then the working directory.
+- **The instance cannot be moved as it is.** Generated files hold absolute paths; for example the plugin config names
+  `state/secrets/endbotd.token` by full path.
+- After a copy or move, `endbot update` and `doctor` fail on `plugin-port` until one `endbot start` regenerates the
+  file (deleting `<server>/plugins/endbot/config.toml` has the same effect). Restore backups at the original path,
+  or start once and re-run `doctor` after moving.
+
+### What is replaced and what is kept
+
+| Part | Created by | On update | Notes |
+| --- | --- | --- | --- |
+| `app/` | Setup (from the bundle) and update | A new version is added; old ones stay for rollback | No secrets, no state; deletable and reinstallable |
+| `state/` | First setup | Kept | Holds the only secrets; never world data |
+| Operator-owned BDS files (worlds, `server.properties`, `allowlist.json`, `permissions.json`, packs) | You or BDS | Kept; worlds are never touched | Endbot only reads them, except the previewed, backed-up changes of setup and a BDS change on update, and the generated `[local-bot-auth]` table and plugin config |
+
+### Backups
+
+Setup of an existing server, and an update that changes BDS, copy the operator-owned BDS files that Endstone may
+overwrite into `backups/<UTC timestamp>/`, with a `manifest.json` listing every file's SHA-256:
+
+- `server.properties`, `allowlist.json`, `permissions.json`;
+- `endstone.toml` and `packetlimitconfig.json`, when present;
+- the server executable;
+- the vanilla `behavior_packs/`, `resource_packs/` and `definitions/`.
+
+Worlds are not copied unless you pass `--backup-worlds`. Store moves keep their own copies under
+`backups/stores-update-<time>/` and `backups/stores-rollback-<time>/`.
+
+### NetherNet signalling
+
+`[server] nethernet-signalling` chooses how Bots find and reach BDS.
+
+| | `direct` (default from 0.5.0) | `lan` |
+| --- | --- | --- |
+| How | HTTP on the loopback `server-port`, like a game client joining by address | LAN discovery on UDP 7551, as in 0.4.0 and earlier |
+| Needs | A valid `server-port` in `server.properties` | UDP 7551 free on the machine |
+| Several instances or a game client on one machine | Yes; each instance is selected by its own port | No; only one program can own UDP 7551 |
+| Start checks | On Linux, waits for `server-port` to leave TIME-WAIT | Refuses when UDP 7551 is held |
+
+**Direct.** Every join by address (a Bot's or a person's) leaves `server-port` in TCP TIME-WAIT for up to 60 s, because
+BDS closes the connection first. On Linux the patched BDS cannot listen on the port again until then, so
+`endbot start` waits for it, and refuses after 75 s when another program really holds the port. Windows binds through
+TIME-WAIT and skips the wait.
+
+**LAN.** The advertisement carries no port, so every NetherNet host on the machine answers, including a game client
+with a world open to LAN or another BDS. The runtime therefore connects only to the host advertising this instance's
+`server-name` and world display name; otherwise the Bot stays disconnected with a `lastError` naming the
+advertisements it saw.
+
+- The world display name is `LevelName` from `worlds/<level-name>/level.dat`, or `level-name` from `server.properties`
+  before the world exists. It is read on every start.
+- The display name may differ from the world directory name; you never need to rename a world.
+
+Authentication, the loopback restriction and the Bot token are the same with both. How direct signalling works is in
+[ARCHITECTURE.md](ARCHITECTURE.md#operator-cli-and-supervisor-internals).
+
+### Server trust
+
+There is no server identity pin, and `endbot start` keeps no per-start trust state. BDS generates a new NetherNet
+identity on every start, so a pin would fail after every restart.
+
+- The runtime refuses any BDS host that is not loopback.
+- The local-bot token is owner-signed, audience-bound, short-lived, single-use and bound to the Bot's key, so a
+  same-host impostor cannot turn a captured token into a real login.
+
+The rationale is in [SECURITY.md](SECURITY.md#runtime--bds-connection).
+
+### Local Bots and the BDS allow-list
+
+- Humans keep the vanilla allow-list behaviour.
+- A Bot accepted by the local-bot trust path needs no `allowlist.json` entry, and nothing is written to
+  `allowlist.json` when it joins.
+- Logins that the local-bot path does not accept go through the stock BDS validator and allow-list unchanged.
+- An accepted Bot has member permissions, not operator.
+
+What was checked on a real server is in [COMPATIBILITY.md](COMPATIBILITY.md#permissions-and-endbotd).
+
+### Release files
+
+Each release carries, built only in CI:
+
+| File | Contents |
+| --- | --- |
+| `endbot-<version>-windows-x86_64.zip`, `endbot-<version>-linux-x86_64.tar.gz` | The platform bundle: one `endbot-<version>/` directory holding `app/<version>/` (private CPython 3.12 with the patched Endstone, `endstone-endbot` and the `endbot` CLI; private Node.js; the runtime with production `node_modules`; the Luau runner with `api.luau`; the prebuilt web), the launcher, and licenses and third-party notices for every bundled component |
+| `endbot-ui-<pack version>.mcpack` | The optional client-side UI pack ([INSTALL.md](INSTALL.md#optional-ui-pack)) |
+| `compatibility-manifest.json` | The Endbot, Endstone, BDS and protocol versions this release binds |
+| `SHA256SUMS` | Checksums of every file |
+
+- Every file also carries build provenance; [INSTALL.md](INSTALL.md#download-and-verify) shows how to check it.
+- The release also carries the separate wheels, the runtime and configuration tarballs and `ENDSTONE_LICENSE`. They
+  are for developers, not the operator path
+  ([ARCHITECTURE.md](ARCHITECTURE.md#manual-install-from-release-candidate-artifacts)).

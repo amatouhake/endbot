@@ -1,4 +1,6 @@
-"""Tests for `endbot start` / `stop` / `console` / `controllers reset` (sections 3, 5a).
+"""Tests for `endbot start` / `stop` / `console` / `controllers reset`.
+
+See docs/OPERATIONS.md, "Start and stop" and "Granting access".
 
 The end-to-end cases drive ``fakedriver.py`` as a real process so PID files,
 the request-file protocol, and process liveness behave exactly as in

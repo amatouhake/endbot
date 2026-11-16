@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the per-platform Endbot operator bundle (docs/OPERATIONS.md section 8).
+"""Build the per-platform Endbot operator bundle (docs/OPERATIONS.md, "Release files").
 
 The bundle lets an operator run Endbot without installing Python or Node.js
 and without ever running pip/npm: it carries a private CPython 3.12 (from

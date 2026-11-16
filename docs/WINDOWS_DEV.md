@@ -168,7 +168,7 @@ Stop the server after the first start, then configure:
    with `python scripts\preflight.py C:\endbot-local\server\server.properties --acknowledge-world-state-unverified`
    (`preflight` is safety-only; matching transport is checked separately by `endbot doctor`).
    BDS `1.26.52` ships `allow-list=true`. It applies to humans only: a Bot accepted by the local-bot trust path joins
-   without an `allowlist.json` entry (see `docs/OPERATIONS.md`). Add every human tester to `allowlist.json`, or set
+   without an `allowlist.json` entry (see `docs/OPERATIONS.md`, "Local Bots and the BDS allow-list"). Add every human tester to `allowlist.json`, or set
    `allow-list=false` on a local smoke server (it is an access list, not an authentication or achievement invariant). Leave `server-udp-ports` unset: delete the shipped `server-udp-ports=19132` line (or leave it
    commented) and do not replace it with a range. Since upstream Endstone `v0.11.12`, Endstone no longer writes
    `server-udp-ports` on NetherNet servers, and the server shares a single UDP port (the signaling port) across
@@ -196,7 +196,7 @@ Stop the server after the first start, then configure:
 Restart the server. The log shows the Endbot plugin enabling, and `Local bot authentication is enabled for issuer
 'endbot://local-bot'` on the first login attempt. The runtime must be running before any `/bot <name> spawn`.
 
-BDS generates a new NetherNet DTLS identity on every start. The runtime does not pin it (see `docs/SECURITY.md`), so
+BDS generates a new NetherNet DTLS identity on every start. The runtime does not pin it (see [SECURITY.md](SECURITY.md#runtime--bds-connection)), so
 Bots resume after a BDS restart without manual steps; an old `bds-nethernet.pin` from rc.1 can be deleted.
 
 The Windows package of BDS `1.26.52.3` reports `Build ID: 51798905`; the Linux package of the same release, which the
@@ -337,6 +337,6 @@ project-local `.venv\`, `build\`, `dist\`, and `node_modules\` directories are g
 
 This guide does not publish Windows release artifacts and does not change the pinned compatibility pair in
 `endstone.lock`: Linux remains the CI/release-artifact baseline even though native Windows hosting has been
-live-smoked successfully after PR #4 (see [`COMPATIBILITY.md`](COMPATIBILITY.md)), and the Windows build-ID distinction above is
+live-smoked successfully after PR #4 (see [`COMPATIBILITY.md`](COMPATIBILITY.md#compatibility-change-gate)), and the Windows build-ID distinction above is
 per-platform packaging, not a new baseline. The post-PR-#4 Windows smoke added no new Xbox-achievement observation
 for `+endbot.2`; the current `0.11.15+endbot.1` gate is recorded in `COMPATIBILITY.md`.

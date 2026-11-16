@@ -40,7 +40,7 @@ Standalone runtime JSON accepts `"chunkRadius": 5` (default 5; integer 2..32 chu
 radius. The protocol library previously defaulted to 10. Packaged instances configure `[runtime].chunk-radius` in
 `endbot.toml`; generated JSON is overwritten on start. `/bot <name> radius <2-32|default>` persists a per-Bot override or
 returns to the shared default; live requests apply without reconnecting. BDS may clamp the requested range. Server simulation distance and
-chunks loaded by other players are independent. See `docs/OPERATIONS.md` section 2.
+chunks loaded by other players are independent. See `docs/OPERATIONS.md`, "Chunk radius".
 
 The control service refuses non-loopback binds and authenticates every request with the generated token. Unexpected
 disconnects retry with bounded exponential backoff. An intentional `despawn` disables reconnect; `resume` reenables it.
@@ -50,7 +50,7 @@ opening a second session. Operator-initiated starts reset the retry budget while
 its bounded attempt count. The default 8-second runtime request deadline covers the bounded 5-second close plus 1-second
 replacement delay and is shorter than the plugin's 10-second response deadline. Bedrock sessions connect to loopback BDS servers only: the configuration loader and every session refuse any other
 `serverHost`. There is no persistent server identity pin (BDS regenerates its NetherNet identity on every start); see
-`docs/SECURITY.md` for why the loopback path plus the Bot token properties carry that trust. A `serverIdentityPinPath`
+`docs/SECURITY.md`, "Runtime → BDS connection", for why the loopback path plus the Bot token properties carry that trust. A `serverIdentityPinPath`
 left in an older configuration is ignored, and an old `bds-nethernet.pin` file can be deleted.
 
 The transport is NetherNet; `endbot setup/start` never generate anything else, because BDS 1.26.60 refuses players
@@ -62,7 +62,7 @@ same local-bot authentication. The [RakNet validation record](https://github.com
 the WebRTC offer and answer over HTTP on the configured loopback `serverPort` (`POST /v1/join/<network id>`), so it
 needs neither UDP 7551 nor `serverName`/`levelName`. `"lan"` (also an absent field, for older hand-written runtime
 JSON) finds BDS through LAN discovery on UDP 7551; select it with `[server] nethernet-signalling = 'lan'` in
-`endbot.toml` (docs/OPERATIONS.md §2 and §5).
+`endbot.toml` (docs/OPERATIONS.md, "Configuration" and "NetherNet signalling").
 
 Private keys, tokens, and UUID artifacts use complete-before-publish creation and reject corrupt existing
 files and symlinks. POSIX files are mode `0600`; Windows relies on native ACLs. Standard local Windows and Linux

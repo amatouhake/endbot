@@ -4,7 +4,7 @@ Operators name controllers by Xbox GamerTag. The first join of a Microsoft/Xbox
 authenticated player whose name matches a pending GamerTag binds that GamerTag
 to the player's XUID and UUID; from then on only the XUID grants control, so a
 later GamerTag change keeps control and another account taking the old GamerTag
-gets nothing. See docs/OPERATIONS.md section 3.
+gets nothing. See docs/OPERATIONS.md, "Granting access".
 """
 
 from __future__ import annotations

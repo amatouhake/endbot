@@ -1,7 +1,7 @@
 # Endbot commands
 
 What a player with a controller grant can type and tap in game: `/bot`, `/botgroup`, `/botscript` and `/botweb`.
-Access is granted by the server's operator ([controller enrollment](OPERATIONS.md#3-controller-enrollment)); the
+Access is granted by the server's operator ([controller enrollment](OPERATIONS.md#granting-access)); the
 roles and what each may do are in [PERMISSIONS.md](PERMISSIONS.md).
 
 How these commands are implemented is in [BOT_CONTROL.md](BOT_CONTROL.md). What was checked on real servers is in
@@ -164,7 +164,7 @@ Replies, help text and menus come in English or Japanese.
 | `"en"` | English for every player |
 | `"ja"` | Japanese for every player |
 
-The operator sets this ([OPERATIONS.md](OPERATIONS.md) section 2).
+The operator sets this ([configuration](OPERATIONS.md#settings)).
 
 Only the wording changes. Command words and syntax stay English in every language:
 
@@ -322,7 +322,7 @@ Example:
 
 #### Limits
 
-`spawn`, `resume` and `reconnect` respect the operator's `[limits]` ([configuration](OPERATIONS.md#2-configuration)).
+`spawn`, `resume` and `reconnect` respect the operator's `[limits]` ([Bot limits](OPERATIONS.md#bot-limits)).
 
 - A Bot that would take a slot kept for human players, or exceed `max-bots`, is refused with the current counts.
 - A Group or script fails only the affected members.
@@ -395,11 +395,11 @@ Example:
 - Right after a change the reply says `server confirmation pending`; query again (or use `status`) to see the
   confirmed range.
 
-Use a small range for Bots that stay put and a larger one for exploring Bots. BDS can adjust either request; on the
-current baseline a request for 3 became 5.
+Use a small range for Bots that stay put and a larger one for exploring Bots. BDS can adjust either request; on the earlier
+Endstone/BDS pair a request for 3 became 5 ([validation status](COMPATIBILITY.md#bot-operations)).
 
 The range does not change the server's simulation distance, move the Bot, or guarantee terrain generation. See
-[operator configuration](OPERATIONS.md).
+[operator configuration](OPERATIONS.md#chunk-radius).
 
 ## Movement and actions
 

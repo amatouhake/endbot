@@ -1,16 +1,33 @@
 # Compatibility and releases
 
+The supported Endstone/BDS pair, what people checked on it and what they did not, the gate a new pair must pass, and
+what a release candidate contains.
+
+Two checks are always manual and never follow from a green build: the world's achievement history (creative and
+experiment history in `level.dat`) and an actual Xbox achievement unlock. Each package and each pair needs its own
+observation; the procedure is in [ACHIEVEMENTS.md](ACHIEVEMENTS.md).
+
 ## Current baseline (0.5.0 to 0.7.0)
 
-`endstone.lock` pins Endstone `v0.11.15` at `b4aaa87d2c5305e7d340168f824ac2e2ea722e44`, with BDS `1.26.60.6`
-(Linux build `52886190`, Windows build `52886189`) and protocol `2225`, `support_status: "validated-baseline"` since the
-gate below passed on 2026-10-30.
+| Pin in `endstone.lock` | Value |
+| --- | --- |
+| Endstone | `v0.11.15` at `b4aaa87d2c5305e7d340168f824ac2e2ea722e44` |
+| BDS | `1.26.60.6` (Linux build `52886190`, Windows build `52886189`) |
+| Protocol | `2225` |
+| `support_status` | `"validated-baseline"`, since the gate below passed on 2026-10-30 |
 
-Endstone pins its direct Conan requirements, but some transitive ones are version ranges. `scripts/endstone-conan.profile`
-pins each of those (zlib, zstd, libdwarf, and on Linux xz_utils, libunwind and libcurl), with its recipe revision, to what
-the 0.5.0 and 0.6.0 release candidates resolved, and every patched Endstone build uses it as its host profile. It is part
-of the pair: change it only with a compatibility pass, like `endstone.lock`. The direct requirements' own recipe
-revisions are not pinned yet.
+### Conan host profile
+
+Endstone pins its direct Conan requirements, but some transitive ones are version ranges.
+
+- `scripts/endstone-conan.profile` pins each of those, with its recipe revision: zlib, zstd, libdwarf, and on Linux
+  xz_utils, libunwind and libcurl.
+- The pins are what the 0.5.0 and 0.6.0 release candidates resolved. Every patched Endstone build uses the profile as
+  its host profile.
+- It is part of the pair: change it only with a compatibility pass, like `endstone.lock`.
+- The direct requirements' own recipe revisions are not pinned yet.
+
+### Why 0.5.0 moved to this pair
 
 - Minecraft 26.60 clients use protocol `2225` and cannot join the `1.26.52` pair, which is why 0.5.0 moves.
 - BDS 1.26.60 refuses players on RakNet ("NetherNet is the only supported transport type", checked on the Linux build
@@ -23,34 +40,40 @@ revisions are not pinned yet.
 
 ### 0.11.15 / 1.26.60.6 compatibility gate — 2026-10-30
 
-- Release-candidate runs 41023533108 and 41024591616 cold-built and upstream-tested the patched Endstone on Linux and
-  Windows. The bundle consumer E2E (fresh setup acquiring BDS `1.26.60.6` through Endstone, a Bot joining through
-  local-bot trust, console, `doctor --live`, update and rollback) passed on both platforms, with LAN discovery and
-  with direct signalling; the Linux rollback start then exposed the server-port TIME-WAIT wait now in `endbot start`.
-- Windows live smoke (`scripts/raknet_spike.py --mining --inventory --item-use --entity --groups --scripting`, direct
-  signalling, BDS build `52886189`) passed: movement, jump, chunk radius, reconnect, mining, pickups and drops, timed
-  item use, feeding and riding, Groups, Luau scripts, controller management across a BDS restart, and the wrong-key,
-  wrong-issuer, wrong-audience and auth-disabled refusals. Three fixture fixes came out of it (a wider scripting
-  platform, a retry while a fed cow wanders off the crosshair, waiting for the plugin to relink after a restart); one
-  run also failed once on a pickup/drop check that passed on the other runs.
-- The `0.5.0-rc.1` candidate (run 41044019145, with #173: a login that never reaches spawn now fails the attempt;
+- **Release-candidate builds.** Runs 41023533108 and 41024591616 cold-built and upstream-tested the patched Endstone
+  on Linux and Windows.
+- **Bundle consumer E2E.** A fresh setup acquiring BDS `1.26.60.6` through Endstone, a Bot joining through local-bot
+  trust, console, `doctor --live`, update and rollback passed on both platforms, with LAN discovery and with direct
+  signalling. The Linux rollback start then exposed the server-port TIME-WAIT wait now in `endbot start`.
+- **Windows live smoke** (`scripts/raknet_spike.py --mining --inventory --item-use --entity --groups --scripting`,
+  direct signalling, BDS build `52886189`) passed:
+  - movement, jump, chunk radius, reconnect, mining, pickups and drops, timed item use, feeding and riding, Groups,
+    Luau scripts, and controller management across a BDS restart;
+  - the wrong-key, wrong-issuer, wrong-audience and auth-disabled refusals.
+  - Three fixture fixes came out of it: a wider scripting platform, a retry while a fed cow wanders off the crosshair,
+    and waiting for the plugin to relink after a restart.
+  - One run also failed once on a pickup/drop check that passed on the other runs.
+- **The `0.5.0-rc.1` candidate** (run 41044019145, with #173: a login that never reaches spawn now fails the attempt;
   found when Bots stayed in `reconnecting` after a restart) passed its CI cold build, both consumer E2E jobs and
   assembly.
-- People, on Windows with Minecraft 26.60: one client joined three instances on the same PC by address while their
-  Bots were online, two of them at once, with UDP 7551 held by one BDS; `/bot list` and `/bot <Bot> tp me` worked on
-  each. On an instance updated from 0.4.0 the player unlocked the Xbox achievement **Body Guard** with no
-  achievements-disabled notice, and `level.dat` stayed clean
-  ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/PERMISSIONS_VALIDATION.md#050-human-pass-with-one-account--2026-10-30-jst)).
+- **People, on Windows with Minecraft 26.60:**
+  - one client joined three instances on the same PC by address while their Bots were online, two of them at once,
+    with UDP 7551 held by one BDS; `/bot list` and `/bot <Bot> tp me` worked on each;
+  - on an instance updated from 0.4.0 the player unlocked the Xbox achievement **Body Guard** with no
+    achievements-disabled notice, and `level.dat` stayed clean
+    ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/PERMISSIONS_VALIDATION.md#050-human-pass-with-one-account--2026-10-30-jst)).
 
-0.6.0 (2026-11-02 JST) keeps this pair unchanged: no `endstone.lock`, `patches/endstone/` or runtime dependency
-changed, so no new compatibility gate applies and the 2026-10-30 gate and achievement observation stand. Its release
-pass covered the new command surface on a client; see [bot operations](#bot-operations).
+### Later releases on this pair
 
-0.7.0 (2026-11-12 JST) keeps the pair as well: `endstone.lock`, `patches/endstone/` and the runtime dependencies are
-unchanged. The Conan host profile above is new in 0.7.0; it pins what the 0.6.0 candidate had resolved, after conancenter
-published newer ranges that broke the Windows build, so the built Endstone is the same. The 2026-10-30 gate and
-achievement observation stand; the release pass checked `level.dat` again and found no creative or experiment
-history ([events](#events-watches-and-triggers)).
+| Release | Pair | Gate and achievement observation | Release pass |
+| --- | --- | --- | --- |
+| 0.6.0 (2026-11-02 JST) | Unchanged: no `endstone.lock`, `patches/endstone/` or runtime dependency changed, so no new compatibility gate applies | The 2026-10-30 gate and achievement observation stand | Covered the new command surface on a client; see [bot operations](#bot-operations) |
+| 0.7.0 (2026-11-12 JST) | Unchanged: `endstone.lock`, `patches/endstone/` and the runtime dependencies are unchanged | The 2026-10-30 gate and achievement observation stand | Checked `level.dat` again and found no creative or experiment history ([events](#events-watches-and-triggers)) |
+
+The Conan host profile above is new in 0.7.0. It pins what the 0.6.0 candidate had resolved, after conancenter
+published newer ranges that broke the Windows build, so the built Endstone is the same.
+
+<a id="previous-baseline-021-to-040"></a>
 
 ## Previous baselines
 
@@ -66,9 +89,12 @@ A patched package never inherits an earlier package's human or Xbox observations
 `endbot start` have not offered it since 0.5.0.
 
 The gates, their negative controls and what each left open are in the records as they stood at 0.7.0:
-[compatibility](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/COMPATIBILITY.md#previous-baseline-021-to-040),
-[achievements](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ACHIEVEMENTS.md), [M2](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/M2_VALIDATION.md), [RakNet](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/RAKNET_VALIDATION.md) and the
-[release record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/release/FINAL_CHECKLIST.md).
+
+- [compatibility](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/COMPATIBILITY.md#previous-baseline-021-to-040)
+- [achievements](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ACHIEVEMENTS.md)
+- [M2](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/M2_VALIDATION.md)
+- [RakNet](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/RAKNET_VALIDATION.md)
+- the [release record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/release/FINAL_CHECKLIST.md)
 
 ## Validation status
 
@@ -78,9 +104,12 @@ Each area links to the dated record of its runs, kept at the commit that last he
 ### Web
 
 Checked on 0.7.0 release candidates (rc.1 to rc.3, then rc.5 and rc.6) by the operator, on Cloudflare with real
-passkeys on a Windows PC and an Android phone ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/WEB_VALIDATION.md)):
+passkeys on a Windows PC and an Android phone
+([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/WEB_VALIDATION.md)):
 
 - deploy, redeploy and `rotate-key`; the token permissions in the guide; a Worker Endbot did not create is refused;
+- after `rotate-key`, Cloudflare took about 2 minutes (rc.2), 3 min 23 s (rc.3) and 5 min 02 s (release pass) to start
+  using the new key;
 - linking from `/botweb link` on the phone and the PC, a second passkey from a second code, cross-device QR sign-in;
 - the rate limits; revoking a grant with sessions open and during a script run;
 - status, history and script editing with BDS stopped;
@@ -94,19 +123,27 @@ passkeys on a Windows PC and an Android phone ([record](https://github.com/amato
 
 Not run:
 
+- whether a custom-domain deploy needs the zone's Workers Routes: Edit and DNS: Edit in addition to Editor on all
+  Workers (the pass gave all three);
 - a trigger made private disappearing from another viewer's open list, and the web refusing a change to another
   player's trigger: both need a second Xbox account ([#272](https://github.com/amatouhake/endbot/issues/272));
-- a rollback from 0.7.0 to 0.6.0 ([#278](https://github.com/amatouhake/endbot/issues/278)). It needs `[events]`, `[web]` and the three new `[limits]` keys removed first,
-  because 0.6.0 refuses keys it does not know.
+- a rollback from 0.7.0 to 0.6.0 ([#278](https://github.com/amatouhake/endbot/issues/278)). It needs `[events]`,
+  `[web]` and the three new `[limits]` keys removed first, because 0.6.0 refuses keys it does not know.
 
 ### Events, watches and triggers
 
 Checked on the locked pair. What each event kind guarantees, and the measurement behind it, is in
 [EVENT_MEASUREMENTS.md](EVENT_MEASUREMENTS.md).
 
-With Bots only, 2026-11-08 ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/EVENTS_VALIDATION.md#bot-only-live-smoke)): a watched block change delivered
-once, the 64-occurrence queue reporting `missed`, a dropped plugin link reported as a gap, a watched area over the
-limit refused, a trigger starting its script, and triggers coming back armed after endbotd was killed.
+With Bots only, 2026-11-08
+([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/EVENTS_VALIDATION.md#bot-only-live-smoke)):
+
+- a watched block change delivered once;
+- the 64-occurrence queue reporting `missed`;
+- a dropped plugin link reported as a gap;
+- a watched area over the limit refused;
+- a trigger starting its script;
+- triggers coming back armed after endbotd was killed.
 
 With one Xbox account in the Windows client, on `0.7.0-rc.5` and `rc.6`
 ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/EVENTS_VALIDATION.md#release-pass)):
@@ -125,9 +162,11 @@ With one Xbox account in the Windows client, on `0.7.0-rc.5` and `rc.6`
 Not run:
 
 - a shared script's declaration growing under another player's trigger (`script changed`), and a player refused a
-  change to another player's trigger: both need a second Xbox account ([#272](https://github.com/amatouhake/endbot/issues/272));
+  change to another player's trigger: both need a second Xbox account
+  ([#272](https://github.com/amatouhake/endbot/issues/272));
 - a chat muted by a behavior pack still reaching `player.chat` ([#273](https://github.com/amatouhake/endbot/issues/273));
-- a profile removed while its Bot is online (`bot.offline` with `reason=removed`) ([#273](https://github.com/amatouhake/endbot/issues/273));
+- a profile removed while its Bot is online (`bot.offline` with `reason=removed`)
+  ([#273](https://github.com/amatouhake/endbot/issues/273));
 - actual Xbox achievement unlocks, which were not part of this pass.
 
 ### Bot operations
@@ -136,38 +175,56 @@ On the current pair:
 
 - The 2026-10-30 compatibility gate's Windows smoke covers movement, jump, chunk radius, reconnect, mining, pickups
   and drops, timed item use, feeding and riding, Groups and Luau scripts (see [the gate](#current-baseline-050-to-070)).
-- 2026-11-02, Bots only ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md#look-observation-gate-2026-11-02-jst)): `look`
-  completing when BDS observes the rotation; a named block reached through grass, a block wrapped in leaves listed
-  but refused with the obstruction named, and reach up to 6 blocks; boxes, spheres and `except` narrowing `blocks`
-  and `destroy`, with the removed `radius` spelling refused.
+- 2026-11-02, Bots only
+  ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md#look-observation-gate-2026-11-02-jst)):
+  - `look` completing when BDS observes the rotation;
+  - a named block reached through grass, a block wrapped in leaves listed but refused with the obstruction named, and
+    reach up to 6 blocks;
+  - boxes, spheres and `except` narrowing `blocks` and `destroy`, with the removed `radius` spelling refused.
 - 2026-11-02, one human Windows client
-  ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst)): the Japanese help pages, the Find
-  blocks form, `look` then crosshair `destroy`, and the removed spelling refused.
+  ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md#human-windows-client-pass-2026-11-02-jst)):
+  the Japanese help pages, the Find blocks form, `look` then crosshair `destroy`, and the removed spelling refused.
 
 On the earlier pair (`1.26.52.3`), not repeated since:
-[mining](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md), including a human client watching continuous mining and a live revoke and
-regrant; [pickups, drops, swap and hold](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/INVENTORY_VALIDATION.md);
-[Groups](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/GROUPS.md#verification), by console probe and on a human client;
-[timed item use and equipment](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ITEM_USE_SYNC_VALIDATION.md), including a human client confirming the trident
-throw; and [dimension changes, radius and controller policy](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/BOT_BEHAVIOR_VALIDATION.md), Bots only.
+
+- [mining](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md),
+  including a human client watching continuous mining and a live revoke and regrant;
+- [pickups, drops, swap and hold](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/INVENTORY_VALIDATION.md);
+- [Groups](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/GROUPS.md#verification),
+  by console probe and on a human client;
+- [timed item use and equipment](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ITEM_USE_SYNC_VALIDATION.md),
+  including a human client confirming the trident throw;
+- [dimension changes, radius and controller policy](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/BOT_BEHAVIOR_VALIDATION.md),
+  Bots only.
 
 Also on the earlier pair, 2026-10-24:
 
-- Windows RakNet, console: `interact @cow` fed the cow, the crosshair `interact` reached it, `attack @cow` damaged it
-  and `destroy dirt` broke the nearest dirt block. After the held-item wait was added, `interact @cow count 3` fed
-  three different cows (three wheat) and `destroy oak_log count 5` broke a five-log trunk; before it, rapid clicks
-  after the first were rejected by BDS.
-- Windows RakNet (`scripts/raknet_spike.py --entity`): feeding a cow consumed wheat, the Bot boarded a minecart by
-  id, rode a powered minecart about 12 blocks with BDS keeping its position on the cart, refused interaction while
-  riding (before vehicle switching), and walked normally after leaving both a stationary and a moving cart.
-  Switching from a minecart to a boat without dismounting, a boat exit in the look direction and a moving-minecart
-  side exit each ran with no correction.
+- Windows RakNet, console:
+  - `interact @cow` fed the cow, the crosshair `interact` reached it, `attack @cow` damaged it and `destroy dirt` broke
+    the nearest dirt block;
+  - after the held-item wait was added, `interact @cow count 3` fed three different cows (three wheat) and
+    `destroy oak_log count 5` broke a five-log trunk; before it, rapid clicks after the first were rejected by BDS.
+- Windows RakNet (`scripts/raknet_spike.py --entity`):
+  - feeding a cow consumed wheat;
+  - the Bot boarded a minecart by id, rode a powered minecart about 12 blocks with BDS keeping its position on the
+    cart, refused interaction while riding (before vehicle switching), and walked normally after leaving both a
+    stationary and a moving cart;
+  - switching from a minecart to a boat without dismounting, a boat exit in the look direction and a moving-minecart
+    side exit each ran with no correction.
 - Bots only: a radius-12 `blocks` search took about 23 ms of server-thread time (before areas replaced the
   `radius` option).
 
+Also on the earlier pair:
+
+- a Bot's request for 3 chunks was raised to 5 by BDS; the `[runtime] chunk-radius` default of 5 (previously the
+  protocol library requested 10) follows that observed effective range;
+- one idle Bot with one occupied hotbar slot cost about 0.2 ms per read at the default hotbar sync settings. That
+  sample is not a capacity benchmark and says nothing about many Bots or large NBT.
+
 Not run:
 
-- dimension changes watched by human clients, portal travel and knockback after a transition ([#274](https://github.com/amatouhake/endbot/issues/274));
+- dimension changes watched by human clients, portal travel and knockback after a transition
+  ([#274](https://github.com/amatouhake/endbot/issues/274));
 - item use and held-item rendering beyond the trident case, other-client rendering of `swap` and `hold`, low TPS and
   large NBT ([#275](https://github.com/amatouhake/endbot/issues/275));
 - a felling script on a real tree, live Luau `area.*` values and the script-facing reach and look fields
@@ -176,8 +233,9 @@ Not run:
   multi-Bot load ([#277](https://github.com/amatouhake/endbot/issues/277));
 - the control forms on a human client: open `/bot`, `/bot menu`, `/bot <name>` and `/bot <name> menu`, submit each
   input form once, cancel the despawn confirmation, close forms with Escape, and confirm a revoked controller cannot
-  act from an already open form (unit tests cover the screen contents, every form response mapping to
-  parser-accepted arguments, malformed responses, and view delivery and revocation);
+  act from an already open form;
+  - unit tests cover the screen contents, every form response mapping to parser-accepted arguments, malformed
+    responses, and view delivery and revocation;
 - the Japanese wording on a human client beyond the help pages: a `status` reply, an error, the Bot list and Bot
   screens, and one mode form;
 - native command hints for `swap` and `hold` and the Hold item and Swap slots forms on a human client, and item use
@@ -186,41 +244,64 @@ Not run:
 
 ### Scripting
 
-- Bots only ([record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/SCRIPTING.md#live-validation)): a Group row template placing Bots
-  within 0.35 blocks, a patrol stopped by name and by run id, console input surviving a run's cleanup, a runaway loop
-  ended by the execution budget, the operation rate limit throttling, a message flood ending the run, and mining at
-  spots. The two rate-limit cases ran on the current pair (2026-11-02), the others on the earlier pair (2026-10-23).
-- A human Windows client, for 0.4.0 on the earlier pair: templates, Copy and edit, revision history, rename, sharing,
-  book import and export, `runs` and `stop`, and a runaway loop interrupted.
-- A Windows client, 2026-10-25: form fields drop pasted line breaks, and the multi-line authoring loop works
+- **Bots only**
+  ([record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/SCRIPTING.md#live-validation)):
+  a Group row template placing Bots within 0.35 blocks, a patrol stopped by name and by run id, console input
+  surviving a run's cleanup, a runaway loop ended by the execution budget, the operation rate limit throttling, a
+  message flood ending the run, and mining at spots.
+  - The two rate-limit cases ran on the current pair (2026-11-02), the others on the earlier pair (2026-10-23).
+- **A human Windows client, for 0.4.0 on the earlier pair:** templates, Copy and edit, revision history, rename,
+  sharing, book import and export, `runs` and `stop`, and a runaway loop interrupted.
+- **A Windows client, 2026-10-25:** form fields drop pasted line breaks, and the multi-line authoring loop works
   (create from a template or blank, Write into held book, edit the pages, Replace all from held book).
-- The optional UI resource pack, on one Windows client 1.26.60.5 with the pack active as a global resource, default
+- **The optional UI resource pack**, on one Windows client 1.26.60.5 with the pack active as a global resource, default
   GUI scale, 1080p (2026-11-03,
   [record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/UI_PACK.md#client-check-2026-11-03-jst-windows-126605)):
-  `/bot` and `/botscript` in the larger window with compact, unclipped buttons; the tall field on a marked input,
-  with typing, backspace and Enter working and saves keeping line breaks, Japanese text, `§` codes, tabs and trailing
-  spaces; lines of 152 and 2603 characters and pastes of 156 and 2508 characters kept in full; the field taking focus
-  only when its frame is clicked; without the pack, the whole-script entry unusable (only the first lines shown,
-  typing does nothing, input stops at about 100 characters); and *Endbot UI* listed in Global Resources with a
-  two-line description and the abstract-E icon.
+  - `/bot` and `/botscript` in the larger window with compact, unclipped buttons;
+  - the tall field on a marked input, with typing, backspace and Enter working and saves keeping line breaks, Japanese
+    text, `§` codes, tabs and trailing spaces;
+  - lines of 152 and 2603 characters and pastes of 156 and 2508 characters kept in full;
+  - the field taking focus only when its frame is clicked;
+  - without the pack, the whole-script entry unusable (only the first lines shown, typing does nothing, input stops at
+    about 100 characters);
+  - *Endbot UI* listed in Global Resources with a two-line description and the abstract-E icon.
 
-Not run: a second controller seeing only shared scripts ([#272](https://github.com/amatouhake/endbot/issues/272)); the OS confinement under real memory
-pressure, CPU exhaustion and parent death inside a running BDS on both platforms, beyond the unit and OS probes.
-For the UI pack: the field on a mobile client, a fresh achievement unlock with the pack active, and serving the
-pack as a server resource pack instead of a global one ([#277](https://github.com/amatouhake/endbot/issues/277)).
+Not run:
+
+- a second controller seeing only shared scripts ([#272](https://github.com/amatouhake/endbot/issues/272));
+- the OS confinement under real memory pressure, CPU exhaustion and parent death inside a running BDS on both
+  platforms, beyond the unit and OS probes;
+- for the UI pack: the field on a mobile client, a fresh achievement unlock with the pack active, and serving the pack
+  as a server resource pack instead of a global one ([#277](https://github.com/amatouhake/endbot/issues/277)).
 
 ### Permissions and endbotd
 
 Checked for 0.5.0:
 
-- endbotd ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ENDBOTD_VALIDATION.md)): the Bot-only live smoke, then a human Windows client finding
-  commands, forms, script menus and messages unchanged, and a command issued while endbotd restarts refused with a
-  reason and working afterwards. One observation stayed unexplained ([#279](https://github.com/amatouhake/endbot/issues/279)).
-- The permission model ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/PERMISSIONS_VALIDATION.md)): the Bot-only live smoke, and a human pass with
-  one account covering the update from 0.4.0, roles and ownership as far as one person can see them.
+- endbotd
+  ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ENDBOTD_VALIDATION.md)):
+  the Bot-only live smoke, then a human Windows client finding commands, forms, script menus and messages unchanged,
+  and a command issued while endbotd restarts refused with a reason and working afterwards. One observation stayed
+  unexplained ([#279](https://github.com/amatouhake/endbot/issues/279)).
+- The permission model
+  ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/PERMISSIONS_VALIDATION.md)):
+  the Bot-only live smoke, and a human pass with one account covering the update from 0.4.0, roles and ownership as
+  far as one person can see them.
 
-Not run: every check that needs a real second person ([#272](https://github.com/amatouhake/endbot/issues/272)). 0.5.0 shipped without them; their logic is
-covered by unit tests, and with the default `shared` nothing changes for players until someone makes an item private.
+On the 0.1.x baseline (patched Endstone `0.11.12+endbot.1`, BDS 1.26.51.1):
+
+- with `allow-list=true` and an empty `allowlist.json`, a Bot accepted by the local-bot path joined, and nothing was
+  written to `allowlist.json`;
+- the release gates for that behaviour: a non-allowlisted human is still rejected with `allow-list=true`; an
+  allowlisted human joins; a Bot with a wrong issuer, wrong owner signature, or with local-bot-auth disabled is
+  rejected; the accepted Bot has member (not operator) permissions;
+- the 2026-09-24 operator gate found two TOML traps in manual plugin configs: Windows paths in double-quoted strings
+  (backslash escapes) and XUIDs written as bare numbers.
+
+Not run: every check that needs a real second person ([#272](https://github.com/amatouhake/endbot/issues/272)).
+
+- 0.5.0 shipped without them; their logic is covered by unit tests.
+- With the default `shared`, nothing changes for players until someone makes an item private.
 
 ## Compatibility change gate
 
@@ -233,21 +314,40 @@ A proposed Endstone/BDS update is not supported merely because it compiles. It m
 5. valid local-bot login plus wrong-key/signature/expiry/issuer/`cpk`, disabled-mode, and replay negative controls;
 6. concurrent-bot smoke testing and reconnect behavior appropriate to that release;
 7. configuration and version-aware world-history inspection;
-8. the manual `/bot ping` and actual Xbox achievement observation in `ACHIEVEMENTS.md`.
+8. the manual `/bot ping` and actual Xbox achievement observation in [ACHIEVEMENTS.md](ACHIEVEMENTS.md).
 
 Only after reviewed evidence should `endstone.lock`, the compatibility manifest, and support documentation change.
-Linux remains the CI/release-artifact baseline. The runtime uses Node and Python filesystem/socket APIs that are portable to
-Windows and avoids POSIX-only runtime requirements. Native Windows hosting has additionally been live-smoked
-successfully after PR #4 (see above), but that smoke does not give Linux and Windows identical CI/release coverage.
+
+Platform coverage:
+
+- Linux remains the CI/release-artifact baseline.
+- The runtime uses Node and Python filesystem/socket APIs that are portable to Windows and avoids POSIX-only runtime
+  requirements.
+- Native Windows hosting has been live-smoked successfully since PR #4, including the 2026-10-30 gate's Windows
+  live smoke above, and the release candidate builds a Windows wheel and bundle and runs the Windows consumer
+  E2E. That still does not give Linux and Windows identical CI/release coverage.
 
 ## Release contents
 
-`.github/workflows/release-candidate.yml` exists and assembles a release candidate on manual dispatch: it clean-builds
-the patched Endstone tree, runs its upstream tests, builds and inspects the Linux Endstone wheel, builds the Endbot
-plugin wheel, packages the Endbot runtime and example configuration, generates the compatibility manifest and
-SHA-256 checksums as currently implemented, and uploads the `dist/` candidate as a workflow artifact. It does not
-publish a production release automatically. It must not package the official BDS binary. `scripts/generate_compatibility_manifest.py` binds metadata to the current Endbot Git revision
-and SHA-256 of the ordered patch series. The Linux Endstone artifact is repaired with pinned upstream Endstone's
-configured cibuildwheel manylinux image and `auditwheel` repair command, then inspected and installed with the plugin in
-a clean consumer image that has no LLVM runtime. Raw build-host wheels remain inside cibuildwheel's disposable container
-and are never uploaded. No workflow publishes a production release.
+`.github/workflows/release-candidate.yml` assembles a release candidate on manual dispatch. It does not publish a
+production release, and no workflow does. It must not package the official BDS binary.
+
+| Job | What it does |
+| --- | --- |
+| `linux` | Clean-builds the patched Endstone tree with the Conan host profile and runs its upstream tests |
+| | Builds, repairs and inspects the Linux Endstone wheel, and builds the core, plugin and CLI wheels |
+| | Builds and tests the Linux Luau runner; builds the web bundle and the Linux operator bundle |
+| | Installs the wheels in a clean consumer image with no LLVM runtime |
+| `windows` | Builds and inspects the Windows Endstone wheel; builds the core, plugin and CLI wheels; builds and tests the Windows Luau runner; builds the web bundle and the Windows operator bundle |
+| `e2e` | Runs the clean-consumer bundle E2E (`.github/workflows/bundle-e2e.yml`) on both bundles before anything is assembled |
+| `assemble` | Collects both Endstone wheels, the pure wheels and both operator bundles |
+| | Packages the Endbot runtime and example configuration as tarballs; generates the compatibility manifest; builds the optional UI pack |
+| | Writes `SHA256SUMS`, attests build provenance, and uploads the `dist/` candidate as a workflow artifact |
+
+- `scripts/generate_compatibility_manifest.py` binds metadata to the current Endbot Git revision and the SHA-256 of the
+  ordered patch series.
+- The Linux Endstone artifact is repaired with pinned upstream Endstone's configured cibuildwheel manylinux image and
+  `auditwheel` repair command, then inspected and installed with the plugin in a clean consumer image that has no LLVM
+  runtime.
+- Raw build-host wheels remain inside cibuildwheel's disposable container and are never uploaded.
+- Publishing a release is a manual step; see [release/README.md](../release/README.md).

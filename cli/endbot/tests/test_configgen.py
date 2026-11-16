@@ -1,4 +1,4 @@
-"""Tests for derived config generation (docs/OPERATIONS.md section 2)."""
+"""Tests for derived config generation (docs/OPERATIONS.md, "Generated files")."""
 
 from __future__ import annotations
 

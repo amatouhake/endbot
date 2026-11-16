@@ -1,4 +1,4 @@
-"""Read-only health checks for one Endbot instance (docs/OPERATIONS.md section 7).
+"""Read-only health checks for one Endbot instance (docs/OPERATIONS.md, "Checking health").
 
 Every check prints one ``PASS`` / ``WARN`` / ``FAIL`` / ``SKIP`` line and
 configuration, policy and world data are never changed. Live queries use transient IPC files.
@@ -258,7 +258,8 @@ def check_bds_version(server: Path, lock: LockData) -> CheckResult:
             FAIL,
             name,
             f"{version_file} is missing; Endstone treats a server without version.txt as older than supported and "
-            "would re-download BDS and the vanilla packs over the existing ones (docs/OPERATIONS.md section 6); "
+            "would re-download BDS and the vanilla packs over the existing ones "
+            '(docs/INSTALL.md, "Adopting an existing server"); '
             "restore version.txt or run `endbot setup` before ever starting the server",
         )
     except OSError as error:
@@ -313,7 +314,7 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
         return CheckResult(
             FAIL,
             name,
-            f"{endstone_toml} is missing; create it with [local-bot-auth] (generated on every start, section 2) "
+            f"{endstone_toml} is missing; create it with [local-bot-auth] (generated on every start) "
             "or run `endbot setup`",
         )
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
@@ -322,7 +323,10 @@ def check_local_bot_auth(server: Path, paths: InstancePaths) -> CheckResult:
     section = document.get("local-bot-auth")
     if not isinstance(section, dict):
         return CheckResult(
-            FAIL, name, f"key '[local-bot-auth]' is missing from {endstone_toml}; add it (see OPERATIONS.md section 2)"
+            FAIL,
+            name,
+            f"key '[local-bot-auth]' is missing from {endstone_toml}; add it "
+            '(docs/OPERATIONS.md, "Generated files")',
         )
     if section.get("enabled") is not True:
         return CheckResult(
@@ -475,7 +479,8 @@ def check_control_token(paths: InstancePaths) -> CheckResult:
         return CheckResult(
             FAIL,
             name,
-            f"{paths.control_token} is missing; the runtime creates it on first start (docs/OPERATIONS.md section 1)",
+            f"{paths.control_token} is missing; the runtime creates it on first start "
+            '(docs/OPERATIONS.md, "Directory layout")',
         )
     except (OSError, UnicodeDecodeError) as error:
         return CheckResult(FAIL, name, f"{paths.control_token} cannot be read: {error}; fix the file permissions")
@@ -487,13 +492,13 @@ def check_control_token(paths: InstancePaths) -> CheckResult:
 
 
 def check_grant_revisions(paths: InstancePaths) -> CheckResult:
-    """``state/grant-revisions.json`` (docs/ENDBOTD.md P4); the plugin refuses to load when it is corrupt."""
+    """``state/grant-revisions.json`` (docs/ENDBOTD.md P4); endbotd refuses to start when it is corrupt."""
 
     from uuid import UUID
 
     name = "grant-revisions"
     path = paths.state_controllers.parent / "grant-revisions.json"
-    remedy = "the plugin will not load; stop Endbot and delete it, which safely resets every revision to 0"
+    remedy = "endbotd will not start; stop Endbot and delete it, which safely resets every revision to 0"
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -1034,7 +1039,7 @@ def check_controllers(config: EndbotConfig, state: ControllerState) -> list[Chec
         binding = state.find(gamertag)
         if binding is None:
             results.append(
-                CheckResult(WARN, name, f"{gamertag} is pending; join once with this GamerTag to bind it (section 3)")
+                CheckResult(WARN, name, f"{gamertag} is pending; join once with this GamerTag to bind it")
             )
         else:
             results.append(
@@ -1052,7 +1057,7 @@ def check_controllers(config: EndbotConfig, state: ControllerState) -> list[Chec
                     WARN,
                     name,
                     f"{binding.gamertag} has a binding but is not in [controllers].gamertags; "
-                    "bootstrap grant is revoked on next start; runtime grants are separate (section 3)",
+                    "bootstrap grant is revoked on next start; runtime grants are separate",
                 )
             )
     return results
@@ -1124,7 +1129,7 @@ def check_controllers_legacy(server: Path, paths: InstancePaths) -> CheckResult:
     return CheckResult(
         WARN,
         name,
-        f"{legacy} legacy [authorization] pre-bound entries; migrate them to [controllers].gamertags (section 3)",
+        f"{legacy} legacy [authorization] pre-bound entries; migrate them to [controllers].gamertags",
     )
 
 
@@ -1147,7 +1152,7 @@ def check_runtime(context: DoctorContext, config: EndbotConfig | None, paths: In
 
 
 def run_doctor(context: DoctorContext) -> list[CheckResult]:
-    """Run every section 7 check in order and return one or more results per check."""
+    """Run every check of docs/OPERATIONS.md, "Checking health", in order and return one or more results per check."""
 
     paths = context.paths
     results: list[CheckResult] = []

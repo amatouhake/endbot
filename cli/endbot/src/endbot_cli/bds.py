@@ -1,4 +1,5 @@
-"""BDS acquisition through Endstone's own bootstrap (docs/OPERATIONS.md section 6).
+"""BDS acquisition through Endstone's own bootstrap (docs/INSTALL.md, "Adopting an existing server";
+docs/OPERATIONS.md, "Update").
 
 Endbot never bundles, vendors, or redistributes the Bedrock Dedicated Server
 (AGENTS.md). The only acquisition path is the pinned Endstone's own bootstrap:

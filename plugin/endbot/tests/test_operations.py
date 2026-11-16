@@ -342,13 +342,13 @@ class EventRegistryTests(unittest.TestCase):
         self.assertEqual(EVENTS["player.join"]["capability"], "observe.presence")
         guarantee = EVENTS["block.change"]["guarantee"]
         self.assertEqual((guarantee["class"], guarantee["ticks"], guarantee["each"], guarantee["record"]),
-                         ("persist", 4, ["player-break", "player-place"], "BLOCK_EVENTS_SPIKE.md#result"))
+                         ("persist", 4, ["player-break", "player-place"], "EVENT_MEASUREMENTS.md#block-changes"))
         self.assertEqual(EVENTS["block.change"]["filters"]["area"], {"type": "area", "maxBlocks": 512})
 
     def test_the_runtime_and_server_kinds_are_listed_with_their_guarantees(self):
         self.assertLessEqual({"block.change", "bot.online", "bot.offline", "bot.died", "job.finished",
                               "server.started", "schedule", "world.time"}, set(EVENTS))
-        record = "EVENTS_VALIDATION.md#runtime-and-server-kinds"
+        record = "EVENT_MEASUREMENTS.md#runtime-and-server-kinds"
         for kind in ("job.finished", "server.started"):
             with self.subTest(kind=kind):
                 spec = EVENTS[kind]
@@ -375,10 +375,10 @@ class EventRegistryTests(unittest.TestCase):
         self.assertEqual(died["filters"], {"bot": {"type": "bot"}})
         self.assertEqual(died["payload"], {"bot": "string", "message": "string"})
         self.assertEqual(died["guarantee"], {"class": "each", "ticks": None, "each": [],
-                                             "record": "BLOCK_EVENTS_SPIKE.md#presence-chat-and-death"})
+                                             "record": "EVENT_MEASUREMENTS.md#bot-death"})
 
     def test_schedule_and_world_time_are_listed_with_their_guarantees(self):
-        record = "EVENTS_VALIDATION.md#schedule-and-world-time"
+        record = "EVENT_MEASUREMENTS.md#schedule-and-world-time"
         schedule = EVENTS["schedule"]
         self.assertEqual((schedule["source"], schedule["capability"], schedule["visibility"], schedule["require"]),
                          ("endbotd", "read.world", "public", [["every"], ["at"]]))

@@ -929,9 +929,9 @@ UI from endbotd without Cloudflare ([other hosts](DIRECTION.md#other-hosts)); ot
 
 Status: **Steps 1 to 7 released in 0.7.0** (on `main` 2026-11-08 JST, #234 to #247): event kinds in the registry, `block.change`,
 watches, triggers with commands, forms and the web, presence and opt-in public chat, runtime and server kinds,
-`schedule` and `world.time`. The Bot-only live smoke passed ([record](EVENTS_VALIDATION.md#bot-only-live-smoke));
+`schedule` and `world.time`. The Bot-only live smoke passed ([summary](COMPATIBILITY.md#events-watches-and-triggers));
 the human checks (EVENTS.md step 8) passed in the release pass with BOT-021
-([record](EVENTS_VALIDATION.md#release-pass)). Framework agreed in
+([summary](COMPATIBILITY.md#events-watches-and-triggers)). Framework agreed in
 [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
 (2026-10-28 JST), design in [EVENTS.md](EVENTS.md) (2026-10-29 JST).
 

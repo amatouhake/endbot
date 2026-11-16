@@ -404,7 +404,7 @@ class EndbotPlugin(Plugin):
 
     @event_handler(priority=EventPriority.MONITOR, ignore_cancelled=True)
     def on_player_chat(self, event: PlayerChatEvent) -> None:
-        # Public chat only: /tell, /msg and /w are commands and raise no chat event (BLOCK_EVENTS_SPIKE.md), and a
+        # Public chat only: /tell, /msg and /w are commands and raise no chat event (EVENT_MEASUREMENTS.md#presence-and-chat), and a
         # chat BDS targets at some players only is not public either.
         if self._blocks is None:
             return

@@ -52,7 +52,7 @@ records the client pass for the new command surface; see
 unchanged. The Conan host profile above is new in 0.7.0; it pins what the 0.6.0 candidate had resolved, after conancenter
 published newer ranges that broke the Windows build, so the built Endstone is the same. The 2026-10-30 gate and
 achievement observation stand; the release pass checked `level.dat` again and found no creative or experiment
-history ([events record](EVENTS_VALIDATION.md#release-pass)).
+history ([events](#events-watches-and-triggers)).
 
 ## Previous baseline (0.2.1 to 0.4.0)
 
@@ -183,6 +183,37 @@ Not run:
   player's trigger: both need a second Xbox account;
 - a rollback from 0.7.0 to 0.6.0. It needs `[events]`, `[web]` and the three new `[limits]` keys removed first,
   because 0.6.0 refuses keys it does not know.
+
+### Events, watches and triggers
+
+Checked on the locked pair. What each event kind guarantees, and the measurement behind it, is in
+[EVENT_MEASUREMENTS.md](EVENT_MEASUREMENTS.md).
+
+With Bots only, 2026-11-08 ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/EVENTS_VALIDATION.md#bot-only-live-smoke)): a watched block change delivered
+once, the 64-occurrence queue reporting `missed`, a dropped plugin link reported as a gap, a watched area over the
+limit refused, a trigger starting its script, and triggers coming back armed after endbotd was killed.
+
+With one Xbox account in the Windows client, on `0.7.0-rc.5` and `rc.6`
+([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/EVENTS_VALIDATION.md#release-pass)):
+
+- a human breaking and placing watched blocks; `player.join`, `player.leave` and opt-in `player.chat`, with `/tell`,
+  `/msg` and `/w` never delivered;
+- `bot.online`, `bot.offline`, `bot.died`, `job.finished`, `server.started`, `schedule` and `world.time`;
+- BDS stopped with a watch open, BDS started again, and endbotd killed under a running BDS;
+- the start cap throttling a trigger, the per-controller share of watched cells, and a relative watched area refused
+  with its reason;
+- revoking a grant disabling the player's triggers, which stay disabled after a regrant;
+- the trigger forms in the Windows client and the trigger screens on a phone;
+- `state/triggers.json` carried through `endbot update`, `--rollback` and `--force`;
+- `level.dat` with no creative or experiment history after the pass.
+
+Not run:
+
+- a shared script's declaration growing under another player's trigger (`script changed`), and a player refused a
+  change to another player's trigger: both need a second Xbox account;
+- a chat muted by a behavior pack still reaching `player.chat`;
+- a profile removed while its Bot is online (`bot.offline` with `reason=removed`);
+- actual Xbox achievement unlocks, which were not part of this pass.
 
 ## Compatibility change gate
 

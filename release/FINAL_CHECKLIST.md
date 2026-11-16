@@ -402,7 +402,7 @@ differs from rc.6 only in versions and documentation.
 
 - [x] Web release pass: protocol mismatch, `rotate-key`, power cut, update and rollback, custom domain and the change
   back, the trusted site, rate limits ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/WEB_VALIDATION.md#release-pass)).
-- [x] Events human checks, EVENTS.md step 8 ([record](../docs/EVENTS_VALIDATION.md#release-pass)), with
+- [x] Events human checks, EVENTS.md step 8 ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/EVENTS_VALIDATION.md#release-pass)), with
   `state/triggers.json` carried through update, rollback and `--force`.
 - [x] `level.dat` with no creative or experiment history after the pass. Actual Xbox achievement unlocks were not
   part of it.

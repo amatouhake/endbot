@@ -5,7 +5,7 @@ on the server thread only:
 
 - reads every watched position once every ``POLL_TICKS`` ticks, a quarter of
   them on each tick so the cost is spread evenly, and reports a difference from
-  the last value it saw with cause ``poll`` (BLOCK_EVENTS_SPIKE.md#result);
+  the last value it saw with cause ``poll`` (EVENT_MEASUREMENTS.md#block-changes);
 - for a player breaking or placing a block at a watched position, reads it on
   the next tick and reports it with cause ``player-break`` or ``player-place``
   only if the block really changed, so a cancelled action is never reported;
@@ -142,7 +142,7 @@ class BlockChangeSource:
         if DEATH_KIND not in self._kinds or player is None:
             return
         if str(getattr(player, "xuid", "") or ""):
-            return  # A human's death is never reported (BLOCK_EVENTS_SPIKE.md#presence-chat-and-death).
+            return  # A human's death is never reported (EVENT_MEASUREMENTS.md#bot-death).
         name = str(getattr(player, "name", "") or "")
         if name:
             self._pending.append({"kind": DEATH_KIND, "bot": name, "message": str(message)})

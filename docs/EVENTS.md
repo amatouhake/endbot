@@ -2,8 +2,8 @@
 
 Status: **Steps 1 to 7 on `main`** (2026-11-08 JST, #234 to #247); design agreed 2026-10-29 JST, amended
 2026-11-08 JST by S6 to S13 (see [settled points](#settled-points)). The Bot-only live smoke passed
-([record](EVENTS_VALIDATION.md#bot-only-live-smoke)); step 8, the human checks, ran in the combined release pass on
-2026-11-11 and 2026-11-12 JST ([record](EVENTS_VALIDATION.md#release-pass)).
+([summary](COMPATIBILITY.md#events-watches-and-triggers)); step 8, the human checks, ran in the combined release pass on
+2026-11-11 and 2026-11-12 JST ([summary](COMPATIBILITY.md#events-watches-and-triggers)).
 
 This document turns [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
 into a registry format, a delivery path, watch and trigger semantics, and a step plan. It builds on endbotd
@@ -72,7 +72,7 @@ field:
   "require": [["area"]],
   "payload": {"x": "integer", "y": "integer", "z": "integer", "dimension": "string",
               "from": "block", "to": "block", "cause": "string", "bot": "string?"},
-  "guarantee": {"class": "persist", "ticks": null, "each": [], "record": "BLOCK_EVENTS_SPIKE.md#result"}
+  "guarantee": {"class": "persist", "ticks": null, "each": [], "record": "EVENT_MEASUREMENTS.md#block-changes"}
 }
 ```
 
@@ -118,7 +118,7 @@ that, `guarantee.class` is one of:
 - **Polled positions.** The plugin reads every watched position once every 4 ticks, a quarter of them on each tick,
   and compares it with the last value it saw; a difference is reported with cause `poll`. The period comes from step 1
   and is fixed, not an operator setting, so `guarantee.ticks` (4) stays true
-  ([record](BLOCK_EVENTS_SPIKE.md#result)).
+  ([record](EVENT_MEASUREMENTS.md#block-changes)).
 - **Unloaded chunks** are skipped by the poll. When the chunk is loaded again a difference is reported late, with
   cause `poll`; the spike confirms that reading an unloaded position is detectable rather than a default block.
 - **Bounds**: a watch or trigger filter is a BOT-027 area (S7) of at most `maxBlocks` (512) cells; the server watches
@@ -300,14 +300,14 @@ Decided 2026-11-08 JST, before implementation started:
 - **S10. `player.chat` is an operator opt-in** (`[events] chat`, off by default; decided 2026-11-08 JST). On the
   locked Endstone the chat event comes before a behavior pack's `chatSend` mute and BDS's chat filter run, so a
   message nobody saw could reach a script; operators who do not mute chat with a pack turn it on
-  ([record](EVENTS_VALIDATION.md#presence-and-chat)).
+  ([record](EVENT_MEASUREMENTS.md#presence-and-chat)).
 
 Approved by the operator 2026-11-08 JST after implementation (they changed the design during review):
 
 - **S11. `bot.online` and `bot.offline` are a sample, not a feed.** endbotd reads the runtime's Bot profiles once a
   second, so their guarantee is `persist` 40 ticks (a state that lasts two seconds is delivered), they are
   runtime-sourced, a failed poll is a gap, and a watch or trigger made after the last sample gets no change that may
-  predate it ([record](EVENTS_VALIDATION.md#runtime-and-server-kinds)).
+  predate it ([record](EVENT_MEASUREMENTS.md#runtime-and-server-kinds)).
 - **S12. Area filters and the poll.** A watched area is absolute (`~` and the sphere around a Bot are refused: a watch
   has no Bot to resolve against), holds at most 512 cells and at most 16 `except` clauses in 1024 characters (every
   occurrence is tested against every shape on the link thread), and spells the End `end` as commands do. The 4-tick
@@ -349,9 +349,9 @@ BOT-021 and BOT-022 ship together in one release; no release is cut between them
    door, water and lava flow, sand falling, TNT, fire, leaf decay, crop growth, and a block changed and restored
    within 1, 2, 4 and 8 ticks. Also measured: poll cost per 1000 positions per pass, reads in unloaded chunks, and
    whether `player.join`, `player.leave`, `player.chat` (public only; a `/tell` must raise nothing the plugin
-   forwards) and death messages have usable events. Recorded in `docs/BLOCK_EVENTS_SPIKE.md` with a `#result`
+   forwards) and death messages have usable events. Recorded in `docs/EVENT_MEASUREMENTS.md` under `#block-changes`, the
    section that sets `guarantee.ticks`, `each`, `block-poll-ticks` and `max-watched-blocks`. *Claude.* **Done
-   2026-11-08 JST** ([record](BLOCK_EVENTS_SPIKE.md#result)): poll every 4 ticks, `guarantee.ticks` 4, `each` player
+   2026-11-08 JST** ([record](EVENT_MEASUREMENTS.md#block-changes)): poll every 4 ticks, `guarantee.ticks` 4, `each` player
    break and place, `max-watched-blocks` 2048.
 2. **Registry.**
    - **2a. The `events` schema** (E1, E2), the registry tests (required fields, `require` sets, `visibility` must be

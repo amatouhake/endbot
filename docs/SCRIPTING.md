@@ -194,13 +194,6 @@ Form selections also pin Group UUID/order and Bot UUID, rejecting deletion/recre
 Declared Bot arguments keep their UUID pin on subsequent requests; explicitly Group-pinned calls retain
 the Group's own identity guard.
 
-日本語: 引数は配列で宣言し、各 `param` の最初の引数に名前を指定します。コマンドの引数と実行フォームは
-宣言順です。上の例は `group`、`origin`、`spacing` の順で、末尾の引数を省略すると宣言した初期値を使います。
-順番どおりの引数の後に `spacing=3` のように `名前=値` で任意の引数を指定できます。位置は vector で、
-`a.origin + vector.create(2, 0, 0)` のように計算でき、`bot:tp(a.origin)` のように座標の代わりに渡せます。
-`param.choice("mode", {"once", "continuous"})` は選択肢から1つを選ぶ引数で、実行フォームではドロップダウンになります。
-引数名の重複、無効な名前、不明な型、名前付きキーや配列との混在はエラーになります。
-
 Ordinary operation calls return **acceptance**, not completion: `{ok=true,code="ok",messages=...,data=...}` or
 `{ok=false,code=...,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
 `code` says what to do next and is the same in every language: `unauthorized` (permission), `not_found` (no such

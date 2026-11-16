@@ -25,6 +25,50 @@ from an authorized controller or from the server console (at the console, leave 
 Wait until the Bots are online, and give them their tools and targets as usual before gameplay actions. A reply
 confirms that the operation was accepted, not that it succeeded in the world.
 
+## Menus
+
+`/bot` (or `/bot menu`) lists your Bots and your Groups as `#group (count)`. Tap a Group to open its operation
+screen.
+
+| Command | Screen |
+| --- | --- |
+| `/bot #miners menu` | Operations for the whole Group |
+| `/bot #miners[1] menu` | The ordinary menu of that one member |
+| `/botgroup` or `/botgroup menu` | The Group list, and creating a Group |
+| `/botgroup menu #miners [page]` | Managing one Group |
+| `/botgroup menu #miners result [history]` | Saved results, with older/newer buttons |
+
+### Operation screen
+
+The Group operation screen has the same categories as a single Bot: stop, movement, look, teleport, gameplay,
+inventory and Bot settings, plus your operation history. Teleport, resume and spawn (also at coordinates),
+reconnect and despawn, chunk radius, status and block interaction are all there.
+
+- It works for Groups with online and offline members, and for empty Groups. Failures show in the reply as usual.
+- Rename and forget are not offered; use a member's own menu.
+- Settings forms start from defaults, not from one member's current value.
+- **Group management...** opens the management screen for this Group.
+
+### Management screen
+
+`/botgroup menu #miners` shows the members in order with their connection state. From here you can add and remove
+members and delete the Group (with a confirmation).
+
+- Members are shown ten per page: `/botgroup menu #miners 2` is page 2.
+- Tap a member to open its ordinary Bot menu. The way back to management is kept as you go deeper.
+- **Group operations...** opens the operation screen. Its **Back to group management** button returns here.
+- Opened directly with `/bot #group menu`, the operation screen goes back to the Bot and Group list instead.
+- Add and remove forms name the Group and submit with **Add** and **Remove**. The delete form names the Group in its
+  title, text and button. The Bots stay registered.
+
+### How forms behave
+
+- Every form submission runs the same `/bot` or `/botgroup` command, with the same permissions, and shows that
+  command in chat.
+- If the members change, or the Group is deleted and re-created, an old form is refused: open it again.
+- A member's form keeps controlling that same Bot. A new Bot that took the old name is not controlled by it.
+- Closing or canceling a form does nothing.
+
 ## Managing Groups
 
 `/botgroup` creates and edits Groups. Group names always start with `#`, including when you create one.
@@ -120,7 +164,11 @@ Notes:
 - A together-operation that was already accepted is not undone. Continuous mining stops as it does for a single
   Bot.
 
-## Replies
+## Results
+
+What a Group operation tells you right away, what a query shows, and the saved result of each operation.
+
+### Replies
 
 A whole-group command that changes something replies in at most **two lines**, however many members failed.
 
@@ -139,7 +187,7 @@ Notes:
   `result` are not logged.
 - Join and quit messages and mining notices are separate messages and are not part of the two lines.
 
-## Queries
+### Queries
 
 Queries print every member's answer at once.
 
@@ -160,7 +208,7 @@ Notes:
 - Giving a value (`hotbar 3`, `radius 8`, `radius default`) is a change, not a query: it gets the two-line reply,
   is logged and is saved as a result.
 
-## Operation results
+### Operation results
 
 `/botgroup result` prints every member's result of one saved operation.
 
@@ -196,51 +244,11 @@ Notes:
 - In the menu, the older/newer buttons stay on the results you were viewing even when a new operation arrives. If a
   result was dropped in the meantime, reopen the history.
 
-## Menus
+## Limits
 
-`/bot` (or `/bot menu`) lists your Bots and your Groups as `#group (count)`. Tap a Group to open its operation
-screen.
+The rules Groups follow, and what does not work well yet.
 
-| Command | Screen |
-| --- | --- |
-| `/bot #miners menu` | Operations for the whole Group |
-| `/bot #miners[1] menu` | The ordinary menu of that one member |
-| `/botgroup` or `/botgroup menu` | The Group list, and creating a Group |
-| `/botgroup menu #miners [page]` | Managing one Group |
-| `/botgroup menu #miners result [history]` | Saved results, with older/newer buttons |
-
-### Operation screen
-
-The Group operation screen has the same categories as a single Bot: stop, movement, look, teleport, gameplay,
-inventory and Bot settings, plus your operation history. Teleport, resume and spawn (also at coordinates),
-reconnect and despawn, chunk radius, status and block interaction are all there.
-
-- It works for Groups with online and offline members, and for empty Groups. Failures show in the reply as usual.
-- Rename and forget are not offered; use a member's own menu.
-- Settings forms start from defaults, not from one member's current value.
-- **Group management...** opens the management screen for this Group.
-
-### Management screen
-
-`/botgroup menu #miners` shows the members in order with their connection state. From here you can add and remove
-members and delete the Group (with a confirmation).
-
-- Members are shown ten per page: `/botgroup menu #miners 2` is page 2.
-- Tap a member to open its ordinary Bot menu. The way back to management is kept as you go deeper.
-- **Group operations...** opens the operation screen. Its **Back to group management** button returns here.
-- Opened directly with `/bot #group menu`, the operation screen goes back to the Bot and Group list instead.
-- Add and remove forms name the Group and submit with **Add** and **Remove**. The delete form names the Group in its
-  title, text and button. The Bots stay registered.
-
-### How forms behave
-
-- Every form submission runs the same `/bot` or `/botgroup` command, with the same permissions, and shows that
-  command in chat.
-- If the members change, or the Group is deleted and re-created, an old form is refused: open it again.
-- A member's form keeps controlling that same Bot. A new Bot that took the old name is not controlled by it.
-- Closing or canceling a form does nothing.
-
-## Rules and limits
+### Rules and limits
 
 - **Names:** case-insensitive, up to 16 ASCII letters, digits or `_`, starting with a letter or `_`. The spelling you
   used is kept for display.
@@ -253,7 +261,7 @@ members and delete the Group (with a confirmation).
   matters.
 - **Language:** forms, results and normal replies use your game language. Some management messages stay in English.
 
-## Known limits
+### Known limits
 
 - `/botgroup` shows a generic `<action: string>` / `<arguments: message>` usage instead of useful suggestions. The
   commands still work; completion is just weak, as for `/bot`

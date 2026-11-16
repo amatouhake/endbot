@@ -1,4 +1,4 @@
-<!-- source: docs/SCRIPTING.md 9bad1b8702ae78c5374e540654bf0f26ae602a35 -->
+<!-- source: docs/SCRIPTING.md ce9959359caf3031d6a510800c249541fbb14154 -->
 
 <a id="luau-scripting-reference"></a>
 # Luau スクリプトのリファレンス
@@ -9,8 +9,46 @@
 - スクリプトは**既定でオフ**です。有効にすること、その上限、実行をどう閉じ込めるかはオペレーター側の話です: [SCRIPTING_SETUP.md](../SCRIPTING_SETUP.md)。
 - 内部の仕組み: [SCRIPTING_INTERNALS.md](../SCRIPTING_INTERNALS.md)。実際のサーバーで確認したこと: [確認状況](../COMPATIBILITY.md#scripting)。
 
+**目次**
+
+- [スクリプトを動かす・編集する](#running-and-editing-scripts)
+  - [コマンド](#commands)
+  - [スクリプトのメニュー](#the-script-menu)
+  - [本](#books)
+  - [任意の UI パックの入力欄](#optional-ui-pack-field)
+  - [スクリプトファイル](#script-files)
+- [スクリプトの宣言](#declaring-a-script)
+  - [引数](#parameters)
+  - [capability](#capabilities)
+  - [引数の渡し方](#passing-arguments)
+- [操作を呼ぶ](#calling-operations)
+  - [結果と code](#results-and-codes)
+  - [チャットに出る操作の返事](#operation-replies-in-chat)
+  - [ログと待機](#logging-and-waiting)
+  - [ジョブと待機](#jobs-and-waits)
+  - [構造化された状態と採掘の待機](#structured-status-and-mining-waits)
+- [ワールドを読む](#reading-the-world)
+  - [ほかのクエリ](#other-queries)
+  - [ワールドのクエリ](#world-queries)
+  - [ブロックの狙い方](#targeting-blocks)
+  - [範囲](#areas)
+- [イベント](#events)
+  - [イベントの種類](#event-kinds)
+  - [監視](#watches)
+  - [トリガー](#triggers)
+- [実行の寿命と後片付け](#run-lifetime-and-cleanup)
+- [共有と保存](#sharing-and-storage)
+  - [持ち主、公開範囲、版](#ownership-visibility-and-revisions)
+  - [名前と保存](#names-and-storage)
+- [生成された API リファレンス](#generated-api-reference)
+
+<a id="running-and-editing-scripts"></a>
+## スクリプトを動かす・編集する
+
+スクリプトを動かし管理するコマンドと、編集する場所 (メニュー、本、UI パックの入力欄、スクリプトファイル) です。
+
 <a id="commands"></a>
-## コマンド
+### コマンド
 
 `/botscript` でスクリプトを管理し、実行します。`endbot.command.control` が必要です。スクリプトの作成と変更は、ロールにもよります ([ロール](../PERMISSIONS.md#roles))。
 
@@ -58,30 +96,6 @@
 
 - コンソールの `runs` は、すべてのコントローラーの実行を持ち主つきで一覧にします。
 - コンソールの `stop <id|name|all>` は、そのどれでも止められます。そのため、ログアウトしたコントローラーが残した実行も、そのコントローラーの権限を取り消さずに終わらせられます。
-
-<a id="ownership-visibility-and-revisions"></a>
-### 持ち主、公開範囲、版
-
-各スクリプトは、作ったコントローラーを持ち主として記録します。編集、削除、復元、公開範囲の変更ができるのは、持ち主かコンソールだけです。ほかの人には「スクリプト … を変更できるのは持ち主の … だけです」と返り、**コピーして編集** を案内されます。
-
-| 公開範囲 | 見て実行できる人 |
-| --- | --- |
-| `private` | 持ち主だけ。ほかの人には存在しないのと同じです |
-| `shared` | すべてのコントローラーが一覧表示、show、実行、コピーできます |
-
-- 新しいスクリプトとコピーは `private` で始まります。`visibility <name> shared|private` で切り替えます。
-- 0.4.0 の `share <name>` と `private <name>` という書き方は 0.6.0 で廃止されました。入力すると、`visibility` を案内して拒否されます。
-- `copy <name> <new-name>` は、あなたが持ち主になる非公開のコピーを作ります。
-- `rename <name> <new-name>` (持ち主だけ) は、持ち主、公開範囲、履歴を保ちます。実行中のものは古い名前のままです。
-- 保存のたびに、前のソースを残します。`history <name>` は直近 10 版を新しい順に、時刻と行数つきで一覧にします。
-- `restore <name> <n>` は、版 `n` を新しい保存として現在の版にします。置き換えられたソースも履歴に残ります。
-- 実行は、スクリプトの持ち主がだれであっても、常に実行した人の権限を使います。
-
-補足:
-
-- 持ち主の仕組みより前に保存されたスクリプト (ファイルのバージョン 1) には持ち主がなく、共有のままです。最初に編集したコントローラーが持ち主になります。
-- コンソールだけ: `owner <name> <GamerTag>` で、保存されたスクリプトの持ち主を付け替えられます。公開範囲、版、履歴はそのままです。
-- [スクリプトファイル](#script-files)には付け替える持ち主がいません。ファイルが本体です。
 
 <a id="the-script-menu"></a>
 ### スクリプトのメニュー
@@ -206,15 +220,10 @@ PC のエディターでスクリプトを書くには、オペレーターが `
 - 確認を実行できないとき (あなたの実行枠が埋まっている、runner がない) は、ファイルを読み込んだままにし、確認していないことを返事で伝えます。
 - `params` の前で止まるファイルは、確認に約 5 秒かかります。確認の間、`/bot` のコマンドは待たされます。
 
-<a id="names-and-storage"></a>
-### 名前と保存
+<a id="declaring-a-script"></a>
+## スクリプトの宣言
 
-- 名前は大文字と小文字を区別せず、グループと同じ規則に従います。ASCII の英字、数字、アンダースコアで 1-16 文字、先頭は英字かアンダースコアです。
-- 保存に失敗しても、前の版はそのまま残ります。
-- 再起動後に、実行を再開したりやり直したりすることはありません。
-
-<a id="writing-a-script"></a>
-## スクリプトを書く
+スクリプトが動く前に宣言するもの (引数と capability) と、引数の渡り方です。
 
 <a id="parameters"></a>
 ### 引数
@@ -306,6 +315,11 @@ params {}
 
 位置は Luau の**ベクトル**として届きます。`a.origin.x` を読んだり、足したり、倍にしたり (`a.origin + vector.create(2, 0, 0) * i`) できます。操作が `x, y, z` を取るところには、どこでも 1 つで渡せます (`bot:tp(a.origin)`)。
 
+<a id="calling-operations"></a>
+## 操作を呼ぶ
+
+操作の呼び出しが返すもの、チャットとログに出るもの、ジョブの待ち方です。
+
 <a id="results-and-codes"></a>
 ### 結果と code
 
@@ -337,6 +351,23 @@ assert(r.ok, r.reason)
 - `operations-per-second` を超えた操作は失敗しません。空きができるまで待ち、最初に待ったことが実行のログに記録されます。
 - コマンド文字列の API はありません。スクリプトから、入力するコマンドを実行することはできません。
 
+<a id="operation-replies-in-chat"></a>
+### チャットに出る操作の返事
+
+スクリプトが出す操作は、どれも普通の `/bot` コマンドでもあります。そのため、その返事は入力したときと同じくあなたのチャットに届くはずです。`[scripting] replies` (プラグインの `config.toml`、管理されたインスタンスでは `endbot.toml`) で、何を出すかを選びます:
+
+| 値 | チャットに出るもの |
+| --- | --- |
+| `all` | 入力したコマンドと同じく、すべての操作 |
+| `failures` (既定) | 拒否された操作だけ。受け付けた操作も、コンソールのログ行は残ります |
+| `none` | 何も出しません |
+
+補足:
+
+- `failures` では、`not_a_target` で拒否された `destroy` は出しません。スクリプトが読んだ後に、対象が消えることがあるからです ([ブロックの狙い方](#targeting-blocks))。スクリプトはそれでも拒否を受け取ります。
+- 実行の開始と終了の行、`log()`、採掘ループの開始と停止の通知は影響を受けません。
+- スクリプトから方針は変えられません。
+
 <a id="logging-and-waiting"></a>
 ### ログと待機
 
@@ -356,164 +387,6 @@ log("done")
 - サーバーのログにはすべての行が残ります。1 実行あたり 2000 行か 512 KiB までです。
 - コンソールからの実行は、サーバーのログだけに出します。
 - `[scripting] chat-logs = false` (プラグインの `config.toml`、管理されたインスタンスでは `endbot.toml`) にすると、ログはサーバーのログだけに残ります。
-
-<a id="operation-replies-in-chat"></a>
-### チャットに出る操作の返事
-
-スクリプトが出す操作は、どれも普通の `/bot` コマンドでもあります。そのため、その返事は入力したときと同じくあなたのチャットに届くはずです。`[scripting] replies` (プラグインの `config.toml`、管理されたインスタンスでは `endbot.toml`) で、何を出すかを選びます:
-
-| 値 | チャットに出るもの |
-| --- | --- |
-| `all` | 入力したコマンドと同じく、すべての操作 |
-| `failures` (既定) | 拒否された操作だけ。受け付けた操作も、コンソールのログ行は残ります |
-| `none` | 何も出しません |
-
-補足:
-
-- `failures` では、`not_a_target` で拒否された `destroy` は出しません。スクリプトが読んだ後に、対象が消えることがあるからです ([ブロックの狙い方](#targeting-blocks))。スクリプトはそれでも拒否を受け取ります。
-- 実行の開始と終了の行、`log()`、採掘ループの開始と停止の通知は影響を受けません。
-- スクリプトから方針は変えられません。
-
-<a id="structured-status-and-mining-waits"></a>
-### 構造化された状態と採掘の待機
-
-`bot:status()` は、いつもの結果を返します。下の `data` のフィールドを読んでください。
-
-```lua
-local s = bot("Alice"):status().data
-if s.mining.active then log("still mining " .. s.mining.blocksBroken) end
-```
-
-| フィールド | 意味 |
-| --- | --- |
-| `data.name` | 今の Bot の名前 |
-| `data.identityId` | Bot の UUID |
-| `data.connectionState` | runtime の接続状態。`online` は接続済み |
-| `data.vehicle` | 乗っている間は `{type, runtimeId}`、それ以外は nil |
-| `data.position` | 足の位置 `{x, y, z}` |
-| `data.dimension` | `Overworld`、`Nether`、`TheEnd` のどれか |
-| `data.look` | 度で表した `{yaw, pitch}`。yaw は 0-360 で、0 が南 (+Z)、90 が西 (-X)。pitch は -90 (上) から 90 (下)。`look` と同じ表し方 |
-| `data.health`, `data.maxHealth` | BDS の体力 |
-| `data.hunger`, `data.saturation` | 満腹度 (0-20) と隠し満腹度 |
-| `data.onGround`, `data.inWater` | 真偽値 |
-| `data.selectedSlot` | 選んでいるホットバーのスロット、1-9 |
-| `data.held` | 選んでいるアイテムの `{name, count}`。空なら nil |
-| `data.mining.active` | 真偽値: ブロックを壊すジョブか連続採掘ループが動いている (対象を待っている間も含む) |
-| `data.mining.mode` | `once` か `continuous`。採掘ジョブがまだなければ nil |
-| `data.mining.state` | runtime のジョブの状態 (`active`、`waiting`、`completed`、`canceled`、`failed`)。ジョブがなければ nil |
-| `data.mining.blocksBroken` | runtime の連続採掘ループの数。1 ブロックの場合は、完了なら 1、それ以外は 0。ジョブがなければ 0 |
-| `data.mining.blockCount` | 連続採掘の数の上限。無制限かジョブがなければ nil |
-| `data.mining.reason` | 動いている間は nil。それ以外は runtime の終了理由。ジョブがなければ nil |
-| `data.mining.target` | `state` が `active` の間は壊しているブロックの `{x, y, z, type}`、それ以外は nil |
-| `data.running` | 動いている入力ジョブの id を種類別に (`move`、`jump`、`attack`、`use`、`interact`)。何も動いていなければ nil |
-| `data.ended` | 入力の種類ごとの最後の終了: `{job, reason}` |
-| `data.teleports` | runtime の起動後に Bot が確認応答した、サーバーのテレポートの数 |
-
-補足:
-
-- 位置、向き、体力、インベントリは、呼び出した時点で BDS から読みます。満腹度と隠し満腹度は、BDS が最後に Bot に送った値です。
-- Bot がワールドにいないとき、または BDS がまだ送っていないとき、フィールドは nil です。
-- 採掘の値は、最後に終わったものも含めて、Bot の実際の採掘ジョブを伝えます。経過時間から完了を推測することはありません。
-- 終了理由には、`block count reached`、`duration elapsed`、`stopped`、runtime の失敗理由があります。
-- `group:status()` は、メンバー順で `data.results` を返します。各行には `index`、`identityId`、`name`、`ok`、`reason` (成功時は nil)、そしてそのメンバーの上のフィールドを入れた `data` (クエリが失敗したら nil) があります。クエリが一部失敗すると、外側が `ok=false` になります。
-- 採掘を待つには、[`waitMining`](#jobs-and-waits) か `destroy` のジョブの `wait` を使ってください。
-
-<a id="other-queries"></a>
-### ほかのクエリ
-
-| 呼び出し | `data` |
-| --- | --- |
-| `bot:inventory()` | `slots`: 空でないスロットを `{slot, name, count}` で並べます。スロットは `"1"`-`"36"`、`offhand`、`head`、`chest`、`legs`、`feet` |
-| `bot:hotbar()` | `selectedSlot` とホットバーの `slots` |
-| `bot:entities()` | `entities`: 近くのプレイヤー以外のエンティティを近い順に最大 10 件、`{runtimeId, type, distance, position, health, maxHealth, nameTag}` で並べます。Mob でなければ `health` は nil |
-| `bot:entity("@cow")` | `entity`: 16 ブロック以内のそうした要素 1 つ。`"@9"`、`"@nearest"`、引数なしも使えます |
-
-- インベントリ、ホットバー、`held` のアイテムのうち、道具や防具のように耐久値のあるものには `durability = {remaining, max}` が付きます。
-- エンティティの `selector` (`"@9"`) を `:interact(e.selector)` や `:attack(e.selector)` に渡してください。エンティティには常に `@` を付けます。
-- 繰り返しは、最後のオプションテーブルで指定します: `bot:interact("@cow", {count=5})`、`bot:attack("@zombie", {interval=20, ticks=200})`、`bot:destroy("oak_log", {count=10})`。
-
-<a id="world-queries"></a>
-### ワールドのクエリ
-
-ワールドのクエリは BDS を読み、頻度制限では操作として数えます。
-
-| 呼び出し | `data` |
-| --- | --- |
-| `bot:target()` | `kind` (`"block"`、`"entity"`、nil)、`distance`、そして `block = {x, y, z, face, type}` か `entity = {runtimeId, type}`。Bot の目から 6 ブロック以内で、近いほうに当たったもの。プレイヤーは無視します |
-| `bot:block(x, y, z)` | `{x, y, z, type, states, reachable}`。届かないときは `reachCode` と、`blocked` なら `obstruction` も加わります。`"~"`/`"~-1"` の文字列は Bot からの相対です。読み込まれている位置ならどこでも使えます |
-| `bot:blocks("oak_log", {limit=10})` | `{type, radius, blocks}`。`blocks` は `{x, y, z, distance, reachable}` を Bot に近い順に並べます。対象は Bot の周りの半径 8 の球の中で、プレイヤーに見えるブロックだけです (透視はしません。下を参照)。limit は 1-64 |
-| `bot:blocks("oak_log", {area=area.sphere(5, x, y, z)})` | `{type, area, blocks}`: 同じクエリを[範囲](#areas)で絞ったもの。たとえば木のてっぺんの周り。Bot から 16 ブロックより先は探しません |
-
-`blocks(type, x, y, z)` と `{radius = r}` は廃止されました。呼ぶと、`blocks(type, {area = area.sphere(r, x, y, z)})` を示すメッセージで失敗します。
-
-<a id="areas"></a>
-### 範囲
-
-範囲は、`blocks`、種類を指定した `destroy`、`destroy` の連続採掘ループ、種類を指定した `interact` が選べるブロックを絞り込みます。`area` で作り、`{area = a}` として渡します。
-
-| Luau | チャット | 形 |
-| --- | --- | --- |
-| `area.cell(x, y, z)` または `area.cell(v)` | `within <x> <y> <z>` | 1 ブロック |
-| `area.box(x1, y1, z1, x2, y2, z2)` または `area.box(v1, v2)` | `within <x1> <y1> <z1> <x2> <y2> <z2>` | 直方体。`/fill` と同じく両方の角を含む |
-| `area.sphere(r)` | `within <r>` | Bot を中心とする半径 `r` の球 |
-| `area.sphere(r, x, y, z)` または `area.sphere(r, v)` | `within <r> of <x> <y> <z>` | ある地点を中心とする半径 `r` の球 |
-| `a:minus(b)` | `except <b>` | `a` から `b` のブロックを除いたもの。`b` は上のどの形でもよい |
-
-```lua
-local footing = area.cell("~", "~-1", "~")
-local job = bot:destroy("acacia_log", {count = 20, area = area.sphere(6):minus(footing)}).job
-job:wait{}
-```
-
-- 座標は、数値、ベクトル、または Bot からの相対の `"~"`/`"~-1"` の文字列です。
-- `:minus` は自由につなげられます (`area.sphere(6):minus(footing):minus(trunk)`)。チャットでは `except` は 1 つです。
-- 範囲を作れるのはこれらの関数だけです。テーブルや文字列は拒否されます。
-- Bot の足場は特別扱いしないので、例のように明示的に除いてください。
-
-規則は[コマンドの規則](COMMANDS.md#areas-within-and-except)と同じです:
-
-- 範囲は絞るだけで、届く距離や視線を広げることはありません。
-- `~` は操作を受け付けたときに決まります。そのため、連続採掘ループは Bot が動いても範囲を保ちます。
-- `within` は最大で半径 16 の球までです。
-- 範囲がなければ、各操作は既定のままです。
-
-`interact` は、ブロックの種類と `@entity` セレクターの両方を 1 つの `target` 引数で受けるので、`{area = a}` はそのシグネチャの一部です。範囲が効くのは、対象がブロックの種類のときだけです (`interact("chest", {area = ...})`)。`@entity` の対象では、呼び出しは「範囲を指定できるのはブロックの種類 …」として拒否されます。
-
-<a id="targeting-blocks"></a>
-### ブロックの狙い方
-
-ブロックについての 3 つの問いには、それぞれ 1 つの答えがあります。
-
-| 問い | 規則 | 使うもの |
-| --- | --- | --- |
-| プレイヤーに見えるか | 面の 1 つが、光を通すブロックに接している: 空気、液体、植物、葉、ガラス、氷、そしてハーフブロック、階段、フェンス、塀、板ガラス、ドアのような部分的な形 | `blocks` が並べるブロック |
-| Bot が今狙えるか | 空気でも液体でもなく、一部が Bot の目から 6 ブロック以内にあり、Bot に向いた面まで、当たり判定のないブロック (空気、液体、草、花、松明、レール、雪の層) だけを通る直線が届く。葉、ガラス、部分的な形は直線を止める | `reachable`、`destroy x y z`、`destroy <type>`、`interact x y z`、`interact <type>` |
-| 照準の先に何があるか | Bot の視線に沿って 6 ブロック以内で最初の、空気でも液体でもないブロック。プレイヤーと同じく、草や松明には当たり、ライトブロックには当たらない | `target`、および対象なしの `destroy` と `interact` |
-
-そのため、背の高い草の後ろの原木は、名前や座標なら届きますが、照準はその手前の草に当たります。葉に包まれた原木は `blocks` には出ますが、葉を 1 つ壊すまでは届きません。
-
-ブロックを狙えないとき、`block` は `reachable = false` と `reachCode` を返し、`destroy`/`interact` は同じ値を `code` として失敗します:
-
-| コード | 意味 |
-| --- | --- |
-| `not_a_target` | 空気か液体、または照準の先に何もない |
-| `out_of_reach` | どの部分も Bot の目から 6 ブロック以内にない |
-| `blocked` | 何かがすべての直線をさえぎっている。見つかったときは、`obstruction = {x, y, z, type}` (拒否された操作では `data` の中) が、さえぎっている最初のブロックを示す |
-| `unbreakable` | `destroy` のみ: 岩盤、バリアなど、サバイバルで壊せないブロック。狙うことはできる |
-
-```lua
-local info = bot:block(x, y, z).data
-if not info.reachable and info.reachCode == "blocked" and info.obstruction then
-  local o = info.obstruction
-  bot:destroy(o.x, o.y, o.z)  -- 先に葉を壊す
-end
-```
-
-補足:
-
-- `block` と `blocks` は読み取りで、予約ではありません。`reachable` は読んだ瞬間のことです。`destroy` と `interact` は、実行するときに対象をもう一度確認します。
-- その間にブロックが消えることがあります。Bot 自身の前のひと振りがまだ処理中だった、葉が自然に消えた、別の Bot やプレイヤーが壊した、などです。そのとき、操作は `not_a_target` で失敗します。
-- ブロックがなくなればよいだけのスクリプトは、`destroy` の `not_a_target` を完了として扱えます。
 
 <a id="jobs-and-waits"></a>
 ### ジョブと待機
@@ -559,86 +432,179 @@ group("#miners"):destroy("stone", {count = 64}).job:wait{timeout = 2400}
 - 確認のたびに操作の頻度制限に数え、権限と停止を確認し直します。
 - `waitOnline(b)` と `b:waitMining{}` は 1.0 まで別名として残るので、今あるスクリプトはそのまま動きます。
 
-<a id="generated-api-reference"></a>
-## 生成された API リファレンス
+<a id="structured-status-and-mining-waits"></a>
+### 構造化された状態と採掘の待機
 
-この表はすべてのメソッドの一覧で、`/bot` と同じ操作のレジストリから生成しています。値の範囲やオプションの組み合わせは、入力したコマンドとまったく同じように確認します。メソッドは `bot("Alice")` と `group("#miners")` で使えます。グループ全体の rename と forget には、1 つの Bot だけという制限が残ります。
+`bot:status()` は、いつもの結果を返します。下の `data` のフィールドを読んでください。
 
-<!-- BEGIN GENERATED OPERATIONS -->
-| メソッド | 位置のフィールド | 最後のオプションテーブル |
-| --- | --- | --- |
-| `:status()` | なし | なし |
-| `:inventory()` | なし | なし |
-| `:entities()` | なし | なし |
-| `:entity()` | なし | なし |
-| `:entity()` | target: string | なし |
-| `:target()` | なし | なし |
-| `:block()` | x: coordinate, y: coordinate, z: coordinate | なし |
-| `:blocks()` | type: string | limit: integer, area: area |
-| `:resume()` | なし | なし |
-| `:reconnect()` | なし | なし |
-| `:despawn()` | なし | なし |
-| `:forget()` | なし | なし |
-| `:visibility()` | visibility: shared / private | なし |
-| `:stop()` | なし | なし |
-| `:dismount()` | なし | なし |
-| `:menu()` | なし | なし |
-| `:spawn()` | なし | なし |
-| `:spawn()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string |
-| `:rename()` | name: string | なし |
-| `:owner()` | gamertag: string | なし |
-| `:tp()` | target: player | なし |
-| `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: player, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
-| `:move()` | direction: forward / backward / left / right / stop | ticks: integer |
-| `:look()` | yaw: number, pitch: number | なし |
-| `:look()` | x: coordinate, y: coordinate, z: coordinate | なし |
-| `:swap()` | a: integer, b: integer | なし |
-| `:hold()` | item: string | なし |
-| `:hotbar()` | なし | なし |
-| `:hotbar()` | slot: integer | なし |
-| `:radius()` | なし | なし |
-| `:radius()` | value: integerOrDefault | なし |
-| `:interact()` | なし | なし |
-| `:interact()` | x: coordinate, y: coordinate, z: coordinate | なし |
-| `:interact()` | x: coordinate, y: coordinate, z: coordinate, face: down / up / north / south / west / east | なし |
-| `:interact()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer, area: area |
-| `:destroy()` | なし | mode: once / continuous / stop, ticks: integer, count: integer, area: area |
-| `:destroy()` | x: coordinate, y: coordinate, z: coordinate | face: down / up / north / south / west / east |
-| `:destroy()` | type: string | mode: continuous, ticks: integer, count: integer, area: area |
-| `:drop()` | なし | なし |
-| `:drop()` | selector: stringOrInteger | count: integer |
-| `:jump()` | なし | mode: once / continuous / stop, interval: integer, ticks: integer |
-| `:attack()` | なし | mode: once / continuous / stop, interval: integer, ticks: integer |
-| `:attack()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer |
-| `:use()` | なし | mode: once / continuous / stop, interval: integer, hold: integer, ticks: integer |
-| `:sprint()` | value: boolean | なし |
-| `:sneak()` | value: boolean | なし |
-| `:list()` | なし | なし |
-| `:ping()` | なし | なし |
-| `:help()` | なし | なし |
-| `:help()` | topic: stringOrInteger | なし |
-<!-- END GENERATED OPERATIONS -->
+```lua
+local s = bot("Alice"):status().data
+if s.mining.active then log("still mining " .. s.mining.blocksBroken) end
+```
 
-名前付きのオプションは、最後のテーブルで渡します: `:move("forward", {ticks=20})`、`:destroy{mode="continuous",count=64}`、`:drop("all")`、`:use{interval=40,hold=20,ticks=120}`。
-
-オプションと入力するコマンドの対応:
-
-- `ticks` は `for` に対応します。アクションの `interval` は `mode` の代わりになります。
-- テレポートのオプションは、`yaw,pitch` を組で使うか、プレイヤーには `facing` を使うか、`facingX,facingY,facingZ` をすべて使います。`dimension` は先頭の `in` 句になります。
-- 引数 3 つの `look(x, y, z)` は `look at` で、コマンドと同じく Bot からの相対です。
-- `sprint` と `sneak` は真偽値を取ります。
+| フィールド | 意味 |
+| --- | --- |
+| `data.name` | 今の Bot の名前 |
+| `data.identityId` | Bot の UUID |
+| `data.connectionState` | runtime の接続状態。`online` は接続済み |
+| `data.vehicle` | 乗っている間は `{type, runtimeId}`、それ以外は nil |
+| `data.position` | 足の位置 `{x, y, z}` |
+| `data.dimension` | `Overworld`、`Nether`、`TheEnd` のどれか |
+| `data.look` | 度で表した `{yaw, pitch}`。yaw は 0-360 で、0 が南 (+Z)、90 が西 (-X)。pitch は -90 (上) から 90 (下)。`look` と同じ表し方 |
+| `data.health`, `data.maxHealth` | BDS の体力 |
+| `data.hunger`, `data.saturation` | 満腹度 (0-20) と隠し満腹度 |
+| `data.onGround`, `data.inWater` | 真偽値 |
+| `data.selectedSlot` | 選んでいるホットバーのスロット、1-9 |
+| `data.held` | 選んでいるアイテムの `{name, count}`。空なら nil |
+| `data.mining.active` | 真偽値: ブロックを壊すジョブか連続採掘ループが動いている (対象を待っている間も含む) |
+| `data.mining.mode` | `once` か `continuous`。採掘ジョブがまだなければ nil |
+| `data.mining.state` | runtime のジョブの状態 (`active`、`waiting`、`completed`、`canceled`、`failed`)。ジョブがなければ nil |
+| `data.mining.blocksBroken` | runtime の連続採掘ループの数。1 ブロックの場合は、完了なら 1、それ以外は 0。ジョブがなければ 0 |
+| `data.mining.blockCount` | 連続採掘の数の上限。無制限かジョブがなければ nil |
+| `data.mining.reason` | 動いている間は nil。それ以外は runtime の終了理由。ジョブがなければ nil |
+| `data.mining.target` | `state` が `active` の間は壊しているブロックの `{x, y, z, type}`、それ以外は nil |
+| `data.running` | 動いている入力ジョブの id を種類別に (`move`、`jump`、`attack`、`use`、`interact`)。何も動いていなければ nil |
+| `data.ended` | 入力の種類ごとの最後の終了: `{job, reason}` |
+| `data.teleports` | runtime の起動後に Bot が確認応答した、サーバーのテレポートの数 |
 
 補足:
 
-- `group:members()` は、決まったメンバー順で、番号付きのメンバーのハンドルを返します。
-- ルートの `list`、`ping`、`help` は、ルートの意味のままです。
-- スクリプトの `menu()` は、UI を開かずに受け付けを返します。
-- `look` (両方の形) は、BDS が新しい向きを報告してから返り、観測した `{yaw, pitch}` を `data.look` に入れます。そのため、直後の照準を使う操作は新しい視点を使います。BDS が約 0.5 秒 (20 TPS で 10 tick) 以内に報告しなければ、結果は `code="timeout"` になります。
+- 位置、向き、体力、インベントリは、呼び出した時点で BDS から読みます。満腹度と隠し満腹度は、BDS が最後に Bot に送った値です。
+- Bot がワールドにいないとき、または BDS がまだ送っていないとき、フィールドは nil です。
+- 採掘の値は、最後に終わったものも含めて、Bot の実際の採掘ジョブを伝えます。経過時間から完了を推測することはありません。
+- 終了理由には、`block count reached`、`duration elapsed`、`stopped`、runtime の失敗理由があります。
+- `group:status()` は、メンバー順で `data.results` を返します。各行には `index`、`identityId`、`name`、`ok`、`reason` (成功時は nil)、そしてそのメンバーの上のフィールドを入れた `data` (クエリが失敗したら nil) があります。クエリが一部失敗すると、外側が `ok=false` になります。
+- 採掘を待つには、[`waitMining`](#jobs-and-waits) か `destroy` のジョブの `wait` を使ってください。
+
+<a id="reading-the-world"></a>
+## ワールドを読む
+
+Bot とワールドについてのクエリと、ブロックや範囲の選ばれ方です。
+
+<a id="other-queries"></a>
+### ほかのクエリ
+
+| 呼び出し | `data` |
+| --- | --- |
+| `bot:inventory()` | `slots`: 空でないスロットを `{slot, name, count}` で並べます。スロットは `"1"`-`"36"`、`offhand`、`head`、`chest`、`legs`、`feet` |
+| `bot:hotbar()` | `selectedSlot` とホットバーの `slots` |
+| `bot:entities()` | `entities`: 近くのプレイヤー以外のエンティティを近い順に最大 10 件、`{runtimeId, type, distance, position, health, maxHealth, nameTag}` で並べます。Mob でなければ `health` は nil |
+| `bot:entity("@cow")` | `entity`: 16 ブロック以内のそうした要素 1 つ。`"@9"`、`"@nearest"`、引数なしも使えます |
+
+- インベントリ、ホットバー、`held` のアイテムのうち、道具や防具のように耐久値のあるものには `durability = {remaining, max}` が付きます。
+- エンティティの `selector` (`"@9"`) を `:interact(e.selector)` や `:attack(e.selector)` に渡してください。エンティティには常に `@` を付けます。
+- 繰り返しは、最後のオプションテーブルで指定します: `bot:interact("@cow", {count=5})`、`bot:attack("@zombie", {interval=20, ticks=200})`、`bot:destroy("oak_log", {count=10})`。
+
+<a id="world-queries"></a>
+### ワールドのクエリ
+
+ワールドのクエリは BDS を読み、頻度制限では操作として数えます。
+
+| 呼び出し | `data` |
+| --- | --- |
+| `bot:target()` | `kind` (`"block"`、`"entity"`、nil)、`distance`、そして `block = {x, y, z, face, type}` か `entity = {runtimeId, type}`。Bot の目から 6 ブロック以内で、近いほうに当たったもの。プレイヤーは無視します |
+| `bot:block(x, y, z)` | `{x, y, z, type, states, reachable}`。届かないときは `reachCode` と、`blocked` なら `obstruction` も加わります。`"~"`/`"~-1"` の文字列は Bot からの相対です。読み込まれている位置ならどこでも使えます |
+| `bot:blocks("oak_log", {limit=10})` | `{type, radius, blocks}`。`blocks` は `{x, y, z, distance, reachable}` を Bot に近い順に並べます。対象は Bot の周りの半径 8 の球の中で、プレイヤーに見えるブロックだけです (透視はしません。下を参照)。limit は 1-64 |
+| `bot:blocks("oak_log", {area=area.sphere(5, x, y, z)})` | `{type, area, blocks}`: 同じクエリを[範囲](#areas)で絞ったもの。たとえば木のてっぺんの周り。Bot から 16 ブロックより先は探しません |
+
+`blocks(type, x, y, z)` と `{radius = r}` は廃止されました。呼ぶと、`blocks(type, {area = area.sphere(r, x, y, z)})` を示すメッセージで失敗します。
+
+<a id="targeting-blocks"></a>
+### ブロックの狙い方
+
+ブロックについての 3 つの問いには、それぞれ 1 つの答えがあります。
+
+| 問い | 規則 | 使うもの |
+| --- | --- | --- |
+| プレイヤーに見えるか | 面の 1 つが、光を通すブロックに接している: 空気、液体、植物、葉、ガラス、氷、そしてハーフブロック、階段、フェンス、塀、板ガラス、ドアのような部分的な形 | `blocks` が並べるブロック |
+| Bot が今狙えるか | 空気でも液体でもなく、一部が Bot の目から 6 ブロック以内にあり、Bot に向いた面まで、当たり判定のないブロック (空気、液体、草、花、松明、レール、雪の層) だけを通る直線が届く。葉、ガラス、部分的な形は直線を止める | `reachable`、`destroy x y z`、`destroy <type>`、`interact x y z`、`interact <type>` |
+| 照準の先に何があるか | Bot の視線に沿って 6 ブロック以内で最初の、空気でも液体でもないブロック。プレイヤーと同じく、草や松明には当たり、ライトブロックには当たらない | `target`、および対象なしの `destroy` と `interact` |
+
+そのため、背の高い草の後ろの原木は、名前や座標なら届きますが、照準はその手前の草に当たります。葉に包まれた原木は `blocks` には出ますが、葉を 1 つ壊すまでは届きません。
+
+ブロックを狙えないとき、`block` は `reachable = false` と `reachCode` を返し、`destroy`/`interact` は同じ値を `code` として失敗します:
+
+| コード | 意味 |
+| --- | --- |
+| `not_a_target` | 空気か液体、または照準の先に何もない |
+| `out_of_reach` | どの部分も Bot の目から 6 ブロック以内にない |
+| `blocked` | 何かがすべての直線をさえぎっている。見つかったときは、`obstruction = {x, y, z, type}` (拒否された操作では `data` の中) が、さえぎっている最初のブロックを示す |
+| `unbreakable` | `destroy` のみ: 岩盤、バリアなど、サバイバルで壊せないブロック。狙うことはできる |
+
+```lua
+local info = bot:block(x, y, z).data
+if not info.reachable and info.reachCode == "blocked" and info.obstruction then
+  local o = info.obstruction
+  bot:destroy(o.x, o.y, o.z)  -- 先に葉を壊す
+end
+```
+
+補足:
+
+- `block` と `blocks` は読み取りで、予約ではありません。`reachable` は読んだ瞬間のことです。`destroy` と `interact` は、実行するときに対象をもう一度確認します。
+- その間にブロックが消えることがあります。Bot 自身の前のひと振りがまだ処理中だった、葉が自然に消えた、別の Bot やプレイヤーが壊した、などです。そのとき、操作は `not_a_target` で失敗します。
+- ブロックがなくなればよいだけのスクリプトは、`destroy` の `not_a_target` を完了として扱えます。
+
+<a id="areas"></a>
+### 範囲
+
+範囲は、`blocks`、種類を指定した `destroy`、`destroy` の連続採掘ループ、種類を指定した `interact` が選べるブロックを絞り込みます。`area` で作り、`{area = a}` として渡します。
+
+| Luau | チャット | 形 |
+| --- | --- | --- |
+| `area.cell(x, y, z)` または `area.cell(v)` | `within <x> <y> <z>` | 1 ブロック |
+| `area.box(x1, y1, z1, x2, y2, z2)` または `area.box(v1, v2)` | `within <x1> <y1> <z1> <x2> <y2> <z2>` | 直方体。`/fill` と同じく両方の角を含む |
+| `area.sphere(r)` | `within <r>` | Bot を中心とする半径 `r` の球 |
+| `area.sphere(r, x, y, z)` または `area.sphere(r, v)` | `within <r> of <x> <y> <z>` | ある地点を中心とする半径 `r` の球 |
+| `a:minus(b)` | `except <b>` | `a` から `b` のブロックを除いたもの。`b` は上のどの形でもよい |
+
+```lua
+local footing = area.cell("~", "~-1", "~")
+local job = bot:destroy("acacia_log", {count = 20, area = area.sphere(6):minus(footing)}).job
+job:wait{}
+```
+
+- 座標は、数値、ベクトル、または Bot からの相対の `"~"`/`"~-1"` の文字列です。
+- `:minus` は自由につなげられます (`area.sphere(6):minus(footing):minus(trunk)`)。チャットでは `except` は 1 つです。
+- 範囲を作れるのはこれらの関数だけです。テーブルや文字列は拒否されます。
+- Bot の足場は特別扱いしないので、例のように明示的に除いてください。
+
+規則は[コマンドの規則](COMMANDS.md#areas-within-and-except)と同じです:
+
+- 範囲は絞るだけで、届く距離や視線を広げることはありません。
+- `~` は操作を受け付けたときに決まります。そのため、連続採掘ループは Bot が動いても範囲を保ちます。
+- `within` は最大で半径 16 の球までです。
+- 範囲がなければ、各操作は既定のままです。
+
+`interact` は、ブロックの種類と `@entity` セレクターの両方を 1 つの `target` 引数で受けるので、`{area = a}` はそのシグネチャの一部です。範囲が効くのは、対象がブロックの種類のときだけです (`interact("chest", {area = ...})`)。`@entity` の対象では、呼び出しは「範囲を指定できるのはブロックの種類 …」として拒否されます。
+
+<a id="events"></a>
+## イベント
+
+イベントの種類、実行の中での監視、実行を始めるトリガーです。
 
 <a id="event-kinds"></a>
-## イベントの種類
+### イベントの種類
 
 スクリプトが監視できるイベントの種類は、下のとおりです。発生ごとに実行を始めるトリガーも、同じ種類とフィルターを使います。
+
+すべての種類、そのペイロード、それぞれの配送の保証:
+
+<!-- BEGIN GENERATED EVENTS -->
+| 種類 | 必須のフィルター (1 つ以上) | ペイロード | 保証 |
+| --- | --- | --- | --- |
+| `block.change` | area: area (最大 512 ブロック) | x: integer, y: integer, z: integer, dimension: string, from: block, to: block, cause: string, bot: string? | 最大 1 回、事後に、発生元の順で届きます。4 tick 以上続いた変化が届きます。player-break と player-place は 1 件ずつ届きます。 |
+| `player.join` | なし | player: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
+| `player.leave` | なし | player: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
+| `player.chat` | なし | player: string, message: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
+| `bot.online` | なし | bot: string | 最大 1 回、事後に、発生元の順で届きます。40 tick 以上続いた変化が届きます。 |
+| `bot.offline` | なし | bot: string, reason: string? | 最大 1 回、事後に、発生元の順で届きます。40 tick 以上続いた変化が届きます。 |
+| `bot.died` | なし | bot: string, message: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
+| `job.finished` | なし | bot: string, job: string, reason: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
+| `server.started` | なし | なし | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
+| `schedule` | every: duration または at: time | at: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
+| `world.time` | なし | phase: string, time: integer | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
+<!-- END GENERATED EVENTS -->
 
 <a id="watches"></a>
 ### 監視
@@ -699,24 +665,6 @@ local n = watch("world.time", {phase = "night"})   -- 夜になるたび
 | `[limits] max-watches-per-controller`、1 人のコントローラーの実行全体 | 32 |
 | `[limits] max-watched-blocks-per-controller`、1 人のコントローラーの監視とトリガー全体のマス数 | 1024 |
 | `[events] max-watched-blocks`、サーバー全体 | 2048 |
-
-すべての種類、そのペイロード、それぞれの配送の保証:
-
-<!-- BEGIN GENERATED EVENTS -->
-| 種類 | 必須のフィルター (1 つ以上) | ペイロード | 保証 |
-| --- | --- | --- | --- |
-| `block.change` | area: area (最大 512 ブロック) | x: integer, y: integer, z: integer, dimension: string, from: block, to: block, cause: string, bot: string? | 最大 1 回、事後に、発生元の順で届きます。4 tick 以上続いた変化が届きます。player-break と player-place は 1 件ずつ届きます。 |
-| `player.join` | なし | player: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
-| `player.leave` | なし | player: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
-| `player.chat` | なし | player: string, message: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
-| `bot.online` | なし | bot: string | 最大 1 回、事後に、発生元の順で届きます。40 tick 以上続いた変化が届きます。 |
-| `bot.offline` | なし | bot: string, reason: string? | 最大 1 回、事後に、発生元の順で届きます。40 tick 以上続いた変化が届きます。 |
-| `bot.died` | なし | bot: string, message: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
-| `job.finished` | なし | bot: string, job: string, reason: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
-| `server.started` | なし | なし | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
-| `schedule` | every: duration または at: time | at: string | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
-| `world.time` | なし | phase: string, time: integer | 最大 1 回、事後に、発生元の順で届きます。発生元が接続している間は、すべての発生が届きます。 |
-<!-- END GENERATED EVENTS -->
 
 <a id="triggers"></a>
 ### トリガー
@@ -829,3 +777,115 @@ end
 - そのため、続く作業が必要な間、スクリプトは待ち続けなければなりません。
 
 runtime に届かないと、後片付けができないことがあります。その失敗は報告されます。`/bot <name> stop` か `/bot <name> destroy stop` で、自分で Bot を止めてください。runtime を直接動かすほかのプログラムからの入力は、追跡の対象外です。
+
+<a id="sharing-and-storage"></a>
+## 共有と保存
+
+スクリプトの持ち主と見える人、版、名前と保存のしかたです。
+
+<a id="ownership-visibility-and-revisions"></a>
+### 持ち主、公開範囲、版
+
+各スクリプトは、作ったコントローラーを持ち主として記録します。編集、削除、復元、公開範囲の変更ができるのは、持ち主かコンソールだけです。ほかの人には「スクリプト … を変更できるのは持ち主の … だけです」と返り、**コピーして編集** を案内されます。
+
+| 公開範囲 | 見て実行できる人 |
+| --- | --- |
+| `private` | 持ち主だけ。ほかの人には存在しないのと同じです |
+| `shared` | すべてのコントローラーが一覧表示、show、実行、コピーできます |
+
+- 新しいスクリプトとコピーは `private` で始まります。`visibility <name> shared|private` で切り替えます。
+- 0.4.0 の `share <name>` と `private <name>` という書き方は 0.6.0 で廃止されました。入力すると、`visibility` を案内して拒否されます。
+- `copy <name> <new-name>` は、あなたが持ち主になる非公開のコピーを作ります。
+- `rename <name> <new-name>` (持ち主だけ) は、持ち主、公開範囲、履歴を保ちます。実行中のものは古い名前のままです。
+- 保存のたびに、前のソースを残します。`history <name>` は直近 10 版を新しい順に、時刻と行数つきで一覧にします。
+- `restore <name> <n>` は、版 `n` を新しい保存として現在の版にします。置き換えられたソースも履歴に残ります。
+- 実行は、スクリプトの持ち主がだれであっても、常に実行した人の権限を使います。
+
+補足:
+
+- 持ち主の仕組みより前に保存されたスクリプト (ファイルのバージョン 1) には持ち主がなく、共有のままです。最初に編集したコントローラーが持ち主になります。
+- コンソールだけ: `owner <name> <GamerTag>` で、保存されたスクリプトの持ち主を付け替えられます。公開範囲、版、履歴はそのままです。
+- [スクリプトファイル](#script-files)には付け替える持ち主がいません。ファイルが本体です。
+
+<a id="names-and-storage"></a>
+### 名前と保存
+
+- 名前は大文字と小文字を区別せず、グループと同じ規則に従います。ASCII の英字、数字、アンダースコアで 1-16 文字、先頭は英字かアンダースコアです。
+- 保存に失敗しても、前の版はそのまま残ります。
+- 再起動後に、実行を再開したりやり直したりすることはありません。
+
+<a id="generated-api-reference"></a>
+## 生成された API リファレンス
+
+この表はすべてのメソッドの一覧で、`/bot` と同じ操作のレジストリから生成しています。値の範囲やオプションの組み合わせは、入力したコマンドとまったく同じように確認します。メソッドは `bot("Alice")` と `group("#miners")` で使えます。グループ全体の rename と forget には、1 つの Bot だけという制限が残ります。
+
+<!-- BEGIN GENERATED OPERATIONS -->
+| メソッド | 位置のフィールド | 最後のオプションテーブル |
+| --- | --- | --- |
+| `:status()` | なし | なし |
+| `:inventory()` | なし | なし |
+| `:entities()` | なし | なし |
+| `:entity()` | なし | なし |
+| `:entity()` | target: string | なし |
+| `:target()` | なし | なし |
+| `:block()` | x: coordinate, y: coordinate, z: coordinate | なし |
+| `:blocks()` | type: string | limit: integer, area: area |
+| `:resume()` | なし | なし |
+| `:reconnect()` | なし | なし |
+| `:despawn()` | なし | なし |
+| `:forget()` | なし | なし |
+| `:visibility()` | visibility: shared / private | なし |
+| `:stop()` | なし | なし |
+| `:dismount()` | なし | なし |
+| `:menu()` | なし | なし |
+| `:spawn()` | なし | なし |
+| `:spawn()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string |
+| `:rename()` | name: string | なし |
+| `:owner()` | gamertag: string | なし |
+| `:tp()` | target: player | なし |
+| `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: player, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
+| `:move()` | direction: forward / backward / left / right / stop | ticks: integer |
+| `:look()` | yaw: number, pitch: number | なし |
+| `:look()` | x: coordinate, y: coordinate, z: coordinate | なし |
+| `:swap()` | a: integer, b: integer | なし |
+| `:hold()` | item: string | なし |
+| `:hotbar()` | なし | なし |
+| `:hotbar()` | slot: integer | なし |
+| `:radius()` | なし | なし |
+| `:radius()` | value: integerOrDefault | なし |
+| `:interact()` | なし | なし |
+| `:interact()` | x: coordinate, y: coordinate, z: coordinate | なし |
+| `:interact()` | x: coordinate, y: coordinate, z: coordinate, face: down / up / north / south / west / east | なし |
+| `:interact()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer, area: area |
+| `:destroy()` | なし | mode: once / continuous / stop, ticks: integer, count: integer, area: area |
+| `:destroy()` | x: coordinate, y: coordinate, z: coordinate | face: down / up / north / south / west / east |
+| `:destroy()` | type: string | mode: continuous, ticks: integer, count: integer, area: area |
+| `:drop()` | なし | なし |
+| `:drop()` | selector: stringOrInteger | count: integer |
+| `:jump()` | なし | mode: once / continuous / stop, interval: integer, ticks: integer |
+| `:attack()` | なし | mode: once / continuous / stop, interval: integer, ticks: integer |
+| `:attack()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer |
+| `:use()` | なし | mode: once / continuous / stop, interval: integer, hold: integer, ticks: integer |
+| `:sprint()` | value: boolean | なし |
+| `:sneak()` | value: boolean | なし |
+| `:list()` | なし | なし |
+| `:ping()` | なし | なし |
+| `:help()` | なし | なし |
+| `:help()` | topic: stringOrInteger | なし |
+<!-- END GENERATED OPERATIONS -->
+
+名前付きのオプションは、最後のテーブルで渡します: `:move("forward", {ticks=20})`、`:destroy{mode="continuous",count=64}`、`:drop("all")`、`:use{interval=40,hold=20,ticks=120}`。
+
+オプションと入力するコマンドの対応:
+
+- `ticks` は `for` に対応します。アクションの `interval` は `mode` の代わりになります。
+- テレポートのオプションは、`yaw,pitch` を組で使うか、プレイヤーには `facing` を使うか、`facingX,facingY,facingZ` をすべて使います。`dimension` は先頭の `in` 句になります。
+- 引数 3 つの `look(x, y, z)` は `look at` で、コマンドと同じく Bot からの相対です。
+- `sprint` と `sneak` は真偽値を取ります。
+
+補足:
+
+- `group:members()` は、決まったメンバー順で、番号付きのメンバーのハンドルを返します。
+- ルートの `list`、`ping`、`help` は、ルートの意味のままです。
+- スクリプトの `menu()` は、UI を開かずに受け付けを返します。
+- `look` (両方の形) は、BDS が新しい向きを報告してから返り、観測した `{yaw, pitch}` を `data.look` に入れます。そのため、直後の照準を使う操作は新しい視点を使います。BDS が約 0.5 秒 (20 TPS で 10 tick) 以内に報告しなければ、結果は `code="timeout"` になります。

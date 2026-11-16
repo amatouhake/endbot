@@ -10,7 +10,44 @@ lists everything a script author needs to look up.
 - How it works inside: [SCRIPTING_INTERNALS.md](SCRIPTING_INTERNALS.md). What was checked on real servers:
   [validation status](COMPATIBILITY.md#scripting).
 
-## Commands
+**Contents**
+
+- [Running and editing scripts](#running-and-editing-scripts)
+  - [Commands](#commands)
+  - [The script menu](#the-script-menu)
+  - [Books](#books)
+  - [Optional UI pack field](#optional-ui-pack-field)
+  - [Script files](#script-files)
+- [Declaring a script](#declaring-a-script)
+  - [Parameters](#parameters)
+  - [Capabilities](#capabilities)
+  - [Passing arguments](#passing-arguments)
+- [Calling operations](#calling-operations)
+  - [Results and codes](#results-and-codes)
+  - [Operation replies in chat](#operation-replies-in-chat)
+  - [Logging and waiting](#logging-and-waiting)
+  - [Jobs and waits](#jobs-and-waits)
+  - [Structured status and mining waits](#structured-status-and-mining-waits)
+- [Reading the world](#reading-the-world)
+  - [Other queries](#other-queries)
+  - [World queries](#world-queries)
+  - [Targeting blocks](#targeting-blocks)
+  - [Areas](#areas)
+- [Events](#events)
+  - [Event kinds](#event-kinds)
+  - [Watches](#watches)
+  - [Triggers](#triggers)
+- [Run lifetime and cleanup](#run-lifetime-and-cleanup)
+- [Sharing and storage](#sharing-and-storage)
+  - [Ownership, visibility and revisions](#ownership-visibility-and-revisions)
+  - [Names and storage](#names-and-storage)
+- [Generated API reference](#generated-api-reference)
+
+## Running and editing scripts
+
+The commands that run and manage scripts, and the places to edit them: the menu, books, the UI pack field and script files.
+
+### Commands
 
 `/botscript` manages and runs scripts. It requires `endbot.command.control`; creating and changing scripts also
 depends on your role ([roles](PERMISSIONS.md#roles)).
@@ -61,33 +98,6 @@ Console only:
 - The console's `runs` lists every controller's runs with their owner.
 - The console's `stop <id|name|all>` stops any of them, so a run left behind by a controller who logged out can be
   ended without revoking that controller.
-
-### Ownership, visibility and revisions
-
-Each script records the controller who created it as its owner. Only the owner, or the console, may edit, delete,
-restore or change its visibility; anyone else gets "only the owner may change" and is pointed to **Copy and edit**.
-
-| Visibility | Who sees and runs it |
-| --- | --- |
-| `private` | Only the owner; to everyone else it does not exist |
-| `shared` | Every controller may list, show, run and copy it |
-
-- New scripts and copies start `private`. `visibility <name> shared|private` switches it.
-- The old `share <name>` and `private <name>` spellings (0.4.0) were removed in 0.6.0; they are refused with a
-  pointer to `visibility`.
-- `copy <name> <new-name>` makes a private copy owned by you.
-- `rename <name> <new-name>` (owner only) keeps the owner, visibility and history. Running copies keep the old name.
-- Every save keeps the previous source. `history <name>` lists the last 10 revisions, newest first, with time and line
-  count.
-- `restore <name> <n>` makes revision `n` current as a new save; the replaced source stays in the history.
-- A run always uses the authority of whoever started it, whoever owns the script.
-
-Notes:
-
-- Scripts saved before ownership existed (file version 1) have no owner and stay shared. The first controller to
-  edit one becomes its owner.
-- Console only: `owner <name> <GamerTag>` reassigns a stored script's owner. Visibility, revision and history stay.
-- A [script file](#script-files) has no owner to reassign; the file is the source.
 
 ### The script menu
 
@@ -233,14 +243,9 @@ What `reload` checks:
   says it was not checked.
 - A file that hangs before `params` takes about 5 seconds to check, and `/bot` commands wait while it is checked.
 
-### Names and storage
+## Declaring a script
 
-- Names are case-insensitive and follow Groups: 1–16 ASCII letters, digits and underscores, starting with a letter
-  or underscore.
-- A failed save leaves the previous version intact.
-- Runs are not resumed or replayed after a restart.
-
-## Writing a script
+What a script declares before it runs: its parameters and capabilities, and how arguments reach it.
 
 ### Parameters
 
@@ -339,6 +344,10 @@ Rules:
 Positions arrive as Luau **vectors**. Read `a.origin.x`, add and scale them (`a.origin + vector.create(2, 0, 0) * i`),
 and pass one wherever an operation takes `x, y, z` (`bot:tp(a.origin)`).
 
+## Calling operations
+
+What an operation call returns, what reaches chat and the log, and how to wait for a job.
+
 ### Results and codes
 
 An operation call returns **acceptance**, not completion.
@@ -372,6 +381,24 @@ Notes:
   first such wait.
 - There is no command-string API: a script cannot run a typed command.
 
+### Operation replies in chat
+
+Every operation a script issues is also a normal `/bot` command, so its reply would reach your chat as if typed.
+`[scripting] replies` (plugin `config.toml`, or `endbot.toml` for managed instances) chooses what is echoed:
+
+| Value | Echoed to chat |
+| --- | --- |
+| `all` | Every operation, like a typed command |
+| `failures` (default) | Only refused operations; accepted ones keep their console log line |
+| `none` | Nothing |
+
+Notes:
+
+- Under `failures`, a `destroy` refused as `not_a_target` is not echoed, because its target can vanish after the
+  script read it ([targeting blocks](#targeting-blocks)). The script still receives the refusal.
+- The run's start and end lines, `log()` and the mining loop's start and stop notices are unaffected.
+- Scripts cannot change the policy.
+
 ### Logging and waiting
 
 ```lua
@@ -394,174 +421,6 @@ log("done")
 - Console runs log only to the server log.
 - `[scripting] chat-logs = false` (plugin `config.toml`, or `endbot.toml` for managed instances) keeps logs in the
   server log only.
-
-### Operation replies in chat
-
-Every operation a script issues is also a normal `/bot` command, so its reply would reach your chat as if typed.
-`[scripting] replies` (plugin `config.toml`, or `endbot.toml` for managed instances) chooses what is echoed:
-
-| Value | Echoed to chat |
-| --- | --- |
-| `all` | Every operation, like a typed command |
-| `failures` (default) | Only refused operations; accepted ones keep their console log line |
-| `none` | Nothing |
-
-Notes:
-
-- Under `failures`, a `destroy` refused as `not_a_target` is not echoed, because its target can vanish after the
-  script read it ([targeting blocks](#targeting-blocks)). The script still receives the refusal.
-- The run's start and end lines, `log()` and the mining loop's start and stop notices are unaffected.
-- Scripts cannot change the policy.
-
-### Structured status and mining waits
-
-`bot:status()` returns the usual result; read its `data` fields below.
-
-```lua
-local s = bot("Alice"):status().data
-if s.mining.active then log("still mining " .. s.mining.blocksBroken) end
-```
-
-| Field | Meaning |
-| --- | --- |
-| `data.name` | Current Bot name |
-| `data.identityId` | Bot UUID |
-| `data.connectionState` | Runtime connection state; `online` means connected |
-| `data.vehicle` | `{type, runtimeId}` while riding, else nil |
-| `data.position` | Feet position `{x, y, z}` |
-| `data.dimension` | `Overworld`, `Nether` or `TheEnd` |
-| `data.look` | `{yaw, pitch}` in degrees: yaw 0-360 with 0 south (+Z) and 90 west (-X), pitch -90 (up) to 90 (down), the same convention as `look` |
-| `data.health`, `data.maxHealth` | BDS health |
-| `data.hunger`, `data.saturation` | Food level (0-20) and saturation |
-| `data.onGround`, `data.inWater` | Booleans |
-| `data.selectedSlot` | Selected hotbar slot, 1-9 |
-| `data.held` | `{name, count}` of the selected item, or nil when empty |
-| `data.mining.active` | Boolean: a block destroy job or continuous mining loop is active (including waiting for a target) |
-| `data.mining.mode` | `once` or `continuous`; nil before any mining job |
-| `data.mining.state` | Runtime job state (`active`, `waiting`, `completed`, `canceled`, `failed`), or nil with no job |
-| `data.mining.blocksBroken` | Runtime continuous-loop count; for a single block, 1 if completed, otherwise 0; 0 with no job |
-| `data.mining.blockCount` | Continuous count limit, or nil when unlimited/no job |
-| `data.mining.reason` | Nil while active; otherwise the runtime's terminal reason, or nil with no job |
-| `data.mining.target` | `{x, y, z, type}` of the block being broken while `state` is `active`, else nil |
-| `data.running` | Running input job ids by kind (`move`, `jump`, `attack`, `use`, `interact`); nil when none runs |
-| `data.ended` | The last end of each input kind: `{job, reason}` |
-| `data.teleports` | Server teleports the Bot has acknowledged since the runtime started |
-
-Notes:
-
-- Position, look, health and inventory are read from BDS at the time of the call. Hunger and saturation are what BDS
-  last sent the Bot.
-- A field is nil when the Bot is not in the world, or before BDS has sent it.
-- Mining values report the Bot's actual mining job, including the last one that ended. They never guess completion
-  from elapsed time.
-- Terminal reasons include `block count reached`, `duration elapsed`, `stopped`, and runtime failure reasons.
-- `group:status()` returns `data.results` in membership order. Each row has `index`, `identityId`, `name`, `ok`,
-  `reason` (nil on success) and `data` with that member's fields above (nil on query failure). A partial query
-  failure sets the outer `ok=false`.
-- To wait for mining, use [`waitMining`](#jobs-and-waits) or a `destroy` job's `wait`.
-
-### Other queries
-
-| Call | `data` |
-| --- | --- |
-| `bot:inventory()` | `slots`: non-empty slots as `{slot, name, count}`; slots `"1"`-`"36"`, `offhand`, `head`, `chest`, `legs`, `feet` |
-| `bot:hotbar()` | `selectedSlot` and the hotbar `slots` |
-| `bot:entities()` | `entities`: up to 10 nearby non-player entities, nearest first, as `{runtimeId, type, distance, position, health, maxHealth, nameTag}`; `health` is nil for non-mobs |
-| `bot:entity("@cow")` | `entity`: one such entry within 16 blocks; also `"@9"`, `"@nearest"` or no argument |
-
-- Inventory, hotbar and `held` items carry `durability = {remaining, max}` for damageable items such as tools and
-  armor.
-- Pass an entity's `selector` (`"@9"`) to `:interact(e.selector)` or `:attack(e.selector)`. Entities always take `@`.
-- Repetition uses the final options table: `bot:interact("@cow", {count=5})`,
-  `bot:attack("@zombie", {interval=20, ticks=200})`, `bot:destroy("oak_log", {count=10})`.
-
-### World queries
-
-World queries read BDS and count as operations toward the rate limit.
-
-| Call | `data` |
-| --- | --- |
-| `bot:target()` | `kind` (`"block"`, `"entity"` or nil), `distance`, and `block = {x, y, z, face, type}` or `entity = {runtimeId, type}`: the nearer hit within 6 blocks of the Bot's eyes, ignoring players |
-| `bot:block(x, y, z)` | `{x, y, z, type, states, reachable}`, plus `reachCode` and, for `blocked`, `obstruction` when not reachable; `"~"`/`"~-1"` strings are relative to the Bot; any loaded position |
-| `bot:blocks("oak_log", {limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance, reachable}` nearest the Bot first, only blocks a player could see (no x-ray, see below), within a sphere of 8 around the Bot; limit 1-64 |
-| `bot:blocks("oak_log", {area=area.sphere(5, x, y, z)})` | `{type, area, blocks}`: the same query narrowed to an [area](#areas), for example around a treetop; never past 16 blocks from the Bot |
-
-`blocks(type, x, y, z)` and `{radius = r}` were removed; calling them fails with a message naming
-`blocks(type, {area = area.sphere(r, x, y, z)})`.
-
-### Areas
-
-An area narrows the blocks that `blocks`, typed `destroy`, `destroy` continuous loops and typed `interact` may pick.
-Build it with `area`, then pass it as `{area = a}`.
-
-| Luau | Chat | Shape |
-| --- | --- | --- |
-| `area.cell(x, y, z)` or `area.cell(v)` | `within <x> <y> <z>` | one block |
-| `area.box(x1, y1, z1, x2, y2, z2)` or `area.box(v1, v2)` | `within <x1> <y1> <z1> <x2> <y2> <z2>` | a box, both corners included, as for `/fill` |
-| `area.sphere(r)` | `within <r>` | a sphere of radius `r` around the Bot |
-| `area.sphere(r, x, y, z)` or `area.sphere(r, v)` | `within <r> of <x> <y> <z>` | a sphere of radius `r` around a point |
-| `a:minus(b)` | `except <b>` | `a` without the blocks of `b`; `b` takes any form above |
-
-```lua
-local footing = area.cell("~", "~-1", "~")
-local job = bot:destroy("acacia_log", {count = 20, area = area.sphere(6):minus(footing)}).job
-job:wait{}
-```
-
-- Coordinates are numbers, vectors, or `"~"`/`"~-1"` strings relative to the Bot.
-- `:minus` chains freely (`area.sphere(6):minus(footing):minus(trunk)`); chat takes one `except`.
-- Only these functions build an area. A table or a string is refused.
-- The Bot's footing is not special-cased, so exclude it explicitly, as in the example.
-
-The rules are the [command rules](COMMANDS.md#areas-within-and-except):
-
-- An area only narrows; it never widens reach or sight.
-- `~` resolves when the operation is accepted, so a continuous loop keeps its area while the Bot moves.
-- `within` holds at most a radius-16 sphere.
-- Without an area, each operation keeps its default.
-
-`interact` takes one `target` argument for both a block type and an `@entity` selector, so `{area = a}` is part of
-its signature. It applies only to a block type (`interact("chest", {area = ...})`); with an `@entity` target the call
-is refused with "An area applies to a block type …".
-
-### Targeting blocks
-
-Three questions about a block have one answer each.
-
-| Question | Rule | Used by |
-| --- | --- | --- |
-| Could a player see it? | One of its faces touches a block light passes: air, liquids, plants, leaves, glass, ice and partial shapes such as slabs, stairs, fences, walls, panes and doors | which blocks `blocks` lists |
-| Can the Bot target it now? | It is not air or liquid, part of it is within 6 blocks of the Bot's eyes, and a straight line reaches a side facing the Bot through blocks without a collision box only (air, liquids, grass, flowers, torches, rails, snow layers). Leaves, glass and partial shapes stop the line | `reachable`, `destroy x y z`, `destroy <type>`, `interact x y z`, `interact <type>` |
-| What is under the crosshair? | The first block along the Bot's look within 6 blocks that is not air or liquid, as for a player: grass and torches are hit, light blocks are not | `target`, `destroy` and `interact` without a target |
-
-So a log behind tall grass is reachable by name or coordinates, while the crosshair hits the grass in front of it. A
-log wrapped in leaves is listed by `blocks` but not reachable until a leaf is broken.
-
-When a block cannot be targeted, `block` reports `reachable = false` and `reachCode`, and `destroy`/`interact` fail
-with the same value as `code`:
-
-| Code | Meaning |
-| --- | --- |
-| `not_a_target` | Air or liquid, or nothing under the crosshair |
-| `out_of_reach` | No part of it is within 6 blocks of the Bot's eyes |
-| `blocked` | Something stops every line to it; `obstruction = {x, y, z, type}` (in `data` for a refused operation) names the first block in the way, when one is found |
-| `unbreakable` | `destroy` only: bedrock, barriers and other blocks Survival cannot break; they can still be targeted |
-
-```lua
-local info = bot:block(x, y, z).data
-if not info.reachable and info.reachCode == "blocked" and info.obstruction then
-  local o = info.obstruction
-  bot:destroy(o.x, o.y, o.z)  -- clear the leaf first
-end
-```
-
-Notes:
-
-- `block` and `blocks` are reads, not reservations. `reachable` describes the moment of the read, and `destroy` and
-  `interact` check the target again when they run.
-- A block can vanish in between: the Bot's own previous swing is still resolving, a leaf decays, or another Bot or
-  player breaks it. The operation then fails with `not_a_target`.
-- A script that only wants the block gone can treat `not_a_target` on `destroy` as done.
 
 ### Jobs and waits
 
@@ -619,91 +478,186 @@ jobs; movement and other continuing inputs do not delay them.
 - Each check counts toward the operation rate limit and rechecks your authority and stop.
 - `waitOnline(b)` and `b:waitMining{}` stay as aliases until 1.0, so existing scripts keep working.
 
-## Generated API reference
+### Structured status and mining waits
 
-The table lists every method, generated from the same operation registry `/bot` uses; ranges and option
-combinations are checked exactly as for the typed command. Methods are available on `bot("Alice")` and
-`group("#miners")`; whole-group rename and forget keep their one-Bot restriction.
+`bot:status()` returns the usual result; read its `data` fields below.
 
-<!-- BEGIN GENERATED OPERATIONS -->
-| Method | Positional fields | Final options table |
-| --- | --- | --- |
-| `:status()` | none | none |
-| `:inventory()` | none | none |
-| `:entities()` | none | none |
-| `:entity()` | none | none |
-| `:entity()` | target: string | none |
-| `:target()` | none | none |
-| `:block()` | x: coordinate, y: coordinate, z: coordinate | none |
-| `:blocks()` | type: string | limit: integer, area: area |
-| `:resume()` | none | none |
-| `:reconnect()` | none | none |
-| `:despawn()` | none | none |
-| `:forget()` | none | none |
-| `:visibility()` | visibility: shared / private | none |
-| `:stop()` | none | none |
-| `:dismount()` | none | none |
-| `:menu()` | none | none |
-| `:spawn()` | none | none |
-| `:spawn()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string |
-| `:rename()` | name: string | none |
-| `:owner()` | gamertag: string | none |
-| `:tp()` | target: player | none |
-| `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: player, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
-| `:move()` | direction: forward / backward / left / right / stop | ticks: integer |
-| `:look()` | yaw: number, pitch: number | none |
-| `:look()` | x: coordinate, y: coordinate, z: coordinate | none |
-| `:swap()` | a: integer, b: integer | none |
-| `:hold()` | item: string | none |
-| `:hotbar()` | none | none |
-| `:hotbar()` | slot: integer | none |
-| `:radius()` | none | none |
-| `:radius()` | value: integerOrDefault | none |
-| `:interact()` | none | none |
-| `:interact()` | x: coordinate, y: coordinate, z: coordinate | none |
-| `:interact()` | x: coordinate, y: coordinate, z: coordinate, face: down / up / north / south / west / east | none |
-| `:interact()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer, area: area |
-| `:destroy()` | none | mode: once / continuous / stop, ticks: integer, count: integer, area: area |
-| `:destroy()` | x: coordinate, y: coordinate, z: coordinate | face: down / up / north / south / west / east |
-| `:destroy()` | type: string | mode: continuous, ticks: integer, count: integer, area: area |
-| `:drop()` | none | none |
-| `:drop()` | selector: stringOrInteger | count: integer |
-| `:jump()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |
-| `:attack()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |
-| `:attack()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer |
-| `:use()` | none | mode: once / continuous / stop, interval: integer, hold: integer, ticks: integer |
-| `:sprint()` | value: boolean | none |
-| `:sneak()` | value: boolean | none |
-| `:list()` | none | none |
-| `:ping()` | none | none |
-| `:help()` | none | none |
-| `:help()` | topic: stringOrInteger | none |
-<!-- END GENERATED OPERATIONS -->
+```lua
+local s = bot("Alice"):status().data
+if s.mining.active then log("still mining " .. s.mining.blocksBroken) end
+```
 
-Named options are a final table: `:move("forward", {ticks=20})`, `:destroy{mode="continuous",count=64}`,
-`:drop("all")`, `:use{interval=40,hold=20,ticks=120}`.
-
-How options map to the typed command:
-
-- `ticks` maps to `for`; an action's `interval` replaces `mode`.
-- Teleport options pair `yaw,pitch`, or use `facing` for a player, or all of `facingX,facingY,facingZ`. `dimension`
-  becomes the leading `in` clause.
-- Three-argument `look(x, y, z)` is `look at`, relative to the Bot as in commands.
-- `sprint` and `sneak` take booleans.
+| Field | Meaning |
+| --- | --- |
+| `data.name` | Current Bot name |
+| `data.identityId` | Bot UUID |
+| `data.connectionState` | Runtime connection state; `online` means connected |
+| `data.vehicle` | `{type, runtimeId}` while riding, else nil |
+| `data.position` | Feet position `{x, y, z}` |
+| `data.dimension` | `Overworld`, `Nether` or `TheEnd` |
+| `data.look` | `{yaw, pitch}` in degrees: yaw 0-360 with 0 south (+Z) and 90 west (-X), pitch -90 (up) to 90 (down), the same convention as `look` |
+| `data.health`, `data.maxHealth` | BDS health |
+| `data.hunger`, `data.saturation` | Food level (0-20) and saturation |
+| `data.onGround`, `data.inWater` | Booleans |
+| `data.selectedSlot` | Selected hotbar slot, 1-9 |
+| `data.held` | `{name, count}` of the selected item, or nil when empty |
+| `data.mining.active` | Boolean: a block destroy job or continuous mining loop is active (including waiting for a target) |
+| `data.mining.mode` | `once` or `continuous`; nil before any mining job |
+| `data.mining.state` | Runtime job state (`active`, `waiting`, `completed`, `canceled`, `failed`), or nil with no job |
+| `data.mining.blocksBroken` | Runtime continuous-loop count; for a single block, 1 if completed, otherwise 0; 0 with no job |
+| `data.mining.blockCount` | Continuous count limit, or nil when unlimited/no job |
+| `data.mining.reason` | Nil while active; otherwise the runtime's terminal reason, or nil with no job |
+| `data.mining.target` | `{x, y, z, type}` of the block being broken while `state` is `active`, else nil |
+| `data.running` | Running input job ids by kind (`move`, `jump`, `attack`, `use`, `interact`); nil when none runs |
+| `data.ended` | The last end of each input kind: `{job, reason}` |
+| `data.teleports` | Server teleports the Bot has acknowledged since the runtime started |
 
 Notes:
 
-- `group:members()` returns indexed member handles in a fixed membership order.
-- Root `list`, `ping` and `help` keep their root meaning.
-- A script `menu()` returns acceptance without opening any UI.
-- `look` (both forms) returns once BDS reports the new rotation, with the observed `{yaw, pitch}` as `data.look`, so a
-  crosshair operation right after it uses the new view. If BDS does not report it within about 0.5 s (10 ticks at
-  20 TPS), the result has `code="timeout"`.
+- Position, look, health and inventory are read from BDS at the time of the call. Hunger and saturation are what BDS
+  last sent the Bot.
+- A field is nil when the Bot is not in the world, or before BDS has sent it.
+- Mining values report the Bot's actual mining job, including the last one that ended. They never guess completion
+  from elapsed time.
+- Terminal reasons include `block count reached`, `duration elapsed`, `stopped`, and runtime failure reasons.
+- `group:status()` returns `data.results` in membership order. Each row has `index`, `identityId`, `name`, `ok`,
+  `reason` (nil on success) and `data` with that member's fields above (nil on query failure). A partial query
+  failure sets the outer `ok=false`.
+- To wait for mining, use [`waitMining`](#jobs-and-waits) or a `destroy` job's `wait`.
 
-## Event kinds
+## Reading the world
+
+Queries about Bots and the world, and how blocks and areas are chosen.
+
+### Other queries
+
+| Call | `data` |
+| --- | --- |
+| `bot:inventory()` | `slots`: non-empty slots as `{slot, name, count}`; slots `"1"`-`"36"`, `offhand`, `head`, `chest`, `legs`, `feet` |
+| `bot:hotbar()` | `selectedSlot` and the hotbar `slots` |
+| `bot:entities()` | `entities`: up to 10 nearby non-player entities, nearest first, as `{runtimeId, type, distance, position, health, maxHealth, nameTag}`; `health` is nil for non-mobs |
+| `bot:entity("@cow")` | `entity`: one such entry within 16 blocks; also `"@9"`, `"@nearest"` or no argument |
+
+- Inventory, hotbar and `held` items carry `durability = {remaining, max}` for damageable items such as tools and
+  armor.
+- Pass an entity's `selector` (`"@9"`) to `:interact(e.selector)` or `:attack(e.selector)`. Entities always take `@`.
+- Repetition uses the final options table: `bot:interact("@cow", {count=5})`,
+  `bot:attack("@zombie", {interval=20, ticks=200})`, `bot:destroy("oak_log", {count=10})`.
+
+### World queries
+
+World queries read BDS and count as operations toward the rate limit.
+
+| Call | `data` |
+| --- | --- |
+| `bot:target()` | `kind` (`"block"`, `"entity"` or nil), `distance`, and `block = {x, y, z, face, type}` or `entity = {runtimeId, type}`: the nearer hit within 6 blocks of the Bot's eyes, ignoring players |
+| `bot:block(x, y, z)` | `{x, y, z, type, states, reachable}`, plus `reachCode` and, for `blocked`, `obstruction` when not reachable; `"~"`/`"~-1"` strings are relative to the Bot; any loaded position |
+| `bot:blocks("oak_log", {limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance, reachable}` nearest the Bot first, only blocks a player could see (no x-ray, see below), within a sphere of 8 around the Bot; limit 1-64 |
+| `bot:blocks("oak_log", {area=area.sphere(5, x, y, z)})` | `{type, area, blocks}`: the same query narrowed to an [area](#areas), for example around a treetop; never past 16 blocks from the Bot |
+
+`blocks(type, x, y, z)` and `{radius = r}` were removed; calling them fails with a message naming
+`blocks(type, {area = area.sphere(r, x, y, z)})`.
+
+### Targeting blocks
+
+Three questions about a block have one answer each.
+
+| Question | Rule | Used by |
+| --- | --- | --- |
+| Could a player see it? | One of its faces touches a block light passes: air, liquids, plants, leaves, glass, ice and partial shapes such as slabs, stairs, fences, walls, panes and doors | which blocks `blocks` lists |
+| Can the Bot target it now? | It is not air or liquid, part of it is within 6 blocks of the Bot's eyes, and a straight line reaches a side facing the Bot through blocks without a collision box only (air, liquids, grass, flowers, torches, rails, snow layers). Leaves, glass and partial shapes stop the line | `reachable`, `destroy x y z`, `destroy <type>`, `interact x y z`, `interact <type>` |
+| What is under the crosshair? | The first block along the Bot's look within 6 blocks that is not air or liquid, as for a player: grass and torches are hit, light blocks are not | `target`, `destroy` and `interact` without a target |
+
+So a log behind tall grass is reachable by name or coordinates, while the crosshair hits the grass in front of it. A
+log wrapped in leaves is listed by `blocks` but not reachable until a leaf is broken.
+
+When a block cannot be targeted, `block` reports `reachable = false` and `reachCode`, and `destroy`/`interact` fail
+with the same value as `code`:
+
+| Code | Meaning |
+| --- | --- |
+| `not_a_target` | Air or liquid, or nothing under the crosshair |
+| `out_of_reach` | No part of it is within 6 blocks of the Bot's eyes |
+| `blocked` | Something stops every line to it; `obstruction = {x, y, z, type}` (in `data` for a refused operation) names the first block in the way, when one is found |
+| `unbreakable` | `destroy` only: bedrock, barriers and other blocks Survival cannot break; they can still be targeted |
+
+```lua
+local info = bot:block(x, y, z).data
+if not info.reachable and info.reachCode == "blocked" and info.obstruction then
+  local o = info.obstruction
+  bot:destroy(o.x, o.y, o.z)  -- clear the leaf first
+end
+```
+
+Notes:
+
+- `block` and `blocks` are reads, not reservations. `reachable` describes the moment of the read, and `destroy` and
+  `interact` check the target again when they run.
+- A block can vanish in between: the Bot's own previous swing is still resolving, a leaf decays, or another Bot or
+  player breaks it. The operation then fails with `not_a_target`.
+- A script that only wants the block gone can treat `not_a_target` on `destroy` as done.
+
+### Areas
+
+An area narrows the blocks that `blocks`, typed `destroy`, `destroy` continuous loops and typed `interact` may pick.
+Build it with `area`, then pass it as `{area = a}`.
+
+| Luau | Chat | Shape |
+| --- | --- | --- |
+| `area.cell(x, y, z)` or `area.cell(v)` | `within <x> <y> <z>` | one block |
+| `area.box(x1, y1, z1, x2, y2, z2)` or `area.box(v1, v2)` | `within <x1> <y1> <z1> <x2> <y2> <z2>` | a box, both corners included, as for `/fill` |
+| `area.sphere(r)` | `within <r>` | a sphere of radius `r` around the Bot |
+| `area.sphere(r, x, y, z)` or `area.sphere(r, v)` | `within <r> of <x> <y> <z>` | a sphere of radius `r` around a point |
+| `a:minus(b)` | `except <b>` | `a` without the blocks of `b`; `b` takes any form above |
+
+```lua
+local footing = area.cell("~", "~-1", "~")
+local job = bot:destroy("acacia_log", {count = 20, area = area.sphere(6):minus(footing)}).job
+job:wait{}
+```
+
+- Coordinates are numbers, vectors, or `"~"`/`"~-1"` strings relative to the Bot.
+- `:minus` chains freely (`area.sphere(6):minus(footing):minus(trunk)`); chat takes one `except`.
+- Only these functions build an area. A table or a string is refused.
+- The Bot's footing is not special-cased, so exclude it explicitly, as in the example.
+
+The rules are the [command rules](COMMANDS.md#areas-within-and-except):
+
+- An area only narrows; it never widens reach or sight.
+- `~` resolves when the operation is accepted, so a continuous loop keeps its area while the Bot moves.
+- `within` holds at most a radius-16 sphere.
+- Without an area, each operation keeps its default.
+
+`interact` takes one `target` argument for both a block type and an `@entity` selector, so `{area = a}` is part of
+its signature. It applies only to a block type (`interact("chest", {area = ...})`); with an `@entity` target the call
+is refused with "An area applies to a block type …".
+
+## Events
+
+The event kinds, watching them inside a run, and triggers that start runs.
+
+### Event kinds
 
 The event kinds a script may watch are listed below. Triggers, which start a run for an occurrence, use the same kinds
 and filters.
+
+All kinds, their payloads and what delivery each guarantees:
+
+<!-- BEGIN GENERATED EVENTS -->
+| Kind | Required filters (at least one) | Payload | Guarantee |
+| --- | --- | --- | --- |
+| `block.change` | area: area (max 512 blocks) | x: integer, y: integer, z: integer, dimension: string, from: block, to: block, cause: string, bot: string? | At most once, after the fact, in source order. A change that lasts at least 4 ticks is delivered; player-break and player-place are delivered individually. |
+| `player.join` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `player.leave` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `player.chat` | none | player: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `bot.online` | none | bot: string | At most once, after the fact, in source order. A change that lasts at least 40 ticks is delivered. |
+| `bot.offline` | none | bot: string, reason: string? | At most once, after the fact, in source order. A change that lasts at least 40 ticks is delivered. |
+| `bot.died` | none | bot: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `job.finished` | none | bot: string, job: string, reason: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `server.started` | none | none | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `schedule` | every: duration or at: time | at: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+| `world.time` | none | phase: string, time: integer | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
+<!-- END GENERATED EVENTS -->
 
 ### Watches
 
@@ -773,24 +727,6 @@ Limits (a watch over a limit is refused with the limit named):
 | `[limits] max-watches-per-controller`, across one controller's runs | 32 |
 | `[limits] max-watched-blocks-per-controller`, cells across one controller's watches and triggers | 1024 |
 | `[events] max-watched-blocks`, server-wide | 2048 |
-
-All kinds, their payloads and what delivery each guarantees:
-
-<!-- BEGIN GENERATED EVENTS -->
-| Kind | Required filters (at least one) | Payload | Guarantee |
-| --- | --- | --- | --- |
-| `block.change` | area: area (max 512 blocks) | x: integer, y: integer, z: integer, dimension: string, from: block, to: block, cause: string, bot: string? | At most once, after the fact, in source order. A change that lasts at least 4 ticks is delivered; player-break and player-place are delivered individually. |
-| `player.join` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `player.leave` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `player.chat` | none | player: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `bot.online` | none | bot: string | At most once, after the fact, in source order. A change that lasts at least 40 ticks is delivered. |
-| `bot.offline` | none | bot: string, reason: string? | At most once, after the fact, in source order. A change that lasts at least 40 ticks is delivered. |
-| `bot.died` | none | bot: string, message: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `job.finished` | none | bot: string, job: string, reason: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `server.started` | none | none | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `schedule` | every: duration or at: time | at: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-| `world.time` | none | phase: string, time: integer | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
-<!-- END GENERATED EVENTS -->
 
 ### Triggers
 
@@ -918,3 +854,122 @@ When a run ends (normally, by failure or crash, by stop, by revocation or by shu
 If the runtime cannot be reached, cleanup can fail. The failure is reported; stop the Bot yourself with
 `/bot <name> stop` or `/bot <name> destroy stop`. Inputs from other programs that drive the runtime directly are
 not tracked.
+
+## Sharing and storage
+
+Who owns a script and who sees it, its revisions, and how it is named and stored.
+
+### Ownership, visibility and revisions
+
+Each script records the controller who created it as its owner. Only the owner, or the console, may edit, delete,
+restore or change its visibility; anyone else gets "only the owner may change" and is pointed to **Copy and edit**.
+
+| Visibility | Who sees and runs it |
+| --- | --- |
+| `private` | Only the owner; to everyone else it does not exist |
+| `shared` | Every controller may list, show, run and copy it |
+
+- New scripts and copies start `private`. `visibility <name> shared|private` switches it.
+- The old `share <name>` and `private <name>` spellings (0.4.0) were removed in 0.6.0; they are refused with a
+  pointer to `visibility`.
+- `copy <name> <new-name>` makes a private copy owned by you.
+- `rename <name> <new-name>` (owner only) keeps the owner, visibility and history. Running copies keep the old name.
+- Every save keeps the previous source. `history <name>` lists the last 10 revisions, newest first, with time and line
+  count.
+- `restore <name> <n>` makes revision `n` current as a new save; the replaced source stays in the history.
+- A run always uses the authority of whoever started it, whoever owns the script.
+
+Notes:
+
+- Scripts saved before ownership existed (file version 1) have no owner and stay shared. The first controller to
+  edit one becomes its owner.
+- Console only: `owner <name> <GamerTag>` reassigns a stored script's owner. Visibility, revision and history stay.
+- A [script file](#script-files) has no owner to reassign; the file is the source.
+
+### Names and storage
+
+- Names are case-insensitive and follow Groups: 1–16 ASCII letters, digits and underscores, starting with a letter
+  or underscore.
+- A failed save leaves the previous version intact.
+- Runs are not resumed or replayed after a restart.
+
+## Generated API reference
+
+The table lists every method, generated from the same operation registry `/bot` uses; ranges and option
+combinations are checked exactly as for the typed command. Methods are available on `bot("Alice")` and
+`group("#miners")`; whole-group rename and forget keep their one-Bot restriction.
+
+<!-- BEGIN GENERATED OPERATIONS -->
+| Method | Positional fields | Final options table |
+| --- | --- | --- |
+| `:status()` | none | none |
+| `:inventory()` | none | none |
+| `:entities()` | none | none |
+| `:entity()` | none | none |
+| `:entity()` | target: string | none |
+| `:target()` | none | none |
+| `:block()` | x: coordinate, y: coordinate, z: coordinate | none |
+| `:blocks()` | type: string | limit: integer, area: area |
+| `:resume()` | none | none |
+| `:reconnect()` | none | none |
+| `:despawn()` | none | none |
+| `:forget()` | none | none |
+| `:visibility()` | visibility: shared / private | none |
+| `:stop()` | none | none |
+| `:dismount()` | none | none |
+| `:menu()` | none | none |
+| `:spawn()` | none | none |
+| `:spawn()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string |
+| `:rename()` | name: string | none |
+| `:owner()` | gamertag: string | none |
+| `:tp()` | target: player | none |
+| `:tp()` | x: coordinate, y: coordinate, z: coordinate | yaw: number, pitch: number, dimension: string, facing: player, facingX: coordinate, facingY: coordinate, facingZ: coordinate |
+| `:move()` | direction: forward / backward / left / right / stop | ticks: integer |
+| `:look()` | yaw: number, pitch: number | none |
+| `:look()` | x: coordinate, y: coordinate, z: coordinate | none |
+| `:swap()` | a: integer, b: integer | none |
+| `:hold()` | item: string | none |
+| `:hotbar()` | none | none |
+| `:hotbar()` | slot: integer | none |
+| `:radius()` | none | none |
+| `:radius()` | value: integerOrDefault | none |
+| `:interact()` | none | none |
+| `:interact()` | x: coordinate, y: coordinate, z: coordinate | none |
+| `:interact()` | x: coordinate, y: coordinate, z: coordinate, face: down / up / north / south / west / east | none |
+| `:interact()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer, area: area |
+| `:destroy()` | none | mode: once / continuous / stop, ticks: integer, count: integer, area: area |
+| `:destroy()` | x: coordinate, y: coordinate, z: coordinate | face: down / up / north / south / west / east |
+| `:destroy()` | type: string | mode: continuous, ticks: integer, count: integer, area: area |
+| `:drop()` | none | none |
+| `:drop()` | selector: stringOrInteger | count: integer |
+| `:jump()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |
+| `:attack()` | none | mode: once / continuous / stop, interval: integer, ticks: integer |
+| `:attack()` | target: string | mode: once / continuous / stop, interval: integer, ticks: integer, count: integer |
+| `:use()` | none | mode: once / continuous / stop, interval: integer, hold: integer, ticks: integer |
+| `:sprint()` | value: boolean | none |
+| `:sneak()` | value: boolean | none |
+| `:list()` | none | none |
+| `:ping()` | none | none |
+| `:help()` | none | none |
+| `:help()` | topic: stringOrInteger | none |
+<!-- END GENERATED OPERATIONS -->
+
+Named options are a final table: `:move("forward", {ticks=20})`, `:destroy{mode="continuous",count=64}`,
+`:drop("all")`, `:use{interval=40,hold=20,ticks=120}`.
+
+How options map to the typed command:
+
+- `ticks` maps to `for`; an action's `interval` replaces `mode`.
+- Teleport options pair `yaw,pitch`, or use `facing` for a player, or all of `facingX,facingY,facingZ`. `dimension`
+  becomes the leading `in` clause.
+- Three-argument `look(x, y, z)` is `look at`, relative to the Bot as in commands.
+- `sprint` and `sneak` take booleans.
+
+Notes:
+
+- `group:members()` returns indexed member handles in a fixed membership order.
+- Root `list`, `ping` and `help` keep their root meaning.
+- A script `menu()` returns acceptance without opening any UI.
+- `look` (both forms) returns once BDS reports the new rotation, with the observed `{yaw, pitch}` as `data.look`, so a
+  crosshair operation right after it uses the new view. If BDS does not report it within about 0.5 s (10 ticks at
+  20 TPS), the result has `code="timeout"`.

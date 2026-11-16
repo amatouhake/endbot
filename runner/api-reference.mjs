@@ -35,7 +35,7 @@ export function events(eventsTable) {
   if (!entries.length) return 'No event kinds are listed yet.\n';
   const filter = (filters, name) => `${name}: ${filters[name].type}`
     + (filters[name].maxBlocks ? ` (max ${filters[name].maxBlocks} blocks)` : '');
-  const rows = ['| Kind | Filters (one of) | Payload | Guarantee |', '| --- | --- | --- | --- |'];
+  const rows = ['| Kind | Required filters (at least one) | Payload | Guarantee |', '| --- | --- | --- | --- |'];
   for (const [kind, spec] of entries) {
     const filters = spec.require.length ? spec.require.map(names => names.map(name => filter(spec.filters, name))
       .join(', ')).join(' or ') : 'none';

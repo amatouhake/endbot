@@ -366,7 +366,10 @@ Notes:
 - Handle refused calls explicitly, for example `assert(r.ok, r.reason)`.
 - Group operations include counts in `data`. A partial failure has `ok=false`, and the Group's `code` is its first
   failed member's. Each query row also carries its member's `code`.
-- Revocation, rate or deadline errors and protocol errors end the run instead of returning.
+- Revocation, the run deadline, protocol errors and more than `4 × operations-per-second` messages in one
+  second (logs and zero waits count) end the run instead of returning.
+- An operation over `operations-per-second` does not fail: it waits for a free slot, and the run log notes the
+  first such wait.
 - There is no command-string API: a script cannot run a typed command.
 
 ### Logging and waiting
@@ -774,7 +777,7 @@ Limits (a watch over a limit is refused with the limit named):
 All kinds, their payloads and what delivery each guarantees:
 
 <!-- BEGIN GENERATED EVENTS -->
-| Kind | Filters (one of) | Payload | Guarantee |
+| Kind | Required filters (at least one) | Payload | Guarantee |
 | --- | --- | --- | --- |
 | `block.change` | area: area (max 512 blocks) | x: integer, y: integer, z: integer, dimension: string, from: block, to: block, cause: string, bot: string? | At most once, after the fact, in source order. A change that lasts at least 4 ticks is delivered; player-break and player-place are delivered individually. |
 | `player.join` | none | player: string | At most once, after the fact, in source order. Every occurrence is delivered while the source is connected. |
@@ -870,7 +873,7 @@ concurrent-run limit.
 | `arguments no longer valid` | Its parameters no longer accept the stored arguments |
 | `script unavailable` | Its owner can no longer run the script |
 | `script changed` | Someone else's script it runs gets a new revision |
-| `owner revoked` | The owner's access is revoked; the trigger is disabled, and a regrant does not re-enable it |
+| `owner revoked` | The owner's access is revoked; the trigger is disabled. A regrant does not re-enable it by itself; after a regrant, `trigger enable` arms it again |
 
 - Going over the start cap never stops a trigger. It is throttled, and its owner is told once in chat until it starts
   again.

@@ -123,7 +123,7 @@ not extra permissions. The settings are in [OPERATIONS.md](OPERATIONS.md#2-confi
 | Item | On revocation |
 | --- | --- |
 | Running scripts | End at once |
-| Triggers | Disabled, not deleted; a regrant can re-enable them |
+| Triggers | Disabled, not deleted; a regrant does not re-enable them by itself, but afterwards the owner (or the console) can enable them again |
 | Web sessions | End at once |
 | Jobs the person started | Stop |
 | Owned Bots, Groups and scripts | Kept; shared ones stay usable; the console can reassign owners |

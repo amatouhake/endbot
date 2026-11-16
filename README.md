@@ -165,8 +165,9 @@ The acknowledgement names the check's boundary; it does not certify world histor
 
 The [documentation index](docs/README.md) lists every document by reader:
 
-- **Players** who control Bots: [commands](docs/COMMANDS.md), [Groups](docs/GROUPS.md), the
-  [scripting tutorial](docs/SCRIPTING_TUTORIAL.md) and [reference](docs/SCRIPTING.md).
+- **Players** who control Bots: [getting started](docs/GETTING_STARTED.md), [commands](docs/COMMANDS.md),
+  [Groups](docs/GROUPS.md), the [scripting tutorial](docs/SCRIPTING_TUTORIAL.md) and [reference](docs/SCRIPTING.md).
+  日本語のプレイヤー向けガイドは [docs/ja](docs/ja/README.md) にあります。
 - **Operators** who run a server: [install](docs/INSTALL.md), [operations](docs/OPERATIONS.md),
   [deploying the web](docs/WEB_DEPLOY.md), [security](docs/SECURITY.md) and
   [compatibility](docs/COMPATIBILITY.md).

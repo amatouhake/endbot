@@ -39,6 +39,9 @@ jobs:
       - name: Check repository portability
         run: python scripts/check_portability.py
 
+      - name: Check Japanese player documents
+        run: python scripts/check_translations.py
+
       - name: Lint Python
         run: ruff check scripts tests plugin/endbot cli/endbot
 

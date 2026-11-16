@@ -1,4 +1,4 @@
-"""Minimal client for the local runtime control protocol (docs/OPERATIONS.md section 7).
+"""Minimal client for the local runtime control protocol (docs/OPERATIONS.md, "Checking health").
 
 Copied from ``core/src/endbot_core/control.py`` so the doctor can
 probe runtime reachability without importing the plugin (which would drag in

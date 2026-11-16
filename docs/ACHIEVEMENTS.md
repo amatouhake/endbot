@@ -1,25 +1,41 @@
 # Achievement safety and M0 validation
 
+What is established about achievements on an Endbot server, the manual check that establishes it, and the
+observations recorded so far.
+
+**World achievement history and actual Xbox achievement unlocks are manual gates.** A command response, a green unit
+build or green CI is never a substitute for them.
+
 ## What is and is not established
 
 Two claims must remain separate:
 
-- **Achievement-compatible configuration/state:** `online-mode=true`, `allow-cheats=false`, no experiments/Beta
-  APIs/GameTest, no required packs, and no recorded creative/experiment history. This configuration and zeroed history
-  were preserved in the validated baseline with ten concurrent external bots.
-- **Observed Xbox achievement unlock:** a signed-in Bedrock client actually unlocks a previously unearned Xbox
-  achievement in the test world. The recorded M0 observation was completed against patched Endstone
-  `0.11.11+endbot.1`. On 2026-10-09 the `0.11.13+endbot.1` candidate (BDS `1.26.52.3`) observed an unlock of
-  **Rabbit Season** in a session that also used operator `/give` (`COMPATIBILITY.md`).
+| Claim | What it means | Status |
+| --- | --- | --- |
+| **Achievement-compatible configuration/state** | `online-mode=true`, `allow-cheats=false`, no experiments/Beta APIs/GameTest, no required packs, and no recorded creative/experiment history | This configuration and zeroed history were preserved in the validated baseline with ten concurrent external bots |
+| **Observed Xbox achievement unlock** | A signed-in Bedrock client actually unlocks a previously unearned Xbox achievement in the test world | Observed per package; see [Recorded observations](#recorded-observations) |
 
-`scripts/preflight.py` robustly checks only the two relevant `server.properties` values. Endbot deliberately does not ship a
-partial `level.dat` parser: format/version ambiguity would turn unknown state into a false safety claim. Without the
-explicit `--acknowledge-world-state-unverified` scope flag, the script exits incomplete.
+The recorded M0 observation was completed against patched Endstone `0.11.11+endbot.1`. On 2026-10-09 the
+`0.11.13+endbot.1` candidate (BDS `1.26.52.3`) observed an unlock of **Rabbit Season** in a session that also used
+operator `/give` ([COMPATIBILITY.md](COMPATIBILITY.md#previous-baselines)).
+
+### What preflight checks
+
+- `scripts/preflight.py` robustly checks only the two relevant `server.properties` values (`online-mode` and
+  `allow-cheats`).
+- Endbot deliberately does not ship a partial `level.dat` parser: format/version ambiguity would turn unknown state
+  into a false safety claim.
+- Without the explicit `--acknowledge-world-state-unverified` scope flag, the script exits incomplete.
 
 ## M0 manual `/bot ping` procedure
 
-Use an expendable fresh survival world and a Microsoft/Xbox account for which the chosen simple achievement is still
-locked. Record the Endbot revision and the generated compatibility manifest.
+Before you start:
+
+- use an expendable fresh survival world;
+- use a Microsoft/Xbox account for which the chosen simple achievement is still locked;
+- record the Endbot revision and the generated compatibility manifest.
+
+Steps:
 
 1. Prepare and build the exact patched Endstone revision documented in the README. Install its Python package and the
    `endstone-endbot` wheel into one clean virtual environment. Do not substitute an unpinned Endstone package.
@@ -27,9 +43,10 @@ locked. Record the Endbot revision and the generated compatibility manifest.
    checkout or release bundle.
 3. Before the validation world is created, set `online-mode=true` and `allow-cheats=false` in `server.properties`.
    Leave experiments, Beta APIs, GameTest, behavior packs, and resource packs unused.
-4. For a command-only probe, keep `[local-bot-auth].enabled = false`. For an integrated M0/M1 probe with local auth
-   enabled, record its exact configuration and prove that the human login used the original Microsoft/Xbox path rather
-   than the local identity path.
+4. Choose the probe:
+   - for a command-only probe, keep `[local-bot-auth].enabled = false`;
+   - for an integrated M0/M1 probe with local auth enabled, record its exact configuration and prove that the human
+     login used the original Microsoft/Xbox path rather than the local identity path.
 5. Start once with the plugin installed so it writes `plugins/endbot/config.toml`, then stop cleanly. Add the real
    tester's UUID or decimal XUID to exactly one `[authorization]` allowlist. Do not make the tester an operator and do
    not grant vanilla command permissions. Restart the server.
@@ -37,8 +54,9 @@ locked. Record the Endbot revision and the generated compatibility manifest.
    output with the test record.
 7. Join using an unmodified Bedrock client through normal Microsoft/Xbox authentication. Confirm the client is in
    survival mode and the world UI does not warn that achievements are unavailable.
-8. Enter `/bot ping`. Expected chat response: `Endbot: pong`. Confirm an unlisted normal player cannot run it. Confirm
-   `allow-cheats` remains false and no operator/vanilla command permission was granted.
+8. Enter `/bot ping`. Expected chat response: `Endbot: pong`. Then confirm that:
+   - an unlisted normal player cannot run it;
+   - `allow-cheats` remains false and no operator/vanilla command permission was granted.
 9. With a version-aware world inspection tool, verify and record the world creative-history and experiment-history
    fields. If the tool cannot decode this BDS version confidently, record the result as unknown and stop the gate.
 10. Complete the prerequisite for the selected still-locked Xbox achievement. Record the in-client notification and
@@ -61,6 +79,8 @@ inherit it, and each compatibility change needs the gate again.
 | 2026-10-09 | `0.11.13+endbot.1` / `1.26.52.3` | **Rabbit Season**, in a session that also used operator `/give` and `/effect` |
 | 2026-10-30 | `0.11.15+endbot.1` / `1.26.60.6` | **Body Guard**, on an instance updated from 0.4.0 |
 
-After each session `level.dat` still showed Survival and no creative or experiment history. The full records, with the
-recording digests and what each gate did not exercise, are kept [as they stood at 0.7.0](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ACHIEVEMENTS.md);
-the current pair's gate is in [COMPATIBILITY.md](COMPATIBILITY.md#current-baseline-050-to-070).
+After each session `level.dat` still showed Survival and no creative or experiment history.
+
+- The full records, with the recording digests and what each gate did not exercise, are kept
+  [as they stood at 0.7.0](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ACHIEVEMENTS.md).
+- The current pair's gate is in [COMPATIBILITY.md](COMPATIBILITY.md#current-baseline-050-to-070).

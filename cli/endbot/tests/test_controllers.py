@@ -1,4 +1,4 @@
-"""Tests for state/controllers.json loading (docs/OPERATIONS.md section 3 schema)."""
+"""Tests for state/controllers.json loading (docs/OPERATIONS.md, "Granting access")."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ class ControllersTests(unittest.TestCase):
             }
         )
         state = load_controllers(self.path)
-        reduced = remove_binding(state, "two")  # case-insensitive (section 3)
+        reduced = remove_binding(state, "two")  # case-insensitive
         self.assertEqual([entry.gamertag for entry in reduced.bindings], ["One"])
         self.assertIs(remove_binding(reduced, "missing"), reduced)
 

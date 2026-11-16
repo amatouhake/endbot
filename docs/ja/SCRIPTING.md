@@ -1,4 +1,4 @@
-<!-- source: docs/SCRIPTING.md ce9959359caf3031d6a510800c249541fbb14154 -->
+<!-- source: docs/SCRIPTING.md df05db46908b48ea6d8b52aaef10f8c0db17b01c -->
 
 <a id="luau-scripting-reference"></a>
 # Luau スクリプトのリファレンス
@@ -354,7 +354,7 @@ assert(r.ok, r.reason)
 <a id="operation-replies-in-chat"></a>
 ### チャットに出る操作の返事
 
-スクリプトが出す操作は、どれも普通の `/bot` コマンドでもあります。そのため、その返事は入力したときと同じくあなたのチャットに届くはずです。`[scripting] replies` (プラグインの `config.toml`、管理されたインスタンスでは `endbot.toml`) で、何を出すかを選びます:
+スクリプトが出す操作は、どれも普通の `/bot` コマンドでもあります。そのため、その返事は入力したときと同じくあなたのチャットに届くはずです。`endbot.toml` の `[scripting] replies` で、何を出すかを選びます:
 
 | 値 | チャットに出るもの |
 | --- | --- |
@@ -386,7 +386,7 @@ log("done")
 - チャットへは 1 実行あたり 5 秒に 10 行までで、各行は書式コードを除いて 256 文字で切ります。出さなかった行は、次のチャットの行か終了メッセージで数を伝えます。
 - サーバーのログにはすべての行が残ります。1 実行あたり 2000 行か 512 KiB までです。
 - コンソールからの実行は、サーバーのログだけに出します。
-- `[scripting] chat-logs = false` (プラグインの `config.toml`、管理されたインスタンスでは `endbot.toml`) にすると、ログはサーバーのログだけに残ります。
+- `endbot.toml` で `[scripting] chat-logs = false` にすると、ログはサーバーのログだけに残ります。
 
 <a id="jobs-and-waits"></a>
 ### ジョブと待機

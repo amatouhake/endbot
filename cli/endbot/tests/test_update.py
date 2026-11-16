@@ -1,4 +1,4 @@
-"""Tests for `endbot update` (extract, doctor gate, switch, rollback) — section 6a.
+"""Tests for `endbot update` (extract, doctor gate, switch, rollback) — docs/OPERATIONS.md, "Updating and rolling back".
 
 Synthetic bundle archives and fake new-version doctor/acquisition hooks only:
 no network, no real BDS, no real bundled Python.

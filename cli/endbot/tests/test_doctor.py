@@ -1,4 +1,4 @@
-"""End-to-end tests for `endbot doctor` against synthetic instances (section 7)."""
+"""End-to-end tests for `endbot doctor` against synthetic instances (docs/OPERATIONS.md, "Checking health")."""
 
 from __future__ import annotations
 
@@ -488,7 +488,7 @@ class ControlTokenTests(DoctorTestCase):
 
 
 class AllowlistTests(DoctorTestCase):
-    """The read-only `allowlist` check (sections 4 and 7)."""
+    """The read-only `allowlist` check (docs/OPERATIONS.md, "Granting access" and "Checking health")."""
 
     def write_properties(self, allow_list: str | None = None) -> None:
         text = "online-mode=true\nallow-cheats=false\ntransport=nethernet\nlevel-name=world\n"
@@ -788,7 +788,7 @@ class EffectiveControllersTests(DoctorTestCase):
 
 
 class OperatorTests(DoctorTestCase):
-    """The read-only `operators` check (section 7): operators can cheat without losing achievements."""
+    """The read-only `operators` check: operators can cheat without losing achievements."""
 
     PROPERTIES = "online-mode=true\nallow-cheats=false\ntransport=nethernet\nlevel-name=world\n"
 

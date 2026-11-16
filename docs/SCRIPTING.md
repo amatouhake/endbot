@@ -384,7 +384,7 @@ Notes:
 ### Operation replies in chat
 
 Every operation a script issues is also a normal `/bot` command, so its reply would reach your chat as if typed.
-`[scripting] replies` (plugin `config.toml`, or `endbot.toml` for managed instances) chooses what is echoed:
+`[scripting] replies` in `endbot.toml` chooses what is echoed:
 
 | Value | Echoed to chat |
 | --- | --- |
@@ -419,8 +419,7 @@ log("done")
   Held-back lines are counted on the next chat line or in the end message.
 - The server log keeps every line, up to 2000 lines or 512 KiB per run.
 - Console runs log only to the server log.
-- `[scripting] chat-logs = false` (plugin `config.toml`, or `endbot.toml` for managed instances) keeps logs in the
-  server log only.
+- `[scripting] chat-logs = false` in `endbot.toml` keeps logs in the server log only.
 
 ### Jobs and waits
 

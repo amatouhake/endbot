@@ -21,7 +21,7 @@ from pathlib import Path
 from endbot_cli.fsutil import atomic_write_text
 
 # Operator-owned files Endstone's `_download` may rewrite or leave alone; all are
-# worth keeping before any acquisition step (docs/OPERATIONS.md section 6).
+# worth keeping before any acquisition step (docs/OPERATIONS.md, "Backups").
 FILE_ENTRIES = ("server.properties", "allowlist.json", "permissions.json", "endstone.toml", "packetlimitconfig.json")
 TREE_ENTRIES = ("behavior_packs", "resource_packs", "definitions")
 EXECUTABLE_NAMES = ("bedrock_server.exe", "bedrock_server")
@@ -49,7 +49,7 @@ class BackupResult:
 
 
 def collect_backup_entries(server: Path, *, worlds: bool = False) -> tuple[BackupEntry, ...]:
-    """Return the section 6 backup set that exists under ``server``."""
+    """Return the backup set (docs/OPERATIONS.md, "Backups") that exists under ``server``."""
 
     server = Path(server)
     entries: list[BackupEntry] = []
@@ -68,13 +68,13 @@ def collect_backup_entries(server: Path, *, worlds: bool = False) -> tuple[Backu
 
 
 def describe_entries(entries: Sequence[BackupEntry]) -> str:
-    """Short human list of what will be backed up (plan output, section 6)."""
+    """Short human list of what will be backed up (plan output)."""
 
     return ", ".join(f"{entry.relative}/" if entry.kind == "tree" else entry.relative for entry in entries)
 
 
 def missing_entries(server: Path, entries: Sequence[BackupEntry], *, worlds: bool = False) -> tuple[str, ...]:
-    """Standard section 6 entries that do not exist under ``server``."""
+    """Standard backup entries that do not exist under ``server``."""
 
     found = {entry.relative for entry in entries}
     missing = [name for name in (*FILE_ENTRIES, *TREE_ENTRIES) if name not in found]
@@ -110,7 +110,7 @@ def create_backup(
     reason: str = "",
     now: datetime | None = None,
 ) -> BackupResult:
-    """Copy the section 6 set out of ``server`` and write ``manifest.json``.
+    """Copy the backup set out of ``server`` and write ``manifest.json``.
 
     ``now`` is a test hook; the directory name is a UTC ``YYYYMMDD-HHMMSSZ``
     timestamp (with a numeric suffix when needed).

@@ -1,4 +1,4 @@
-"""Controller enrollment state (``state/controllers.json``, docs/OPERATIONS.md section 3).
+"""Controller enrollment state (``state/controllers.json``, docs/OPERATIONS.md, "Granting access").
 
 Schema (generated and maintained by the plugin; the CLI only reads it)::
 
@@ -39,7 +39,7 @@ class ControllerState:
     bindings: tuple[ControllerBinding, ...] = ()
 
     def find(self, gamertag: str) -> ControllerBinding | None:
-        """Return the binding for ``gamertag`` (case-insensitive, section 3) if any."""
+        """Return the binding for ``gamertag`` (case-insensitive) if any."""
 
         wanted = gamertag.casefold()
         for binding in self.bindings:
@@ -109,7 +109,7 @@ def load_controllers(path: Path) -> ControllerState:
 
 
 def remove_binding(state: ControllerState, gamertag: str) -> ControllerState:
-    """Return ``state`` without the binding for ``gamertag`` (case-insensitive, section 3).
+    """Return ``state`` without the binding for ``gamertag`` (case-insensitive).
 
     The GamerTag returns to pending and re-binds to its XUID on the next join.
     """
@@ -124,7 +124,7 @@ def remove_binding(state: ControllerState, gamertag: str) -> ControllerState:
 
 
 def save_controllers(path: Path, state: ControllerState) -> None:
-    """Write ``state/controllers.json`` atomically in the section 3 schema."""
+    """Write ``state/controllers.json`` atomically in its schema."""
 
     document = {
         "version": state.version,

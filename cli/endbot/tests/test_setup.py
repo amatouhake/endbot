@@ -1,4 +1,4 @@
-"""Tests for `endbot setup` planning and applying (section 6).
+"""Tests for `endbot setup` planning and applying (docs/INSTALL.md).
 
 Everything runs against temp-directory instances with fake BDS acquisition
 (no network, no real BDS): the fake records the server folder it was called
@@ -341,7 +341,7 @@ class ApplyTests(SetupTestCase):
 
 
 class AllowlistTests(SetupTestCase):
-    """setup and the BDS allow-list (sections 4 and 6)."""
+    """setup and the BDS allow-list (docs/INSTALL.md, "New server" and "Adopting an existing server")."""
 
     ALLOW_LIST_PROPERTIES = (
         "online-mode=true\nallow-cheats=false\ntransport=nethernet\nallow-list=true\nlevel-name=world\n"

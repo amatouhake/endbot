@@ -1,4 +1,4 @@
-"""Tests for toolchain resolution and process liveness (docs/OPERATIONS.md sections 1, 5a)."""
+"""Tests for toolchain resolution and process liveness (docs/OPERATIONS.md, "Directory layout", "Start and stop")."""
 
 from __future__ import annotations
 

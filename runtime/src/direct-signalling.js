@@ -7,7 +7,7 @@
 // port and gets the SDP answer back in the same response; there is no trickle
 // ICE and no UDP 7551 discovery. Upstream bedrock-protocol only signals over
 // LAN discovery or the online services, so Endbot replaces the NetherNet
-// client's signal handler with this one (docs/OPERATIONS.md section 5).
+// client's signal handler with this one (docs/ARCHITECTURE.md, "Operator CLI and supervisor internals").
 
 // Upstream requires a server network id and matches answers against it; over
 // HTTP the server is named by its URL, so any fixed nonzero id serves.

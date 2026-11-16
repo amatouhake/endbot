@@ -1,4 +1,5 @@
-"""Toolchain resolution and child process-tree control (docs/OPERATIONS.md sections 1, 5a).
+"""Toolchain resolution and child process-tree control (docs/OPERATIONS.md, "Directory layout" and
+"Start and stop").
 
 The Endbot executables come from the active application version (``app/current``
 naming ``app/<version>/``). For development without an ``app/`` directory the

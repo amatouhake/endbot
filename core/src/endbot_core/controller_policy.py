@@ -1,6 +1,6 @@
 """Persistent, console-managed overrides of bootstrap controller configuration.
 
-The plugin is the sole writer. One atomic replacement commits grants, pending
+endbotd is the sole writer (endbotd/authority.py). One atomic replacement commits grants, pending
 enrollment and revocations together; operator configuration is never rewritten.
 """
 

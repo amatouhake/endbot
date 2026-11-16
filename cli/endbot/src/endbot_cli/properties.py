@@ -1,7 +1,7 @@
 """``server.properties`` parsing, the safety-invariant check, and a
 round-trip-preserving editor.
 
-``edit_properties`` (used by ``endbot setup``, docs/OPERATIONS.md section 6)
+``edit_properties`` (used by ``endbot setup``, docs/INSTALL.md, "New server")
 changes only the requested keys: comments, blank lines, ordering, key text,
 separators, and the line endings of untouched lines are preserved byte for
 byte, so editing an existing server's ``server.properties`` never disturbs

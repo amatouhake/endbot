@@ -1,4 +1,4 @@
-"""Regenerating the derived configuration files on every start (docs/OPERATIONS.md section 2).
+"""Regenerating the derived configuration files on every start (docs/OPERATIONS.md, "Generated files").
 
 Four files are derived from ``endbot.toml`` plus ``state/`` and rewritten
 atomically on every ``endbot start``:
@@ -131,7 +131,7 @@ def read_server_identity(server: Path) -> tuple[str, str]:
     """Return the ``server-name`` and advertised world name this BDS uses over NetherNet.
 
     The runtime uses them to pick this server among every NetherNet host
-    answering LAN discovery on the machine (docs/OPERATIONS.md section 5).
+    answering LAN discovery on the machine (docs/OPERATIONS.md, "NetherNet signalling").
     Missing keys fall back to the BDS defaults.
 
     The advertised ``levelName`` is the world's display name, not necessarily
@@ -163,7 +163,7 @@ def generate_runtime_config(
     server_port: int,
     server_identity: tuple[str, str] | None = None,
 ) -> Path:
-    """Write ``state/generated/endbot-runtime.json`` with absolute paths (section 2)."""
+    """Write ``state/generated/endbot-runtime.json`` with absolute paths."""
 
     document = {
         "dataDirectory": str(state_directory(paths).resolve()),
@@ -428,7 +428,7 @@ def generate_endstone_config(server: Path, paths: InstancePaths) -> Path:
 
 
 def generate_all(config: EndbotConfig, paths: InstancePaths, server: Path) -> GeneratedConfigs:
-    """Regenerate every derived config file (section 2) and report what happened."""
+    """Regenerate every derived config file and report what happened."""
 
     server_port, messages = read_server_port(server)
     # Direct NetherNet signalling dials server-port, so a default must not stand in for it.

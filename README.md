@@ -41,10 +41,10 @@ through Endstone's official acquisition path.
 4. `endbot stop` shuts down BDS and the runtime cleanly; `endbot doctor` checks the whole instance; `endbot update
    <bundle>` installs a new release next to the current one and `endbot update --rollback` returns to it.
 
-See [installation](docs/INSTALL.md), the [operator contract](docs/OPERATIONS.md), and [commands](docs/COMMANDS.md).
+See [installation](docs/INSTALL.md), [operations](docs/OPERATIONS.md), and [commands](docs/COMMANDS.md).
 Endbot uses NetherNet only. From 0.5.0 the locked BDS is 1.26.60, which refuses players on RakNet ("NetherNet is the
 only supported transport type"), so the 0.2.0 to 0.4.0 opt-in RakNet transport is gone; an instance set to RakNet must
-switch both `server.properties` and `endbot.toml` to `nethernet` (see [operations](docs/OPERATIONS.md)).
+switch both `server.properties` and `endbot.toml` to `nethernet` (see [NetherNet signalling](docs/OPERATIONS.md#nethernet-signalling)).
 The sections below describe the developer and source-build workflow.
 
 ## Safety invariants

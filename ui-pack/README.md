@@ -130,7 +130,7 @@ Whether the client renders and submits the forms as intended is a manual gate (b
 The release-candidate workflow runs `python scripts/build_ui_pack.py --out dist`, so the `.mcpack` sits beside the
 candidate and `SHA256SUMS` covers it. It is published as a release asset only, with no external site
 ([release/README.md](../release/README.md)). The file name is part of the contract with
-[docs/INSTALL.md](../docs/INSTALL.md); the test above pins it.
+[docs/INSTALL.md](../docs/INSTALL.md#optional-ui-pack); the test above pins it.
 
 ## Checking the pack after a change
 

@@ -1,216 +1,206 @@
 # Installing Endbot
 
-## Operator install (platform bundle)
+How to get an Endbot server running from a release bundle: a new server, or an existing BDS server you adopt. Running
+it afterwards (start and stop, granting access, configuration, updates) is in [OPERATIONS.md](OPERATIONS.md).
 
-The operator path needs no Python, Node.js, venv, pip, or npm: one platform bundle carries the private CPython with the
-patched Endstone, the Endbot plugin and CLI, a private Node.js, the prebuilt runtime, and
-`app/<version>/runner/endbot-luau-runner[.exe]` with its trusted `api.luau` sidecar.
-Luau/json MIT texts are in `licenses/`. Scripting stays off by default; set `[scripting] enabled = true` in
-`endbot.toml` and restart to enable it without building anything (see [SCRIPTING.md](SCRIPTING.md)). No artifact ever contains the
-official Bedrock Dedicated Server (BDS) binary — Endstone's normal acquisition path downloads the pinned BDS
-(`1.26.60.6`, protocol `2225`) during `endbot setup` (AGENTS.md: BDS is never bundled, vendored, or redistributed).
+You install no Python, Node.js, venv, pip or npm. The platform bundle carries everything Endbot needs: a private
+CPython with the patched Endstone, the Endbot plugin and CLI, a private Node.js, the prebuilt runtime and the Luau
+script runner.
 
-1. Download the platform bundle `endbot-<version>-<platform>.zip|tar.gz` (`.zip` for `windows-x86_64`, `.tar.gz` for
-   `linux-x86_64`) and its `SHA256SUMS` from the release, and verify the archive:
+No release file contains the official Bedrock Dedicated Server (BDS). Endstone's normal acquisition path downloads the
+pinned BDS (`1.26.60.6`, protocol `2225`) during `endbot setup`.
+
+**Contents**
+
+- [Before you start](#before-you-start)
+- [Download and verify](#download-and-verify)
+- [Extract](#extract)
+- [New server](#new-server)
+- [Adopting an existing server](#adopting-an-existing-server)
+- [How setup behaves](#how-setup-behaves)
+- [After setup](#after-setup)
+- [Optional UI pack](#optional-ui-pack)
+
+## Before you start
+
+Endbot only runs a server that keeps `online-mode=true`, `allow-cheats=false`, the normal Microsoft/Xbox sign-in,
+and a world with no experiments (Beta APIs and GameTest included) and no creative or cheat history. Setup refuses a
+server or world that breaks these instead of changing it.
+
+You need:
+
+- a Windows x64 or Linux x86_64 machine;
+- the Xbox GamerTag of each player who will control Bots;
+- to adopt an existing server: a backup of its `worlds/`, and its `server.properties` set to `online-mode=true`,
+  `allow-cheats=false` and `transport=nethernet` (setup never edits an existing server's settings).
+
+## Download and verify
+
+1. From the release, download the bundle for your platform and `SHA256SUMS`:
+
+   | Platform | Bundle |
+   | --- | --- |
+   | Windows x64 | `endbot-<version>-windows-x86_64.zip` |
+   | Linux x86_64 | `endbot-<version>-linux-x86_64.tar.gz` |
+
+2. Check the archive against `SHA256SUMS`:
 
    ```bash
-   sha256sum -c SHA256SUMS --ignore-missing      # Linux
-   certutil -hashfile endbot-<version>-<platform>.zip SHA256   # Windows: compare with SHA256SUMS by hand
+   sha256sum -c SHA256SUMS --ignore-missing                              # Linux
+   certutil -hashfile endbot-<version>-windows-x86_64.zip SHA256         # Windows: compare with SHA256SUMS by hand
    ```
 
-   Every release file also carries build provenance. With the GitHub CLI you can check that it was built by this
-   repository's release workflow (and from which commit) rather than uploaded by hand:
+3. Optional: check that the file was built by this repository's release workflow, and from which commit, rather than
+   uploaded by hand. This needs the GitHub CLI:
 
    ```bash
    gh attestation verify endbot-<version>-<platform>.zip --repo amatouhake/endbot
    ```
 
-2. Extract the bundle into an empty instance directory (for example `/srv/endbot` or `%USERPROFILE%\endbot`). It contains
-   `app/<version>/` (the application) and the `endbot` / `endbot.cmd` launcher; that is the whole install.
-3. Run setup (a dry run first if you want to see the plan; `--apply` is the confirmation, the CLI never prompts):
+## Extract
+
+The archive holds one directory, `endbot-<version>/`, with:
+
+- `app/<version>/` and `app/current`: the application;
+- `endbot` (Linux) or `endbot.cmd` (Windows): the launcher;
+- `licenses/`: licenses and third-party notices.
+
+That directory becomes your instance directory, where Endbot keeps everything it owns. Extract it where the server
+should live (for example `/srv/endbot` or `%USERPROFILE%\endbot`) and rename it if you like. Choose the final place
+before setup: a set-up instance cannot simply be moved ([directory layout](OPERATIONS.md#directory-layout)).
+
+Run every `endbot` command below from the instance directory, or pass `--instance <dir>`. The examples use the Linux
+launcher `./endbot`; on Windows run `.\endbot.cmd`.
+
+## New server
+
+1. Print the plan. Nothing is changed yet:
 
    ```bash
-   ./endbot setup --fresh --controller <GamerTag>          # print the plan only
-   ./endbot setup --fresh --controller <GamerTag> --apply  # create <instance>/server and download the locked BDS
+   ./endbot setup --fresh --controller <GamerTag>
    ```
 
-   To adopt an existing vanilla BDS (or earlier Endstone) directory instead, use
-   `endbot setup --existing <path> --controller <GamerTag> --i-have-a-world-backup --apply` (or pass
-   `--backup-worlds` to copy `worlds/` into the `backups/<UTC timestamp>/` safety backup). Setup enforces
-   `online-mode=true`, `allow-cheats=false`, and no experiment history, plus a supported, matching transport;
-   a server or world that violates those is
-   refused with an explanation rather than silently changed.
+   Repeat `--controller` for each controller.
 
-   The transport is NetherNet. BDS 1.26.60 refuses players on RakNet, so from 0.5.0 Endbot no longer offers the
-   0.2.0 to 0.4.0 opt-in RakNet: `--existing` refuses a server set to `transport=raknet` without editing it, and an
-   instance that used RakNet must stop, set `transport=nethernet` in `server.properties` and `[server] transport =
-   "nethernet"` in `endbot.toml`, then run `doctor` and `start`.
+2. Apply it. This creates `<instance>/server` and downloads the locked BDS:
 
-   0.4.0 setup writes `[scripting]` and `[limits]` sections to `endbot.toml`, which 0.3.x rejects as unknown. Before
-   `endbot update --rollback` to a 0.3.x version, stop the instance and remove both sections (or move them aside),
-   then roll back and start; the rollback itself does not edit `endbot.toml`. Stored scripts and script files in the
-   plugin data folder are kept and come back with 0.4.0.
+   ```bash
+   ./endbot setup --fresh --controller <GamerTag> --apply
+   ```
 
-   The first endbotd version moves Groups and stored scripts to `state/` and script files to `<instance>/scripts/`
-   on its first `endbot start` (see [Operations §6a](OPERATIONS.md)). `endbot update --rollback` from it writes
-   them back to `server/plugins/endbot/` before switching, so changes made in between are kept.
+3. Start the server in the foreground:
 
-   A fresh setup also adds every `--controller` GamerTag to `<instance>/server/allowlist.json` (a fresh BDS enables
-   `allow-list=true` with an empty list and would otherwise reject the controllers). When adopting an existing server
-   with `allow-list=true`, add yourself to the allow-list first: `endbot console allowlist add <GamerTag>` after
-   `endbot start`, or edit `allowlist.json` while the server is stopped (setup prints the exact fix per controller).
-4. Start the stack in the foreground: `endbot start`. The first start generates the owner keys and control token in
-   `state/secrets/`; `endbot doctor` reports instance health at any time.
-5. Join the server **once** with each controller GamerTag so it binds to its XUID (section 3 of
-   [`OPERATIONS.md`](OPERATIONS.md)). Until then the GamerTag is only "pending".
-6. Give the Bot a name and bring it online: `/bot Alice spawn`.
+   ```bash
+   ./endbot start
+   ```
 
-Updating to a newer bundle: `endbot update <bundle> [--sums PATH]` verifies the archive, extracts the new
-`app/<version>/`, runs its doctor against the existing instance (moving BDS only with a §6 backup when the new version
-locks a different BDS), switches `app/current`, and keeps the old version for `endbot update --rollback`.
+   BDS creates the world on this first start, and the runtime creates the owner keys and the control token in
+   `state/secrets/`.
 
-### Optional UI pack
+4. Join the server **once** with each controller GamerTag, so it binds to that account's XUID. Until then the GamerTag
+   is only pending ([granting access](OPERATIONS.md#controllers-in-endbottoml)).
 
-The release also carries `endbot-ui-<pack version>.mcpack`, an optional client-side resource pack: it enlarges server
-forms and turns Endbot's marked inputs into a multi-line field (see [UI_PACK.md](UI_PACK.md)). It is not needed to run a
-server. A player who wants it imports the file on their own device and activates it under **Settings → Global
-Resources**; the server's pack stack stays empty. The pack has its own version, so its number differs from the Endbot
-version and only moves when the pack itself changes. Its mobile field and a world achievement unlock with the pack
-active are unverified, so it is not claimed to be achievement-safe; serving it as a world resource pack is unverified
-too.
+5. In game, give a Bot a name and bring it online: `/bot Alice spawn`.
 
-## Developer install
+What a fresh setup does:
 
-The remainder of this guide is the developer/source-build path: it reconstructs the stack from the release-candidate
-wheels and the runtime source bundle instead of the platform bundle above.
+- creates `<instance>/server` and lets Endstone download the locked BDS;
+- sets `online-mode=true`, `allow-cheats=false` and `transport=nethernet` in `server.properties`, keeping its comments
+  and other keys;
+- leaves the world to BDS, which creates it on the first start with no experiments;
+- adds every `--controller` GamerTag to `server/allowlist.json` (see below);
+- creates `state/` and writes `endbot.toml` with your GamerTags.
 
-### Candidate contents
+A fresh BDS turns on `allow-list=true` with an empty list, which would reject the controllers. Setup therefore adds each
+GamerTag as `{"ignoresPlayerLimit": false, "name": "<GamerTag>"}`, the same entry the console's `allowlist add` writes;
+BDS fills in the XUID on the first join.
 
-A release candidate (`endbot-<version>-candidate` workflow artifact, assembled but never published automatically)
-contains exactly:
+- Existing entries and their order are kept, and a name already listed (case-insensitively) is not added again.
+- The file is written atomically.
+- An `allowlist.json` that is not a JSON list of entry objects fails the plan and is never overwritten.
 
-| File | Contents |
+## Adopting an existing server
+
+Use this for a vanilla BDS directory, or one set up with an earlier Endstone.
+
+1. Back up `worlds/`.
+2. Make sure `server.properties` has `online-mode=true`, `allow-cheats=false` and `transport=nethernet`. Setup checks
+   them but never changes them.
+3. Print the plan:
+
+   ```bash
+   ./endbot setup --existing <path> --controller <GamerTag>
+   ```
+
+4. Apply it, confirming that you have a world backup, or letting setup copy `worlds/` into its backup:
+
+   ```bash
+   ./endbot setup --existing <path> --controller <GamerTag> --i-have-a-world-backup --apply
+   ./endbot setup --existing <path> --controller <GamerTag> --backup-worlds --apply
+   ```
+
+5. If the server has `allow-list=true`, add each controller to the allow-list. Setup prints the fix for each one:
+   `./endbot console allowlist add <GamerTag>` after `./endbot start`, or edit `allowlist.json` while the server is
+   stopped.
+6. Start with `./endbot start` and join once with each controller GamerTag.
+
+What setup checks on an existing server:
+
+| Finding | Result |
 | --- | --- |
-| `endstone-0.11.15+endbot.1-*-manylinux_*.whl` | Patched Endstone for Linux x86_64 (CPython 3.12), repaired to a `manylinux_*` platform tag. CI-built. Use this wheel on Linux; it does not install on Windows. |
-| `endstone-0.11.15+endbot.1-*-win_amd64.whl` | Patched Endstone for Windows x64 (CPython 3.12). CI-built by the release-candidate workflow's Windows job from the same `endstone.lock` + `patches/endstone/` inputs as the Linux wheel. Use this wheel on Windows; it does not install on Linux. |
-| `endstone_endbot-0.7.0-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.15+endbot.1`, so pip cannot substitute official unpatched `0.11.15`, and exactly the `endbot-core` wheel of the same release. |
-| `endbot_core-0.7.0-*.whl` | Shared, Endstone-free Endbot logic the plugin imports. Platform-independent; not on any package index. |
-| `endbot-runtime-0.7.0.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
-| `endbot-config-0.7.0.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
-| `ENDSTONE_LICENSE` | Upstream Endstone license carried from the pinned checkout. |
-| `endbot-ui-<pack version>.mcpack` | Optional client-side UI resource pack, also attached to the published release (see [UI_PACK.md](UI_PACK.md)). Its version is the pack's own and only moves when the pack changes. |
-| `compatibility-manifest.json` | Machine-readable binding of Endbot revision, Endstone tag/commit/package, BDS version/build/protocol, patch revision, and validation state (schema: `release/compatibility-manifest.schema.json`). |
-| `SHA256SUMS` | SHA-256 checksums of every file above. |
+| `online-mode=false`, `allow-cheats=true`, or `transport` missing or not `nethernet` in `server.properties` | The plan FAILs. Set the values yourself and run setup again. |
+| `transport=raknet` | The plan FAILs: BDS 1.26.60 refuses players on RakNet. Set `transport=nethernet` first. |
+| A world with creative, cheat or experiment history | The plan FAILs. Endbot does not change world flags. |
+| Unknown experiment keys, `cheatsEnabled`, or a non-survival game type in the world | Warning |
+| `version.txt` newer than the locked BDS | Refused. Install a newer Endbot, or restore the locked server. |
+| `version.txt` older than the locked BDS, or missing | Endstone updates the server (below) |
+| `version.txt` matches and the server executable is present | No BDS change |
 
-Verify before installing:
+When Endstone updates the server, it overwrites the server executable and the vanilla `behavior_packs/`,
+`resource_packs/` and `definitions/`. Worlds, `server.properties` values, `allowlist.json` and `permissions.json` are
+kept.
 
-```bash
-sha256sum -c SHA256SUMS
-python3 -c "import json; print(json.load(open('compatibility-manifest.json'))['endstone'])"
-```
+What setup changes on an existing server:
 
-The manifest's `tested_safety_conditions` reports the current artifact's own validation state. A current patched
-package never inherits human/Xbox achievement observations from an earlier one; historical M0/M2 evidence stays
-attributed to `0.11.11+endbot.1` under `historical_validation`. Do not claim achievement-preserving compatibility for
-the candidate until the exact candidate passes the documented human/live gate.
+- backs up the operator-owned BDS files first ([backups](OPERATIONS.md#backups)); `worlds/` only with
+  `--backup-worlds`;
+- updates BDS if needed;
+- creates `state/` and writes `endbot.toml`, with `[server] path` pointing at the existing directory;
+- moves Groups and scripts from an earlier Endbot plugin into `state/`
+  ([store layout moves](OPERATIONS.md#store-layout-moves)).
 
-### Linux install and start
+It never edits `server.properties` or `allowlist.json`. The `[local-bot-auth]` table in `endstone.toml` and
+`plugins/endbot/config.toml` are generated on the first `endbot start`.
 
-Requirements: Python 3.12, Node.js 24+, git, cmake, and a C++ compiler. Docker is not needed to install
-(only to build) the candidate. The compiler toolchain matters because `npm ci` falls back to building
-`raknet-native` from source when no published prebuild matches the platform; without it the install fails
-inside the dependency's build check rather than with an Endbot error.
+## How setup behaves
 
-1. Create a virtual environment and install the three wheels offline from the candidate directory. The repaired
-   Endstone wheel carries no LLVM runtime dependency:
-   ```bash
-   python3 -m venv .venv && . .venv/bin/activate
-   python -m pip install ./endstone-0.11.15+endbot.1-*.whl ./endstone_endbot-0.7.0-*.whl ./endbot_core-0.7.0-*.whl
-   python -c "import importlib.metadata as m; print(m.version('endstone'))"
-   ```
-   Expected: `0.11.15+endbot.1`. Never install official `endstone==0.11.15` into this environment.
-2. Unpack the runtime bundle outside the server folder and install its pinned dependencies:
-   ```bash
-   mkdir -p /opt/endbot && tar -xzf endbot-runtime-0.7.0.tar.gz -C /opt/endbot
-   npm ci --prefix /opt/endbot
-   cp /opt/endbot/endbot-runtime.example.json /opt/endbot/endbot-runtime.json
-   node /opt/endbot/src/cli.js --config /opt/endbot/endbot-runtime.json
-   ```
-   The runtime creates its control token and owner key pair on first start. Keep that directory under the operator's
-   own account; POSIX files are mode `0600`.
-3. Create the server folder and start once so Endstone bootstraps official BDS and writes its default configuration:
-   ```bash
-   mkdir -p /srv/endbot-server && endstone -s /srv/endbot-server
-   ```
-   Stop the server, then configure:
-   - `server.properties`: keep `online-mode=true`, `allow-cheats=false`, and select the runtime's transport:
-     `transport=nethernet` by default, or `transport=raknet` with explicit `"transport": "raknet"` in runtime JSON
-     from 0.2.0 on. Published `v0.1.x` runtimes only use NetherNet. On NetherNet, leave `server-udp-ports` unset (do not set
-     a single port or a range; since upstream `v0.11.12` the server shares one UDP port across NetherNet sessions).
-     Check safety with `python3 scripts/preflight.py /srv/endbot-server/server.properties
-     --acknowledge-world-state-unverified` from a checkout (`preflight` covers only the safety invariants —
-     the matching transport is a separate Endbot runtime requirement, checked by `endbot doctor`), or apply the same values by hand.
-   - `endstone.toml`: set the `[local-bot-auth]` table from the unpacked `config/endstone.local-auth.example.toml`
-     with `enabled = true` and `public-key-file` pointing at the runtime's `owner-public.pem`. Only the public key
-     is ever configured in Endstone. The `[network]` `stun-servers` default needs no change for local/loopback use.
-   - Create an endbotd token (at least 32 random characters, e.g. `python -c "import secrets;
-     print(secrets.token_urlsafe(32))"` into `endbotd.token`) and write an `endbotd.toml` (see
-     `core/src/endbotd/config.py`): `[link]` port and `token-file`, `[runtime]` port and the runtime's
-     `control.token`, `[stores] directory` (Groups and stored scripts) and `scripts-folder` (script files), and the human tester's UUID or
-     decimal XUID in one `[authorization]` allowlist. Do not make the tester an operator.
-   - `plugins/endbot/config.toml`: an `[endbotd]` table with `port` (the link port) and `token-file` (the same
-     `endbotd.token`). Two TOML traps found during the operator gate: Windows paths must use *single-quoted*
-     literal strings (`token-file = 'C:\endbot\secrets\endbotd.token'`) because backslashes in double-quoted
-     strings are escapes, and XUIDs must be *strings* (`allowed-xuids = ["2535466722952312"]`), not bare numbers.
-4. Start the runtime first, then endbotd (`python -m endbotd --config endbotd.toml`), then the server. The runtime
-   prints `endbot_runtime_ready` and endbotd `endbotd_ready` when they listen; the server log reports
-   `Endbot linked to endbotd`, then `Accepted local bot '...'` on Bot login, and the human joins through the normal
-   Microsoft/Xbox path.
+- **Plan first.** Without `--apply`, setup prints every planned change and applies nothing: files to create or modify
+  with a reason, backups to take, and whether BDS will be downloaded or overwritten. `--apply` is the confirmation;
+  the CLI never prompts.
+- **Refusals.** Setup refuses when `endbot.toml` already exists (edit it, or use `endbot update`) and while a
+  supervisor is running.
+- **Report.** After `--apply`, setup runs `endbot doctor` and prints its report and the next steps. The owner key and
+  control token checks are expected to warn until the first `endbot start`.
 
-### Native Windows install and start
+## After setup
 
-Each platform installs its own Endstone wheel from the candidate; the remaining artifacts are shared:
+| To | See |
+| --- | --- |
+| Start, stop and read logs | [Start and stop](OPERATIONS.md#start-and-stop) |
+| Grant or revoke controllers | [Granting access](OPERATIONS.md#granting-access) |
+| Change settings, such as Bot limits or the reply language | [Configuration](OPERATIONS.md#configuration) |
+| Turn on Luau scripts | `[scripting] enabled = true` in `endbot.toml`, then restart ([SCRIPTING_SETUP.md](SCRIPTING_SETUP.md)) |
+| Set up the web | [WEB_DEPLOY.md](WEB_DEPLOY.md) |
+| Install a newer release | [Updating and rolling back](OPERATIONS.md#updating-and-rolling-back) |
+| Check the instance | [Checking health](OPERATIONS.md#checking-health) |
 
-1. Install the CI-built Windows wheel from the candidate directory into a virtual environment:
-   ```powershell
-   py -3.12 -m venv .venv; .\.venv\Scripts\Activate.ps1
-   python -m pip install .\endstone-0.11.15+endbot.1-*-win_amd64.whl
-   python -c "import importlib.metadata as m; print(m.version('endstone'))"
-   ```
-   Expected: `0.11.15+endbot.1`. Never install official `endstone==0.11.15` into this environment. The wheel
-   is produced by the release-candidate workflow's Windows job from the same `endstone.lock` +
-   `patches/endstone/` inputs as the Linux wheel, then inspected for its `win_amd64` tag, locked version,
-   and runtime DLL and install-tested with the plugin in a fresh venv. (Building patched Endstone from
-   source remains a development-only path documented in [`WINDOWS_DEV.md`](WINDOWS_DEV.md), not the
-   install path.) Verify `0.11.15+endbot.1` before continuing.
-2. Install the candidate plugin and core wheels into the same environment (`python -m pip install
-   .\endstone_endbot-0.7.0-*.whl .\endbot_core-0.7.0-*.whl`); both are platform-independent, and the plugin still
-   pins the exact patched Endstone version.
-3. Unpack `endbot-runtime-0.7.0.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for
-   the pinned tarball dependency URL; see [`WINDOWS_DEV.md`](WINDOWS_DEV.md)), copy the example runtime
-   configuration outside the unpacked tree, and start the runtime with Node 24+.
-4. Create the server folder with `endstone -s` (official Windows BDS `1.26.60.6` build `52886189`, same protocol
-   `2225`), then apply the same `server.properties` / `endstone.toml` / plugin configuration as on Linux. Native
-   Windows hosting is live-smoked but Linux remains the CI/release-artifact baseline.
+## Optional UI pack
 
-### Updating to a newer candidate
+The release also carries `endbot-ui-<pack version>.mcpack`, an optional client-side resource pack. It enlarges server
+forms and turns Endbot's marked inputs into a multi-line field ([UI_PACK.md](UI_PACK.md)). A server does not need it.
 
-1. Stop the server (`stop` in its console) and the runtime (`Ctrl+C`). Despawn Bots first.
-2. Verify the new candidate's `SHA256SUMS` and confirm its `compatibility-manifest.json` names the intended
-   Endstone package and BDS pair.
-3. Replace the installed wheels (`pip install -U` the new pair; the plugin's exact pin rejects a mismatched
-   Endstone) and unpack the new runtime/config tarballs next to the old ones. Re-apply only the operator-owned
-   configuration values (token file, owner keys, allowlists); never copy generated secrets, pins, worlds, or
-   machine-local paths between machines.
-4. Start the runtime, then the server, and re-run the live regression matrix in [`WINDOWS_DEV.md`](WINDOWS_DEV.md)
-   plus `/bot ping` before returning the server to normal use.
-
-### What is intentionally out of scope
-
-- BDS is never bundled, vendored, or copied into the repository or the candidate.
-- No tag or GitHub Release is created from a green build alone. Publication waits for the exact candidate to pass
-   the required human/live gate (normal Microsoft/Xbox login, local Bot login and coexistence, the command/input
-   matrix, and the actual Xbox achievement observation), with the manifest and evidence updated accordingly.
-- World pickup → same-session runtime inventory synchronization remains a known limitation with reconnect as the
-   documented recovery path; same-session pickup inference and sneak ledge simulation stay deferred. Block breaking/mining shipped in 0.3.0 as `destroy`; see
-   [`COMMANDS.md`](COMMANDS.md).
+- A player who wants it imports the file on their own device and activates it under **Settings → Global Resources**.
+  The server's pack stack stays empty.
+- The pack has its own version, so its number differs from the Endbot version and moves only when the pack changes.
+- It is not claimed to be achievement-safe: its mobile field, an achievement unlock with it active, and serving it as
+  a world resource pack are unverified ([COMPATIBILITY.md](COMPATIBILITY.md)).

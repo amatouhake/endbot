@@ -1,4 +1,4 @@
-"""Tests for endbot.toml loading and validation (docs/OPERATIONS.md section 2)."""
+"""Tests for endbot.toml loading and validation (docs/OPERATIONS.md, "Configuration")."""
 
 from __future__ import annotations
 

@@ -68,8 +68,7 @@ Deactivate *Endbot UI* in **Settings → Global Resources**. Nothing changes on 
 
 ## For operators
 
-Turn the editor on under `[scripting]` in the plugin `config.toml`, or in `endbot.toml` for managed instances, then
-restart:
+Turn the editor on under `[scripting]` in `endbot.toml`, then restart:
 
 ```toml
 [scripting]

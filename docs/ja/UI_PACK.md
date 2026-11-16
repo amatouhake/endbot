@@ -1,4 +1,4 @@
-<!-- source: docs/UI_PACK.md ac1fc83aae960399600fd1b468c87c77995c0df5 -->
+<!-- source: docs/UI_PACK.md cd3708f7415547241275fcbaf5db8865057674bd -->
 
 <a id="optional-endbot-ui-resource-pack"></a>
 # 任意の Endbot UI リソースパック
@@ -66,7 +66,7 @@
 <a id="for-operators"></a>
 ## オペレーター向け
 
-プラグインの `config.toml` (管理されたインスタンスでは `endbot.toml`) の `[scripting]` でエディターをオンにし、再起動します:
+`endbot.toml` の `[scripting]` でエディターをオンにし、再起動します:
 
 ```toml
 [scripting]

@@ -1,4 +1,4 @@
-"""Supervisor run-state files under ``state/run/`` (docs/OPERATIONS.md section 5a).
+"""Supervisor run-state files under ``state/run/`` (docs/OPERATIONS.md, "Start and stop").
 
 File protocol shared by ``endbot start`` (the foreground supervisor) and the
 other-terminal commands::
@@ -112,7 +112,7 @@ def consume_console_lines(run_dir: Path) -> list[str]:
 
     A line appended in the tiny window between the read and the truncate can be
     lost; callers on one host with short lines never hit it in practice, and the
-    protocol avoids cross-process file locking (docs/OPERATIONS.md section 5a).
+    protocol avoids cross-process file locking (docs/ARCHITECTURE.md, "Operator CLI and supervisor internals").
     """
 
     path = Path(run_dir) / CONSOLE_REQUEST

@@ -35,28 +35,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="instance directory (default: $ENDBOT_INSTANCE, else the launcher directory, else the working directory)",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
-    doctor = subcommands.add_parser("doctor", help="report instance health without changing anything (section 7)")
+    doctor = subcommands.add_parser("doctor", help="report instance health without changing anything")
     doctor.add_argument(
         "--live",
         action="store_true",
         help="also probe runtime reachability on the control port (only while the runtime is expected to be up)",
     )
-    start = subcommands.add_parser("start", help="start the runtime and BDS and supervise them (section 5a)")
+    start = subcommands.add_parser("start", help="start the runtime and BDS and supervise them")
     start.add_argument(
         "--exit-with-bds",
         action="store_true",
         help="with [web] enabled, stop everything when BDS exits instead of keeping endbotd running",
     )
-    stop = subcommands.add_parser("stop", help="stop BDS and the runtime (section 5a)")
+    stop = subcommands.add_parser("stop", help="stop BDS and the runtime")
     stop.add_argument(
         "--timeout",
         type=float,
         default=120.0,
         help="seconds to wait for the supervisor to exit (default: 120)",
     )
-    console = subcommands.add_parser("console", help="send one line to the BDS console (section 5a)")
+    console = subcommands.add_parser("console", help="send one line to the BDS console")
     console.add_argument("line", nargs="+", help="the console line to send (e.g. 'say hello')")
-    controllers = subcommands.add_parser("controllers", help="manage controller enrollment (section 3)")
+    controllers = subcommands.add_parser("controllers", help="manage controller enrollment")
     controllers_subcommands = controllers.add_subparsers(dest="controllers_command", required=True)
     for operation in ("add", "remove"):
         action = controllers_subcommands.add_parser(operation, help=f"{operation} a controller while BDS runs")
@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
                 help="role for the grant (default for a new grant: controller)",
             )
     controllers_subcommands.add_parser("list", help="list effective controller configuration on the BDS console")
-    reset = controllers_subcommands.add_parser("reset", help="return one controller binding to pending (section 3)")
+    reset = controllers_subcommands.add_parser("reset", help="return one controller binding to pending")
     reset.add_argument("gamertag", help="the GamerTag whose binding should be removed")
     web = subcommands.add_parser("web", help="administer the Endbot web (docs/WEB.md)")
     web_subcommands = web.add_subparsers(dest="web_command", required=True)
@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     deploy.add_argument("--bundle", type=Path, help="a prebuilt web bundle (default: the installed one)")
     web_subcommands.add_parser("rotate-key", help="replace the link key; the token is prompted, never an argument")
-    setup = subcommands.add_parser("setup", help="create or adopt an instance; prints the full plan first (section 6)")
+    setup = subcommands.add_parser("setup", help="create or adopt an instance; prints the full plan first")
     mode = setup.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fresh", action="store_true", help="create <instance>/server and download the locked BDS")
     mode.add_argument(
@@ -115,7 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="GAMERTAG",
-        help="Xbox GamerTag of a controller to enroll (repeatable, section 3)",
+        help="Xbox GamerTag of a controller to enroll (repeatable)",
     )
     setup.add_argument("--apply", action="store_true", help="execute the printed plan (without it, only print)")
     setup.add_argument(
@@ -133,7 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="confirm worlds are backed up elsewhere; required by --apply unless --backup-worlds",
     )
     update = subcommands.add_parser(
-        "update", help="install a new application version from a bundle archive (section 6a)"
+        "update", help="install a new application version from a bundle archive"
     )
     update.add_argument(
         "archive",

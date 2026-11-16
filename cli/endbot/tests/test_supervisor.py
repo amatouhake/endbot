@@ -1,4 +1,4 @@
-"""Supervision tests with fake children (docs/OPERATIONS.md section 5a).
+"""Supervision tests with fake children (docs/OPERATIONS.md, "Start and stop").
 
 Every child is a small Python script run with ``sys.executable``; no
 POSIX-only signals are used so the suite runs on Windows and Linux.

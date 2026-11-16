@@ -1,7 +1,7 @@
 # Endbot Luau runner
 
-The small C++ host runs official, unmodified Luau 0.743 in a child process for the
-Endbot plugin. Operator bundles ship it prebuilt for Windows x64 and Linux x86_64;
+The small C++ host runs official, unmodified Luau 0.743 in a child process for
+endbotd. Operator bundles ship it prebuilt for Windows x64 and Linux x86_64;
 scripting stays off until enabled in `endbot.toml`. See [scripting](../docs/SCRIPTING.md).
 
 Source builds require Node >=24, CMake >=3.15, Ninja, a C/C++17 toolchain and

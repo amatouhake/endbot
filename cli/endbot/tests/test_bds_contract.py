@@ -1,4 +1,4 @@
-"""Contract test for the pinned Endstone private API used by `endbot setup` (section 6).
+"""Contract test for the pinned Endstone private API used by `endbot setup` (docs/INSTALL.md).
 
 ``endbot_cli.bds`` drives ``endstone.cli.base.Bootstrap._install()`` (whose
 ``_update`` / ``_download`` steps it triggers) through exactly pinned private

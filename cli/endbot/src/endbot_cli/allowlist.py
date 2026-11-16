@@ -1,4 +1,5 @@
-"""BDS allow-list handling (``<server>/allowlist.json``, docs/OPERATIONS.md sections 4, 6, 7).
+"""BDS allow-list handling (``<server>/allowlist.json``, docs/OPERATIONS.md, "Local Bots and the BDS allow-list";
+docs/INSTALL.md, "New server"; the `allowlist` check in docs/OPERATIONS.md, "Checking health").
 
 ``allowlist.json`` is an operator-owned BDS file: the format is whatever
 ``allowlist add <name>`` writes on the server console, a JSON list of entry

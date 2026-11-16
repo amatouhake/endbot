@@ -1,4 +1,4 @@
-"""``endbot setup`` — plan and apply a fresh or adopted instance (section 6).
+"""``endbot setup`` — plan and apply a fresh or adopted instance (docs/INSTALL.md).
 
 The command is always dry-run first: it computes the full plan (every file to
 create or modify with a short reason, every backup to take, and whether BDS
@@ -157,7 +157,7 @@ def compute_setup_plan(
     transport: str | None = None,
     lock: LockData | None = None,
 ) -> SetupPlan:
-    """Compute the section 6 plan without changing anything."""
+    """Compute the setup plan without changing anything."""
 
     lock = lock or load_lock()
     mode = "fresh" if fresh else "existing"
@@ -180,7 +180,7 @@ def compute_setup_plan(
         if not server.is_dir():
             failures.append(f"{server} (--existing) does not exist or is not a directory")
 
-    lines.append(f"create state/{', state/'.join(STATE_SUBDIRS)}/ (persistent Endbot state, section 1)")
+    lines.append(f"create state/{', state/'.join(STATE_SUBDIRS)}/ (persistent Endbot state)")
 
     bds = plan_bds(server, lock) if server.is_dir() or fresh else BdsPlan(BDS_NONE)
     lines.extend(bds.lines)
@@ -241,7 +241,7 @@ def compute_setup_plan(
     lines.insert(
         0,
         f"create endbot.toml with [server] path = '{server_path_value}', transport = '{selected_transport}', "
-        f"gamertags = {tags_display}, control-port = {control_port} (the only file you edit, section 2)",
+        f"gamertags = {tags_display}, control-port = {control_port} (the only file you edit)",
     )
     allowlist_path = server / "allowlist.json"
     if fresh:
@@ -269,7 +269,7 @@ def compute_setup_plan(
 
     lines.append(
         f"generate [local-bot-auth] in {server / 'endstone.toml'} and {server / 'plugins' / 'endbot' / 'config.toml'} "
-        "on the first `endbot start` (derived files, section 2)"
+        "on the first `endbot start` (derived files)"
     )
 
     backup_entries: tuple[BackupEntry, ...] = ()
@@ -288,7 +288,10 @@ def compute_setup_plan(
             lines.append("worlds/ is NOT copied; confirm a world backup with --i-have-a-world-backup to apply")
 
     if not gamertags:
-        warnings.append("no --controller GamerTags given; nobody can control Bots until configured (section 3)")
+        warnings.append(
+            "no --controller GamerTags given; nobody can control Bots until configured "
+            '(docs/OPERATIONS.md, "Granting access")'
+        )
 
     return SetupPlan(
         mode=mode,
@@ -316,7 +319,7 @@ def _toml_string(value: str):
 
 
 def write_endbot_toml(paths: InstancePaths, plan: SetupPlan) -> Path:
-    """Write ``endbot.toml`` (section 2) with literal-string paths."""
+    """Write ``endbot.toml`` (docs/OPERATIONS.md, "Configuration") with literal-string paths."""
 
     import tomlkit
 
@@ -358,7 +361,7 @@ def report_doctor(paths: InstancePaths, installed_endstone_version: Callable[[],
 
     FAILs the very first start legitimately produces (the runtime generates the
     owner keys and the control token during ``endbot start``) are reported as
-    WARN with that explanation instead (section 6).
+    WARN with that explanation instead.
     """
 
     results = run_doctor(DoctorContext(paths=paths, live=False, installed_endstone_version=installed_endstone_version))
@@ -393,17 +396,17 @@ def run_setup(
     installed_endstone_version: Callable[[], str | None] | None = None,
     lock: LockData | None = None,
 ) -> int:
-    """Run the section 6 setup sequence (see the module docstring)."""
+    """Run the setup sequence (see the module docstring)."""
 
     if paths.endbot_toml.exists():
         return _fail(
-            f"FAIL setup: {paths.endbot_toml} already exists; edit it (section 2) or run `endbot update` "
+            f"FAIL setup: {paths.endbot_toml} already exists; edit it or run `endbot update` "
             "to change the application — setup never touches an existing instance"
         )
     if any(not tag for tag in gamertags):
         return _fail(
             "FAIL setup: --controller GamerTags must be non-empty strings "
-            '(identifiers are always strings, section 2); quote the GamerTag, e.g. --controller "ExampleTag"'
+            '(identifiers are always strings); quote the GamerTag, e.g. --controller "ExampleTag"'
         )
     state = inspect_supervisor(paths.state_run)
     if state.status == RUNNING:
@@ -516,7 +519,10 @@ def _apply(
     _print("setup:   endbot doctor")
     _print("setup:   endbot start")
     controller_tags = ", ".join(plan.gamertags) or "none configured"
-    _print(f"setup:   join once with each controller GamerTag ({controller_tags}) to bind it (section 3)")
+    _print(
+        f"setup:   join once with each controller GamerTag ({controller_tags}) to bind it "
+        '(docs/OPERATIONS.md, "Granting access")'
+    )
     if fatal:
         return _fail("setup: FAIL: doctor still reports problems after apply (see above)")
     _print("setup: done; the first `endbot start` generates the owner keys and control token")

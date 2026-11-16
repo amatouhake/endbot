@@ -160,6 +160,18 @@ Not run:
 - boats and horses, a revocation in the middle of a Group batch, the UI pack on a mobile client, and sustained
   multi-Bot load ([#277](https://github.com/amatouhake/endbot/issues/277)).
 
+### Scripting
+
+- Bots only ([record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/SCRIPTING.md#live-validation)): a Group row template placing Bots
+  within 0.35 blocks, a patrol stopped by name and by run id, console input surviving a run's cleanup, a runaway loop
+  ended by the execution budget, the operation rate limit throttling, a message flood ending the run, and mining at
+  spots. The two rate-limit cases ran on the current pair (2026-11-02), the others on the earlier pair (2026-10-23).
+- A human Windows client, for 0.4.0 on the earlier pair: templates, Copy and edit, revision history, rename, sharing,
+  book import and export, `runs` and `stop`, and a runaway loop interrupted.
+
+Not run: a second controller seeing only shared scripts ([#272](https://github.com/amatouhake/endbot/issues/272)); the OS confinement under real memory
+pressure, CPU exhaustion and parent death inside a running BDS on both platforms, beyond the unit and OS probes.
+
 ### Permissions and endbotd
 
 Checked for 0.5.0:

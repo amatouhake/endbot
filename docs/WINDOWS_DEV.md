@@ -255,6 +255,77 @@ patched validator, which the server log reports as `Accepted local bot 'Alice' (
 that does not reproduce the previously observed WSL jump anomaly establishes only that this topology did not
 reproduce it; it is not a root-cause finding for the WSL behavior.
 
+## Command parser smoke (real BDS required)
+
+Repository unit tests prove the Python parser and the declaration coverage model, but they cannot execute the
+closed-source BDS overload matcher. After any change to `COMMAND_USAGES`, run each of these on the pinned
+native BDS build and confirm it reaches the Python layer (a Bot response or an `Endbot:` usage message, never a
+Bedrock syntax error):
+
+```text
+/bot
+/bot ping
+/bot menu
+/bot help
+/bot help 2
+/bot help 3
+/bot help move
+/bot help teleport
+/bot help dance
+/bot Alice spawn
+/bot Alice status
+/bot Alice menu
+/bot Alice move forward
+/bot Alice tp me
+/bot Alice tp 100 64 -20 facing Steve
+/bot Alice look at 1 64 2
+/bot Alice attack interval 20
+/bot Alice use for 40
+/bot Alice use hold 30 interval 40 for 200
+/bot Alice jump interval 20 for 100
+/bot Alice move forward for 40
+/bot Alice destroy for 200
+/bot Alice destroy count 64
+/bot Alice interact 1 64 2 up
+/bot Alice hotbar 9
+/bot Alice inventory
+/bot #miners inventory
+/bot #miners[1] inventory
+/bot Alice radius
+/bot Alice radius 12
+/bot Alice radius default
+/bot Alice drop stack
+/bot Alice stop
+/bot Alice despawn
+```
+
+Native autocomplete on this baseline stays degraded by design: generic string/message overloads remain visible
+and dominate filtering, so operation and direction suggestions do not narrow cleanly. Confirm execution for
+every line above; record any completion change as evidence for the deferred redesign, not as a reason to remove
+a parseability overload.
+
+## Live scripting and Group probes
+
+In the pinned Python environment with the runtime dependencies present, build the native runner, then run from the
+repository root:
+
+```text
+node runner/build.mjs
+python scripts/raknet_spike.py --scripting --server-dir build/scripting-sandbox --output build/scripting-live-1
+```
+
+Use a new ignored output directory each time. `--server-dir` is the existing disposable sandbox mechanism;
+it resets the sandbox world. The probe enables `[scripting]` only in that generated instance config and uses
+the locally built `runner/.build/native/bin/endbot-luau-runner[.exe]` and matching `api.luau`. Missing/stale builds
+fail with the build command. No server settings are weakened. Omit `--scripting` to retain the default config.
+
+The fixture installs only into the output's plugin copy, prepares a flat Survival arena through the SDK, and saves
+scripts through the same guarded command path as a player. Position evidence comes from BDS `player.location`, never
+from runtime prediction. `report.json` and `scripting-results.json` in the output directory hold the evidence; they
+stay out of the repository.
+
+The Group probe is `python scripts/raknet_spike.py --groups --output build/<fresh-directory>`.
+
 ## Cleanup and shutdown
 
 Stop the client first, then despawn any Bot (`/bot Alice despawn`), stop the runtime with `Ctrl+C`, and stop BDS

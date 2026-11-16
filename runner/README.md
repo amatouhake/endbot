@@ -40,4 +40,5 @@ changing generators. MSVC links the host and Luau with the static CRT.
 
 Downloads and native outputs stay in ignored `.deps/` and `.build/`; keep custom
 staging directories under ignored `build/`. Never commit binaries or dependencies.
-The [scripting guide](../docs/SCRIPTING.md) tracks deployment and validation limits.
+Deployment and limits are in [scripting setup](../docs/SCRIPTING_SETUP.md); what was checked is in
+[validation status](../docs/COMPATIBILITY.md#scripting).

@@ -6,7 +6,8 @@ translates and that file's git blob when it was translated. This script
 
 - fails when a translation has no such line, names a missing source, links to a file
   that does not exist, links to an anchor another docs/ja page does not define, or
-  hard-wraps paragraph lines (each break renders as a stray space in Japanese);
+  hard-wraps paragraph lines (each break renders as a stray space in Japanese), or
+  has a paragraph longer than MAX_PARAGRAPH characters;
 - reports a translation whose source has changed since (a warning, or a failure with
   ``--strict``), with the English diff to carry over when the old blob is in history;
 - with ``--accept docs/ja/NAME.md``, records the source's current blob after the
@@ -32,6 +33,8 @@ LINK = re.compile(r"\]\((?P<target>[^)\s]+)\)")
 ANCHOR = re.compile(r'<a id="([^"]+)"></a>')
 # Lines that begin a new block, so they never continue the line before them.
 BLOCK_START = re.compile(r"([-*+] |\d+\. |#|\||<|>|```)")
+# About three Japanese sentences: the "short paragraphs" rule for player documents.
+MAX_PARAGRAPH = 400
 # Full-width punctuation that never takes a space beside it.
 CLOSING = "、。，．：；」』）"
 # Lines that are not prose, so nothing continues them.
@@ -114,6 +117,22 @@ def wrapped_lines(path: Path) -> list[str]:
     return [f"{rel(path)}: paragraph lines are hard-wrapped; run --unwrap {rel(path)}"]
 
 
+def long_paragraphs(path: Path) -> list[str]:
+    """Paragraphs and list items over MAX_PARAGRAPH characters (docs/README.md, "Player documents")."""
+    failures = []
+    fenced = False
+    for number, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced and _joinable(line) and len(line.strip()) > MAX_PARAGRAPH:
+            failures.append(
+                f"{rel(path)}:{number}: paragraph of {len(line.strip())} characters (at most {MAX_PARAGRAPH}); "
+                "split it in the English source, or make it a list or table"
+            )
+    return failures
+
+
 def anchors(path: Path) -> set[str]:
     return set(ANCHOR.findall(path.read_text(encoding="utf-8")))
 
@@ -168,6 +187,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--accept", metavar="FILE", help="record the source's current blob in FILE")
     parser.add_argument("--unwrap", metavar="FILE", nargs="+", help="join hard-wrapped paragraph lines in FILE")
     args = parser.parse_args(argv)
+    # Reports quote Japanese text; a cp932 or other legacy console must not crash on it.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
 
     if args.accept:
         return accept((Path.cwd() / args.accept).resolve())
@@ -187,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         failures.extend(broken_links(path))
         failures.extend(wrapped_lines(path))
+        failures.extend(long_paragraphs(path))
         now = current_blob(item.source)
         if now != item.blob:
             stale.append(stale_report(item))

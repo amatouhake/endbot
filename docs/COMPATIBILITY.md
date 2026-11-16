@@ -151,6 +151,20 @@ regrant; [pickups, drops, swap and hold](https://github.com/amatouhake/endbot/bl
 [timed item use and equipment](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ITEM_USE_SYNC_VALIDATION.md), including a human client confirming the trident
 throw; and [dimension changes, radius and controller policy](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/BOT_BEHAVIOR_VALIDATION.md), Bots only.
 
+Also on the earlier pair, 2026-10-24:
+
+- Windows RakNet, console: `interact @cow` fed the cow, the crosshair `interact` reached it, `attack @cow` damaged it
+  and `destroy dirt` broke the nearest dirt block. After the held-item wait was added, `interact @cow count 3` fed
+  three different cows (three wheat) and `destroy oak_log count 5` broke a five-log trunk; before it, rapid clicks
+  after the first were rejected by BDS.
+- Windows RakNet (`scripts/raknet_spike.py --entity`): feeding a cow consumed wheat, the Bot boarded a minecart by
+  id, rode a powered minecart about 12 blocks with BDS keeping its position on the cart, refused interaction while
+  riding (before vehicle switching), and walked normally after leaving both a stationary and a moving cart.
+  Switching from a minecart to a boat without dismounting, a boat exit in the look direction and a moving-minecart
+  side exit each ran with no correction.
+- Bots only: a radius-12 `blocks` search took about 23 ms of server-thread time (before areas replaced the
+  `radius` option).
+
 Not run:
 
 - dimension changes watched by human clients, portal travel and knockback after a transition ([#274](https://github.com/amatouhake/endbot/issues/274));
@@ -159,7 +173,16 @@ Not run:
 - a felling script on a real tree, live Luau `area.*` values and the script-facing reach and look fields
   ([#276](https://github.com/amatouhake/endbot/issues/276));
 - boats and horses, a revocation in the middle of a Group batch, the UI pack on a mobile client, and sustained
-  multi-Bot load ([#277](https://github.com/amatouhake/endbot/issues/277)).
+  multi-Bot load ([#277](https://github.com/amatouhake/endbot/issues/277));
+- the control forms on a human client: open `/bot`, `/bot menu`, `/bot <name>` and `/bot <name> menu`, submit each
+  input form once, cancel the despawn confirmation, close forms with Escape, and confirm a revoked controller cannot
+  act from an already open form (unit tests cover the screen contents, every form response mapping to
+  parser-accepted arguments, malformed responses, and view delivery and revocation);
+- the Japanese wording on a human client beyond the help pages: a `status` reply, an error, the Bot list and Bot
+  screens, and one mode form;
+- native command hints for `swap` and `hold` and the Hold item and Swap slots forms on a human client, and item use
+  after a dimension change ([#274](https://github.com/amatouhake/endbot/issues/274),
+  [#275](https://github.com/amatouhake/endbot/issues/275)).
 
 ### Scripting
 
@@ -169,9 +192,22 @@ Not run:
   spots. The two rate-limit cases ran on the current pair (2026-11-02), the others on the earlier pair (2026-10-23).
 - A human Windows client, for 0.4.0 on the earlier pair: templates, Copy and edit, revision history, rename, sharing,
   book import and export, `runs` and `stop`, and a runaway loop interrupted.
+- A Windows client, 2026-10-25: form fields drop pasted line breaks, and the multi-line authoring loop works
+  (create from a template or blank, Write into held book, edit the pages, Replace all from held book).
+- The optional UI resource pack, on one Windows client 1.26.60.5 with the pack active as a global resource, default
+  GUI scale, 1080p (2026-11-03,
+  [record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/UI_PACK.md#client-check-2026-11-03-jst-windows-126605)):
+  `/bot` and `/botscript` in the larger window with compact, unclipped buttons; the tall field on a marked input,
+  with typing, backspace and Enter working and saves keeping line breaks, Japanese text, `§` codes, tabs and trailing
+  spaces; lines of 152 and 2603 characters and pastes of 156 and 2508 characters kept in full; the field taking focus
+  only when its frame is clicked; without the pack, the whole-script entry unusable (only the first lines shown,
+  typing does nothing, input stops at about 100 characters); and *Endbot UI* listed in Global Resources with a
+  two-line description and the abstract-E icon.
 
 Not run: a second controller seeing only shared scripts ([#272](https://github.com/amatouhake/endbot/issues/272)); the OS confinement under real memory
 pressure, CPU exhaustion and parent death inside a running BDS on both platforms, beyond the unit and OS probes.
+For the UI pack: the field on a mobile client, a fresh achievement unlock with the pack active, and serving the
+pack as a server resource pack instead of a global one ([#277](https://github.com/amatouhake/endbot/issues/277)).
 
 ### Permissions and endbotd
 

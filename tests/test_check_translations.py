@@ -96,6 +96,16 @@ class CheckTranslationsTests(unittest.TestCase):
         code, _, err = self.run_main()
         self.assertEqual(code, 0, err)
 
+    def test_long_paragraph_fails_but_code_and_tables_do_not(self) -> None:
+        long = "あ" * (ct.MAX_PARAGRAPH + 1)
+        self.translate(f"```text\n{long}\n```\n\n| {long} |\n\n{'い' * ct.MAX_PARAGRAPH}\n")
+        code, _, err = self.run_main()
+        self.assertEqual(code, 0, err)
+        self.translate(f"# ガイド\n\n- {long}\n")
+        code, _, err = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn(f"paragraph of {ct.MAX_PARAGRAPH + 3} characters", err)
+
     def test_anchor_into_english_file_is_not_checked(self) -> None:
         self.translate("[その他](../OTHER.md#any-slug)\n")
         code, _, err = self.run_main()

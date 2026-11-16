@@ -20,7 +20,8 @@ What this cannot do: it cannot prove client-side autocomplete rendering.
 It is a regression tripwire — any declaration change that breaks a
 documented form under these rules fails here without needing live BDS —
 plus a record of the live behavior the rules were calibrated against. The
-required live smoke cases are listed in docs/COMMANDS.md.
+rules and the live smoke behind them are described in docs/BOT_CONTROL.md
+("Command declaration").
 """
 
 import importlib

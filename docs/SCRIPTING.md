@@ -1,17 +1,19 @@
 # Luau scripting reference
 
 Scripts are Luau programs that drive Bots. Each script belongs to the controller who created it (see
-[ownership](#ownership-visibility-and-revisions)); each run uses its invoker's authority. This page is the reference
-for writing and running them.
+[ownership](#ownership-visibility-and-revisions)), and each run uses the authority of whoever started it. This page
+lists everything a script author needs to look up.
 
 - New to scripts? Start with the [tutorial](SCRIPTING_TUTORIAL.md).
-- Scripting is **off by default**. Turning it on, its limits and the runner's confinement are the operator's side:
+- Scripting is **off by default**. Turning it on, its limits and how runs are confined are the operator's side:
   [SCRIPTING_SETUP.md](SCRIPTING_SETUP.md).
+- How it works inside: [SCRIPTING_INTERNALS.md](SCRIPTING_INTERNALS.md). What was checked on real servers:
+  [validation status](COMPATIBILITY.md#scripting).
 
-## Commands, authoring and parameters
+## Commands
 
-`/botscript` requires `endbot.command.control`. Native operation hints follow `/botgroup`'s approach and
-retain the pinned BDS baseline's completion limitations.
+`/botscript` manages and runs scripts. It requires `endbot.command.control`; creating and changing scripts also
+depends on your role ([roles](PERMISSIONS.md#roles)).
 
 ```text
 /botscript list
@@ -33,113 +35,216 @@ retain the pinned BDS baseline's completion limitations.
 /botscript menu
 ```
 
-`runs`/`stop` address the invoking controller's runs. The console is the operator: its `runs` lists every controller's runs with their owner, and its `stop <id|name|all>` stops any of them, so a run left behind by a controller who logged out can be ended without revoking that controller. Start, stop, save and delete are logged with the controller's name, and so is each run's end. Deleting a script
-does not cancel running copies. Show displays numbered, bounded pages and wraps long lines without dropping
-source. Source is never loaded from a user-supplied filesystem path; the only files read are the operator's
-[script files](#script-files).
+| Subcommand | What it does |
+| --- | --- |
+| `list` | Lists the scripts you can see as `name (owner, visibility)`, with `yours` for your own |
+| `show <name> [page]` | Shows the source in numbered pages; long lines wrap, no source is dropped |
+| `run <name> ...` | Starts a run; arguments are described under [passing arguments](#passing-arguments) |
+| `runs` | Lists your runs |
+| `stop <run-id\|name\|all>` | Stops your runs by id, by script name, or all of them |
+| `delete <name>` | Deletes a script you own; running copies keep running |
+| `copy`, `visibility`, `owner`, `history`, `restore`, `rename` | See [ownership, visibility and revisions](#ownership-visibility-and-revisions) |
+| `import`, `export` | Read from or write into a held book; see [books](#books) |
+| `reload` | Re-reads the operator's [script files](#script-files) |
+| `help` | Shows `/botscript` help |
+| `menu` | Opens the [script menu](#the-script-menu) |
+
+Notes:
+
+- Start, stop, save and delete are logged with your name, and so is the end of each run.
+- Source is never loaded from a filesystem path you type. The only files read are the operator's
+  [script files](#script-files).
+- Command completion hints work as for `/botgroup`, with the same gaps the pinned BDS version has.
+
+Console only:
+
+- The console's `runs` lists every controller's runs with their owner.
+- The console's `stop <id|name|all>` stops any of them, so a run left behind by a controller who logged out can be
+  ended without revoking that controller.
 
 ### Ownership, visibility and revisions
 
-Each script records its creator as owner (by XUID, else player UUID). Only the owner, or the console, may edit,
-delete, restore or change its visibility; everyone else gets "only the owner may change" and is pointed to
-**Copy and edit**. A script is `private` (only the owner sees and runs it; to others it does not exist) or
-`shared` (every controller may list, show, run and copy it). New scripts and copies start `private`;
-`visibility <name> shared|private` switches it (the 0.4.0 `share <name>` and `private <name>` spellings were removed in
-0.6.0 and are refused with a pointer to this form). `copy <name> <new-name>` makes a private copy owned by the copier, and the owner's
-`rename <name> <new-name>` keeps the owner, visibility and history (running copies keep the old name). Every save keeps
-the previous source in a history of the last 10 revisions; `history` lists them (newest first, with time and
-line count) and `restore <name> <n>` makes revision `n` current as a new save, keeping the replaced source in the
-history. Runs still use the invoker's authority, whoever owns the script. Scripts saved before ownership (file
-version 1) have no owner and stay shared; the first controller to edit one becomes its owner. Lists show
-`name (owner, visibility)` with `yours` for your own. The console can reassign a stored script's owner with
-`owner <name> <GamerTag>`: the owner key and name change, while the visibility, revision and history stay. A file
-script has no owner to reassign; the file is the source. Not implemented: separate run/author permissions
-(`endbot.script.run`/`endbot.script.author`); every controller may still author.
+Each script records the controller who created it as its owner. Only the owner, or the console, may edit, delete,
+restore or change its visibility; anyone else gets "only the owner may change" and is pointed to **Copy and edit**.
 
-When enabled, `/bot menu` lists **Scripts...** after **+ New Bot here** (next to **Manage groups...**);
-the target list above it contains only targets `/bot` can address. A script's screen shows its whole source with gray
-line numbers (wrapped lines stay apart from the numbers; very long scripts are cut off with a pointer to `show`;
-a `§` in the source is shown as `\u{a7}`, so source text cannot color, hide or scramble the preview) and
-offers Run, Stop runs and Copy and edit (and Write into held book where export is enabled). Its owner gets **Edit
-lines...** and **More...** instead of Copy and edit; More holds Rename, Share/Make private, Earlier revisions (restore with a
-confirmation that shows that revision's source), Copy and edit, Write into held book and Delete (confirmation).
-Create offers **Group row**, **Simple patrol**, **Mine at spots**, a blank script and **From held book...**; a template
-or copy only asks for a name, and saving opens the new script.
+| Visibility | Who sees and runs it |
+| --- | --- |
+| `private` | Only the owner; to everyone else it does not exist |
+| `shared` | Every controller may list, show, run and copy it |
 
-**Edit lines** lists the source one line per button (40 per page). Tapping a line opens a form with that line already
-filled in, an optional line to add below it (taking the edited line's indentation unless typed with its own) and a
-**Delete this line** toggle; **+ Add a first line** and **+ Add a line at the end** add lines at the ends. A one-line
-field is easy to change in place, unlike a whole prefilled source in the client's two-line field, which could not be
-cleared. On the Windows client form fields **drop pasted line breaks** (checked 2026-10-25), so multi-line changes go
-through a book (**Replace all from held book** at the bottom of the list; see below). Saving returns to the same page
-of the list, and a form that changes nothing just goes back. Save compiles the complete source and inspects its
-declaration without accepting the body. `save` is an internal form action; typing it cannot update source.
-Stale edit/delete/run forms reject source revision changes. Canceling does not save; drafts are not persisted.
+- New scripts and copies start `private`. `visibility <name> shared|private` switches it.
+- The old `share <name>` and `private <name>` spellings (0.4.0) were removed in 0.6.0; they are refused with a
+  pointer to `visibility`.
+- `copy <name> <new-name>` makes a private copy owned by you.
+- `rename <name> <new-name>` (owner only) keeps the owner, visibility and history. Running copies keep the old name.
+- Every save keeps the previous source. `history <name>` lists the last 10 revisions, newest first, with time and line
+  count.
+- `restore <name> <n>` makes revision `n` current as a new save; the replaced source stays in the history.
+- A run always uses the authority of whoever started it, whoever owns the script.
+
+Notes:
+
+- Scripts saved before ownership existed (file version 1) have no owner and stay shared. The first controller to
+  edit one becomes its owner.
+- Console only: `owner <name> <GamerTag>` reassigns a stored script's owner. Visibility, revision and history stay.
+- A [script file](#script-files) has no owner to reassign; the file is the source.
+
+### The script menu
+
+When scripting is on, `/bot menu` lists **Scripts...** after **+ New Bot here**, next to **Manage groups...**. The
+target list above it contains only targets `/bot` can address.
+
+A script's screen shows its whole source with gray line numbers; wrapped lines stay apart from the numbers. Very long
+scripts are cut off with a pointer to `show`. A `§` in the source is shown as `\u{a7}`, so source text cannot color, hide or scramble the preview.
+
+| Button | Who gets it |
+| --- | --- |
+| Run | Everyone who can see the script |
+| Stop runs | Everyone who can see the script |
+| Copy and edit | Everyone except the owner (the owner finds it under More) |
+| Write into held book ([books](#books)) | Everyone, where export is enabled |
+| **Edit lines...** ([line editor](#edit-lines)) | Owner |
+| **More...**: Rename, Share/Make private, Earlier revisions, Copy and edit, Write into held book, Delete | Owner |
+
+**Earlier revisions** shows a revision's source and asks before restoring it. **Delete** asks for confirmation.
+
+**Creating a script.** The create screen offers these starting points. A template or copy only asks for a name, and
+saving opens the new script.
+
+- **Group row**
+- **Simple patrol**
+- **Mine at spots** (below)
+- A blank script
+- **From held book...** ([books](#books))
+
+**Mine at spots** takes `name`, `start`, `spots` (default 2), `step` (default 4) and `blocks` (default 2), in that
+order. It teleports along +X from `start` at `step` spacing, faces +Z, runs `destroy{mode="continuous",count=blocks}`,
+waits up to 1200 ticks and logs `spot N: <reason>` at each position. Put reachable breakable blocks in front of each
+spot before running it.
+
+#### Edit lines
+
+**Edit lines** lists the source one line per button, 40 per page.
+
+- Tapping a line opens a form with that line filled in, an optional line to add below it, and a **Delete this line**
+  toggle. The added line takes the edited line's indentation unless you type your own.
+- **+ Add a first line** and **+ Add a line at the end** add lines at the ends.
+- **Replace all from held book** at the bottom of the list replaces the whole script from a book.
+
+Notes:
+
+- On the Windows client, form fields **drop pasted line breaks**, so make multi-line changes through a
+  [book](#books).
+- Saving checks that the whole script compiles and that its declaration is valid, then returns to the same page of
+  the list. A form that changes nothing just goes back.
+- A form opened before the script changed is refused when submitted.
+- Canceling does not save, and drafts are not kept.
 
 ### Books
 
 A book and quill is the comfortable in-game editor: it keeps line breaks and supports Ctrl+A/C/X/V on Windows.
-`import <name>` (menu: **From held book...** for a new script, **Replace all from held book** for your own) reads the
-book and quill or written book in the main hand. Pages are joined with a line break unless a page already ends with
-one; trailing blank pages are ignored. A new name creates a private script; an existing name saves a new revision
-through the same compile, declaration and owner checks as the menu. The book is only read. In the menu, **Replace
-all from held book** first shows the book's source with both line counts and replaces the script only after
-**Replace**, and only if the book still holds that text; **From held book...** refuses a name that already exists.
-A typed `import` of an existing name saves at once (the previous source stays in Earlier revisions).
 
-**Multi-line authoring loop (2026-10-25 Windows check):** create from a template (or blank), open the script,
-**Write into held book**, edit the pages, then **Replace all from held book** to save a new revision. The book keeps the
-whole source between edits, so one export is enough. The client's own book editor silently drops text past a page's
-capacity, so split long source over pages by hand (up to 50 pages, 256 characters each); the plugin refuses a script
-that cannot fit and names the offending line.
+```text
+/botscript import <name>
+/botscript export <name> [overwrite]
+```
 
-`export <name>` (menu: **Write into held book**) writes a script you can run into the book and quill in your main
-hand, so you can edit it there and import it again (for someone else's shared script, import under a new name). An
-empty book is written at once. A book that already has writing is overwritten only by `export <name> overwrite`;
-plain `export` refuses it. The menu asks first: it shows the book's current text and page count, and its
-**Overwrite** runs `export <name> overwrite`, writing only if the book still holds those pages. Written (signed)
-books are never changed. Pages hold whole lines: up to 256 characters per page and 50 pages, so a longer line or script is refused.
-No item is created. Export is on by default (it is the first step of the multi-line loop); an operator who wants
-the plugin never to change a held item sets `[scripting] book-export = false`. The page and character limits are
-conservative; real-client limits are recorded with the human-client checks.
+**The multi-line loop:**
+
+1. Create a script from a template (or blank) and open it.
+2. **Write into held book** (`export`).
+3. Edit the pages.
+4. **Replace all from held book** (`import`) to save a new revision.
+
+The book keeps the whole source between edits, so one export is enough.
+
+**Import** reads the book and quill or written book in your main hand. The book is only read.
+
+- Pages are joined with a line break unless a page already ends with one. Trailing blank pages are ignored.
+- A new name creates a private script. An existing name saves a new revision, with the same compile, declaration and
+  owner checks as the menu.
+- In the menu, **From held book...** refuses a name that already exists.
+- In the menu, **Replace all from held book** first shows the book's source with both line counts. It replaces the
+  script only after **Replace**, and only if the book still holds that text.
+- A typed `import` of an existing name saves at once. The previous source stays in Earlier revisions.
+
+**Export** writes a script you can run into the book and quill in your main hand. To edit someone else's shared
+script, import it again under a new name.
+
+- An empty book is written at once.
+- A book that already has writing is overwritten only by `export <name> overwrite`; plain `export` refuses it.
+- In the menu, the book's current text and page count are shown first. **Overwrite** runs `export <name> overwrite`
+  and writes only if the book still holds those pages.
+- Written (signed) books are never changed, and no item is created.
+
+Limits:
+
+- Pages hold whole lines: up to 256 characters per page and 50 pages. A longer line or script is refused, and the
+  offending line is named. These limits are deliberately conservative.
+- The client's own book editor silently drops text past a page's capacity, so split long source over pages by hand.
+- Export is on by default. An operator who wants the plugin never to change a held item sets
+  `[scripting] book-export = false`.
 
 ### Optional UI pack field
 
-Players who add the optional [Endbot UI resource pack](UI_PACK.md) as a global resource get a larger form window, compact
-buttons and a multi-line field. With `[scripting] ui-pack-editor = true` (default false), the line editor also offers
-**Edit all at once (UI pack)...**: the whole source in one field, saved like any other edit, and the new-script screen
-offers the template in the same field so a script can be written as a whole before it exists. Without the pack the
-client drops the line breaks, and that reply is refused rather than saved; the new-script screen's **Save as shown**
-toggle saves the template unchanged instead. Without the pack a form input also stops at about 100 characters, so a
-longer line has to be edited with the pack, in a script file, or through the book. The pack's window, buttons and
-multi-line field were checked on a 1.26.60.5 client ([UI pack](UI_PACK.md)); books remain the verified multi-line
-path for other clients.
+With the optional [Endbot UI resource pack](UI_PACK.md) added as a global resource, players get a larger form window,
+compact buttons and a multi-line field.
+
+With `[scripting] ui-pack-editor = true` (default false):
+
+- The line editor also offers **Edit all at once (UI pack)...**: the whole source in one field, saved like any other
+  edit.
+- The new-script screen offers the template in the same field, so a script can be written whole before it exists.
+
+Without the pack:
+
+- The client drops the line breaks, and that reply is refused rather than saved. On the new-script screen, the
+  **Save as shown** toggle saves the template unchanged instead.
+- A form input stops at about 100 characters. Edit a longer line with the pack, in a script file, or through a book.
+- For clients the pack has not been checked on, use [books](#books) for multi-line editing.
 
 ### Script files
 
 To write scripts in a PC editor, the operator puts `<name>.luau` files directly in `<instance>/scripts/`, next to
-`endbot.toml` (created by setup and at start-up; before endbotd it was `server/plugins/endbot/scripts/`). They are read when the
-server starts and again by `/botscript reload` (console, any controller, or **Reload script files** in the script
-list); nothing watches the folder. Runs already going keep the source they started with.
+`endbot.toml`. Setup and start-up create the folder.
 
-- A file script is **shared** with every controller and **read-only** in game: Run, Stop runs, show, Copy and edit
-  and export work; editing, rename, delete and sharing refuse with a pointer to the file. Lists show its owner as
-  `file`. Copying makes an ordinary stored script owned by the copier.
-- It has no revision history; version the folder yourself if you need one. It is never written to `scripts.json`.
-- Only regular `.luau` files (UTF-8, CRLF accepted) with a valid script name and at most `max-script-bytes` load;
-  links, other extensions and subfolders are ignored or refused. A stored script with the same name (anyone's, even
-  private: names are server-wide) wins and the file is skipped as "Not loaded: a stored script named … already
-  exists"; the console and the start-up log also name that script's owner, so the operator can sort it out.
-- `reload` also runs each file's declaration check and replies with every skipped file and why; start-up only
-  reads the files and logs skipped ones to the server console. A file is dropped only for its own fault (a
-  declaration error, or hanging before `params`); when the check cannot run (the caller's run slots are busy, the
-  runner is missing) the file stays loaded and the reply says it was not checked. At most `max-scripts` files load.
-  The checks run on the command worker like saves, about 5 seconds at worst per file that hangs before `params`,
-  so `/bot` commands wait during a reload of such a folder.
+They are read when the server starts and again by `/botscript reload` (console, any controller, or **Reload script
+files** in the script list). Nothing watches the folder, and runs already going keep the source they started with.
 
-Scripts are stored atomically in versioned `state/scripts.json` (the plugin data folder before endbotd). Names are case-insensitive
-and follow Groups (1–16 ASCII letters/digits/underscores, starting with a letter/underscore). Disk write errors
-leave the previous file/in-memory version intact. There is no automatic resume or replay after restart.
+- A file script is **shared** with every controller and **read-only** in game. Run, Stop runs, show, Copy and edit and
+  export work; editing, rename, delete and sharing refuse with a pointer to the file.
+- Lists show its owner as `file`. Copying makes an ordinary stored script owned by you.
+- It has no revision history; version the folder yourself if you need one.
+
+Which files load:
+
+- Only regular `.luau` files (UTF-8, CRLF accepted) with a valid script name and at most `max-script-bytes` load.
+  Links, other extensions and subfolders are ignored or refused. At most `max-scripts` files load.
+- A stored script with the same name wins, even someone else's private one (names are server-wide). The file is
+  skipped as "Not loaded: a stored script named … already exists". The console and the start-up log also name that
+  script's owner.
+
+What `reload` checks:
+
+- `reload` runs each file's declaration check and replies with every skipped file and why. Start-up only reads the
+  files and logs skipped ones to the server console.
+- A file is dropped only for its own fault: a declaration error, or hanging before `params`.
+- When the check cannot run (your run slots are busy, the runner is missing), the file stays loaded and the reply
+  says it was not checked.
+- A file that hangs before `params` takes about 5 seconds to check, and `/bot` commands wait while it is checked.
+
+### Names and storage
+
+- Names are case-insensitive and follow Groups: 1–16 ASCII letters, digits and underscores, starting with a letter
+  or underscore.
+- A failed save leaves the previous version intact.
+- Runs are not resumed or replayed after a restart.
+
+## Writing a script
+
+### Parameters
+
+Every script calls `params` once, before any Bot, log or wait call, even without arguments (`params {}`).
 
 ```lua
 local a = params {
@@ -153,78 +258,166 @@ for i, member in group(a.group):members() do
 end
 ```
 
-Call `params` exactly once before host work, even without arguments (`params {}`). It yields the declaration
-before the host accepts the body. Inspection executes up to this declaration; code before it has normal budgets
-and cannot call Bot/log/wait functions. Constructors are `param.group(name[, default])`, `param.bot(name[, default])`,
-`param.pos(name[, default])`, `param.number(name[, default])`, `param.bool(name[, default])`,
-`param.string(name[, default])` and `param.choice(name, {"a", "b", ...}[, default])` (1–32 distinct strings of
-1–64 characters; the run form shows a dropdown). Each declaration carries its name; `a.<name>` access is unchanged.
-Pass a contiguous array of declarations. Named-key, mixed and sparse tables are rejected, as are duplicate
-names, unknown types and invalid defaults. Names match `[A-Za-z_][A-Za-z0-9_]{0,31}`; at most 32 are allowed.
-Declaration errors show the `params` call's script line where available and are localized for Japanese players.
-The runner/host protocol carries `schema` as a JSON array, including `[]` for no parameters; each entry is
-`{"name":"spacing","type":"number","default":2}` (a choice adds `"choices":[...]`). The plugin validates this array
-again before forms or execution.
+| Constructor | Notes |
+| --- | --- |
+| `param.group(name[, default])` | A Group, as in `group(a.group)` above |
+| `param.bot(name[, default])` | A Bot |
+| `param.pos(name[, default])` | Arrives as a vector ([passing arguments](#passing-arguments)) |
+| `param.number(name[, default])` | A finite number |
+| `param.bool(name[, default])` | `true` or `false` |
+| `param.string(name[, default])` | Text |
+| `param.choice(name, {"a", "b", ...}[, default])` | 1–32 distinct strings of 1–64 characters; the run form shows a dropdown |
+| `param.event(name)` | The occurrence for a [trigger](#triggers) run, nil for a manual run |
 
-A script that needs a capability beyond the basic set declares it with `requires { "name", ... }`, called once and
-before `params` (see [PERMISSIONS.md](PERMISSIONS.md#two-layers-the-person-and-the-script)). The basic set —
-operating Bots, reading the world, waiting and logging (`act.bot`, `read.world`, `wait`, `log`) — needs no
-declaration, and naming it changes nothing. The other capabilities come from event kinds
-(`observe.chat`, `observe.presence`); any other name is an inspection error naming it. A second call, a call after
-`params`, or anything but a list of distinct strings is a declaration error. The `params` request carries the list as
-`requires` (`[]` when there is no call); inspection returns it with the schema as a set, so order does not matter. A
-run started from an inspection (the run form, which carries the declaration in its guard, the parameterless menu
-start, a trigger) stops before its first operation if its own `requires {}` differs from what that inspection
-read, so a conditional call cannot widen what was shown. The run form shows the declaration on its first line, and a
-run submitted from that form is held to it.
+Each declaration carries its name, and you read the value as `a.<name>`.
 
-**Positional arguments and menu controls follow declaration order.** After the positional values, `name=value`
-sets any declared parameter, so earlier defaults can be skipped. The example accepts `/botscript run row #miners`,
-`/botscript run row #miners "~ ~ ~" 3` or `/botscript run row #miners spacing=3`. A positional value may not follow a
-named one, a parameter may be given only once, and `word=...` whose `word` is not a declared parameter stays an
-ordinary positional value. Quote positions and strings with spaces (`origin="0 70 0"`).
-Positions arrive as Luau **vectors**: read `a.origin.x`, add and scale them (`a.origin + vector.create(2, 0, 0) * i`),
-and pass one wherever an operation takes `x, y, z` (`bot:tp(a.origin)`). Declared `~` coordinates resolve from the
-player's position captured when submitting
-the command/form. Console positions must be absolute. Groups/Bots must exist; numbers must be finite;
-booleans accept `true`/`false`; choices accept one of their options. Run forms use that same order with
-Group/Bot/choice dropdowns, position fields
-defaulting to the player, number/text inputs and toggles with declared defaults.
-Form selections also pin Group UUID/order and Bot UUID, rejecting deletion/recreation before submission.
-Declared Bot arguments keep their UUID pin on subsequent requests; explicitly Group-pinned calls retain
-the Group's own identity guard.
+Rules:
 
-Ordinary operation calls return **acceptance**, not completion: `{ok=true,code="ok",messages=...,data=...}` or
-`{ok=false,code=...,reason=...,messages=...}`. Group mutations include counts in `data`; partial failure has `ok=false`.
-`code` says what to do next and is the same in every language: `unauthorized` (permission), `not_found` (no such
-Bot or target), `invalid_argument` (fix the request), `unavailable` (try again later) or `conflict` (the Bot's state
-does not allow it now, for example offline or a name in use). A block the Bot cannot target has its own codes, listed
-under [targeting blocks](#targeting-blocks). A Group's code is its first failed member's; each query
-row also carries its member's `code`. Branch on `code`; `reason` is wording for people.
-Handle rejected calls explicitly, for example `assert(r.ok, r.reason)`. Revocation, rate/deadline and protocol errors end the run.
-Use `wait(ticks)` (20 ticks = one wall-clock second) and `waitOnline(bot("Alice"))`, which also accepts a name
-or Group handle. `log(text)` writes one line, tagged with the run id, to the server log, and also to the chat of
-the player who started the run: at most 10 lines per 5 seconds per run, each cut to 256 characters with formatting
-codes removed; held-back lines are counted on the next chat line or the end message, and the server log keeps every
-line (up to 2000 lines / 512 KiB per run). `[scripting] chat-logs = false` (plugin `config.toml`, or `endbot.toml`
-for managed instances) keeps logs in the server log only. Console runs log only there. Waits recheck authority.
-No command-string API exists.
+- Pass a contiguous array of declarations. Named-key, mixed and sparse tables are refused, as are duplicate names,
+  unknown types and invalid defaults.
+- Names match `[A-Za-z_][A-Za-z0-9_]{0,31}`; at most 32 parameters.
+- The script is checked by running it up to `params`. Code before `params` has the normal budgets but cannot call
+  Bot, log or wait functions.
+- Declaration errors show the script line of the `params` call where available, and are translated for Japanese
+  players.
 
-Every operation a script issues is also a normal `/bot` command, so its reply would reach the invoker's chat as if
-typed. That echo is noise for a script that issues dozens of operations, so `[scripting] replies` (plugin
-`config.toml`, or `endbot.toml` for managed instances) chooses the policy: `all` echoes every operation like a typed
-command, `failures` (default) echoes only rejected operations while accepted ones keep their console log line, and
-`none` is silent. Under `failures`, a `destroy` refused as `not_a_target` is not echoed, because its target can vanish
-after the script read it (see [Targeting blocks](#targeting-blocks)); the script still receives the refusal. The run's start/end lines and `log()` are unaffected, and the mining loop's start/stop notices
-still reach the chat. Scripts cannot change the policy.
+### Capabilities
+
+A script that needs more than the basic set declares it with `requires`, once and before `params`.
+
+```lua
+requires { "observe.chat" }
+params {}
+```
+
+| Capability | Needs `requires` | Covers |
+| --- | --- | --- |
+| `act.bot`, `read.world`, `wait`, `log` | No (naming them changes nothing) | Operating Bots, reading the world, waiting and logging |
+| `observe.presence` | Yes | The `player.join` and `player.leave` [event kinds](#event-kinds) |
+| `observe.chat` | Yes | The `player.chat` event kind |
+
+Notes:
+
+- Any other name is an error naming it. A second call, a call after `params`, or anything but a list of distinct
+  strings is a declaration error. Order does not matter.
+- The run form shows the declaration on its first line.
+- A run started from a checked declaration (the run form, a parameterless menu start, a trigger) is held to it. If
+  its own `requires {}` comes out different, it stops before its first operation, so a conditional call cannot widen
+  what was shown.
+- Why scripts declare capabilities: [PERMISSIONS.md](PERMISSIONS.md#two-layers-the-person-and-the-script).
+
+### Passing arguments
+
+Positional arguments and menu controls follow declaration order. After the positional values, `name=value` sets any
+declared parameter, so earlier defaults can be skipped.
+
+```text
+/botscript run row #miners
+/botscript run row #miners "~ ~ ~" 3
+/botscript run row #miners spacing=3
+/botscript run row #miners origin="0 70 0"
+```
+
+| Type | Accepts |
+| --- | --- |
+| Group, Bot | An existing Group or Bot |
+| Position | `x y z`; quote it when it has spaces. `~` resolves from your position when you submit; console positions must be absolute |
+| Number | A finite number |
+| Boolean | `true` or `false` |
+| Choice | One of its options |
+| String | Text; quote it when it has spaces |
+
+Rules:
+
+- A positional value may not follow a named one, and a parameter may be given only once.
+- `word=...` whose `word` is not a declared parameter stays an ordinary positional value.
+- The run form uses the same order: Group, Bot and choice dropdowns, position fields defaulting to your position,
+  number and text inputs, and toggles with the declared defaults.
+- A Bot or Group picked in the form, or given as a Bot argument, stays tied to that exact Bot or Group. If it is
+  deleted, or deleted and recreated under the same name, the form or the later calls are refused.
+
+Positions arrive as Luau **vectors**. Read `a.origin.x`, add and scale them (`a.origin + vector.create(2, 0, 0) * i`),
+and pass one wherever an operation takes `x, y, z` (`bot:tp(a.origin)`).
+
+### Results and codes
+
+An operation call returns **acceptance**, not completion.
+
+```lua
+local r = bot("Alice"):jump()
+-- {ok=true, code="ok", messages=..., data=...}
+-- {ok=false, code=..., reason=..., messages=...}
+assert(r.ok, r.reason)
+```
+
+| `code` | Meaning |
+| --- | --- |
+| `ok` | Accepted |
+| `unauthorized` | You lack the permission |
+| `not_found` | No such Bot or target |
+| `invalid_argument` | Fix the request |
+| `unavailable` | Try again later |
+| `conflict` | The Bot's state does not allow it now, for example offline or a name in use |
+| `not_a_target`, `out_of_reach`, `blocked`, `unbreakable` | The Bot cannot target the block; see [targeting blocks](#targeting-blocks) |
+
+Notes:
+
+- Branch on `code`; it is the same in every language. `reason` is wording for people.
+- Handle refused calls explicitly, for example `assert(r.ok, r.reason)`.
+- Group operations include counts in `data`. A partial failure has `ok=false`, and the Group's `code` is its first
+  failed member's. Each query row also carries its member's `code`.
+- Revocation, rate or deadline errors and protocol errors end the run instead of returning.
+- There is no command-string API: a script cannot run a typed command.
+
+### Logging and waiting
+
+```lua
+wait(20)                       -- 20 ticks = one wall-clock second
+waitOnline(bot("Alice"))       -- also accepts a name or a Group handle
+log("done")
+```
+
+- `wait(ticks)` pauses the run; 20 ticks are one wall-clock second. Waits recheck your authority.
+- `waitOnline(...)` waits until the Bot (or every Group member) is online. See [jobs and waits](#jobs-and-waits) for
+  timeouts.
+- `log(text)` writes one line, tagged with the run id, to the server log and to the chat of the player who started
+  the run.
+
+`log` limits:
+
+- Chat gets at most 10 lines per 5 seconds per run, each cut to 256 characters with formatting codes removed.
+  Held-back lines are counted on the next chat line or in the end message.
+- The server log keeps every line, up to 2000 lines or 512 KiB per run.
+- Console runs log only to the server log.
+- `[scripting] chat-logs = false` (plugin `config.toml`, or `endbot.toml` for managed instances) keeps logs in the
+  server log only.
+
+### Operation replies in chat
+
+Every operation a script issues is also a normal `/bot` command, so its reply would reach your chat as if typed.
+`[scripting] replies` (plugin `config.toml`, or `endbot.toml` for managed instances) chooses what is echoed:
+
+| Value | Echoed to chat |
+| --- | --- |
+| `all` | Every operation, like a typed command |
+| `failures` (default) | Only refused operations; accepted ones keep their console log line |
+| `none` | Nothing |
+
+Notes:
+
+- Under `failures`, a `destroy` refused as `not_a_target` is not echoed, because its target can vanish after the
+  script read it ([targeting blocks](#targeting-blocks)). The script still receives the refusal.
+- The run's start and end lines, `log()` and the mining loop's start and stop notices are unaffected.
+- Scripts cannot change the policy.
 
 ### Structured status and mining waits
 
-`bot:status()` returns the usual result wrapper; read its `data` fields below. Mining values come from
-runtime status, including its retained last mining job; they do not infer completion from elapsed time.
-Position, look, health and inventory come from BDS through the Endstone SDK at the time of the call;
-hunger and saturation come from the attributes BDS sends the Bot. A field is nil when the Bot is not in
-the world (or before BDS has sent it).
+`bot:status()` returns the usual result; read its `data` fields below.
+
+```lua
+local s = bot("Alice"):status().data
+if s.mining.active then log("still mining " .. s.mining.blocksBroken) end
+```
 
 | Field | Meaning |
 | --- | --- |
@@ -251,22 +444,37 @@ the world (or before BDS has sent it).
 | `data.ended` | The last end of each input kind: `{job, reason}` |
 | `data.teleports` | Server teleports the Bot has acknowledged since the runtime started |
 
-Terminal reasons include `block count reached`, `duration elapsed`, `stopped`, and runtime failure reasons.
-Null JSON fields become nil in Luau. `group:status()` returns `data.results` in pinned membership order;
-each row has `index`, `identityId`, `name`, `ok`, `reason` (nil on success), and `data` containing that
-member's fields above (nil on query failure). Partial query failure sets the outer `ok=false`.
+Notes:
 
-Other queries also return data: `bot:inventory().data.slots` lists non-empty slots as `{slot, name, count}`
-(slots `"1"`-`"36"`, `offhand`, `head`, `chest`, `legs`, `feet`); `bot:hotbar().data` has `selectedSlot` and the
-hotbar `slots`; `bot:entities().data.entities` lists up to 10 nearby non-player entities, nearest first, as
-`{runtimeId, type, distance, position, health, maxHealth, nameTag}` (health is nil for non-mobs). Pass a
-`selector` (`"@9"`) to `:interact(e.selector)` or `:attack(e.selector)`; entities always take `@`.
-`bot:entity("@cow")` (or `"@9"`, `"@nearest"`, or no argument) returns `data.entity`, one such entry within 16 blocks.
-Repetition uses the final options table: `bot:interact("@cow", {count=5})`, `bot:attack("@zombie", {interval=20,
-ticks=200})`, `bot:destroy("oak_log", {count=10})`. Inventory, hotbar and `held` items carry `durability = {remaining, max}` for damageable
-items such as tools and armor.
+- Position, look, health and inventory are read from BDS at the time of the call. Hunger and saturation are what BDS
+  last sent the Bot.
+- A field is nil when the Bot is not in the world, or before BDS has sent it.
+- Mining values report the Bot's actual mining job, including the last one that ended. They never guess completion
+  from elapsed time.
+- Terminal reasons include `block count reached`, `duration elapsed`, `stopped`, and runtime failure reasons.
+- `group:status()` returns `data.results` in membership order. Each row has `index`, `identityId`, `name`, `ok`,
+  `reason` (nil on success) and `data` with that member's fields above (nil on query failure). A partial query
+  failure sets the outer `ok=false`.
+- To wait for mining, use [`waitMining`](#jobs-and-waits) or a `destroy` job's `wait`.
 
-World queries read BDS on the server thread and count as operations:
+### Other queries
+
+| Call | `data` |
+| --- | --- |
+| `bot:inventory()` | `slots`: non-empty slots as `{slot, name, count}`; slots `"1"`-`"36"`, `offhand`, `head`, `chest`, `legs`, `feet` |
+| `bot:hotbar()` | `selectedSlot` and the hotbar `slots` |
+| `bot:entities()` | `entities`: up to 10 nearby non-player entities, nearest first, as `{runtimeId, type, distance, position, health, maxHealth, nameTag}`; `health` is nil for non-mobs |
+| `bot:entity("@cow")` | `entity`: one such entry within 16 blocks; also `"@9"`, `"@nearest"` or no argument |
+
+- Inventory, hotbar and `held` items carry `durability = {remaining, max}` for damageable items such as tools and
+  armor.
+- Pass an entity's `selector` (`"@9"`) to `:interact(e.selector)` or `:attack(e.selector)`. Entities always take `@`.
+- Repetition uses the final options table: `bot:interact("@cow", {count=5})`,
+  `bot:attack("@zombie", {interval=20, ticks=200})`, `bot:destroy("oak_log", {count=10})`.
+
+### World queries
+
+World queries read BDS and count as operations toward the rate limit.
 
 | Call | `data` |
 | --- | --- |
@@ -275,12 +483,13 @@ World queries read BDS on the server thread and count as operations:
 | `bot:blocks("oak_log", {limit=10})` | `{type, radius, blocks}`; `blocks` lists `{x, y, z, distance, reachable}` nearest the Bot first, only blocks a player could see (no x-ray, see below), within a sphere of 8 around the Bot; limit 1-64 |
 | `bot:blocks("oak_log", {area=area.sphere(5, x, y, z)})` | `{type, area, blocks}`: the same query narrowed to an [area](#areas), for example around a treetop; never past 16 blocks from the Bot |
 
-A radius-12 search took about 23 ms of server-thread time in the live check (2026-10-24).
+`blocks(type, x, y, z)` and `{radius = r}` were removed; calling them fails with a message naming
+`blocks(type, {area = area.sphere(r, x, y, z)})`.
 
 ### Areas
 
-One area value narrows the blocks `blocks`, typed `destroy`, `destroy` continuous loops and typed `interact` may pick.
-Build it with `area`, then pass it as `{area = a}`:
+An area narrows the blocks that `blocks`, typed `destroy`, `destroy` continuous loops and typed `interact` may pick.
+Build it with `area`, then pass it as `{area = a}`.
 
 | Luau | Chat | Shape |
 | --- | --- | --- |
@@ -290,32 +499,31 @@ Build it with `area`, then pass it as `{area = a}`:
 | `area.sphere(r, x, y, z)` or `area.sphere(r, v)` | `within <r> of <x> <y> <z>` | a sphere of radius `r` around a point |
 | `a:minus(b)` | `except <b>` | `a` without the blocks of `b`; `b` takes any form above |
 
-Coordinates are numbers, vectors, or `"~"`/`"~-1"` strings relative to the Bot. `:minus` chains freely
-(`area.sphere(6):minus(footing):minus(trunk)`); chat takes one `except`. Area values are built only by these
-functions, so a table or a string is refused before anything reaches the host.
-
-The rules are the [command rules](COMMANDS.md#areas-within-and-except): an area only narrows, never widens reach or
-sight; `~` resolves when the operation is accepted, so a continuous loop keeps its area while the Bot moves; `within`
-holds at most a radius-16 sphere; without an area each operation keeps its default. The Bot's footing is not
-special-cased, so exclude it explicitly:
-
 ```lua
 local footing = area.cell("~", "~-1", "~")
 local job = bot:destroy("acacia_log", {count = 20, area = area.sphere(6):minus(footing)}).job
 job:wait{}
 ```
 
-`blocks(type, x, y, z)` and `{radius = r}` were removed; calling them fails with a message naming
-`blocks(type, {area = area.sphere(r, x, y, z)})`.
+- Coordinates are numbers, vectors, or `"~"`/`"~-1"` strings relative to the Bot.
+- `:minus` chains freely (`area.sphere(6):minus(footing):minus(trunk)`); chat takes one `except`.
+- Only these functions build an area. A table or a string is refused.
+- The Bot's footing is not special-cased, so exclude it explicitly, as in the example.
 
-`interact` shares one `target` argument for a block type and an `@entity` selector, so `{area = a}` is part of
-its signature. It applies only when the target is a block type (`interact("chest", {area = ...})`); an `@entity`
-target is refused by the command layer with "An area applies to a block type …", because areas narrow blocks.
+The rules are the [command rules](COMMANDS.md#areas-within-and-except):
+
+- An area only narrows; it never widens reach or sight.
+- `~` resolves when the operation is accepted, so a continuous loop keeps its area while the Bot moves.
+- `within` holds at most a radius-16 sphere.
+- Without an area, each operation keeps its default.
+
+`interact` takes one `target` argument for both a block type and an `@entity` selector, so `{area = a}` is part of
+its signature. It applies only to a block type (`interact("chest", {area = ...})`); with an `@entity` target the call
+is refused with "An area applies to a block type …".
 
 ### Targeting blocks
 
-Three questions about a block have one answer each. Block properties come from minecraft-data
-for the locked Bedrock version (`scripts/generate_block_properties.py`).
+Three questions about a block have one answer each.
 
 | Question | Rule | Used by |
 | --- | --- | --- |
@@ -323,8 +531,8 @@ for the locked Bedrock version (`scripts/generate_block_properties.py`).
 | Can the Bot target it now? | It is not air or liquid, part of it is within 6 blocks of the Bot's eyes, and a straight line reaches a side facing the Bot through blocks without a collision box only (air, liquids, grass, flowers, torches, rails, snow layers). Leaves, glass and partial shapes stop the line | `reachable`, `destroy x y z`, `destroy <type>`, `interact x y z`, `interact <type>` |
 | What is under the crosshair? | The first block along the Bot's look within 6 blocks that is not air or liquid, as for a player: grass and torches are hit, light blocks are not | `target`, `destroy` and `interact` without a target |
 
-So a log behind tall grass is reachable by name or coordinates, while the crosshair hits the grass in front of it;
-a log wrapped in leaves is listed by `blocks` but not reachable until a leaf is broken.
+So a log behind tall grass is reachable by name or coordinates, while the crosshair hits the grass in front of it. A
+log wrapped in leaves is listed by `blocks` but not reachable until a leaf is broken.
 
 When a block cannot be targeted, `block` reports `reachable = false` and `reachCode`, and `destroy`/`interact` fail
 with the same value as `code`:
@@ -336,11 +544,6 @@ with the same value as `code`:
 | `blocked` | Something stops every line to it; `obstruction = {x, y, z, type}` (in `data` for a refused operation) names the first block in the way, when one is found |
 | `unbreakable` | `destroy` only: bedrock, barriers and other blocks Survival cannot break; they can still be targeted |
 
-`block` and `blocks` are reads, not reservations: `reachable` describes the moment of the read, and `destroy` and
-`interact` check the target again when they run. A block can vanish in between — the Bot's own previous swing is
-still resolving, a leaf decays, or another Bot or player breaks it — and the operation then fails with
-`not_a_target`. A script that only wants the block gone can treat that code on `destroy` as done.
-
 ```lua
 local info = bot:block(x, y, z).data
 if not info.reachable and info.reachCode == "blocked" and info.obstruction then
@@ -349,12 +552,18 @@ if not info.reachable and info.reachCode == "blocked" and info.obstruction then
 end
 ```
 
+Notes:
+
+- `block` and `blocks` are reads, not reservations. `reachable` describes the moment of the read, and `destroy` and
+  `interact` check the target again when they run.
+- A block can vanish in between: the Bot's own previous swing is still resolving, a leaf decays, or another Bot or
+  player breaks it. The operation then fails with `not_a_target`.
+- A script that only wants the block gone can treat `not_a_target` on `destroy` as done.
+
 ### Jobs and waits
 
-A continuing operation's result carries its **job**: whatever the Bot keeps doing after the operation returns.
-`move`, `jump`, `attack`, `use` and `interact` (any mode that keeps running, including `use` once with `hold`),
-`destroy` and `tp` return one; on a Group the job covers every member that started one. A `tp` job ends with
-`arrived` once the Bot has acknowledged the server teleport. Wait for it with `job:wait`:
+A continuing operation's result carries its **job**: whatever the Bot keeps doing after the operation returns. Wait
+for it with `job:wait`.
 
 ```lua
 local r = bot("Alice"):move("forward", {ticks = 40})
@@ -363,48 +572,55 @@ if w.ok then log("stopped: " .. w.reason) end  -- duration elapsed, count reache
 group("#miners"):destroy("stone", {count = 64}).job:wait{timeout = 2400}
 ```
 
-Every wait takes `{timeout = ticks}` (default 1200) and returns the common result shape: `ok`, `code`, `reason` and,
-for Bot and Group waits, one row per member with `name`, `identityId`, `ok`, `code` and `reason`. A job that ended
-for any reason is `ok=true` with that reason (`stopped`, `replaced` by a newer command of the same kind, `died`,
-`disconnected`, `held item changed`, ...); a timeout is `ok=false, code="timeout"` and does **not** stop the job.
-An offline member is `ok=false, code="conflict", reason="offline"`. A job of a member that is no longer running and
-whose end was overwritten by a later job of the same kind reports `ended`. A `destroy` job waits like `waitMining`.
+- `move`, `jump`, `attack`, `use` and `interact` (any mode that keeps running, including `use` once with `hold`),
+  `destroy` and `tp` return a job. On a Group the job covers every member that started one.
+- A `tp` job ends with `arrived` once the Bot has acknowledged the server teleport.
+- A `destroy` job waits like `waitMining`.
 
-`bot:waitOnline{timeout=...}` (also on Groups) waits until the target is online and returns `ok=false,
-code="timeout"` at its timeout; without `timeout` it waits like `waitOnline(b)`. `waitOnline(b)` and
-`b:waitMining{}` stay as aliases until 1.0, so existing scripts keep working.
+**Every wait** takes `{timeout = ticks}` (default 1200) and returns `ok`, `code`, `reason` and, for Bot and Group waits, one row per
+member with `name`, `identityId`, `ok`, `code` and `reason`.
 
-`bot:waitMining{timeout=1200}` and `group:waitMining{timeout=1200}` wait only for destroy/mining jobs.
-They return `{ok=boolean, code=string, reason=string, results={...}}`. Each result has `name`, `identityId`, `ok`,
-`code`, `reason`, and `mining` (the fields above). The group waits for all current members, pinning membership
-and identity on the first poll; membership replacement ends the run. A literal Bot's identity is also
-pinned on the first poll. Movement and other continuing inputs do not delay this wait.
+| Outcome | Result |
+| --- | --- |
+| The job ended, for any reason | `ok=true` with that reason (`stopped`, `replaced` by a newer command of the same kind, `died`, `disconnected`, `held item changed`, ...) |
+| Timeout | `ok=false, code="timeout"`; the job keeps running |
+| Member offline | `ok=false, code="conflict", reason="offline"` |
+| Member no longer running, and its end overwritten by a later job of the same kind | `ended` |
 
-Timeout defaults to **1200 ticks (60 wall seconds)** and must be an integer from 0 to 2147483647;
-0 performs one status check. Polling runs on the host every `max(0.25, 1 / operations-per-second)` wall
-seconds, with the final sleep shortened to the remaining timeout (timeout uses the last polled snapshot).
-Polls use the normal operation rate
-limit and recheck authorization/stop; no command worker is held while sleeping. Stop/revocation/shutdown
-or the optional positive run deadline ends the run, rather than returning a successful wait.
+**`waitOnline`.** `bot:waitOnline{timeout=...}` (also on Groups) waits until the target is online and returns
+`ok=false, code="timeout"` at its timeout. Without `timeout` it waits like `waitOnline(b)`.
 
-An inactive online member returns its terminal reason (or `idle` with no job), with `ok=true` unless its
-state is `failed`. An offline member returns `ok=false, reason="offline"`; a still-active member at the
-timeout returns `ok=false, reason="timeout"`. A timeout does not stop its mining job. Query failures
-return `ok=false` with the query reason. The outer `ok` requires every member to succeed; `reason` is
-the shared reason, `completed` for mixed successful reasons, or the first failing member's reason.
-Per-member results preserve mixed outcomes.
+**`waitMining`.** `bot:waitMining{timeout=1200}` and `group:waitMining{timeout=1200}` wait only for destroy and mining
+jobs; movement and other continuing inputs do not delay them.
 
-**Mine at spots** accepts `name`, `start`, `spots` (default 2), `step` (default 4), and `blocks` (default 2),
-in that order. It teleports along +X from `start` at `step` spacing, faces +Z, runs
-`destroy{mode="continuous",count=blocks}`, waits up to 1200 ticks, and logs `spot N: <reason>` at each
-position. Prepare reachable breakable blocks in front of each spot before running it.
+- They return `{ok, code, reason, results={...}}`. Each result has `name`, `identityId`, `ok`, `code`, `reason` and
+  `mining` (the [status fields](#structured-status-and-mining-waits)).
+- An inactive online member returns its terminal reason, or `idle` with no job. It is `ok=true` unless its state is
+  `failed`.
+- An offline member returns `ok=false, reason="offline"`. A member still active at the timeout returns
+  `ok=false, reason="timeout"`; the timeout does not stop its mining job.
+- A query failure returns `ok=false` with the query reason.
+- The outer `ok` requires every member to succeed. The outer `reason` is the shared reason, `completed` for mixed
+  successful reasons, or the first failing member's reason. Per-member results keep mixed outcomes.
+
+`waitMining` notes:
+
+- The timeout defaults to **1200 ticks (60 wall seconds)** and must be an integer from 0 to 2147483647; 0 performs
+  one status check.
+- Stop, revocation, shutdown or the optional positive run deadline ends the run, rather than returning a successful
+  wait.
+- A Group wait covers all current members. Membership and each member's identity are fixed at the first check; if the
+  membership is replaced, the run ends. A literal Bot's identity is also fixed at the first check.
+- It checks every `max(0.25, 1 / operations-per-second)` wall seconds, the last check shortened to the remaining
+  timeout. A timeout uses the last check's values.
+- Each check counts toward the operation rate limit and rechecks your authority and stop.
+- `waitOnline(b)` and `b:waitMining{}` stay as aliases until 1.0, so existing scripts keep working.
 
 ## Generated API reference
 
-Generated from the same `operations.json` read by the `/bot` parser, typed argv adapter and runner tests.
-Update with `node runner/api-reference.mjs`; verify with `node runner/api-reference.mjs --check`.
-The ordinary parser remains the semantic validator for ranges and option combinations. Methods are available
-on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their one-Bot restriction.
+The table lists every method, generated from the same operation registry `/bot` uses; ranges and option
+combinations are checked exactly as for the typed command. Methods are available on `bot("Alice")` and
+`group("#miners")`; whole-group rename and forget keep their one-Bot restriction.
 
 <!-- BEGIN GENERATED OPERATIONS -->
 | Method | Positional fields | Final options table |
@@ -462,21 +678,33 @@ on `bot("Alice")` and `group("#miners")`; whole-group rename/forget retain their
 <!-- END GENERATED OPERATIONS -->
 
 Named options are a final table: `:move("forward", {ticks=20})`, `:destroy{mode="continuous",count=64}`,
-`:drop("all")`, `:use{interval=40,hold=20,ticks=120}`. `ticks` maps to `for`; action `interval` replaces `mode`.
-Sprint/sneak take booleans. Teleport options pair `yaw,pitch`, or use `facing` for a player, or all of
-`facingX,facingY,facingZ`; `dimension` becomes the leading `in` clause. Three-argument `look(x,y,z)` is `look at`,
-relative to the Bot as in commands. `group:members()` pins UUID/membership order and returns indexed member
-handles. Root list/ping/help retain their root semantics. A script `menu()` returns acceptance without opening UI.
-`look` (both forms) returns once BDS reports the new rotation, with the observed `{yaw, pitch}` as `data.look`, so a
-crosshair operation right after it uses the new view; if BDS does not report it within about 0.5 s (10 ticks at 20 TPS) the result has
-`code="timeout"`.
+`:drop("all")`, `:use{interval=40,hold=20,ticks=120}`.
+
+How options map to the typed command:
+
+- `ticks` maps to `for`; an action's `interval` replaces `mode`.
+- Teleport options pair `yaw,pitch`, or use `facing` for a player, or all of `facingX,facingY,facingZ`. `dimension`
+  becomes the leading `in` clause.
+- Three-argument `look(x, y, z)` is `look at`, relative to the Bot as in commands.
+- `sprint` and `sneak` take booleans.
+
+Notes:
+
+- `group:members()` returns indexed member handles in a fixed membership order.
+- Root `list`, `ping` and `help` keep their root meaning.
+- A script `menu()` returns acceptance without opening any UI.
+- `look` (both forms) returns once BDS reports the new rotation, with the observed `{yaw, pitch}` as `data.look`, so a
+  crosshair operation right after it uses the new view. If BDS does not report it within about 0.5 s (10 ticks at
+  20 TPS), the result has `code="timeout"`.
 
 ## Event kinds
 
-The event kinds a script may watch come from the same registry. Triggers, which start a run for an occurrence,
-use the same kinds and filters.
+The event kinds a script may watch are listed below. Triggers, which start a run for an occurrence, use the same kinds
+and filters.
 
 ### Watches
+
+A watch collects occurrences of one event kind for the run, and `w:wait` returns the next one.
 
 ```lua
 params {}
@@ -491,35 +719,59 @@ local w = watch("schedule", {every = "1m"})        -- each time the endbotd time
 local n = watch("world.time", {phase = "night"})   -- each time night falls
 ```
 
-- `schedule` takes `every` (an integer and `s`, `m` or `h`, from `10s` to `24h`), `at` (`HH:MM` in endbotd's
-  local time, once a day) or both. `data.at` is the local time of the tick that fired.
-- `world.time` takes an optional `phase` (`day`, `sunset`, `night` or `sunrise`). `data.phase` and `data.time`
-  (the level time of day, 0-23999) change when the day cycle enters another phase.
+Filters by kind:
 
-- `watch(kind, filter)` checks the kind, every filter name and value, the required filters and the kind's capability
-  against `requires {}` before it returns; a mistake stops the run with a message naming the field. Block names may
-  omit `minecraft:`.
-- `block.change` takes an `area` built with `area.cell`, `area.box` or `area.sphere` (with at most 16 `:minus`), of at
-  most 512 blocks. A watch has no Bot to resolve against, so `~` and the sphere around the Bot are refused: build the area from
-  a position, such as a Bot's `status()` coordinates. Optional filters: `dimension` (default `overworld`), `from` and
-  `to`.
+| Kind | Filters |
+| --- | --- |
+| `block.change` | `area` (required), `dimension` (default `overworld`), `from`, `to` |
+| `schedule` | `every` (an integer and `s`, `m` or `h`, from `10s` to `24h`), `at` (`HH:MM` in endbotd's local time, once a day), or both |
+| `world.time` | optional `phase`: `day`, `sunset`, `night` or `sunrise` |
+| `player.join`, `player.leave`, `player.chat`, `bot.*`, `job.finished`, `server.started` | none |
+
+- `watch(kind, filter)` checks the kind, every filter name and value, the required filters, and the kind's capability
+  against `requires {}` before it returns. A mistake stops the run with a message naming the field.
+- Block names may omit `minecraft:`.
+- `block.change` takes an `area` built with `area.cell`, `area.box` or `area.sphere` (with at most 16 `:minus`), of
+  at most 512 blocks. A watch has no Bot to resolve against, so `~` and the sphere around the Bot are refused: build
+  the area from a position, such as a Bot's `status()` coordinates.
+
+Waiting:
+
 - Buffering starts at `watch()`, so nothing is lost between waits. A watch keeps the 64 newest occurrences; `missed`
   counts the ones dropped since the previous successful wait.
 - `w:wait{timeout = ticks}` follows the other waits: the default timeout is 1200 ticks and a timeout is
-  `ok = false, code = "timeout"`. `data` is the occurrence: for `block.change` `x`, `y`, `z`, `dimension`, `from`,
-  `to`, `cause` (`player-break`, `player-place` or `poll`) and `bot` when a Bot did it. A human player's name is never
-  given.
+  `ok = false, code = "timeout"`.
+- A wait is answered as soon as an occurrence arrives, and it uses no operation budget.
 - After the source restarted (BDS or the link) or dropped occurrences, the next wait returns once
   `ok = false, code = "unavailable"` with the reason, then waiting continues. Changes during such a gap are not
   replayed; re-read with `block()` if the script cannot tolerate one.
-- A wait is answered as soon as an occurrence arrives; it uses no operation budget.
-- `player.join`, `player.leave` and `player.chat` report human players only (Bots have the `bot.*` kinds) and need
+
+What `data` holds:
+
+| Kind | `data` |
+| --- | --- |
+| `block.change` | `x`, `y`, `z`, `dimension`, `from`, `to`, `cause` (`player-break`, `player-place` or `poll`), and `bot` when a Bot did it. A human player's name is never given |
+| `schedule` | `at`: the local time of the tick that fired |
+| `world.time` | `phase` and `time` (the level time of day, 0-23999); it fires when the day cycle enters another phase |
+
+Players and chat:
+
+- `player.join`, `player.leave` and `player.chat` report human players only (Bots have the `bot.*` kinds). They need
   `requires { "observe.presence" }` or `requires { "observe.chat" }`; the run form and the trigger form show the
-  declaration first. `player.chat` is public chat only: `/tell`, `/msg` and `/w` are never reported. The message is
-  cut to 256 characters.
-- Limits: 16 watches per run, `[limits] max-watches-per-controller` (default 32) across one controller's runs,
-  `[limits] max-watched-blocks-per-controller` (default 1024) cells across one controller's watches and triggers, and
-  the server-wide `[events] max-watched-blocks` (default 2048). A watch over a limit is refused with the limit named.
+  declaration first.
+- `player.chat` is public chat only: `/tell`, `/msg` and `/w` are never reported. The message is cut to 256
+  characters.
+
+Limits (a watch over a limit is refused with the limit named):
+
+| Limit | Default |
+| --- | --- |
+| Watches per run | 16 |
+| `[limits] max-watches-per-controller`, across one controller's runs | 32 |
+| `[limits] max-watched-blocks-per-controller`, cells across one controller's watches and triggers | 1024 |
+| `[events] max-watched-blocks`, server-wide | 2048 |
+
+All kinds, their payloads and what delivery each guarantees:
 
 <!-- BEGIN GENERATED EVENTS -->
 | Kind | Filters (one of) | Payload | Guarantee |
@@ -539,10 +791,22 @@ local n = watch("world.time", {phase = "night"})   -- each time night falls
 
 ### Triggers
 
-A trigger is a stored binding from an event kind and filter to a script and its arguments. It is armed once and
-then starts a run for every matching occurrence, without anyone typing a command. The script declares
-`param.event("event")`; a manual run gets `a.event = nil`, so one script works both ways. The event parameter
-carries the payload, `kind` and `missed`.
+A trigger is a stored binding from an event kind and filter to a script and its arguments. Once armed, it starts a run
+for every matching occurrence, without anyone typing a command.
+
+```text
+/botscript trigger add <script> <kind> [field=value ...] [name=<name>] [visibility=shared|private] [-- <arg> ...]
+/botscript trigger list
+/botscript trigger show <name>
+/botscript trigger enable <name>
+/botscript trigger disable <name>
+/botscript trigger remove <name>
+/botscript trigger set <name> <policy>=<value> ...
+/botscript trigger visibility <name> shared|private
+```
+
+The script declares `param.event("event")`. A manual run gets `a.event = nil`, so one script works both ways. The
+event parameter carries the payload, `kind` and `missed`.
 
 ```lua
 params {
@@ -555,36 +819,41 @@ end
 ```
 
 ```text
-/botscript trigger add <script> <kind> [field=value ...] [name=<name>] [visibility=shared|private] [-- <arg> ...]
 /botscript trigger add guard block.change area="100 64 200" to=air
-/botscript trigger list
-/botscript trigger show <name>
-/botscript trigger enable <name>
-/botscript trigger disable <name>
-/botscript trigger remove <name>
-/botscript trigger set <name> <policy>=<value> ...
-/botscript trigger visibility <name> shared|private
 ```
 
-- `area=` takes the area values in one quoted token, in the same forms as `within`: `"100 64 200"`,
-  `"0 64 0 3 65 3"` or `"5 of 0 64 0"`, optionally followed inside the token by `except <values>`. Other filters
-  are `name=value`; for `block.change` they are `dimension` (default `overworld`), `from` and `to`. Block names may
-  omit `minecraft:`. The area is absolute: a trigger has no Bot or player to resolve `~` against, so `~` and the
-  Bot-centred sphere (`"3"`) are refused; write the coordinates.
-- `--` separates the script arguments, which are stored as strings exactly as `/botscript run` takes them. The
-  name defaults to the script name. A trigger is private unless `visibility=shared`, which only makes it visible
-  in other people's `list` and `show`; it does not let them change it.
-- The console addresses another owner's trigger as `<owner>/<name>`, where the owner is the display name
-  (case-insensitive) or the owner key. Players address their own by `<name>` and see shared ones as
-  `<owner>/<name>` in `list` and `show`.
+`trigger add` options:
 
-**Approval.** Adding or enabling shows the script's declaration and records it with the script revision and its
-parameters; only someone who may run the script may arm it. On your own script the trigger then runs the
-current revision while its declaration stays within the approved one and its parameters still accept the stored
-arguments. On someone else's shared script it runs only the approved revision; any new revision pauses it. The
-operator's script files follow their current revision like your own. A
-started run has the owner's authority intersected with the approved declaration and counts toward the owner's
+- `area=` takes the area in one quoted token, in the same forms as `within`: `"100 64 200"`, `"0 64 0 3 65 3"` or
+  `"5 of 0 64 0"`, optionally followed inside the token by `except <values>`.
+- The area is absolute: a trigger has no Bot or player to resolve `~` against, so `~` and the Bot-centred sphere
+  (`"3"`) are refused. Write the coordinates.
+- Other filters are `name=value`. For `block.change` they are `dimension` (default `overworld`), `from` and `to`.
+  Block names may omit `minecraft:`.
+- `--` separates the script arguments, which are stored as strings exactly as `/botscript run` takes them.
+- The name defaults to the script name.
+- A trigger is private unless `visibility=shared`, which only makes it visible in other people's `list` and `show`;
+  it does not let them change it.
+
+Addressing:
+
+- You address your own triggers by `<name>`, and see shared ones as `<owner>/<name>` in `list` and `show`.
+- Console only: the console addresses another owner's trigger as `<owner>/<name>`, where the owner is the display
+  name (case-insensitive) or the owner key.
+
+**Approval.** Adding or enabling a trigger shows the script's declaration and records it with the script revision and
+its parameters. Only someone who may run the script may arm it.
+
+| Script | What the trigger runs |
+| --- | --- |
+| Your own | The current revision, while its declaration stays within the approved one and its parameters still accept the stored arguments |
+| Someone else's shared script | Only the approved revision; any new revision pauses it |
+| The operator's script file | The current revision, as for your own |
+
+A started run has the owner's authority intersected with the approved declaration, and counts toward the owner's
 concurrent-run limit.
+
+**Policies.** Change them with `trigger set <name> <policy>=<value>`.
 
 | Policy | Default | Bounds | Effect |
 | --- | --- | --- | --- |
@@ -593,41 +862,56 @@ concurrent-run limit.
 | `startsPerMinute` | 10 | 1-60 | Starts in a sliding 60-second window; over it the trigger is throttled: `skip` and `parallel` drop the occurrence as missed, `queue` holds it until the window allows a start |
 | `queue` | 4 | 1-16 | Pending occurrences under `queue`; the oldest is dropped and counted as missed |
 
-**Pausing and disabling.** A trigger pauses when its script's declaration grows (`declaration grew`), its
-parameters no longer accept the stored arguments (`arguments no longer valid`), or the script can no longer be
-run by its owner (`script unavailable`), or someone else's script it runs gets a new revision (`script changed`);
-it stays paused until its owner enables it again, which re-approves. Going over the start cap never stops a
-trigger: it is throttled and its owner is told once in chat until it starts again. A pause, a disable by the
-server and a start refused at the owner's run limit (told once until a start succeeds) are also told to the owner in
-chat. A triggered run that ends cleanly is only logged, not shown in chat. Revoking the owner disables it
-(`owner revoked`), and a regrant does not re-enable it. A disabled trigger keeps its state and can be enabled
-again.
+**Pausing and disabling.** A paused trigger stays paused until its owner enables it again, which re-approves.
 
-**Restarts.** endbotd loads armed triggers with their state, stats and last start, so the cooldown holds; the
-minute window starts empty and `lastGap` records the gap. A BDS or link restart leaves them armed, but no run
-starts while the link is down; those occurrences are counted as skipped. Runtime-sourced kinds resume after the
-runtime comes back.
+| Reason | When |
+| --- | --- |
+| `declaration grew` | The script's declaration grows |
+| `arguments no longer valid` | Its parameters no longer accept the stored arguments |
+| `script unavailable` | Its owner can no longer run the script |
+| `script changed` | Someone else's script it runs gets a new revision |
+| `owner revoked` | The owner's access is revoked; the trigger is disabled, and a regrant does not re-enable it |
 
-**Limits.** `[limits] max-triggers-per-controller` (default 8) bounds armed triggers per owner; `0` turns
-triggers off on the server. A trigger's area counts toward `max-watched-blocks-per-controller` like a watch. Every
-other run limit applies to triggered runs unchanged.
+- Going over the start cap never stops a trigger. It is throttled, and its owner is told once in chat until it starts
+  again.
+- A pause, a disable by the server, and a start refused at the owner's run limit (once until a start succeeds) are
+  also told to the owner in chat.
+- A triggered run that ends cleanly is only logged, not shown in chat.
+- A disabled trigger keeps its state and can be enabled again.
+
+**Restarts.**
+
+- After an endbotd restart, armed triggers come back with their state, stats and last start, so the cooldown holds.
+  The minute window starts empty, and `lastGap` records the gap.
+- A BDS or link restart leaves triggers armed, but no run starts while the link is down; those occurrences are
+  counted as skipped.
+- Kinds that come from the runtime resume after the runtime comes back.
+
+**Limits.**
+
+- `[limits] max-triggers-per-controller` (default 8) bounds armed triggers per owner; `0` turns triggers off on the
+  server.
+- A trigger's area counts toward `max-watched-blocks-per-controller` like a watch.
+- Every other run limit applies to triggered runs unchanged.
 
 ## Run lifetime and cleanup
 
-All operations enter the existing ordered command service with the invoker's authority and normal command
-audit. Every runtime request is authorized again; Group calls retain UUID pins and membership guards. Runs
-survive logout/rejoin. Revocation changes a separate grant revision, so revoke/regrant cannot revive an old run.
-Operations requiring a live player, such as teleporting to that player by name, still require one; use declared
-absolute positions for work that must continue offline. Argument-free spawn after logout uses the controller's
-captured initial position/dimension/rotation.
+A run lasts until the script ends, it is stopped, or its invoker's authority ends.
 
-Normal end, failure/crash, stop, revocation and shutdown stop continuing inputs still owned by the run.
-Ownership tracks Bot UUID and movement/action/flag/mining channels for scripts, commands and Group batches.
-Later controller inputs on a channel are preserved. Cleanup pins UUIDs and mining loop IDs. One-shot uncharged
-actions are not continuing jobs. Scripts must wait while continuing work is needed. Completed inventory/world
-changes are not rolled back. Unreachable runtime transport can prevent cleanup; failure is reported and operators
-can use `/bot <name> stop` or `destroy stop`. Independent external runtime clients are outside this plugin's input
-ownership tracking. Cleanup stops attempting further channels after an unavailable-transport error, rather than
-queueing one timeout per member. Shutdown cleanup uses the existing bounded runtime control timeout.
-If an input's acknowledgement is lost, the plugin conservatively retains its pinned cleanup ownership because
-acceptance is unknown. A later input from another caller still replaces that ownership.
+- Every operation is checked against your authority like a typed command, and is logged like one.
+- Runs survive logout and rejoin.
+- Revoking your access ends your runs, and a regrant does not revive them.
+- Operations requiring a live player, such as teleporting to that player by name, still require one. Use declared
+  absolute positions for work that must continue while you are offline.
+- Argument-free `spawn` after you log out uses your captured initial position, dimension and rotation.
+
+When a run ends (normally, by failure or crash, by stop, by revocation or by shutdown):
+
+- Continuing inputs the run started (movement, actions, flags, mining) stop.
+- An input you or another controller gave a Bot later on the same channel is kept.
+- One-shot uncharged actions are not continuing jobs. Completed inventory and world changes are not rolled back.
+- So a script must keep waiting for as long as it needs continuing work.
+
+If the runtime cannot be reached, cleanup can fail. The failure is reported; stop the Bot yourself with
+`/bot <name> stop` or `/bot <name> destroy stop`. Inputs from other programs that drive the runtime directly are
+not tracked.

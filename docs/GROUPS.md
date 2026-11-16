@@ -1,16 +1,12 @@
 # Shared Bot groups
 
-A Group is a named, ordered list of Bots that `/bot` can address as one target: `#miners` for all members,
-`#miners[2]` for one. Groups have an owner and are shared or private ([PERMISSIONS.md](PERMISSIONS.md#ownership)).
+A Group is a named, ordered list of Bots that `/bot` can address as one target. `#miners` means every member;
+`#miners[2]` means the second member only.
 
-Scale: member lookups read the runtime's light `profiles` list (name, identity and state only), and the control
-protocol bounds each request and response at 1 MiB. That fits a group input batch for several hundred members
-and a profile list for thousands of Bots; the 64 KiB bound before this made every Group operation fail at roughly
-100 to 200 Bot profiles.
+Groups have an owner and are shared or private ([PERMISSIONS.md](PERMISSIONS.md#ownership)). Every command here works
+from an authorized controller or from the server console (at the console, leave out the leading slash).
 
-## Try the command flow
-
-From an authorized controller or the server console (omit the leading slash at the console):
+## Try it
 
 ```text
 /bot Alice spawn
@@ -18,142 +14,252 @@ From an authorized controller or the server console (omit the leading slash at t
 /botgroup create #miners
 /botgroup add #miners Alice
 /botgroup add #miners Bob
-/botgroup list
 /botgroup list #miners
 /bot #miners stop
 /bot #miners[1] look 0 90
 /bot #miners destroy count 64
 /bot #miners destroy stop
 /botgroup result #miners
+```
+
+Wait until the Bots are online, and give them their tools and targets as usual before gameplay actions. A reply
+confirms that the operation was accepted, not that it succeeded in the world.
+
+## Managing Groups
+
+`/botgroup` creates and edits Groups. Group names always start with `#`, including when you create one.
+
+```text
+/botgroup create #group
+/botgroup add #group <Bot>
+/botgroup remove #group <Bot>|#group[index]
+/botgroup delete #group
+/botgroup list [#group]
+/botgroup result #group [history]
+/botgroup menu [#group [page]]
+/botgroup help
+```
+
+| Action | What it does |
+| --- | --- |
+| `create` | Makes an empty Group. |
+| `add` | Appends a Bot at the end of the list. |
+| `remove` | Removes a member by Bot name, or by index (`#miners[1]`) to remove the entry of a profile that no longer exists. Later members move up one index. |
+| `delete` | Deletes the Group. Its Bots stay registered. |
+| `list` | Without a Group: the shared Groups. With a Group: its members. |
+| `result` | Every member's result of a saved operation ([below](#operation-results)). |
+| `menu` | Opens the Group screens ([below](#menus)). `/botgroup` alone does the same. |
+| `help` | Shows the management syntax. |
+
+Setting a Group's visibility and owner (`/botgroup visibility`, `/botgroup owner`) is described in
+[COMMANDS.md](COMMANDS.md#shared-group-menus-and-results).
+
+Example:
+
+```text
+/botgroup remove #miners Alice
+/botgroup remove #miners #miners[1]
+```
+
+Notes:
+
+- A Group name without `#` is refused, and so is the subcommand `members`: use `list #group`.
+- From the OS command line, quote the whole command: `endbot console "bot #miners stop"`.
+
+## Operating a Group
+
+Use the Group as the target of an ordinary `/bot` command.
+
+```text
+/bot #group <operation> [arguments]
+/bot #group[index] <operation> [arguments]
+```
+
+| Target | Who it reaches |
+| --- | --- |
+| `#miners` | Every member, in list order |
+| `#miners[2]` | Only the second member; the reply is the normal single-Bot reply, with the index and Bot name |
+
+Example:
+
+```text
+/bot #miners move forward for 40
+/bot #miners[1] tp me
+```
+
+Notes:
+
+- Counts and durations apply to each Bot separately. `destroy count 64` lets every member mine 64 blocks; it does
+  not split 64 across the Group.
+- A member that fails does not stop the others.
+- Whole-group `rename` and `forget` are refused. Use one member (`#miners[1]`) or the Bot's name.
+- Members owned by someone else who made them private are refused one by one; the rest of the Group still runs
+  ([PERMISSIONS.md](PERMISSIONS.md)).
+- From a menu, the operations are the same as for one Bot, with the same rules for `~`: teleport, spawn and
+  interaction coordinates are relative to you; look-at and mining coordinates are relative to each Bot.
+
+### Which operations reach members together
+
+| Operations | How they run |
+| --- | --- |
+| `move`, `look` (including `look at`), `jump`, `attack`, `use`, `sprint`, `sneak`, `stop`, `hotbar`, `drop` | Sent to all members at once. Each Bot still has its own network and input timing, so members are not guaranteed to act on the same game tick. |
+| Lifecycle (`spawn`, `despawn`, `reconnect`, ...), teleport, mining and the rest | One member after another, in list order. |
+
+### Offline and missing members
+
+- What happens to an offline member depends on the operation: `stop` is accepted, an online-only input such as
+  `jump` fails for that member alone.
+- A member whose profile was removed keeps its place in the list and fails on its own. `spawn` does not create a
+  new Bot for it; remove the entry with `/botgroup remove #miners #miners[index]`.
+- The member list is fixed when an operation starts.
+
+### Losing permission while it runs
+
+- If your grant is revoked, or the plugin shuts down, before a together-operation is sent, none of it is sent.
+- During a one-after-another operation, the remaining members are not run.
+- A together-operation that was already accepted is not undone. Continuous mining stops as it does for a single
+  Bot.
+
+## Replies
+
+A whole-group command that changes something replies in at most **two lines**, however many members failed.
+
+| Part | Meaning |
+| --- | --- |
+| accepted / failed / not run | How many members were in each state |
+| acceptance unknown | The request was sent but no answer came back. It may or may not have run, and it is not retried. |
+| Failure reasons | Grouped by category, at most three, the rest counted as "other" |
+
+The reply means "accepted", not "done in the world". For each member's own result, use
+[`/botgroup result`](#operation-results).
+
+Notes:
+
+- These changes are also written to the server log as a short English summary with your name. Menus, queries and
+  `result` are not logged.
+- Join and quit messages and mining notices are separate messages and are not part of the two lines.
+
+## Queries
+
+Queries print every member's answer at once.
+
+```text
+/bot #group status
+/bot #group hotbar
+/bot #group radius
+```
+
+Each line starts with `#group[index]` and the Bot name. A member that fails shows its error on its own line. An
+indexed target (`#miners[2] status`) uses the same format.
+
+Notes:
+
+- Queries are not cut to ten rows or two lines.
+- Queries are not logged and do not change [`result`](#operation-results) history. After `jump`, a `status` check
+  still leaves `jump` as result 1.
+- Giving a value (`hotbar 3`, `radius 8`, `radius default`) is a change, not a query: it gets the two-line reply,
+  is logged and is saved as a result.
+
+## Operation results
+
+`/botgroup result` prints every member's result of one saved operation.
+
+```text
+/botgroup result #group [history]
+```
+
+| `history` | Operation shown |
+| --- | --- |
+| omitted or `1` | The latest |
+| `2` | The one before |
+| `3` | The one before that, and so on |
+
+The output shows the target, the operation, the counts and each member's outcome and reason. It replays nothing and
+does not ask the Bots again: it shows what happened when the operation was sent.
+
+Example:
+
+```text
 /botgroup result #miners 2
 ```
 
-Wait for the Bots to be online and prepare their tools/targets normally before gameplay actions. Replies confirm
-operation acceptance, not successful world outcomes. `destroy count 64` sets the existing completion limit for each Bot
-individually; it does not distribute a shared total across the group.
+Notes:
 
-`/botgroup list` lists shared groups; append `#miners` to show that group's members. `/botgroup help` shows management
-syntax. Group references always use `#`, including creation. The former `members` subcommand is merged into `list`;
-`members` and bare group arguments are no longer accepted. The stored names/UUIDs are unchanged, so existing groups
-require no migration. Remove a member with `/botgroup remove #miners Alice`, or use
-`/botgroup remove #miners #miners[1]` to remove a missing profile's entry.
-`/botgroup delete #miners` deletes the group registration and leaves Bot profiles intact.
-When using the OS CLI, quote the whole command, for example `endbot console "bot #miners stop"`.
+- Only whole-group commands that changed something are saved. Queries, management confirmations and menu
+  navigation are not.
+- Each controller keeps up to 20 results per Group, with at most 128 on the server; the oldest go first. Results
+  live in memory and are cleared when the server restarts.
+- Your results are your own: another controller's operation cannot replace them. The console and the OS command
+  line share one slot.
+- Results keep the language they were made in. Changing members or renaming a Bot does not change saved rows. A
+  deleted and re-created Group does not show the old Group's results.
+- In the menu, the older/newer buttons stay on the results you were viewing even when a new operation arrives. If a
+  result was dropped in the meantime, reopen the history.
 
-## Menus and operation results
+## Menus
 
-`/bot` or `/bot menu` lists individual Bots and direct `#group (count)` operation targets. Selecting a group opens
-`/bot #miners menu`, which uses the same operation screen builder and categories as an individual Bot: stop, movement,
-look, teleport, gameplay, inventory and Bot settings. It also offers the caller's operation history. Group controls remain
-available for mixed online/offline and empty groups; execution reports operation-specific failures normally.
-Group targets use ordinary buttons with the `#` prefix and member count; there is no oversized group heading.
-**Group management...** opens the selected group's `/botgroup menu #group` screen. When entered from management,
-the existing **Back to group management** button serves the same purpose without a duplicate link.
+`/bot` (or `/bot menu`) lists your Bots and your Groups as `#group (count)`. Tap a Group to open its operation
+screen.
 
-`/botgroup` alone (or `/botgroup menu`) opens the group list/create screen. `/botgroup menu #miners` opens management:
-ordered members with connection state, add/remove membership and group deletion with confirmation. **Group operations...**
-opens the same shared operation screen, with **Back to group management** returning to this management screen.
-Members are paginated ten at a time (`/botgroup menu #miners 2`); selecting one opens its ordinary Bot menu and retains
-the management return path through nested navigation. Direct `/bot #group menu` returns to the Bot/target list.
+| Command | Screen |
+| --- | --- |
+| `/bot #miners menu` | Operations for the whole Group |
+| `/bot #miners[1] menu` | The ordinary menu of that one member |
+| `/botgroup` or `/botgroup menu` | The Group list, and creating a Group |
+| `/botgroup menu #miners [page]` | Managing one Group |
+| `/botgroup menu #miners result [history]` | Saved results, with older/newer buttons |
 
-Teleport, resume/spawn (including coordinates), reconnect/despawn, chunk radius, status and block interaction are
-available from the shared operation menus. Whole-group rename/forget remain rejected by the command and omitted from
-the group menu; individual Bot profile controls offer them. Input forms use the existing command semantics: teleport,
-spawn and interaction `~` coordinates are relative to the controller; look-at/mining coordinates are relative to each
-Bot. Group settings use form defaults rather than displaying one member's value as a group-wide current value.
-There is no formation/scatter feature. Duration/count limits apply per Bot.
+### Operation screen
 
-Every mutation submitted by a form uses the same `/bot` or `/botgroup` command/permission path and echoes the actual
-root/arguments in chat. Group/Bot UUIDs and membership order are checked on submission; changing membership or
-deleting/recreating a group requires reopening old forms. A member's single-Bot form also retains a UUID guard through
-navigation, so a replacement using the old name is not accidentally controlled. Closing/canceling management forms
-does not perform the operation; deleting a group leaves its Bots registered.
+The Group operation screen has the same categories as a single Bot: stop, movement, look, teleport, gameplay,
+inventory and Bot settings, plus your operation history. Teleport, resume and spawn (also at coordinates),
+reconnect and despawn, chunk radius, status and block interaction are all there.
 
-Whole-group mutating-command acknowledgements are at most **two lines**, regardless of failure count: accepted/failed/not-run
-counts and, if needed, failure reasons aggregated by category. At most three categories are shown, with excess entries
-counted under "other". They confirm acceptance, not successful world outcomes. Missing responses after sending a batch
-are counted as **acceptance unknown**, never silently described as not executed and never automatically retried.
-Indexed targets retain the group index and Bot name in their ordinary single-member reply.
+- It works for Groups with online and offline members, and for empty Groups. Failures show in the reply as usual.
+- Rename and forget are not offered; use a member's own menu.
+- Settings forms start from defaults, not from one member's current value.
+- **Group management...** opens the management screen for this Group.
 
-Mutating group operations write the same bounded English summary to the server log, including the controller name.
-Player replies follow their language. Menus, result inspection and read-only queries do not add audit entries.
-The bound applies to immediate command acknowledgements; BDS join/quit events and existing asynchronous mining notices
-are separate events. Per-member details do not get dumped into the normal acknowledgement or audit log.
+### Management screen
 
-Read-only `/bot #miners status`, `/bot #miners hotbar` and `/bot #miners radius` print every member's actual query
-result immediately, including `#group[index]`, the Bot name and any per-member error. Indexed queries use the same
-format. Explicit queries have no ten-row page or two-line summary limit; query data is not truncated to the saved
-operation-detail length. They add no audit entry and do not create, replace or advance operation history. For example,
-after `jump`, checking `status` still leaves that `jump` result as history 1. Supplying a hotbar slot or radius value
-(including `default`) is a mutation and retains the bounded acknowledgement/history/audit behavior.
+`/botgroup menu #miners` shows the members in order with their connection state. From here you can add and remove
+members and delete the Group (with a confirmation).
 
-`/botgroup result #miners [history]` prints **all member rows** of one saved operation, including its target/operation,
-counts and per-member outcomes/reasons. Omit the number (or use `1`) for the latest operation; `2` selects the previous
-operation, `3` the one before that. It is an inspection of saved request results, not a replay or fresh status query.
-The menu uses the same snapshots (`/botgroup menu #miners result [history]`) and offers older/newer result buttons.
-Snapshots describe mutating group-targeted `/bot` requests; queries, management confirmations and menu navigation do not replace them.
-Each controller/group retains up to 20 results, subject to a global cap of 128 snapshots, evicting oldest first. These are in memory and cleared
-on restart. Console/CLI share the console result slot. Another controller's operation cannot overwrite your result.
-Details retain their request-time language. Editing membership/renaming a Bot does not change historical result rows;
-deleting/recreating a group does not expose the previous group's result. Menu navigation pins result UUIDs so a new
-operation cannot shift the intended older/newer destination; evicted results require reopening history.
+- Members are shown ten per page: `/botgroup menu #miners 2` is page 2.
+- Tap a member to open its ordinary Bot menu. The way back to management is kept as you go deeper.
+- **Group operations...** opens the operation screen. Its **Back to group management** button returns here.
+- Opened directly with `/bot #group menu`, the operation screen goes back to the Bot and Group list instead.
+- Add and remove forms name the Group and submit with **Add** and **Remove**. The delete form names the Group in its
+  title, text and button. The Bots stay registered.
 
-Add/remove forms name the target group and use **Add**/**Remove** submit labels. Group deletion uses an action form
-with the group name in its title, explanation and confirmation button; the registered Bots remain. The action-form
-layout replaces the message-form layout whose title/content appeared blank in the user's client.
+### How forms behave
 
-## How Groups behave
-
-- Shared groups use the existing controller permission. `/botgroup` and `/bot` go through the same authorization,
-  grant-revision check and ordered worker. Sequential operations recheck authority before requests/between members;
-  batched inputs recheck throughout preparation and immediately before submitting the batch.
-- Membership persists as immutable Bot UUIDs in `state/groups.json` (the plugin data directory's `groups.json` before endbotd), written atomically.
-  Rename keeps membership; a replacement Bot with the old name is not automatically a member.
-- The member list is fixed when a bulk operation starts. Member order stays stable while members go offline. A missing
-  profile keeps its entry and produces an individual failure; `spawn` does not create a replacement for that entry.
-- Whole-group `move`, `look` (including `look at`), `jump`/`attack`/`use`, `sprint`/`sneak`, `stop`, `hotbar` and `drop`
-  take one profile snapshot and send one UUID-pinned input batch. The runtime applies them in one synchronous dispatch
-  turn, with individual Bot errors and replies in membership order. Per-Bot coordinates for `look at` are resolved
-  before dispatch. Membership/report order does not require staggered starts. Independent network/input ticks still
-  mean this is not a guarantee of the same BDS tick or simultaneous observed motion.
-- Lifecycle operations, teleport, mining and other operations retain their existing sequential execution paths.
-- A failed member does not skip the remaining Bots. Revocation/plugin shutdown during batch preparation prevents the
-  whole input batch; during sequential work it cancels remaining requests. A submitted immediate-input batch runs to
-  completion in one runtime turn, without a per-member permission callback. Revocation after its acceptance does not
-  undo those inputs. Existing continuous-mining revocation/lease behavior still applies.
-- Runtime requests carry the expected UUID and reject a stale/reused Bot name before applying an operation. This
-  supplements the plugin's UUID lookup; it does not change the Microsoft/Xbox or local-bot login paths.
-- Whole-group rename/forget are rejected. Use one member or a Bot name for those operations. Whole-group `/bot ... menu`
-  opens the shared operation screen; indexed `menu` opens the existing single-Bot screen. `/botgroup menu #group` opens
-  the distinct management screen, with a nested link to operations.
-- `/botgroup` advertises separate native hints for `list`, `help`, `create`, `delete`, `add`, `remove`, `menu` and `result`,
-  with optional group scope for `list` and group/Bot/member argument hints. It uses the same generic-parseability plus
-  typed-enum approach as `/bot`. Generic branches remain for the locked native parser (including indexed removal);
-  dynamic group/Bot name suggestions are unavailable on this baseline. Native client filtering can still be weak.
+- Every form submission runs the same `/bot` or `/botgroup` command, with the same permissions, and shows that
+  command in chat.
+- If the members change, or the Group is deleted and re-created, an old form is refused: open it again.
+- A member's form keeps controlling that same Bot. A new Bot that took the old name is not controlled by it.
+- Closing or canceling a form does nothing.
 
 ## Rules and limits
 
-- Group names are case-insensitive, start with an ASCII letter/underscore, and contain at most 16 ASCII letters,
-  digits or underscores. The stored spelling is retained for display.
-- Removing a member compacts later indexes; re-adding appends it. Offline and forgotten entries do not compact
-  automatically. There is no explicit reordering.
-- A Group cannot be renamed.
-- Bulk teleport applies the existing single-Bot teleport independently. There is no automatic formation, collision-safe
-  scatter or frozen shared destination for a moving player. Prefer indexed commands where placement matters.
-- Group forms, result summaries and ordinary action replies follow the controller's language. Some Group
-  management diagnostics remain English.
+- **Names:** case-insensitive, up to 16 ASCII letters, digits or `_`, starting with a letter or `_`. The spelling you
+  used is kept for display.
+- **Order:** removing a member moves later members up one index; adding again appends at the end. Offline or
+  forgotten members keep their place. There is no reordering command.
+- **Renaming:** a Group cannot be renamed. A Bot that is renamed stays a member; a new Bot with the old name is not
+  a member.
+- **Teleport:** each member teleports on its own, exactly as a single Bot would. There is no formation, no
+  collision-safe spreading and no shared fixed destination when you are moving. Use indexed commands where placement
+  matters.
+- **Language:** forms, results and normal replies use your game language. Some management messages stay in English.
 
 ## Known limits
 
-- `/botgroup` shows generic `<action: string>` / `<arguments: message>` usage instead of useful suggestions. Commands
-  are accepted; completion is weak, as for `/bot` ([#283](https://github.com/amatouhake/endbot/issues/283)).
-- Bedrock's `string` target parameter rejects a leading `#`, so the commands take the whole target and tail as one
-  message and parse it themselves.
-- A whole-Group input reaches every member in one runtime turn, but each Bot has its own network and input ticks, so
-  members are not guaranteed to act on the same BDS tick.
-- Whether an operation works on an offline member depends on the operation: `stop` is accepted, an online-only input
-  such as `jump` fails for that member alone.
+- `/botgroup` shows a generic `<action: string>` / `<arguments: message>` usage instead of useful suggestions. The
+  commands still work; completion is just weak, as for `/bot`
+  ([#283](https://github.com/amatouhake/endbot/issues/283)).
+- Members of a together-operation are not guaranteed to act on the same game tick (see
+  [above](#which-operations-reach-members-together)).
 
-What was checked on a server and on a client is under [validation status](COMPATIBILITY.md#bot-operations)
-([record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/GROUPS.md#verification)); to run the Group probe see
-[WINDOWS_DEV.md](WINDOWS_DEV.md#live-scripting-and-group-probes).
+What was checked on real servers and clients: [validation status](COMPATIBILITY.md#bot-operations). How Groups are
+built: [BOT_CONTROL.md](BOT_CONTROL.md#groups).

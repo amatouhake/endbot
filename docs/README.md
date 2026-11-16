@@ -62,4 +62,5 @@ The component READMEs cover their own code: [runtime](../runtime/README.md), [ru
   belongs only there. Each translation's first line names its source and the source's git blob
   (`<!-- source: docs/COMMANDS.md <blob> -->`); `python scripts/check_translations.py` lists the translations whose
   source has changed since, with the English diff to carry over. Example replies in a translation are the game's own
-  Japanese wording from `core/src/endbot_core/i18n.py`.
+  Japanese wording from `core/src/endbot_core/i18n.py`. Japanese paragraphs are not hard-wrapped, because each line
+  break renders as a stray space; `--unwrap` joins them.

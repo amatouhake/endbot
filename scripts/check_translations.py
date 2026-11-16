@@ -5,11 +5,13 @@ Each translation starts with ``<!-- source: docs/NAME.md <blob> -->``: the Engli
 translates and that file's git blob when it was translated. This script
 
 - fails when a translation has no such line, names a missing source, links to a file
-  that does not exist, or links to an anchor another docs/ja page does not define;
+  that does not exist, links to an anchor another docs/ja page does not define, or
+  hard-wraps paragraph lines (each break renders as a stray space in Japanese);
 - reports a translation whose source has changed since (a warning, or a failure with
   ``--strict``), with the English diff to carry over when the old blob is in history;
 - with ``--accept docs/ja/NAME.md``, records the source's current blob after the
-  translation has been brought up to date.
+  translation has been brought up to date;
+- with ``--unwrap docs/ja/NAME.md ...``, joins hard-wrapped paragraph lines.
 """
 
 from __future__ import annotations
@@ -28,6 +30,12 @@ JA_DIR = ROOT / "docs" / "ja"
 HEADER = re.compile(r"^<!-- source: (?P<source>\S+) (?P<blob>[0-9a-f]{40}) -->$")
 LINK = re.compile(r"\]\((?P<target>[^)\s]+)\)")
 ANCHOR = re.compile(r'<a id="([^"]+)"></a>')
+# Lines that begin a new block, so they never continue the line before them.
+BLOCK_START = re.compile(r"([-*+] |\d+\. |#|\||<|>|```)")
+# Full-width punctuation that never takes a space beside it.
+CLOSING = "、。，．：；」』）"
+# Lines that are not prose, so nothing continues them.
+NOT_PROSE = re.compile(r"(#|\||<|```)")
 
 
 @dataclass
@@ -60,6 +68,50 @@ def parse(path: Path) -> tuple[Translation | None, str | None]:
     if not source.is_file():
         return None, f"{rel(path)}: source {match['source']} does not exist"
     return Translation(path, source, match["blob"]), None
+
+
+def _wide(char: str) -> bool:
+    return char >= "⺀"  # CJK, kana, full-width punctuation and forms
+
+
+def _joinable(line: str) -> bool:
+    """A line a following paragraph line would continue: prose, a list item or its continuation."""
+    return bool(line.strip()) and not NOT_PROSE.match(line.lstrip())
+
+
+def unwrap(text: str) -> str:
+    """Join hard-wrapped paragraph and list-item lines into one line each.
+
+    A line break inside a Markdown paragraph renders as a space, which shows as a stray gap between two Japanese
+    characters. Lines are joined with no space between wide characters and with one space otherwise.
+    """
+    out: list[str] = []
+    fenced = False
+    for line in text.split("\n"):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            out.append(line)
+            continue
+        continues = (
+            not fenced and out and _joinable(out[-1]) and line.strip() and not BLOCK_START.match(line.lstrip())
+        )
+        if continues:
+            previous, current = out[-1].rstrip(), line.strip()
+            # Look past emphasis and link brackets to the characters a reader sees.
+            before, after = previous.rstrip("*_]")[-1:] or " ", current.lstrip("*_[")[:1] or " "
+            tight = (_wide(before) and _wide(after)) or before in CLOSING or after in CLOSING
+            separator = "" if tight else " "
+            out[-1] = previous + separator + current
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def wrapped_lines(path: Path) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+    if unwrap(text) == text:
+        return []
+    return [f"{rel(path)}: paragraph lines are hard-wrapped; run --unwrap {rel(path)}"]
 
 
 def anchors(path: Path) -> set[str]:
@@ -114,10 +166,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--strict", action="store_true", help="fail when a translation is out of date")
     parser.add_argument("--accept", metavar="FILE", help="record the source's current blob in FILE")
+    parser.add_argument("--unwrap", metavar="FILE", nargs="+", help="join hard-wrapped paragraph lines in FILE")
     args = parser.parse_args(argv)
 
     if args.accept:
         return accept((Path.cwd() / args.accept).resolve())
+    if args.unwrap:
+        for name in args.unwrap:
+            path = (Path.cwd() / name).resolve()
+            path.write_text(unwrap(path.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
+            print(f"{rel(path)}: unwrapped")
+        return 0
 
     failures: list[str] = []
     stale: list[str] = []
@@ -127,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
             failures.append(error or "")
             continue
         failures.extend(broken_links(path))
+        failures.extend(wrapped_lines(path))
         now = current_blob(item.source)
         if now != item.blob:
             stale.append(stale_report(item))

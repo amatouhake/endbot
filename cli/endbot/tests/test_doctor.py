@@ -859,12 +859,11 @@ class RuntimeLiveTests(DoctorTestCase):
 
 
 class CapacityTests(DoctorTestCase):
-    """The `capacity` check reports the Bot slot budget from server.properties and [limits]."""
+    """The `capacity` check reports the Bot slot budget from server.properties and endbot.toml [limits]."""
 
     def write_limits(self, text: str) -> None:
-        path = self.server / "plugins" / "endbot" / "config.toml"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        with open(self.paths.endbot_toml, "a", encoding="utf-8") as stream:
+            stream.write("\n" + text)
 
     def set_max_players(self, value: str) -> None:
         path = self.server / "server.properties"
@@ -895,28 +894,39 @@ class CapacityTests(DoctorTestCase):
         self.write_limits("[limits]\nmax-bots = 8\nreserved-player-slots = 1\n")
         self.assertEqual(self.status_of(self.doctor(), "capacity"), WARN)
 
-    def test_limits_that_are_not_a_table_warn_instead_of_crashing(self) -> None:
-        self.write_limits("limits = 5\n")
-        self.assertEqual(self.status_of(self.doctor(), "capacity"), WARN)
-        self.assertIn("must be a table", self.messages_of(self.doctor(), "capacity")[0])
-
     def test_a_per_controller_limit_is_reported(self) -> None:
         self.write_limits("[limits]\nmax-bots-per-controller = 2\n")
         results = self.doctor()
         self.assertEqual(self.status_of(results, "capacity"), PASS)
         self.assertIn("at most 2 per controller", self.messages_of(results, "capacity")[0])
 
-    def test_a_per_controller_limit_that_is_not_an_integer_warns(self) -> None:
-        self.write_limits('[limits]\nmax-bots-per-controller = "2"\n')
-        results = self.doctor()
-        self.assertEqual(self.status_of(results, "capacity"), WARN)
-        self.assertIn("must be integers", self.messages_of(results, "capacity")[0])
+    def test_invalid_limits_fail_config_and_skip_capacity(self) -> None:
+        for text in ("limits = 5\n", '[limits]\nmax-bots-per-controller = "2"\n',
+                     "[limits]\nmax-bots-per-controller = -1\n"):
+            with self.subTest(text=text):
+                original = self.paths.endbot_toml.read_text(encoding="utf-8")
+                try:
+                    self.write_limits(text)
+                    results = self.doctor()
+                    self.assertEqual(self.status_of(results, "config"), FAIL)
+                    self.assertEqual(self.status_of(results, "capacity"), SKIP)
+                finally:
+                    self.paths.endbot_toml.write_text(original, encoding="utf-8")
 
-    def test_a_negative_per_controller_limit_warns(self) -> None:
-        self.write_limits("[limits]\nmax-bots-per-controller = -1\n")
+    def test_limits_left_in_the_plugin_config_are_ignored(self) -> None:
+        # Since endbotd took over policy, [limits] is generated into endbotd.toml, not the plugin config.
+        self.set_max_players("4")
+        self.write_limits("[limits]\nmax-bots = 8\n")
+        plugin_config = self.server / "plugins" / "endbot" / "config.toml"
+        plugin_config.parent.mkdir(parents=True, exist_ok=True)
+        plugin_config.write_text("[limits]\nmax-bots = 2\n", encoding="utf-8")
         results = self.doctor()
         self.assertEqual(self.status_of(results, "capacity"), WARN)
-        self.assertIn("0 or more", self.messages_of(results, "capacity")[0])
+        self.assertIn("max-bots=8", self.messages_of(results, "capacity")[0])
+
+    def test_no_limit_names_endbot_toml(self) -> None:
+        self.write_limits("[limits]\nmax-bots = 0\nreserved-player-slots = 0\n")
+        self.assertIn("endbot.toml", self.messages_of(self.doctor(), "capacity")[0])
 
 
 if __name__ == "__main__":

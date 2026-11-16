@@ -187,8 +187,12 @@ def check_world(server: Path, properties: dict[str, str] | None) -> CheckResult:
     return CheckResult(PASS, name, details)
 
 
-def check_capacity(server: Path, properties: dict[str, str] | None) -> CheckResult:
-    """Report the Bot slot budget: max-players minus the slots kept for players."""
+def check_capacity(config: EndbotConfig, paths: InstancePaths, properties: dict[str, str] | None) -> CheckResult:
+    """Report the Bot slot budget: max-players minus the slots kept for players.
+
+    The limits come from ``[limits]`` in endbot.toml, which ``endbot start`` generates into
+    endbotd.toml; load_config has already rejected non-integer or negative values.
+    """
 
     name = "capacity"
     if properties is None:
@@ -198,36 +202,15 @@ def check_capacity(server: Path, properties: dict[str, str] | None) -> CheckResu
         max_players = int(raw)
     except (TypeError, ValueError):
         return CheckResult(WARN, name, f"max-players={raw!r} is not an integer; Bot capacity is unchecked")
-    error, document = _load_plugin_config(server)
-    if error is not None:
-        return CheckResult(WARN, name, error)
-    limits = (document or {}).get("limits", {})
-    if not isinstance(limits, dict):
-        return CheckResult(WARN, name, "[limits] must be a table; Bot capacity is unchecked")
-    max_bots = limits.get("max-bots", 0)
-    reserved = limits.get("reserved-player-slots", 1)
-    per_controller = limits.get("max-bots-per-controller", 0)
-    if any(
-        isinstance(value, bool) or not isinstance(value, int)
-        for value in (max_bots, reserved, per_controller)
-    ):
-        return CheckResult(
-            WARN,
-            name,
-            "[limits] values must be integers (max-bots, reserved-player-slots, max-bots-per-controller)",
-        )
-    if max_bots < 0 or reserved < 0 or per_controller < 0:
-        return CheckResult(
-            WARN,
-            name,
-            "[limits] values must be 0 or more (max-bots, reserved-player-slots, max-bots-per-controller)",
-        )
-    config_path = server / "plugins" / "endbot" / "config.toml"
+    max_bots = config.limits.max_bots
+    reserved = config.limits.reserved_player_slots
+    per_controller = config.limits.max_bots_per_controller
     if max_bots == 0 and reserved == 0 and per_controller == 0:
         return CheckResult(
             WARN,
             name,
-            f"no Bot limit and no reserved slots in {config_path}; a controller can fill all {max_players} slots",
+            f"no Bot limit and no reserved slots in [limits] of {paths.endbot_toml}; "
+            f"a controller can fill all {max_players} slots",
         )
     room = max_players - reserved
     if room <= 0:
@@ -1176,7 +1159,7 @@ def run_doctor(context: DoctorContext) -> list[CheckResult]:
         properties_result, properties = check_server_properties(server, config.server.transport)
         results.append(properties_result)
         results.append(check_world(server, properties))
-        results.append(check_capacity(server, properties))
+        results.append(check_capacity(config, paths, properties))
 
     if server is None:
         results.append(CheckResult(SKIP, "bds-version", "server directory is unavailable"))

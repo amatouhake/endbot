@@ -494,9 +494,9 @@ chat = false
 - Existing Bots are never despawned by a limit.
 - `max-bots = 0` with `reserved-player-slots = 0` removes the slot limit.
 
-The `capacity` doctor check prints the resulting budget and warns when it cannot apply. It reads `[limits]` from
-`<server>/plugins/endbot/config.toml`, which a managed instance generates without `[limits]`, so on such an instance it
-reports the defaults rather than your `endbot.toml` values.
+The `capacity` doctor check compares `[limits]` in `endbot.toml` with `max-players` in `server.properties`, prints the
+resulting budget, and warns when it cannot apply: no Bot limit and no reserved slot, a reserve that leaves no slot for
+a Bot, or a `max-bots` larger than the slots left after the reserve.
 
 ### Chunk radius
 
@@ -720,7 +720,7 @@ Checks, in the order they run:
 | `server-dir` | The BDS directory exists |
 | `server-properties` | `online-mode=true` and `allow-cheats=false` (safety), and `transport=nethernet` matching `[server] transport` |
 | `world` | The world must have no experiments (Beta APIs and GameTest included), no creative history and no cheats. FAIL for achievement-disabling world history in `level.dat` (`hasBeenLoadedInCreative`, `commandsEnabled`, `experiments_ever_used`, `saved_with_toggled_experiments`), an unreadable `level.dat`, or a world directory without one. WARN for `cheatsEnabled`, a non-survival game type or unknown experiment keys. Skipped before the world exists. |
-| `capacity` | The Bot slot budget ([Bot limits](#bot-limits)) |
+| `capacity` | The Bot slot budget from `[limits]` in `endbot.toml` and `max-players`; WARN when the limits cannot apply ([Bot limits](#bot-limits)) |
 | `bds-version` | `<server>/version.txt` matches the locked BDS |
 | `local-bot-auth` | `[local-bot-auth]` in `endstone.toml` is enabled with a readable P-384 public key matching `state/secrets/owner-private.pem` |
 | `plugin-port` | The plugin config links to endbotd's port with endbotd's token and carries no runtime settings. A config written before endbotd is a WARN. |

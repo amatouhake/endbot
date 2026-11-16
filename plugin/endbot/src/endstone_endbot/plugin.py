@@ -44,10 +44,10 @@ CALL_DEADLINE_SECONDS = 5.0
 COMMAND_USAGES = [
     # Each usage becomes one native BDS overload, matched before Python runs.
     # Live oracle batteries on the pinned BDS build proved three rules that
-    # shape this list (see docs/COMMANDS.md): trailing OPTIONAL params never
-    # consume input; string/Id rejects numeric tokens; and params after an
-    # enum never match, so only overloads ending at (or without) an enum can
-    # consume a tail. The architecture follows from those rules:
+    # shape this list (see docs/BOT_CONTROL.md, "Command declaration"):
+    # trailing OPTIONAL params never consume input; string/Id rejects numeric
+    # tokens; and params after an enum never match, so only overloads ending
+    # at (or without) an enum can consume a tail. The architecture follows from those rules:
     # - enum-free string overloads are the parseability layer. <name> plus a
     #   required <operation: string> covers every 2-token named form, and the
     #   same pair plus a required <arguments: message> covers every longer

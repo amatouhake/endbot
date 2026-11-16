@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and package the optional Endbot UI resource pack (``ui-pack/``, docs/UI_PACK.md).
+"""Validate and package the optional Endbot UI resource pack (``ui-pack/``; see ui-pack/README.md).
 
 The pack is client-side only: players add it as a global resource pack, the
 server's pack stack stays empty. This script checks what can be checked
@@ -27,6 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACK_DIR = ROOT / "ui-pack"
 PACK_FILES = ("LICENSE", "NOTICE", "manifest.json", "pack_icon.png", "ui/server_form.json")
+# Files at the pack root that document the source and are never packaged.
+SOURCE_ONLY = ("README.md",)
 # The pack icon is a client requirement: a square PNG named pack_icon.png at the pack root.
 ICON = "pack_icon.png"
 ICON_SIZE = 128
@@ -207,7 +209,8 @@ def check_icon(pack: Path) -> None:
 
 
 def check_pack(pack: Path = PACK_DIR) -> dict[str, bytes]:
-    files = sorted(str(path.relative_to(pack).as_posix()) for path in pack.rglob("*") if path.is_file())
+    files = sorted(name for name in (str(path.relative_to(pack).as_posix()) for path in pack.rglob("*") if path.is_file())
+                   if name not in SOURCE_ONLY)
     if files != sorted(PACK_FILES):
         raise PackError(f"ui-pack holds {files}; expected exactly {sorted(PACK_FILES)}")
     check_manifest(load(pack / "manifest.json"))

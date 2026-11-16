@@ -39,7 +39,9 @@ Signing in to the web starts in game with `/botweb link` ([commands](COMMANDS.md
 | [Product direction](DIRECTION.md) | The five decisions behind the design, and what comes next |
 | [Interface guide](INTERFACE_GUIDE.md) | One vocabulary across commands, forms, Luau and the web; the glossary with Japanese terms |
 | [Permission model](PERMISSIONS.md) | Roles, ownership, script declarations and limits |
+| [Bot control](BOT_CONTROL.md) | How commands, forms and Group operations reach BDS, and the command declaration |
 | [endbotd](ENDBOTD.md) | The process that owns policy and state, and its link to the plugin |
+| [Scripting internals](SCRIPTING_INTERNALS.md) | How script runs, arguments, waits and cleanup are implemented, behind the scripting reference |
 | [Events, watches and triggers](EVENTS.md) | The event registry, delivery and trigger rules |
 | [Event guarantees](EVENT_MEASUREMENTS.md) | What each event kind guarantees and the measurement behind it |
 | [The web](WEB.md) | Pairing, accounts, sessions and the relay |
@@ -48,8 +50,8 @@ Signing in to the web starts in game with `/botweb link` ([commands](COMMANDS.md
 | [Releasing](../release/README.md) | Release candidates and the release checklist |
 
 The component READMEs cover their own code: [runtime](../runtime/README.md), [runner](../runner/README.md),
-[plugin](../plugin/endbot/README.md), [CLI](../cli/endbot/README.md), [core](../core/README.md) and the
-[Endstone patches](../patches/endstone/README.md).
+[plugin](../plugin/endbot/README.md), [CLI](../cli/endbot/README.md), [core](../core/README.md), the
+[UI resource pack](../ui-pack/README.md) and the [Endstone patches](../patches/endstone/README.md).
 
 ## How these documents are kept
 
@@ -64,3 +66,18 @@ The component READMEs cover their own code: [runtime](../runtime/README.md), [ru
   source has changed since, with the English diff to carry over. Example replies in a translation are the game's own
   Japanese wording from `core/src/endbot_core/i18n.py`. Japanese paragraphs are not hard-wrapped, because each line
   break renders as a stray space; `--unwrap` joins them.
+
+### Player documents
+
+Player documents are looked up, not read through. They follow these rules:
+
+- **Only what a player needs.** What to type or tap, what happens, what the reply means, the limits and what to do
+  when something fails. How it is implemented (packets, transactions, overloads, protocol bounds, stores) belongs in
+  a developer document such as [BOT_CONTROL.md](BOT_CONTROL.md); what was tested belongs in
+  [COMPATIBILITY.md](COMPATIBILITY.md#validation-status). A player document links there instead.
+- **One shape per operation.** A one-sentence description, the syntax in a code block, the options as a list or a
+  table, an example, then notes.
+- **Short paragraphs.** One topic per paragraph and at most about three sentences. A sequence of items, options,
+  states or cases is a list or a table, never a run of sentences.
+- **Lead with the common case.** The usual way first; exceptions, edge cases and console-only behavior after it,
+  marked as such.

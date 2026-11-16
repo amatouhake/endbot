@@ -7,7 +7,49 @@ roles and what each may do are in [PERMISSIONS.md](PERMISSIONS.md).
 How these commands are implemented is in [BOT_CONTROL.md](BOT_CONTROL.md). What was checked on real servers is in
 the [validation status](COMPATIBILITY.md#bot-operations).
 
-## Quick start
+**Contents**
+
+- [Basics](#basics)
+  - [Quick start](#quick-start)
+  - [Help, list and status](#help-list-and-status)
+  - [Operational states](#operational-states)
+  - [Command results](#command-results)
+  - [Reply language](#reply-language)
+  - [Control forms](#control-forms)
+- [Bots: spawn, despawn and move](#bots-spawn-despawn-and-move)
+  - [Lifecycle](#lifecycle)
+  - [Teleport](#teleport)
+  - [Chunk loading range](#chunk-loading-range)
+- [Movement and actions](#movement-and-actions)
+  - [Moving, sprinting and stopping](#moving-sprinting-and-stopping)
+  - [Looking](#looking)
+  - [Jump, attack and use](#jump-attack-and-use)
+  - [Holding use](#holding-use)
+  - [Durations (`for`) and charged presses (`hold`)](#durations-for-and-charged-presses-hold)
+- [Inventory](#inventory)
+  - [Inventory and hotbar](#inventory-and-hotbar)
+  - [Swap and hold](#swap-and-hold)
+  - [Dropping items](#dropping-items)
+- [Blocks and entities](#blocks-and-entities)
+  - [Targets: crosshair, coordinates, block types and `@` entities](#targets-crosshair-coordinates-block-types-and--entities)
+  - [Areas: `within` and `except`](#areas-within-and-except)
+  - [Interacting with blocks](#interacting-with-blocks)
+  - [Mining blocks](#mining-blocks)
+  - [Looking around](#looking-around)
+  - [Entities and vehicles](#entities-and-vehicles)
+- [Other features](#other-features)
+  - [Shared Group menus and results](#shared-group-menus-and-results)
+  - [Scripts and triggers](#scripts-and-triggers)
+  - [Linking the web](#linking-the-web)
+- [Appendix](#appendix)
+  - [Syntax summary](#inputs-and-actions)
+  - [Autocomplete](#autocomplete)
+
+## Basics
+
+How commands, replies, menus and help work. Read this first.
+
+### Quick start
 
 Every command names its Bot; there is no selected target.
 
@@ -23,7 +65,7 @@ Every command names its Bot; there is no selected target.
 Typing `/bot` alone opens the Bot list. `/bot Alice` opens Alice's menu, and `/bot #group` opens the group
 operation menu (see [control forms](#control-forms)).
 
-## Help, list and status
+### Help, list and status
 
 Show the command summary, the known Bots, or one Bot's state.
 
@@ -73,7 +115,24 @@ Notes:
 - `status` shows `yaw=` in the range [0, 360), the same as `look`'s result and a script's `status` `data.look`.
 - At the server console, `/bot` alone shows help page 1 instead of the list.
 
-## Command results
+### Operational states
+
+What `/bot list` and `status` mean by each state:
+
+| State | Meaning |
+| --- | --- |
+| `connecting` | A requested session has not spawned yet |
+| `online` | The session is active |
+| `reconnecting` | An explicit reconnect or an automatic retry is in progress |
+| `offline` | The Bot is intentionally offline |
+| `failed` | Retries ran out; `status` includes the last error |
+
+- Each Bot reconnects and takes input independently of every other Bot.
+- After an unexpected disconnect, a Bot keeps its UUID and retries with growing waits, at most 30 seconds apart, until
+  the configured number of attempts.
+- `reconnect` and a live `rename` wait for the old connection to close first, so two sessions never overlap.
+
+### Command results
 
 Every reply about a Bot starts with `Endbot: <Bot>: ` and says what was applied, including errors and syntax errors.
 
@@ -95,84 +154,7 @@ item use, reach and every other world result; check with `status` and by looking
 
 Connecting is asynchronous: `connecting` does not mean the spawn has finished.
 
-## Control forms
-
-Run the common operations from Bedrock menus instead of typing them.
-
-```text
-/bot               -> Bot and Group target list (players); help page 1 (console)
-/bot menu          -> the same target list
-/bot Alice         -> Alice's menu (same as /bot Alice menu)
-/bot Alice menu    -> Alice's actions and compact state/position summary
-/bot #miners       -> the group operation menu (same as /bot #miners menu)
-/bot #miners menu  -> the same operation menu, applied to #miners
-```
-
-### The target list
-
-The list is ordered by what `/bot` can address:
-
-1. online Bots, by name; connecting, retrying and failed Bots carry a dark `JOIN`, `RETRY` or `FAIL` prefix;
-2. one `Offline (n)...` button holding the offline Bots;
-3. `#group (count)` entries, which open the group operation screen directly;
-4. `+ New Bot here`;
-5. **Manage groups...**, which opens `/botgroup menu`;
-6. **Scripts...**, which opens `/botscript menu` (only when scripting is enabled).
-
-Group management is not a `/bot` operation, so it appears only as that link.
-
-### A Bot's screen
-
-Category names follow Minecraft's control settings. An online Bot has:
-
-| Button | What it holds |
-| --- | --- |
-| Stop everything | `stop` |
-| Movement | move, jump, sprint / sneak |
-| Look | look |
-| Teleport | tp |
-| Gameplay | attack, use item, destroy, interact, nearby entities (**Look around...**), interact with entity, dismount |
-| Inventory | list inventory, hotbar, hold, swap, drop |
-| Bot | resume/spawn, reconnect, confirmed despawn, radius and status |
-
-- An offline Bot offers resume/spawn, radius and the Bot settings category.
-- The Bot settings offer rename and a confirmed forget; forget still needs an offline Bot.
-- A group screen has the same operations and works with mixed or offline members, reporting failures per
-  operation. Rename and forget need an individual Bot.
-
-### Mode forms
-
-Jump, Attack, Use item and Destroy blocks first offer the command's modes: `once`, `continuous`, `interval`, `stop`,
-plus `for` for Use item and `x y z` for Destroy blocks.
-
-- A mode without parameters runs at once.
-- A mode with parameters opens a form with only its clauses, named as typed: `interval <ticks>`, `hold <ticks>`,
-  `for <ticks>`, and `count <blocks>` on the Destroy blocks continuous form. Ticks are 20 per second.
-- A blank optional clause is left out: a blank `for` means until stopped, a blank `count` means no block limit.
-- Use item `once` opens a form because it accepts `hold`.
-- Move opens one form for `move <direction> [for <ticks>]`; a quick single tap of movement is left to the command.
-
-Example: three charged bow shots are Use item, `interval...`, with interval 30, hold 20, for 80.
-
-### Using the forms
-
-- Dropdowns, sliders and text fields take the input. Coordinate fields accept the same `~` forms as the command,
-  and their labels say what `~` is relative to.
-- Closing a form, or cancelling the despawn confirmation, returns to the screen it came from.
-- Submitting closes the form and the normal chat reply appears; run `/bot` again to continue.
-- Each command a button or form runs is echoed once in gray as its typed form, for example
-  `/bot Alice use interval 30 hold 20 for 80`, before the reply. Menu navigation is not echoed.
-
-A form does exactly what the typed command does, with the same permission check and replies. If your permission is
-revoked while a form is open, submitting it gets the usual permission reply.
-
-These stay command-only: advanced `tp ... facing ...` arguments and the help detail pages. Coordinate spawn, block
-interaction and rename/forget do have form controls.
-
-The server console cannot open forms: `/bot menu` there replies with a pointer to `/bot help`, and a bare target such
-as `/bot Alice` keeps the player-only menu reply.
-
-## Reply language
+### Reply language
 
 Replies, help text and menus come in English or Japanese.
 
@@ -202,165 +184,88 @@ A notice from an ongoing job, such as continuous mining ending, uses the languag
 Japanese text uses only kana, kanji, ASCII and the Japanese comma and full stop, because the Bedrock chat font lacks
 many symbols (arrows show as boxes).
 
-## Mining blocks
+### Control forms
 
-Break blocks with ordinary Survival mining: hold left-click on a block, or keep mining whatever comes into sight.
+Run the common operations from Bedrock menus instead of typing them.
 
 ```text
-/bot <name> destroy [once]
-/bot <name> destroy <x> <y> <z> [face]
-/bot <name> destroy continuous [for <ticks>] [count <blocks>] [within <area>] [except <area>]
-/bot <name> destroy for <ticks>
-/bot <name> destroy count <blocks>
-/bot <name> destroy <block type> [continuous] [for <ticks>] [count <blocks>] [within <area>] [except <area>]
-/bot <name> destroy stop
+/bot               -> Bot and Group target list (players); help page 1 (console)
+/bot menu          -> the same target list
+/bot Alice         -> Alice's menu (same as /bot Alice menu)
+/bot Alice menu    -> Alice's actions and compact state/position summary
+/bot #miners       -> the group operation menu (same as /bot #miners menu)
+/bot #miners menu  -> the same operation menu, applied to #miners
 ```
 
-| Form | What it mines |
+#### The target list
+
+The list is ordered by what `/bot` can address:
+
+1. online Bots, by name; connecting, retrying and failed Bots carry a dark `JOIN`, `RETRY` or `FAIL` prefix;
+2. one `Offline (n)...` button holding the offline Bots;
+3. `#group (count)` entries, which open the group operation screen directly;
+4. `+ New Bot here`;
+5. **Manage groups...**, which opens `/botgroup menu`;
+6. **Scripts...**, which opens `/botscript menu` (only when scripting is enabled).
+
+Group management is not a `/bot` operation, so it appears only as that link.
+
+#### A Bot's screen
+
+Category names follow Minecraft's control settings. An online Bot has:
+
+| Button | What it holds |
 | --- | --- |
-| `destroy`, `destroy once` | One block in the Bot's line of sight, within 6 blocks |
-| `destroy <x> <y> <z> [face]` | That one block, if reachable and unobstructed; the Bot turns toward it |
-| `destroy continuous` | Block after block along the Bot's sight, waiting when nothing is in reach |
-| `destroy for <ticks>` | Continuous mining for that many ticks (same as `continuous for`) |
-| `destroy count <blocks>` | Continuous mining until that many blocks are gone (same as `continuous count`) |
-| `destroy <block type>` | The nearest block of that type the Bot can reach within 6 blocks ([targets](#targets-crosshair-coordinates-block-types-and--entities)) |
-| `destroy <block type> continuous` (or `for`/`count`) | Continuous mining, turning to the nearest visible block of that type for each block |
-| `destroy stop` | Stops mining, including a waiting continuous loop |
+| Stop everything | `stop` |
+| Movement | move, jump, sprint / sneak |
+| Look | look |
+| Teleport | tp |
+| Gameplay | attack, use item, destroy, interact, nearby entities (**Look around...**), interact with entity, dismount |
+| Inventory | list inventory, hotbar, hold, swap, drop |
+| Bot | resume/spawn, reconnect, confirmed despawn, radius and status |
 
-Example:
+- An offline Bot offers resume/spawn, radius and the Bot settings category.
+- The Bot settings offer rename and a confirmed forget; forget still needs an offline Bot.
+- A group screen has the same operations and works with mixed or offline members, reporting failures per
+  operation. Rename and forget need an individual Bot.
 
-```text
-/bot Alice hotbar 1
-/bot Alice destroy continuous for 200 count 64
-/bot Alice destroy ~ ~-1 ~ up
-/bot Alice destroy acacia_log within 6 except ~ ~-1 ~ count 20
-/bot Alice status
-```
+#### Mode forms
 
-`destroy` takes the mode words `once` (the default), `continuous` and `stop`, like `jump`, `attack` and `use`. There
-is no `interval` mode, because `continuous` already waits for the next block.
+Jump, Attack, Use item and Destroy blocks first offer the command's modes: `once`, `continuous`, `interval`, `stop`,
+plus `for` for Use item and `x y z` for Destroy blocks.
 
-### Before you start
+- A mode without parameters runs at once.
+- A mode with parameters opens a form with only its clauses, named as typed: `interval <ticks>`, `hold <ticks>`,
+  `for <ticks>`, and `count <blocks>` on the Destroy blocks continuous form. Ticks are 20 per second.
+- A blank optional clause is left out: a blank `for` means until stopped, a blank `count` means no block limit.
+- Use item `once` opens a form because it accepts `hold`.
+- Move opens one form for `move <direction> [for <ticks>]`; a quick single tap of movement is left to the command.
 
-- Select the tool with `hotbar` first; mining does not walk or pick tools.
-- Starting clears movement, attack and item-use inputs.
-- Relative coordinates are measured from the Bot, also for commands from the server console.
-- A face uses the same names as `interact`.
+Example: three charged bow shots are Use item, `interval...`, with interval 30, hold 20, for 80.
 
-### What counts as in the way
+#### Using the forms
 
-- Grass, flowers, torches and other blocks without a collision box do not block a named block. The crosshair still
-  stops at them, as a player's does.
-- A refusal names the block in the way (see [targeting blocks](SCRIPTING.md#targeting-blocks)).
-- Targeting works on whole block cells: a slab or fence stops an aimed line like a full block, while `blocks` treats
-  it as see-through.
+- Dropdowns, sliders and text fields take the input. Coordinate fields accept the same `~` forms as the command,
+  and their labels say what `~` is relative to.
+- Closing a form, or cancelling the despawn confirmation, returns to the screen it came from.
+- Submitting closes the form and the normal chat reply appears; run `/bot` again to continue.
+- Each command a button or form runs is echoed once in gray as its typed form, for example
+  `/bot Alice use interval 30 hold 20 for 80`, before the reply. Menu navigation is not echoed.
 
-### Continuous mining
+A form does exactly what the typed command does, with the same permission check and replies. If your permission is
+revoked while a form is open, submitting it gets the usual permission reply.
 
-`destroy continuous` holds left-click along the Bot's current sight. After each block it picks the next reachable
-block along the same line. It stays in place and does not dig out an area.
+These stay command-only: advanced `tp ... facing ...` arguments and the help detail pages. Coordinate spawn, block
+interaction and rename/forget do have form controls.
 
-When nothing is within 6 blocks, or an unbreakable block such as bedrock is in front, it waits. Placing a reachable
-block in sight resumes mining by itself.
+The server console cannot open forms: `/bot menu` there replies with a pointer to `/bot help`, and a bare target such
+as `/bot Alice` keeps the player-only menu reply.
 
-### Ending after a time or a number of blocks
+## Bots: spawn, despawn and move
 
-| Clause | Ends mining | Message when it ends |
-| --- | --- | --- |
-| `for <ticks>` | After that many input ticks from the command; a block still breaking is abandoned | `Endbot: Alice: destroy continuous stopped: duration elapsed` |
-| `count <blocks>` | Once that many blocks are broken; a block already breaking is finished | `... stopped: block count reached` |
+Creating Bots, taking them offline and bringing them back, names, limits, teleporting and the chunk loading range (help page 1).
 
-- Both values are 1–72000.
-- `for` and `count` combine in either order; mining ends at whichever comes first.
-- `count` counts blocks BDS reports broken, so waiting between blocks costs nothing and server load or TPS does not
-  matter. `for` is wall-clock input ticks.
-- These messages are info level and go to the player who started mining.
-- Single-block `destroy` and coordinates take no `for` or `count`.
-
-### Status
-
-The first reply names the target, for example
-`Endbot: Alice: destroying minecraft:stone at 1 64 2; see status for the result`. No completion message is sent;
-`status` shows the mining state:
-
-```text
-destroying minecraft:stone at 1 64 2                                (breaking now)
-destroying minecraft:stone at 1 64 2 (continuous, 12/64 blocks)    (destroy count)
-destroy continuous waiting for a block in sight (last: ..., 3 blocks)  (destroy continuous, nothing in reach)
-last destroy: block broken or changed (minecraft:stone at 1 64 2)  (finished)
-last destroy: block count reached (64/64 blocks, minecraft:stone at 1 64 2)  (count reached)
-last destroy: failed: target out of reach (...)                    (failed)
-last destroy: canceled by teleport (...)                           (canceled)
-```
-
-- While a `for` run is going, `status` shows the ticks left.
-- A finished run keeps its total, for example
-  `last destroy: duration elapsed (137 blocks, minecraft:stone at 1 64 2)`.
-- A finished job stays visible as `last destroy` until the next one starts.
-
-### What BDS decides
-
-BDS does the breaking: hardness and tool speed, drops, durability, and plugins that cancel the break. Endbot never
-sets a block to air, runs `/setblock` or grants operator permissions.
-
-Single-block mining ends when BDS reports the block changed, so a replacement or another player's change also ends
-it. Continuous mining picks again. Endbot waits for the server instead of predicting instant breaking or loot.
-
-A rejected or protected target may stay active until stopped, or until the 12000-input-tick timeout (about ten
-minutes at 20 TPS).
-
-### Other commands while mining
-
-- `move`, `look`, `attack`, `use`, `drop` and `interact` do not cancel mining. A continuous loop follows the new sight
-  direction for its next block.
-- Changing the hotbar slot or the held item (a pickup or a broken tool) restarts the current block with the new item.
-- Attacking or using an item while mining sends both inputs; BDS decides the outcome.
-
-These end the current block: a teleport, a dimension change, the target moving out of reach, or the 10-minute
-timeout. Single-block mining ends there; continuous mining picks its next target.
-
-### When mining ends
-
-Mining ends only on:
-
-- `destroy stop` (mining only) or `stop` (mining and all movement and actions);
-- an elapsed `for` duration or a reached `count`;
-- death or disconnect;
-- revocation of the starting player's permission;
-- the plugin being disabled;
-- Endbot's server side not responding for 200 input ticks (about ten seconds).
-
-Continuous mining keeps running after its player logs off. Mining is not saved or resumed on reconnect.
-
-The command reply confirms start and stop. When mining ends for any other reason (a failed single block, death,
-disconnect, revocation, a lost runtime), the player who started it gets one chat message, for example
-`Endbot: Alice: destroy continuous stopped: canceled by death`. Broken blocks are not announced.
-
-For operators: start and stop are logged on the server console at info level, other endings at warning level (also
-when the player is offline). The log stays English.
-
-`attack` attacks entities; use `destroy` for blocks. The name follows the game's "Attack/Destroy" control.
-
-## Linking the web
-
-Link your own account to the Endbot web from the game.
-
-```text
-/botweb link     a code for the Endbot web: 6 symbols, 5 minutes, one use
-/botweb status   whether this player has a web account, with its passkey and session counts (the default)
-/botweb unlink   delete this player's web account, passkeys and sessions
-/botweb help     this list
-```
-
-- Only a player with a grant and Xbox authentication can link, and only for themselves.
-- The web must be enabled on the server.
-- A new code replaces an earlier one.
-- Unlinking leaves the controller grant as it is.
-- On the web, "To my position" in Teleport is `tp me`; it works while you are online in the game.
-
-How the web works: [WEB.md](WEB.md).
-
-## Lifecycle
+### Lifecycle
 
 Create, connect, disconnect, rename and remove a Bot.
 
@@ -396,7 +301,7 @@ Example:
 /bot Alice rename Miner_1
 ```
 
-### Names
+#### Names
 
 - 1–16 ASCII letters, digits or underscores.
 - Names are case-insensitive: `alice` and `Alice` collide.
@@ -406,7 +311,7 @@ Example:
   `/bot ping` use them. Creating or renaming to one is refused from commands, forms and scripts. A Bot that already
   has such a name keeps working; `/bot list` and its menu mark it and suggest `rename`.
 
-### Spawn notes
+#### Spawn notes
 
 - From the server console, `spawn` without coordinates leaves placement to BDS: a new Bot appears at the world spawn
   point, a known Bot where it last was. Use `spawn at <x> <y> <z> in <dimension>` to place it.
@@ -415,7 +320,7 @@ Example:
 - If a spawn never reaches the world, `resume`, `reconnect`, `despawn`, `forget` or `rename` discards its pending
   placement, so it is never used later.
 
-### Limits
+#### Limits
 
 `spawn`, `resume` and `reconnect` respect the operator's `[limits]` ([configuration](OPERATIONS.md#2-configuration)).
 
@@ -424,7 +329,7 @@ Example:
 - `despawn` and `forget` are never limited.
 - Bots already online stay online when the limit is lowered.
 
-### Visibility and owner
+#### Visibility and owner
 
 - `visibility`, `forget` and `rename` are for the Bot's owner or the console.
 - An unowned Bot stays shared: `visibility` is refused with a pointer to the console's `owner` command, so a player
@@ -432,7 +337,7 @@ Example:
 - `owner` (console only) assigns the Bot to the named online player or controller. It keeps the Bot's visibility, or
   uses the configured default for a Bot that had none.
 
-## Teleport
+### Teleport
 
 Move a Bot to a player, coordinates, or another dimension.
 
@@ -459,7 +364,7 @@ Example:
 
 A Bot teleported into the air falls and lands normally.
 
-## Chunk loading range
+### Chunk loading range
 
 Set how many chunks around a Bot the server sends it.
 
@@ -496,45 +401,9 @@ current baseline a request for 3 became 5.
 The range does not change the server's simulation distance, move the Bot, or guarantee terrain generation. See
 [operator configuration](OPERATIONS.md).
 
-## Inputs and actions
+## Movement and actions
 
-```text
-/bot Alice move forward|backward|left|right|stop
-/bot Alice look <yaw> <pitch>
-/bot Alice look at <x> <y> <z>
-/bot Alice move forward|backward|left|right for <ticks>
-/bot Alice jump|attack|use [once|continuous|interval <ticks>|stop]
-/bot Alice jump|attack|use [continuous|interval <ticks>] for <ticks>
-/bot Alice use for <ticks>
-/bot Alice use hold <ticks> [interval <ticks>] [for <ticks>]
-/bot Alice sprint on|off
-/bot Alice sneak on|off
-/bot Alice inventory
-/bot Alice hotbar
-/bot Alice hotbar <1-9>
-/bot Alice swap <a> <b>
-/bot Alice hold <item>
-/bot Alice interact [<x> <y> <z> [face] | <block type> [within <area>] [except <area>] | @<type|id|nearest>]
-/bot Alice attack @<type|id|nearest> [once|continuous|interval <ticks>|stop] [for <ticks>] [count <n>]
-/bot Alice interact @<type|id|nearest> [once|continuous|interval <ticks>|stop] [for <ticks>] [count <n>]
-/bot Alice interact stop
-/bot Alice destroy <block type> [continuous] [for <ticks>] [count <blocks>] [within <area>] [except <area>]
-/bot Alice destroy continuous [for <ticks>] [count <blocks>] [within <area>] [except <area>]
-/bot Alice entities
-/bot Alice entity [@<type|id|nearest>]
-/bot Alice target
-/bot Alice block <x> <y> <z>
-/bot Alice blocks <type> [limit <1-64>] [within <area>] [except <area>]
-/bot Alice dismount
-/bot Alice drop
-/bot Alice drop stack
-/bot Alice drop <1-36|offhand|head|chest|legs|feet>
-/bot Alice drop <item> [count]
-/bot Alice drop all
-/bot Alice stop
-```
-
-Coordinates anywhere in `/bot` accept vanilla's compact relative form: `~~-1~` is `~ ~-1 ~`.
+Walking, looking, jumping, attacking and using items, and how long an action lasts (help page 2).
 
 ### Moving, sprinting and stopping
 
@@ -674,6 +543,10 @@ for other inputs are not available.
 
 The Jump, Attack, Use item, Move and Destroy blocks forms offer the same clauses (see [control forms](#control-forms)).
 
+## Inventory
+
+What a Bot carries, what it holds and what it drops (help page 3).
+
 ### Inventory and hotbar
 
 See what a Bot carries and which slot it holds.
@@ -766,21 +639,43 @@ asked for, the reply gives both, for example `drop stone x3 requested (asked for
   form asks before drop all; typed commands run immediately.
 - Group targets use the same grammar.
 
-### Interacting with blocks
+## Blocks and entities
 
-`interact` is a normal right-click on a block face.
+How to point at a block or an entity, then interacting, mining, looking around and riding (help page 3).
 
-```text
-/bot <name> interact
-/bot <name> interact <x> <y> <z> [face]
-/bot <name> interact <block type> [within <area>] [except <area>]
-```
+### Targets: crosshair, coordinates, block types and `@` entities
 
-BDS decides reach, legality, collision, placement and item use. A placeable held item can therefore place a block in
-Survival, without Endbot editing the world. Targets are explained in
-[targets](#targets-crosshair-coordinates-block-types-and--entities).
+Left- and right-click verbs stay separate (`attack`/`destroy`, `use`/`interact`), and their targets share one syntax:
 
-`use` and `interact` differ: `use` uses the held item in the air, `interact` right-clicks a block or an entity.
+| Form | Target | Examples |
+| --- | --- | --- |
+| none | what the Bot is looking at | `interact`, `destroy`, `attack` |
+| `<x> <y> <z> [face]` | that block; `~` is relative to the Bot; without a face, the side facing the Bot | `interact ~~-1~`, `destroy 1 64 2 up` |
+| `<block type>` | the nearest block of that type the Bot can reach within 6 blocks | `interact chest`, `destroy oak_log` |
+| `@<type\|id\|nearest>` | the nearest matching non-player entity (`interact` within 6 blocks, `attack` within 4.5) | `interact @cow`, `attack @zombie`, `interact @9` |
+
+`@` follows vanilla's entity-selector sign and is required for every entity, including `entity @cow` and ids
+(`interact @9`). Listings show ids that way (`cow @9 (3.4m)`), and script data carries it as `selector`.
+
+Repeating entity targets:
+
+- `attack @zombie continuous|interval <ticks>|for <ticks>` aims at the nearest match on every trigger and does nothing
+  while none is in reach. It never falls back to the crosshair, so a player there is never hit.
+- `interact @cow count 5` (or `interval`/`for`) right-clicks a matching entity it has not clicked yet in this run, then
+  the one clicked longest ago, so a herd is fed one by one.
+- `count` counts clicks sent to an entity; BDS decides the outcome (a cow already in love eats nothing).
+- After each click the next waits until BDS reports the changed held item (wheat eaten, a sword worn), or at most 10
+  ticks, because a click with an outdated held item is rejected.
+- `once` is a single click. `attack @cow stop`, `interact stop` or `stop` ends a run.
+- `status` shows the running target and the clicks left, for example `interact @cow continuous 2 left`.
+
+Block types:
+
+- `destroy oak_log count 10` (or `continuous`/`for`) is a continuous mining loop: it turns to the nearest visible
+  block of that type for each block and waits while none is in reach. It never walks.
+- Unknown block types are reported as such, and `destroy @…` points to `attack`.
+
+In Luau: `bot:interact("@cow")`, `bot:interact("chest")`, `bot:destroy("oak_log")`, `bot:attack("@zombie")`.
 
 ### Areas: `within` and `except`
 
@@ -817,39 +712,160 @@ Rules:
 
 `/bot help area` shows the table in game.
 
-### Targets: crosshair, coordinates, block types and `@` entities
+### Interacting with blocks
 
-Left- and right-click verbs stay separate (`attack`/`destroy`, `use`/`interact`), and their targets share one syntax:
+`interact` is a normal right-click on a block face.
 
-| Form | Target | Examples |
+```text
+/bot <name> interact
+/bot <name> interact <x> <y> <z> [face]
+/bot <name> interact <block type> [within <area>] [except <area>]
+```
+
+BDS decides reach, legality, collision, placement and item use. A placeable held item can therefore place a block in
+Survival, without Endbot editing the world. Targets are explained in
+[targets](#targets-crosshair-coordinates-block-types-and--entities).
+
+`use` and `interact` differ: `use` uses the held item in the air, `interact` right-clicks a block or an entity.
+
+### Mining blocks
+
+Break blocks with ordinary Survival mining: hold left-click on a block, or keep mining whatever comes into sight.
+
+```text
+/bot <name> destroy [once]
+/bot <name> destroy <x> <y> <z> [face]
+/bot <name> destroy continuous [for <ticks>] [count <blocks>] [within <area>] [except <area>]
+/bot <name> destroy for <ticks>
+/bot <name> destroy count <blocks>
+/bot <name> destroy <block type> [continuous] [for <ticks>] [count <blocks>] [within <area>] [except <area>]
+/bot <name> destroy stop
+```
+
+| Form | What it mines |
+| --- | --- |
+| `destroy`, `destroy once` | One block in the Bot's line of sight, within 6 blocks |
+| `destroy <x> <y> <z> [face]` | That one block, if reachable and unobstructed; the Bot turns toward it |
+| `destroy continuous` | Block after block along the Bot's sight, waiting when nothing is in reach |
+| `destroy for <ticks>` | Continuous mining for that many ticks (same as `continuous for`) |
+| `destroy count <blocks>` | Continuous mining until that many blocks are gone (same as `continuous count`) |
+| `destroy <block type>` | The nearest block of that type the Bot can reach within 6 blocks ([targets](#targets-crosshair-coordinates-block-types-and--entities)) |
+| `destroy <block type> continuous` (or `for`/`count`) | Continuous mining, turning to the nearest visible block of that type for each block |
+| `destroy stop` | Stops mining, including a waiting continuous loop |
+
+Example:
+
+```text
+/bot Alice hotbar 1
+/bot Alice destroy continuous for 200 count 64
+/bot Alice destroy ~ ~-1 ~ up
+/bot Alice destroy acacia_log within 6 except ~ ~-1 ~ count 20
+/bot Alice status
+```
+
+`destroy` takes the mode words `once` (the default), `continuous` and `stop`, like `jump`, `attack` and `use`. There
+is no `interval` mode, because `continuous` already waits for the next block.
+
+#### Before you start
+
+- Select the tool with `hotbar` first; mining does not walk or pick tools.
+- Starting clears movement, attack and item-use inputs.
+- Relative coordinates are measured from the Bot, also for commands from the server console.
+- A face uses the same names as `interact`.
+
+#### What counts as in the way
+
+- Grass, flowers, torches and other blocks without a collision box do not block a named block. The crosshair still
+  stops at them, as a player's does.
+- A refusal names the block in the way (see [targeting blocks](SCRIPTING.md#targeting-blocks)).
+- Targeting works on whole block cells: a slab or fence stops an aimed line like a full block, while `blocks` treats
+  it as see-through.
+
+#### Continuous mining
+
+`destroy continuous` holds left-click along the Bot's current sight. After each block it picks the next reachable
+block along the same line. It stays in place and does not dig out an area.
+
+When nothing is within 6 blocks, or an unbreakable block such as bedrock is in front, it waits. Placing a reachable
+block in sight resumes mining by itself.
+
+#### Ending after a time or a number of blocks
+
+| Clause | Ends mining | Message when it ends |
 | --- | --- | --- |
-| none | what the Bot is looking at | `interact`, `destroy`, `attack` |
-| `<x> <y> <z> [face]` | that block; `~` is relative to the Bot; without a face, the side facing the Bot | `interact ~~-1~`, `destroy 1 64 2 up` |
-| `<block type>` | the nearest block of that type the Bot can reach within 6 blocks | `interact chest`, `destroy oak_log` |
-| `@<type\|id\|nearest>` | the nearest matching non-player entity (`interact` within 6 blocks, `attack` within 4.5) | `interact @cow`, `attack @zombie`, `interact @9` |
+| `for <ticks>` | After that many input ticks from the command; a block still breaking is abandoned | `Endbot: Alice: destroy continuous stopped: duration elapsed` |
+| `count <blocks>` | Once that many blocks are broken; a block already breaking is finished | `... stopped: block count reached` |
 
-`@` follows vanilla's entity-selector sign and is required for every entity, including `entity @cow` and ids
-(`interact @9`). Listings show ids that way (`cow @9 (3.4m)`), and script data carries it as `selector`.
+- Both values are 1–72000.
+- `for` and `count` combine in either order; mining ends at whichever comes first.
+- `count` counts blocks BDS reports broken, so waiting between blocks costs nothing and server load or TPS does not
+  matter. `for` is wall-clock input ticks.
+- These messages are info level and go to the player who started mining.
+- Single-block `destroy` and coordinates take no `for` or `count`.
 
-Repeating entity targets:
+#### Status
 
-- `attack @zombie continuous|interval <ticks>|for <ticks>` aims at the nearest match on every trigger and does nothing
-  while none is in reach. It never falls back to the crosshair, so a player there is never hit.
-- `interact @cow count 5` (or `interval`/`for`) right-clicks a matching entity it has not clicked yet in this run, then
-  the one clicked longest ago, so a herd is fed one by one.
-- `count` counts clicks sent to an entity; BDS decides the outcome (a cow already in love eats nothing).
-- After each click the next waits until BDS reports the changed held item (wheat eaten, a sword worn), or at most 10
-  ticks, because a click with an outdated held item is rejected.
-- `once` is a single click. `attack @cow stop`, `interact stop` or `stop` ends a run.
-- `status` shows the running target and the clicks left, for example `interact @cow continuous 2 left`.
+The first reply names the target, for example
+`Endbot: Alice: destroying minecraft:stone at 1 64 2; see status for the result`. No completion message is sent;
+`status` shows the mining state:
 
-Block types:
+```text
+destroying minecraft:stone at 1 64 2                                (breaking now)
+destroying minecraft:stone at 1 64 2 (continuous, 12/64 blocks)    (destroy count)
+destroy continuous waiting for a block in sight (last: ..., 3 blocks)  (destroy continuous, nothing in reach)
+last destroy: block broken or changed (minecraft:stone at 1 64 2)  (finished)
+last destroy: block count reached (64/64 blocks, minecraft:stone at 1 64 2)  (count reached)
+last destroy: failed: target out of reach (...)                    (failed)
+last destroy: canceled by teleport (...)                           (canceled)
+```
 
-- `destroy oak_log count 10` (or `continuous`/`for`) is a continuous mining loop: it turns to the nearest visible
-  block of that type for each block and waits while none is in reach. It never walks.
-- Unknown block types are reported as such, and `destroy @…` points to `attack`.
+- While a `for` run is going, `status` shows the ticks left.
+- A finished run keeps its total, for example
+  `last destroy: duration elapsed (137 blocks, minecraft:stone at 1 64 2)`.
+- A finished job stays visible as `last destroy` until the next one starts.
 
-In Luau: `bot:interact("@cow")`, `bot:interact("chest")`, `bot:destroy("oak_log")`, `bot:attack("@zombie")`.
+#### What BDS decides
+
+BDS does the breaking: hardness and tool speed, drops, durability, and plugins that cancel the break. Endbot never
+sets a block to air, runs `/setblock` or grants operator permissions.
+
+Single-block mining ends when BDS reports the block changed, so a replacement or another player's change also ends
+it. Continuous mining picks again. Endbot waits for the server instead of predicting instant breaking or loot.
+
+A rejected or protected target may stay active until stopped, or until the 12000-input-tick timeout (about ten
+minutes at 20 TPS).
+
+#### Other commands while mining
+
+- `move`, `look`, `attack`, `use`, `drop` and `interact` do not cancel mining. A continuous loop follows the new sight
+  direction for its next block.
+- Changing the hotbar slot or the held item (a pickup or a broken tool) restarts the current block with the new item.
+- Attacking or using an item while mining sends both inputs; BDS decides the outcome.
+
+These end the current block: a teleport, a dimension change, the target moving out of reach, or the 10-minute
+timeout. Single-block mining ends there; continuous mining picks its next target.
+
+#### When mining ends
+
+Mining ends only on:
+
+- `destroy stop` (mining only) or `stop` (mining and all movement and actions);
+- an elapsed `for` duration or a reached `count`;
+- death or disconnect;
+- revocation of the starting player's permission;
+- the plugin being disabled;
+- Endbot's server side not responding for 200 input ticks (about ten seconds).
+
+Continuous mining keeps running after its player logs off. Mining is not saved or resumed on reconnect.
+
+The command reply confirms start and stop. When mining ends for any other reason (a failed single block, death,
+disconnect, revocation, a lost runtime), the player who started it gets one chat message, for example
+`Endbot: Alice: destroy continuous stopped: canceled by death`. Broken blocks are not announced.
+
+For operators: start and stop are logged on the server console at info level, other endings at warning level (also
+when the player is offline). The log stays English.
+
+`attack` attacks entities; use `destroy` for blocks. The name follows the game's "Attack/Destroy" control.
 
 ### Looking around
 
@@ -935,12 +951,11 @@ does not confirm the exit within 40 ticks, the Bot stops counting as riding.
 A Bot whose floor is removed falls, also next to a boat. Standing on slabs, carpets, water, a boat or a shulker is
 left alone.
 
-### Autocomplete
+## Other features
 
-Every documented form works when typed, but in-game autocomplete only partly helps. Bot names are not suggested; use
-`/bot list` to find them. Why: [command declaration](BOT_CONTROL.md#command-declaration).
+Groups, scripts and the web, each with its own page.
 
-## Shared Group menus and results
+### Shared Group menus and results
 
 Operate a Group from the same menus as a single Bot. Group syntax and selectors are in [GROUPS.md](GROUPS.md).
 
@@ -953,7 +968,7 @@ Operate a Group from the same menus as a single Bot. Group syntax and selectors 
 /botgroup owner #group <GamerTag>
 ```
 
-### Menus
+#### Menus
 
 - `/bot #miners menu` opens the Bot operation screen for the whole group, including teleport, lifecycle and chunk
   radius.
@@ -966,7 +981,7 @@ Operate a Group from the same menus as a single Bot. Group syntax and selectors 
 - Forms submit the same `/bot` or `/botgroup` commands with the same permission checks. An outdated form is
   rejected.
 
-### Results
+#### Results
 
 A whole-group command that changes something replies with at most two lines: counts and grouped failure types. This
 confirms acceptance, not finished world actions. An unavailable response after inputs were sent is reported as
@@ -982,7 +997,7 @@ The menu shows the same results with `/botgroup menu #miners result [history]`, 
 - Up to 20 operations are kept per player and group, and 128 overall; the oldest go first.
 - Results are private to you and that group, and are lost on restart.
 
-### Queries
+#### Queries
 
 `/bot #miners status`, `inventory`, `hotbar` and `radius` print every member's result, labeled with `#group[index]`
 and the Bot name.
@@ -992,7 +1007,7 @@ and the Bot name.
 - Queries do not change `result` history, so checking state after an action keeps that action as the latest result.
 - `hotbar <slot>` and `radius <value|default>` change things, so they reply with a summary and are kept in history.
 
-### Ownership
+#### Ownership
 
 - The owner or the console sets a Group's visibility to `shared` or `private`.
 - An unowned Group stays shared and is refused with a pointer to `owner`.
@@ -1001,7 +1016,7 @@ and the Bot name.
 
 The full Group behavior: [GROUPS.md](GROUPS.md).
 
-## Scripts and triggers
+### Scripts and triggers
 
 Run Luau scripts and start them on events. Scripts work where the operator has turned them on
 ([setup](SCRIPTING_SETUP.md)).
@@ -1033,7 +1048,7 @@ Example:
 /botscript run row #miners "~ ~ ~" 2
 ```
 
-### Running scripts
+#### Running scripts
 
 - A run uses your authority, checked again for every operation. It survives logout until it is stopped or your grant
   is revoked.
@@ -1044,7 +1059,7 @@ Example:
   and confirmed deletion.
 - Turning scripting off keeps the source.
 
-### Triggers
+#### Triggers
 
 A trigger binds an event kind and filter to a script and starts it for each occurrence.
 
@@ -1064,19 +1079,71 @@ Limits set by the operator:
 
 Pausing, disabling and the policy defaults: [SCRIPTING.md](SCRIPTING.md#triggers).
 
-## Operational states
+### Linking the web
 
-What `/bot list` and `status` mean by each state:
+Link your own account to the Endbot web from the game.
 
-| State | Meaning |
-| --- | --- |
-| `connecting` | A requested session has not spawned yet |
-| `online` | The session is active |
-| `reconnecting` | An explicit reconnect or an automatic retry is in progress |
-| `offline` | The Bot is intentionally offline |
-| `failed` | Retries ran out; `status` includes the last error |
+```text
+/botweb link     a code for the Endbot web: 6 symbols, 5 minutes, one use
+/botweb status   whether this player has a web account, with its passkey and session counts (the default)
+/botweb unlink   delete this player's web account, passkeys and sessions
+/botweb help     this list
+```
 
-- Each Bot reconnects and takes input independently of every other Bot.
-- After an unexpected disconnect, a Bot keeps its UUID and retries with growing waits, at most 30 seconds apart, until
-  the configured number of attempts.
-- `reconnect` and a live `rename` wait for the old connection to close first, so two sessions never overlap.
+- Only a player with a grant and Xbox authentication can link, and only for themselves.
+- The web must be enabled on the server.
+- A new code replaces an earlier one.
+- Unlinking leaves the controller grant as it is.
+- On the web, "To my position" in Teleport is `tp me`; it works while you are online in the game.
+
+How the web works: [WEB.md](WEB.md).
+
+## Appendix
+
+Every syntax on one screen, and the limits of command autocomplete.
+
+<a id="inputs-and-actions"></a>
+### Syntax summary
+
+```text
+/bot Alice move forward|backward|left|right|stop
+/bot Alice look <yaw> <pitch>
+/bot Alice look at <x> <y> <z>
+/bot Alice move forward|backward|left|right for <ticks>
+/bot Alice jump|attack|use [once|continuous|interval <ticks>|stop]
+/bot Alice jump|attack|use [continuous|interval <ticks>] for <ticks>
+/bot Alice use for <ticks>
+/bot Alice use hold <ticks> [interval <ticks>] [for <ticks>]
+/bot Alice sprint on|off
+/bot Alice sneak on|off
+/bot Alice inventory
+/bot Alice hotbar
+/bot Alice hotbar <1-9>
+/bot Alice swap <a> <b>
+/bot Alice hold <item>
+/bot Alice interact [<x> <y> <z> [face] | <block type> [within <area>] [except <area>] | @<type|id|nearest>]
+/bot Alice attack @<type|id|nearest> [once|continuous|interval <ticks>|stop] [for <ticks>] [count <n>]
+/bot Alice interact @<type|id|nearest> [once|continuous|interval <ticks>|stop] [for <ticks>] [count <n>]
+/bot Alice interact stop
+/bot Alice destroy <block type> [continuous] [for <ticks>] [count <blocks>] [within <area>] [except <area>]
+/bot Alice destroy continuous [for <ticks>] [count <blocks>] [within <area>] [except <area>]
+/bot Alice entities
+/bot Alice entity [@<type|id|nearest>]
+/bot Alice target
+/bot Alice block <x> <y> <z>
+/bot Alice blocks <type> [limit <1-64>] [within <area>] [except <area>]
+/bot Alice dismount
+/bot Alice drop
+/bot Alice drop stack
+/bot Alice drop <1-36|offhand|head|chest|legs|feet>
+/bot Alice drop <item> [count]
+/bot Alice drop all
+/bot Alice stop
+```
+
+Coordinates anywhere in `/bot` accept vanilla's compact relative form: `~~-1~` is `~ ~-1 ~`.
+
+### Autocomplete
+
+Every documented form works when typed, but in-game autocomplete only partly helps. Bot names are not suggested; use
+`/bot list` to find them. Why: [command declaration](BOT_CONTROL.md#command-declaration).

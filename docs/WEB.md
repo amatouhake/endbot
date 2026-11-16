@@ -1,36 +1,18 @@
-# Web design (BOT-021)
+# The web
 
-Status: **Design agreed** (2026-10-29 JST): the operator accepted the proposals, the trusted external site (P12) and
-the answers to the former open points (see [settled points](#settled-points)). Steps 1 to 9 are implemented: the supervisor policy, accounts, passkeys, the trusted site, the relay, deploy and its
-redeploy during an update (checked against a fake API only), the screens, script editing, Bot control and the
-[deployment guide](WEB_DEPLOY.md). Step 10 ran on Cloudflare with real passkeys on 2026-11-07 JST and in the 0.7.0
-release pass on 2026-11-11 and 2026-11-12 JST; what it checked and what it left open are in
+A page for controllers, hosted on a Cloudflare Worker that each operator deploys in their own account. Shipped in
+0.7.0. This document describes the pairing scheme, the protocol, the account store and the supervisor policy, with
+the reason for each choice. Code comments cite the decisions and settled points by number (P1 to P12, S1 to S12).
+To set it up, read the [deployment guide](WEB_DEPLOY.md); the messages are in [WEB_PROTOCOL.md](WEB_PROTOCOL.md), the
+security boundary in [SECURITY.md](SECURITY.md#the-web), and what was checked on Cloudflare in
 [COMPATIBILITY.md](COMPATIBILITY.md#web).
 
-This document turns [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
-and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game) into a
-concrete pairing scheme, protocol, account store, supervisor change and step plan. The stack is fixed by
-[web technology](DIRECTION.md#web-technology); permissions are [PERMISSIONS.md](PERMISSIONS.md) (BOT-024); the web
-link terminates in endbotd ([ENDBOTD.md](ENDBOTD.md)). BOT-020 and BOT-024 shipped in 0.5.0 and 0.6.0 carried the
-script-facing work; BOT-021 is released in 0.7.0 together with BOT-022, after one validation pass for both
-([Delivery](DIRECTION.md#delivery)).
+It follows from [Decision 3](DIRECTION.md#decision-3-the-web-is-hosted-on-cloudflare-workers-deployed-by-each-operator)
+and [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game). The stack
+is fixed by [web technology](DIRECTION.md#web-technology); permissions are [PERMISSIONS.md](PERMISSIONS.md); the web
+link terminates in endbotd ([ENDBOTD.md](ENDBOTD.md)).
 
-## Where we start
-
-After BOT-020 and BOT-024:
-
-- **endbotd owns authorization**, the stores (`state/`), runner orchestration, jobs and the Event log. Every surface
-  calls `execute(Operation, Principal) -> Outcome`; Outcomes carry `code` and `data`; the message catalog is JSON.
-- **The registry** (`operations.json` + `operations.schema.json`) declares every operation, its result shape and, from
-  BOT-024, the capability it needs. `Principal.kind` already reserves `web`.
-- **Authorization has two layers**: a valid XUID grant at the current grant revision (persisted in
-  `state/grant-revisions.json`), then a per-channel condition. For `web` that condition is "valid link and session",
-  which nothing implements yet.
-- **Roles** operator (the console only), scripter and controller exist; revocation already ends runs and jobs.
-- **The supervisor** stops runtime and endbotd when BDS exits (ENDBOTD S2).
-- **No network-facing code** exists; every listener is loopback.
-
-## Target
+## Overview
 
 ```text
 browser ──HTTPS──▶ Worker (Hono: static UI, cookie, Origin check, rate limits)
@@ -40,7 +22,7 @@ browser ──HTTPS──▶ Worker (Hono: static UI, cookie, Origin check, rate
                      ▲
                      │ one outbound WSS link, endbotd proves its link key
                 endbotd (accounts, passkeys, sessions, authorization, operations)
-                     │ loopback (unchanged)
+                     │ loopback
                      ▼
                 plugin / runtime
 ```
@@ -80,16 +62,16 @@ Durable Object can go on listing such a socket as open even after closing it, so
 retired and never used again. The Durable Object retires a proven link it has not heard from for 90 s, found by an alarm
 set for that moment or by the next request, and closes that link's browsers so that open pages stop showing a live
 server. Requests meanwhile answer `unavailable` at once. endbotd drops a link that has heard nothing back, not even the
-keep-alive answer, for 90 s and connects again. (Found in step 10: after a network loss the relay kept routing to the
-dead link, and the web stayed down after the PC came back.)
+keep-alive answer, for 90 s and connects again. Without this, after a network loss the relay kept routing to the
+dead link, and the web stayed down after the PC came back.
 
 **Rotation** is `endbot web rotate-key`: a new key pair, the secret replaced through the API, then the key file
 replaced. The old private key is deleted at once, because the Worker no longer accepts it. One mechanism serves routine
 rotation and suspected exposure. Because the secret is set only through the operator's Cloudflare account, rotation
-needs an API token (P9). Cloudflare took about 2 minutes on rc.2 and 3 minutes 23 seconds on rc.3 (step 10) to hand the
+needs an API token (P9). Cloudflare has taken between 2 and 5 minutes to hand the
 new secret to the Durable Object, and a good proof is refused until then, so the web is offline for about that long.
 For 10 minutes after it starts endbotd retries a refused proof every 10 s instead of backing off, staying under the
-Durable Object's 10 link openings a minute (a faster retry was answered 429 on rc.2, which then counts the same). The
+Durable Object's 10 link openings a minute (a faster retry is answered 429, which then counts the same). The
 command waits up to 3 minutes for the link; if the proof is still refused then, it says the link should come up by
 itself and that `endbot doctor --live` shows when. Otherwise endbotd's retry backs off to at most 30 s, so a PC whose network comes back is linked again within
 about half a minute.
@@ -175,7 +157,7 @@ whose stored RP ID differs from the current one.
   forces a CORS preflight that the Worker never grants. The WebSocket upgrade check also closes cross-site WebSocket
   hijacking.
 - Every relayed `op`, `query` and `script.*` request is authorized by endbotd at execution time with the `web`
-  principal: grant valid at the current grant revision, account linked, session valid, then BOT-024 roles, ownership
+  principal: grant valid at the current grant revision, account linked, session valid, then roles, ownership
   and declarations. A session check at WebSocket open is not enough on its own.
 - Headers: `Content-Security-Policy: default-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'`,
   `Referrer-Policy: no-referrer`, HSTS. No third-party scripts or fonts.
@@ -249,12 +231,12 @@ Because every request rechecks the grant revision, a revoke takes effect even if
 
 ### P10. endbotd keeps running while BDS is stopped
 
-The supervisor policy change ENDBOTD S2 deferred to BOT-021:
+The exception to [ENDBOTD.md S2](ENDBOTD.md#settled-points):
 
 - With `[web] enabled`, when BDS exits (console `stop` or a crash) the supervisor stops the runtime, keeps endbotd,
   logs the exit code and accepts two supervisor console commands: `start` (start runtime, then BDS, in the usual
-  order) and `exit` (stop endbotd and exit with BDS's last code). `endbot stop` stops everything, as today.
-- Without the web, BDS exit stops everything, as today. `--exit-with-bds` restores that behavior for operators who run
+  order) and `exit` (stop endbotd and exit with BDS's last code). `endbot stop` stops everything.
+- Without the web, BDS exit stops everything. `--exit-with-bds` restores that behavior for operators who run
   Endbot under a service manager that restarts on exit (S2).
 - While BDS is stopped, the web shows "server stopped", status and logs, and edits scripts. Bot operations fail with
   the temporary-failure code. Starting BDS stays on the console: controllers are not operators.
@@ -267,12 +249,12 @@ The supervisor policy change ENDBOTD S2 deferred to BOT-021:
 - **History:** the principal's own run logs, job ends and the Outcomes of their own commands, from chat or the web, as in
   chat. The full server or endbotd log is not on the web; that is console material.
 - **Groups:** creating, deleting and changing members through `/botgroup`, and operating a whole Group.
-- **Scripts:** the scripts the role may read or edit (BOT-024), saved through the in-game save path with compile,
+- **Scripts:** the scripts the role may read or edit, saved through the in-game save path with compile,
   declaration, ownership and revision checks; a stale revision is a conflict with the current source shown.
   Diagnostics come from endbotd's compile.
 - **Bot control:** every operation the in-game command offers to that principal, built from the registry, with the
   same wording from the message catalog (principle 1). Running a script shows its declaration first.
-- **Triggers:** managed from the web as in game, with the declaration shown before enabling (BOT-022 step 7b).
+- **Triggers:** managed from the web as in game, with the declaration shown before enabling ([EVENTS.md E10](EVENTS.md)).
 - **Never on the web:** grants, revocations, role changes, owner reassignment, BDS start and stop, `endbot` CLI
   operations. The web principal is never the console, even for the operator's own XUID.
 
@@ -387,109 +369,49 @@ revoking their grant, not only their web account.
 
 ## Settled points
 
-Decided 2026-10-29 JST.
-
 - **S1. Pairing installs endbotd's public link key directly** instead of a pairing secret (P1), refining Decision 3.
-- **S2. endbotd keeps running when BDS exits** with the web enabled; `--exit-with-bds` restores today's exit (P10).
+- **S2. endbotd keeps running when BDS exits** with the web enabled; `--exit-with-bds` restores the exit with BDS (P10).
 - **S3. Sessions** last 7 days idle and 30 days absolute; removing a passkey needs a passkey
   assertion less than 5 minutes old (P5).
-- **S4. The trusted external site is in this release** (P12), optional and off by default; the operator will use it.
+- **S4. The trusted external site is part of the web** (P12), optional and off by default.
 - **S5. The Cloudflare API token is never stored**; it is prompted at deploy, rotate-key and update (P9).
 - **S6. The site echoes an endbotd-issued nonce** instead of minting its own `jti` (P12): a leaked assertion is useless
   outside the browser that started the flow, and no replay cache must survive restarts.
-- **S7. UI direction** (2026-10-29 JST): a plain, readable admin interface, not a Minecraft-styled one, equally usable
-  on phones and PCs (responsive layout, no phone-only or desktop-only screens). No mockups up front: the operator
-  reviews the real screens of the first status-and-logs PR, and later screens follow what was agreed there.
-
-- **S8. No "add this device" on the web** (2026-11-04 JST, replacing that part of P4 after the operator tried the real
-  page). The in-game code ties an account to the player who joined with Xbox authentication. A signed-in browser that
+- **S7. UI direction**: a plain, readable admin interface, not a Minecraft-styled one, equally usable
+  on phones and PCs (responsive layout, no phone-only or desktop-only screens).
+- **S8. No "add this device" on the web** (replacing that part of P4). The in-game code ties an account to the player who joined with Xbox authentication. A signed-in browser that
   could mint more would let anyone at an unattended PC plant a lasting passkey, and a notice does not prevent that. The
   cost is small: a code from the game can be entered on any device.
-- **S9. The page is one screen** (2026-11-04 JST, after the operator's first full try, BOT-034). On a PC the page itself
+- **S9. The page is one screen.** On a PC the page itself
   never scrolls: a fixed header (server and its state, tabs, account menu) over a list and a detail pane that scroll
   alone. A phone shows the list and the detail as two screens with a way back. What is chosen lives in the address, so a
   reload and Back keep it, and a tab keeps its draft while another is open. Results have their own place, so nothing
   moves when one arrives. Questions use the page's own dialogs, never the browser's.
-
-- **S10. Bots and Groups are operated from one list** (2026-11-05 JST, after the operator's look at the rebuilt page). As in
+- **S10. Bots and Groups are operated from one list.** As in
   game, a Group is one more thing `/bot` can address, so the Bots tab lists Bots and then `#Groups` with the same operations.
   The Groups tab keeps what `/botgroup` does: creating, deleting and changing members.
-- **S11. New is beside Search on every list** (2026-11-05 JST). A Bot or Group is named in a dialog and exists when it closes,
+- **S11. New is beside Search on every list.** A Bot or Group is named in a dialog and exists when it closes,
   and a refused name is corrected there. A script needs its content, so it stays a draft until it is saved; the list says
   "not saved", its button says Create, and Cancel leaves nothing behind.
-- **S12. Operations are by category, with no guessed favourites** (2026-11-05 JST). The in-game menu's categories hold every
+- **S12. Operations are by category, with no guessed favourites.** The in-game menu's categories hold every
   operation within two clicks and no scrolling. Recent shows what this browser actually used, instead of a list chosen for
   the operator. Modes are buttons, each asking only for its own clauses. An offline Bot offers what the in-game menu offers,
   and what the in-game forms leave to the command, such as `tp ... facing`, stays there.
 
-## Steps
+## Notes on the implementation
 
-Each step is split into PRs that keep main releasable. **Claude** marks the security boundary and protocol core,
-written by Claude; **delegable** marks well-specified pieces a cheaper implementer can take, with Claude reviewing.
-Steps 1–4 need BOT-020 step 3c (the endbotd process); step 2 needs the BOT-024 web principal checks; both shipped in
-0.5.0, so no step waits on another work item.
+- **Deploy uses the Cloudflare API alone**, static assets included; no wrangler is bundled. The link key's id is
+  derived from the public key, so `[web]` stores no key id.
+- **The script editor lives in a shadow root**, where CodeMirror can add its styles without an inline `<style>`, so
+  the Content-Security-Policy of P5 stays as it is.
+- **An area is typed as its clauses**, as in chat (`within 6 except ~ ~-1 ~`), and is offered only where the grammar
+  takes one.
+- **A test runs the deployment guide's reference signer** against the real verifier, so the guide's trusted-site
+  example cannot drift from P12.
+- **`endbot update` and `--rollback` redeploy the Worker** of the version they switch to (P9).
 
-1. **Supervisor policy (P10).** `start`/`exit` console commands, `--exit-with-bds`, runtime stopped with BDS.
-   Delegable. Done. Live check (2026-11-04 JST, Windows, 0.6.0 bundle with this CLI, real BDS and no human client):
-   console `stop` and a killed BDS both kept the same endbotd process; `endbot controllers list` worked while BDS was
-   stopped; `start` brought the runtime and BDS back and the plugin relinked to that endbotd; `exit` ended the
-   supervisor. A desired-online Bot rejoined about 65 s after `Server started`, the same as on a plain `endbot start`.
-2. **endbotd web core, no network.**
-   - **2a. Account store and link codes** (P3): `state/web/`, `/botweb link|unlink|status`, `endbot web revoke`,
-     revocation hooks (P6). Claude. Done.
-   - **2b. WebAuthn and sessions** (P4, P5): the pinned Python WebAuthn library, ceremonies, session tokens, the `web`
-     principal's channel condition, rate limits in endbotd (P7). Claude. Tests use a software authenticator. Done,
-     with the per-session connection and request limits in the link (3b).
-   - **2c. Trusted external site** (P12): `[web.trusted-site]` config and doctor checks, nonces, ES384 JWS
-     verification (the existing local-bot-auth verifier's rules where they apply), both modes,
-     `endbot web revoke --site-sessions`, failure codes. Claude only (security boundary). Negative tests for every
-     row of the claim table and the failure table. Done.
-3. **Link and relay.**
-   - **3a. Protocol schema** (P2): `docs/WEB_PROTOCOL.md`, a JSON Schema, TypeScript generation in CI. Claude. Done.
-   - **3b. endbotd link client**: `websockets`, handshake and signing, reconnect with backoff, multiplexing, version
-     refusal, display cache. Claude. Done.
-   - **3c. Worker and Durable Object** (Hono, Hibernation API): routing, cookie, Origin checks, headers, coarse rate
-     limits, relay, the `/auth/site/*` routes with their own cookie and Origin rule. Claude writes the auth, cookie,
-     site and relay paths; the static-asset serving and Vitest
-     (`@cloudflare/vitest-plugin`, the renamed pool) coverage are delegable. Done, except static assets, which arrive with
-     the UI.
-4. **Deploy.** `endbot web deploy|rotate-key` through the Cloudflare API, token handling (P9), domain-change
-   confirmation (P4), doctor checks (link up, protocol match, origin configured). Delegable against this document,
-   Claude reviewing the token handling. First confirm that static assets upload through the API alone; fall back to a
-   pinned wrangler if not (Decision 3). Done against a fake API. Cloudflare's direct-upload guide documents the API-only
-   path, so no wrangler fallback is planned unless step 10's real deploy shows otherwise. The key id is derived from
-   the public key, so `[web]` keeps no key id.
-5. **UI: sign-in, link, devices, status and logs** (P11). Svelte 5 + Vite, SimpleWebAuthn, message catalog.
-   Delegable. Playwright with a virtual authenticator against the local Workers runtime. Done.
-6. **Script editing** (BOT-013 goals): `script.*` messages over existing endbotd script operations, CodeMirror 6,
-   in-house Luau highlighting, completion from the registry and `api.luau`, line-numbered compile errors, revision
-   diffs. The endbotd side is delegable (it calls existing authorized operations); so is the editor. Done. The editor lives in a
-   shadow root, where CodeMirror can add its styles without an inline `<style>`, so P5's Content-Security-Policy stays as it is.
-7. **Bot control** from the registry, running scripts with declarations shown. Delegable. Done. An area is typed as its clauses, as in chat
-   (`within 6 except ~ ~-1 ~`), and is offered only where the grammar takes one.
-8. **`endbot update` integration** (P9): redeploy after update and rollback, the offline-web message. Delegable. Done
-   against the fake API; step 10's update and rollback run it for real.
-9. **Documentation.** `docs/WEB_DEPLOY.md` (account, token permissions, `workers.dev` or custom domain, the
-   domain-change warning, revocation, what Cloudflare stores, troubleshooting); SECURITY.md gains the web boundary.
-   `WEB_DEPLOY.md` also covers the trusted site: key generation, the start/return contract, a reference signer and
-   rotation. The deployment guide is delegable; the SECURITY.md section and the site contract are Claude. Done. A test
-   runs the guide's reference signer against the real verifier. The guide says it has not been validated on Cloudflare;
-   step 10 removes that note and corrects anything the real API shows.
-10. **Validation**, inside the combined release pass. Live deploy to the operator's Cloudflare account, the operator
-    entering the token. Check: link on a phone and a PC, a second passkey from a second code, cross-device QR sign-in, revoke during an open
-    session and during a run, domain change forcing re-registration, mismatched protocol refused, rate limits, BDS
-    stopped with web status and script editing working, a Worker with a wrong link key refused, the sign-in page saying the server is
-    stopped within 90 s of the PC losing power or network. With the operator's
-    real site: both modes, key rotation with two keys, a replayed or foreign-browser assertion refused, an XUID
-    without a grant refused, `endbot web revoke` while the site still vouches. Summarized in
-    [COMPATIBILITY.md](COMPATIBILITY.md#web): the `workers.dev` items ran on 0.7.0-rc.1 to rc.3, and the protocol
-    mismatch, domain change, rollback, power loss and the trusted site in the release pass on rc.5 and rc.6. The
-    trusted site was a signer Worker made for the pass, not the operator's real site. The items that need a second
-    Xbox account are listed there as not run.
+## Not included
 
-## Not in BOT-021
-
-Localhost mode and LAN access (after the web, [other hosts](DIRECTION.md#other-hosts)); Microsoft sign-in in Endbot
+Localhost mode and LAN access ([#282](https://github.com/amatouhake/endbot/issues/282), [other hosts](DIRECTION.md#other-hosts)); Microsoft sign-in in Endbot
 itself (the trusted site can provide it); site-to-site API access; offline editing or any Cloudflare-side store beyond the display cache; web administration of
-grants, roles or owners; BDS start and stop from the web; event kinds and triggers on the web (BOT-022 adds them to
-the same protocol); other deployment targets.
+grants, roles or owners; BDS start and stop from the web; other deployment targets.

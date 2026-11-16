@@ -10,9 +10,9 @@ by default.
 
 ## Why
 
-Two client limits make in-game script editing hard (BOT-009, 2026-10-24/25 Windows checks):
+Two client limits make in-game script editing hard:
 
-- Server forms are a fixed 225×200 UI-unit window with 32-unit buttons, so menus scroll a lot (BOT-006).
+- Server forms are a fixed 225×200 UI-unit window with 32-unit buttons, so menus scroll a lot.
 - The form text field is short and **drops line breaks**, so multi-line source has to go through a book and quill.
 
 Neither is fixed by anything a server can put in a form. A resource pack can restyle the form screens on the client.

@@ -584,7 +584,7 @@ container-to-world path with exact observed item data (see the inventory/drop gr
 
 ### Areas: `within` and `except`
 
-One area value narrows the blocks an operation may pick (BOT-027). `within <area>` keeps only the blocks inside it,
+One area value narrows the blocks an operation may pick. `within <area>` keeps only the blocks inside it,
 `except <area>` leaves out the blocks inside it, and both take the same forms; the number of values selects the form:
 
 | Area | Shape | Example |

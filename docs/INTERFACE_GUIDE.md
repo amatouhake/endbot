@@ -1,8 +1,11 @@
 # Interface guide: one vocabulary, a grammar per surface
 
-Status: **Agreed** (2026-10-28 JST); not yet implemented. Applies to chat commands,
-in-game forms and books, Luau scripts and the web. The technical basis is the Operation API (BOT-019); see also the
-[product direction](DIRECTION.md).
+This is the standard that chat commands, in-game forms and books, Luau scripts and the web are held to, and the
+source of the terms and their Japanese translations. New work follows it; a difference it does not permit is a bug.
+
+Decisions D1 to D4 below are built. Rules 1 to 3 are built in part: the registry holds operations, capabilities, Luau
+host requests, event kinds and reserved Bot names, but not yet categories, descriptions or examples, and the web does
+not yet show the equivalent command and Luau line ([#286](https://github.com/amatouhake/endbot/issues/286)). See also the [product direction](DIRECTION.md).
 
 ## Principle
 
@@ -68,7 +71,7 @@ everywhere.
 | Job | ジョブ | What a Bot keeps doing after an operation returns: continuous or interval input, `for`, held use, mining (one block or many) |
 | Event | イベント | Something that happened, of a registry-defined kind such as `block.change`; observation only |
 | Watch | 監視 | A run's registered interest in events of one kind and filter, waited on with `w:wait{}` |
-| Trigger | トリガー | (BOT-022) A persistent binding from an event kind and filter to a script; starts runs; managed under `/botscript` |
+| Trigger | トリガー | A persistent binding from an event kind and filter to a script; starts runs; managed under `/botscript` |
 
 *Loop* is an internal word only and does not appear in user-facing text.
 
@@ -76,24 +79,21 @@ everywhere.
 
 ### D1. The noun for ongoing Bot work
 
-The grammar is already consistent (`once`, `continuous`, `interval`, `stop`, with `for`, `hold`, `count`). The nouns for
-what a continuing operation leaves running are not: docs say mining *job*, *loop* and, once, a finished mining *run*.
-Decision: **job (ジョブ)** for anything a Bot keeps doing after the operation returns (see the glossary). *Run* is reserved
-for scripts. *Loop* stays an internal word only. Trigger (BOT-022) is added: a persistent binding from an event kind
+The grammar is `once`, `continuous`, `interval`, `stop`, with `for`, `hold`, `count`. What a continuing operation
+leaves running is a **job (ジョブ)**: anything a Bot keeps doing after the operation returns (see the glossary). *Run*
+is reserved for scripts. *Loop* stays an internal word only. A trigger is a persistent binding from an event kind
 and filter to a script that starts runs, managed under `/botscript trigger ...`.
 
 ### D2. The shape of waits in Luau
 
-Today `waitOnline(b)` is a global function and `b:waitMining{timeout = ...}` is a method. Decision:
-
 - A continuing operation's result carries its job: `local job = b:destroy("stone", {count = 64}).job`, waited with
-  `job:wait{timeout = 1200}`. This generalizes `waitMining` and is how BOT-016 adds waits for move, use and attack.
-  On a Group the job covers every member, like `group:waitMining` does today.
+  `job:wait{timeout = 1200}`. Move, jump, attack, use, interact, destroy and a teleport's arrival are jobs.
+  On a Group the job covers every member.
 - Watches use the same form: `w:wait{timeout = ...}`.
 - State waits stay on the handle: `b:waitOnline{timeout = ...}`.
 - Every wait accepts `{timeout = ticks}` and returns the common result shape; a timeout is `ok = false, code =
   "timeout"` and does not stop the job.
-- `waitOnline(b)` and `b:waitMining{}` remain as documented aliases until 1.0 so stored scripts keep working.
+- The older `waitOnline(b)` and `b:waitMining{}` remain as documented aliases until 1.0 so stored scripts keep working.
 
 ### D3. Command roots
 
@@ -103,12 +103,12 @@ definitions, `/botscript` scripts and runs. Triggers are managed under `/botscri
 Existing exceptions, kept: `/bot list`, `/bot help`, `/bot ping` and `/bot menu` are root words. `list`, `ping` and
 `menu` win only as the whole command, so a Bot named `list` is still reached with `/bot list status` or `/bot list menu`.
 `help` wins with any arguments (`/bot help <page|command>`), and `/bot help status` cannot be told apart from operation
-`status` on a Bot called `help`, so no parser rule fixes it. Decision (BOT-025): `help`, `list`, `ping` and `menu` are
+`status` on a Bot called `help`, so no parser rule fixes it. Therefore `help`, `list`, `ping` and `menu` are
 reserved Bot names, listed in the registry so every surface applies the same check, and rejected when a Bot is created
 or renamed. Existing profiles with those names are kept and pointed at `rename`.
 
 Web account linking does not fit under `/bot`: `web` is a valid Bot name, so `/bot web link` would read as operation
-`link` on a Bot called `web` and would break the moment such an operation exists. Decision: `/botweb link` (issues the
+`link` on a Bot called `web` and would break the moment such an operation exists. So the commands are `/botweb link` (issues the
 one-time code), `/botweb status` and `/botweb unlink`; see
 [Decision 4](DIRECTION.md#decision-4-web-accounts-use-passkeys-and-are-linked-to-an-xuid-once-in-game).
 
@@ -116,7 +116,7 @@ one-time code), `/botweb status` and `/botweb unlink`; see
 
 Players set the visibility of their own items; only the console assigns owners. One `visibility shared|private` verb
 spells the same values as the `bots-default` / `groups-default` settings, rather than pairing the verb `share` with
-the adjective `private` (S9, revised 2026-10-30), and D3 puts Bot actions under `/bot` and noun management under
+the adjective `private` ([PERMISSIONS.md S9](PERMISSIONS.md#settled-points)), and D3 puts Bot actions under `/bot` and noun management under
 `/bot<noun>`:
 
 | What | Command |

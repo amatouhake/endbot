@@ -1,7 +1,9 @@
 # Product direction: from one plugin to a small distribution
 
-Status: **Accepted direction; BOT-019, BOT-020 and BOT-024 released in 0.5.0** (2026-10-30 JST; accepted 2026-10-28). This records decisions and their reasons; the work
-items were BOT-019 to BOT-024; open work is in the [issues](https://github.com/amatouhake/endbot/issues/). [Architecture](ARCHITECTURE.md) describes what exists today.
+Why Endbot is built the way it is: five decisions and their reasons. All five are built (0.5.0 to 0.7.0). Each has
+a document that describes the result: [endbotd](ENDBOTD.md), the [permission model](PERMISSIONS.md), the
+[web](WEB.md) and [events](EVENTS.md); [Architecture](ARCHITECTURE.md) describes the processes and boundaries. What
+is not built yet is under [What comes next](#what-comes-next).
 
 ## Goals
 
@@ -26,7 +28,7 @@ the web connection belong outside the BDS process even before the web exists:
 - The plugin can only use what loads in Endstone's Python environment. The web needs WebSocket, WebAuthn and
   cryptography libraries, which endbotd can pin and bundle in its own environment.
 - Connecting the web to the plugin first and moving it later would build the relay endpoint and its authorization
-  twice. BOT-019 makes the logic process-neutral, but it does not remove that rework.
+  twice. Process-neutral logic does not remove that rework.
 - No internet-facing code runs inside the game server.
 
 That the web keeps working while BDS is stopped follows from this; it is a benefit, not the reason. The target is:
@@ -35,7 +37,7 @@ That the web keeps working while BDS is stopped follows from this; it is a benef
 in-game UI (commands, forms, books)         web UI (Cloudflare Worker, see Decision 3)
                  │                                       │ relayed over the outbound link
                  ▼                                       ▼
-  endbotd — grown from today's supervisor, outside BDS
+  endbotd — outside BDS, started by the supervisor
     one Operation API, principals (player XUID, web account, console, trigger),
     authorization, script store and revisions, Luau runner orchestration,
     watches/triggers, operation log, process supervision, outbound web link
@@ -55,10 +57,9 @@ in-game UI (commands, forms, books)         web UI (Cloudflare Worker, see Decis
 - Only the plugin knows who is online, so it reports presence to endbotd, which applies the in-game online condition
   from those reports. While endbotd is down, in-game Bot commands are refused with a message saying why; the supervisor
   starts both, so this is the exception, not a degraded mode to design for.
-- Migration is incremental. The first step (BOT-019) pays off whichever process ends up hosting the logic.
 - Only the bundled, managed install (`endbot setup`) is supported for users once endbotd exists; manual plugin
   installation stays documented for developers.
-- Parallel, optional: propose a narrow login-verifier hook to upstream Endstone. If accepted, the patch and patched
+- Optional ([#281](https://github.com/amatouhake/endbot/issues/281)): propose a narrow login-verifier hook to upstream Endstone. If accepted, the patch and patched
   builds go away and Endbot becomes stock Endstone + plugin + sidecars. Security-sensitive; rejection is acceptable.
 
 ## Decision 2: scripts never write the world directly
@@ -118,7 +119,7 @@ browser ──HTTPS──▶ Worker (static UI, cookie, relay)
 | UI | Svelte 5 + Vite single-page app, served as Workers static assets | No SvelteKit |
 | Script editor | CodeMirror 6 | Light and usable on phones; Luau highlighting defined in-house; completion from the registry and `api.luau` |
 | Luau diagnostics | Compile results from endbotd at first | In-browser Luau compiled to WASM may come later; no luau-lsp |
-| Messages | The shared message catalog from BOT-019 | Same wording as chat |
+| Messages | The shared message catalog | Same wording as chat |
 | endbotd side | Python `websockets`, pinned and bundled | |
 | Protocol | JSON over WebSocket with a protocol version and request IDs | endbotd proves itself with its paired key on connect |
 | Tests | Vitest with `@cloudflare/vitest-plugin`; Playwright for end-to-end | |
@@ -134,7 +135,7 @@ Cloudflare is one way to put the web on the internet rather than where the web l
 | Option | Status | Notes |
 | --- | --- | --- |
 | Cloudflare Worker | The supported internet path | As above |
-| Localhost mode | Planned after the web (BOT-021) | endbotd serves the same UI on `127.0.0.1` and speaks the same protocol directly, with no relay. Little new code; useful to operators who do not want Cloudflare and for development and end-to-end tests without a Cloudflare account. `localhost` is a secure context, so passkeys work |
+| Localhost mode | Planned ([#282](https://github.com/amatouhake/endbot/issues/282)) | endbotd serves the same UI on `127.0.0.1` and speaks the same protocol directly, with no relay. Little new code; useful to operators who do not want Cloudflare and for development and end-to-end tests without a Cloudflare account. `localhost` is a secure context, so passkeys work |
 | LAN access | Documented, not supported | Passkeys need a secure context, so `http://192.168.x.x` does not work. An operator may put localhost mode behind their own TLS reverse proxy |
 | Other deployment targets (a VPS, another cloud, a self-hosted relay) | Not planned | The relay is small, but each target needs its own deployment, `endbot update` integration, tests and docs. The protocol is documented so one can be added; revisit on a concrete request |
 | Cloudflare Tunnel to localhost mode | Not adopted | Removes the Worker code, but unauthenticated internet traffic would reach the PC, losing the property that it stops at Cloudflare |
@@ -209,7 +210,7 @@ Worker ──relays──▶ endbotd: verifies with the site's public key from e
 - Operators who want Microsoft sign-in can plug in their own this way, which further reduces the need for Endbot to
   carry it.
 - Site-to-site API access (for example showing Bot status inside the operator's site) is a larger, later step that
-  the Operation API (BOT-019) would make possible; it is not planned now.
+  the Operation API would make possible; it is not planned now.
 
 Microsoft sign-in (OAuth → Xbox user token → XSTS, yielding XUID and GamerTag) is deferred, not rejected; it can be
 added later as another way to prove the link. It is not the primary method because:
@@ -283,7 +284,7 @@ trigger = { event kind + filter → script (+ arguments), owner, enabled, policy
   concurrency defaults to "skip while a run from this trigger is active" (alternatives: queue one, run in parallel);
   a cooldown; a maximum number of starts per minute, beyond which the trigger is throttled and its owner notified (EVENTS.md S14);
   a bounded event queue that drops the oldest and reports a `missed` count.
-- Triggers persist in endbotd and survive restarts (after BOT-020).
+- Triggers persist in endbotd and survive restarts.
 
 **First kinds**, then more on request: `block.change`; `bot.online`, `bot.offline`, `bot.died`, `job.finished`;
 `player.join`, `player.leave`, `player.chat`; `server.started`; `schedule` (wall-clock) and `world.time` (in-game day
@@ -294,51 +295,18 @@ can see (joins, leaves, public chat, death messages) is available and declared b
 and inventories are not provided; direct messages never are. Triggers are approved per script revision and bounded by
 limits ([triggers](PERMISSIONS.md#triggers)).
 
-## Delivery
+## What comes next
 
-No release numbers are assigned in advance. The order is fixed by dependency, and main stays releasable at each
-checkpoint; whether a checkpoint ships on its own or together with later ones is decided when it is reached.
+Nothing is scheduled by release number. Open work is tracked as [issues](https://github.com/amatouhake/endbot/issues/); the larger items are:
 
-1. BOT-019 (Operation API, principals), which changes nothing players see, then the agreed waits (BOT-016, interface
-   guide D2) as a separate step in the same checkpoint; the waits are the new Luau API. Reserved Bot names (BOT-025)
-   land here too.
-2. BOT-020 (endbotd). It moves the policy and script stores, so `endbot update` and `--rollback` must carry the
-   migration in both directions.
-3. BOT-024 (permission model: roles, ownership, script declarations), before anything reaches the web or runs
-   unattended.
-4. BOT-021 (web), then BOT-022 (watches first; persistent triggers need step 2). Localhost mode follows the web.
+- **Localhost mode** ([#282](https://github.com/amatouhake/endbot/issues/282)): endbotd serves the same web UI without Cloudflare
+  ([other hosts](#other-hosts)).
+- **The interface guide's registry rules** ([#286](https://github.com/amatouhake/endbot/issues/286)): one registry for help, examples and forms, and the
+  equivalent command and Luau line on the web.
+- **An upstream login-verifier hook** ([#281](https://github.com/amatouhake/endbot/issues/281)), which would remove the Endstone patch.
+- **Deferred** ([#283](https://github.com/amatouhake/endbot/issues/283)): container operations such as crafting and trading, command completion, sneak edge
+  protection.
+- **Manual checks never run**, above all those that need a second Xbox account ([#272](https://github.com/amatouhake/endbot/issues/272)); the full list is
+  under [validation status](COMPATIBILITY.md#validation-status).
 
-Decided 2026-10-29 JST: these four steps (BOT-020, BOT-024, BOT-021, BOT-022) ship together as one release once all
-of them are done, with one validation pass; no checkpoint in between is released on its own.
-
-Revised 2026-10-30 JST: the release is split. Minecraft 26.60 (protocol 2225) makes RakNet an error and auto-updated
-store clients cannot join the 1.26.52 pair, so waiting for the web would keep players out for its whole length. And
-the one server known to run Endbot hosts three BDS instances and the game client on one PC, where NetherNet LAN
-discovery (UDP 7551, one owner per machine) leaves Bots unable to reach every server but one.
-
-- **0.5.0**: BOT-020 and BOT-024 (both done), the `visibility shared|private` owner command (PERMISSIONS S9), the
-  Endstone/BDS update for 26.60 once it passes compatibility validation, and direct NetherNet signalling over
-  `server-port` (BOT-026) as the default, validated with several BDS instances and a running client on one PC. Each
-  of these is required; 0.5.0 waits for all of them, with one validation pass on the new pair.
-- **0.7.0**: BOT-021 (web) and BOT-022 (events, watches and triggers). Localhost mode comes after.
-
-0.5.0 was published on 2026-10-30 (tag `v0.5.0` = `8e81923`, release-candidate run 41063813075). The checks that need
-a real second person were not run ([#272](https://github.com/amatouhake/endbot/issues/272)).
-
-0.6.0 was added on 2026-11-02 JST: the finished script-facing work (BOT-027 to BOT-031 — areas, one block-targeting
-contract, `look` completion, translucent blocks, the throttling rate limit) plus the removal of the 0.4.0
-`share`/`private` script spellings, on the unchanged 0.5.0 pair. It was cut ahead of the web and triggers so those
-changes reach users in one documented breaking change instead of waiting behind a larger release. The next release is
-still BOT-021 and BOT-022.
-
-0.6.0 was published on 2026-11-03 JST (tag `v0.6.0` = `1d1b8ce`, release-candidate run 41466589712). A human client
-pass ran on a build from `main` `ecaea7f`; the update from a published 0.5.0 instance was run after publication and
-passed, while the BDS live smoke on the candidate was not run. Both records are in
-[the release record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/release/FINAL_CHECKLIST.md).
-
-0.7.0 was added on 2026-11-12 JST: the web (BOT-021, BOT-034) and events, watches and triggers (BOT-022), on the
-unchanged 0.5.0 pair, after one combined human pass on `0.7.0-rc.5` and `rc.6` ([web](COMPATIBILITY.md#web),
-[events](COMPATIBILITY.md#events-watches-and-triggers)).
-
-However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger
-validation pass, not a shorter one.
+A release includes the manual validation gates of what it ships ([release checklist](../release/README.md#release-checklist)).

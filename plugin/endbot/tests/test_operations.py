@@ -305,7 +305,7 @@ VALID_EVENT = {
     "require": [["cause"], ["box"]],
     "payload": {"cause": "string", "bot": "string?"},
     "guarantee": {"class": "persist", "ticks": 4, "each": ["player-break", "player-place"],
-                  "record": "EVENTS.md#target"},
+                  "record": "EVENTS.md#overview"},
 }
 # The sentence Python and JS must both produce for VALID_EVENT (runner/runner.test.mjs pins the same string).
 GUARANTEE_FIXTURE = ("At most once, after the fact, in source order. A change that lasts at least 4 ticks is "
@@ -407,9 +407,9 @@ class EventRegistryTests(unittest.TestCase):
             with self.subTest(capability=capability):
                 self.assertRegistryAccepted(event_kind(capability=capability))
         for guarantee in (
-            {"class": "persist", "ticks": 1, "each": [], "record": "EVENTS.md#target"},
-            {"class": "persist", "ticks": 8, "each": ["player-break"], "record": "EVENTS.md#target"},
-            {"class": "each", "ticks": None, "each": [], "record": "EVENTS.md#target"},
+            {"class": "persist", "ticks": 1, "each": [], "record": "EVENTS.md#overview"},
+            {"class": "persist", "ticks": 8, "each": ["player-break"], "record": "EVENTS.md#overview"},
+            {"class": "each", "ticks": None, "each": [], "record": "EVENTS.md#overview"},
         ):
             with self.subTest(guarantee=guarantee):
                 self.assertRegistryAccepted(event_kind(guarantee=guarantee))
@@ -502,7 +502,7 @@ class EventRegistryTests(unittest.TestCase):
         self.assertEqual({"observe.chat", "observe.presence"} - KNOWN_CAPABILITIES, set())
 
     def test_record_names_an_existing_heading_in_docs(self):
-        for record in ("MISSING.md#target", "EVENTS.md#missing", "EVENTS.md#Target", "EVENTS.md", "#target"):
+        for record in ("MISSING.md#target", "EVENTS.md#missing", "EVENTS.md#Overview", "EVENTS.md", "#target"):
             guarantee = copy.deepcopy(VALID_EVENT["guarantee"])
             guarantee["record"] = record
             with self.subTest(record=record):
@@ -527,7 +527,7 @@ class EventRegistryTests(unittest.TestCase):
 
     def test_class_each_needs_null_ticks_and_an_empty_each(self):
         for ticks, each in ((4, []), (None, ["player-break"]), (4, ["player-break"])):
-            guarantee = {"class": "each", "ticks": ticks, "each": each, "record": "EVENTS.md#target"}
+            guarantee = {"class": "each", "ticks": ticks, "each": each, "record": "EVENTS.md#overview"}
             with self.subTest(ticks=ticks, each=each):
                 self.assertRegistryRejected(event_kind(guarantee=guarantee))
 
@@ -543,20 +543,20 @@ class GuaranteeTextTests(unittest.TestCase):
         self.assertEqual(guarantee_text(copy.deepcopy(VALID_EVENT)["guarantee"]), GUARANTEE_FIXTURE)
 
     def test_persist_without_each_causes_states_only_the_tick_guarantee(self):
-        guarantee = {"class": "persist", "ticks": 8, "each": [], "record": "EVENTS.md#target"}
+        guarantee = {"class": "persist", "ticks": 8, "each": [], "record": "EVENTS.md#overview"}
         self.assertEqual(guarantee_text(guarantee),
                          "At most once, after the fact, in source order. "
                          "A change that lasts at least 8 ticks is delivered.")
 
     def test_persist_with_one_cause_says_it_is_delivered_individually(self):
-        guarantee = {"class": "persist", "ticks": 2, "each": ["player-break"], "record": "EVENTS.md#target"}
+        guarantee = {"class": "persist", "ticks": 2, "each": ["player-break"], "record": "EVENTS.md#overview"}
         self.assertEqual(guarantee_text(guarantee),
                          "At most once, after the fact, in source order. "
                          "A change that lasts at least 2 ticks is delivered; "
                          "player-break is delivered individually.")
 
     def test_each_states_that_every_occurrence_is_delivered(self):
-        guarantee = {"class": "each", "ticks": None, "each": [], "record": "EVENTS.md#target"}
+        guarantee = {"class": "each", "ticks": None, "each": [], "record": "EVENTS.md#overview"}
         self.assertEqual(guarantee_text({"guarantee": guarantee}),
                          "At most once, after the fact, in source order. "
                          "Every occurrence is delivered while the source is connected.")

@@ -1,39 +1,19 @@
-# Events, watches and triggers design (BOT-022)
+# Events, watches and triggers
 
-Status: **Steps 1 to 7 on `main`** (2026-11-08 JST, #234 to #247); design agreed 2026-10-29 JST, amended
-2026-11-08 JST by S6 to S13 (see [settled points](#settled-points)). The Bot-only live smoke passed
-([summary](COMPATIBILITY.md#events-watches-and-triggers)); step 8, the human checks, ran in the combined release pass on
-2026-11-11 and 2026-11-12 JST ([summary](COMPATIBILITY.md#events-watches-and-triggers)).
+How scripts observe the world: event kinds in the registry, watches that a run waits on, and triggers that start
+runs. Shipped in 0.7.0. This document describes the registry format, the delivery path and the watch and trigger
+rules, with the reason for each. Code comments cite the decisions and settled points by number (E1 to E10, S1 to
+S18). What each kind guarantees rests on the measurements in [EVENT_MEASUREMENTS.md](EVENT_MEASUREMENTS.md); what was
+checked by people is in [COMPATIBILITY.md](COMPATIBILITY.md#events-watches-and-triggers).
 
-This document turns [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
-into a registry format, a delivery path, watch and trigger semantics, and a step plan. It builds on endbotd
-([ENDBOTD.md](ENDBOTD.md)) and the permission model ([PERMISSIONS.md](PERMISSIONS.md)), both released in 0.5.0, and
-on the web ([WEB.md](WEB.md)). BOT-022 is released in 0.7.0 together with BOT-021, after one
-validation pass for both ([Delivery](DIRECTION.md#delivery)); the web comes before BOT-022, so BOT-022 adds its
-messages to the web protocol.
+It follows from [Decision 5](DIRECTION.md#decision-5-events-are-a-registry-defined-framework-scripts-wait-triggers-start-runs)
+and builds on endbotd ([ENDBOTD.md](ENDBOTD.md)), the permission model ([PERMISSIONS.md](PERMISSIONS.md)) and the web
+([WEB.md](WEB.md)).
 
-## Where we start
+**Naming.** `endbot_core.events.Event` names Event log entries (audit lines, run logs, run ends). A registry entry is
+an **event kind** and one delivered instance an **occurrence**, so the two never mix.
 
-- **No world events reach scripts.** Scripts poll with `block()` and `wait(ticks)`. The waits from BOT-016
-  (`job:wait`, `waitOnline`, `waitMining`) poll endbotd-side status every `max(0.25, 1 / operations-per-second)` wall
-  seconds, take `{timeout = ticks}` (default 1200) and return the common result shape `{ok, code, reason, ...}`
-  ([Jobs and waits](SCRIPTING.md#jobs-and-waits)).
-- **The plugin registers no Endstone block, chat or presence listeners** for scripts. Presence (join, quit, locale)
-  is reported over the link for authorization only (ENDBOTD P4).
-- **The registry** is `core/src/endbot_core/operations.json` (`operations`, `reservedBotNames`) with
-  `operations.schema.json`. The link's `hello` carries `registryHash`, a hash of the whole registry, and a mismatch
-  refuses the link (#133).
-- **The link** (ENDBOTD P2, merged as #133 with an in-process harness) carries `hello`, `presence`, `submit`, `world`,
-  `deliver` and `permission`, newline-delimited JSON with a 1 MiB frame bound, `PROTOCOL = 1`. It is not released, so
-  BOT-022 can extend it without compatibility cost.
-- **Endstone block event coverage on the locked pair is unknown.** Which changes raise an event (player break and
-  place, pistons, fluids, redstone, explosions, growth, decay, falling blocks) has not been measured. This design does
-  not assume any of it.
-- **Naming.** `endbot_core.events.Event` already names Event log entries (audit lines, run logs, run ends). This
-  document calls a registry entry an **event kind** and one delivered instance an **occurrence**; new code uses
-  those names so the two never mix.
-
-## Target
+## Overview
 
 ```text
   Endstone listeners ─┐                         ┌─► watch buffers ─► w:wait{} in runs
@@ -56,7 +36,7 @@ messages to the web protocol.
 
 ### E1. Event kinds live in the registry under `events`
 
-`operations.json` gains a top-level `events` object keyed by kind name (`category.action`). The schema requires every
+`operations.json` has a top-level `events` object keyed by kind name (`category.action`). The schema requires every
 field:
 
 ```json
@@ -79,7 +59,7 @@ field:
 - `source`: `plugin`, `runtime` or `endbotd`. It decides which adapter reports the kind and what a gap means (E4).
 - `capability`: the PERMISSIONS principle 2 name. Basic-set kinds (`read.world`) need no declaration; others
   (`observe.chat`, `observe.presence`) must appear in the script's `requires {}`.
-- `visibility`: the PERMISSIONS data class, `public` only in BOT-022. `not-visible` and `private` are schema values
+- `visibility`: the PERMISSIONS data class; every listed kind is `public`. `not-visible` and `private` are schema values
   that the registry test rejects for any listed kind, so "other players' positions" and `/tell` cannot be listed by
   mistake.
 - `filters`: field name and type; `require` lists the alternative sets of which one must be given. A filter with a
@@ -102,27 +82,28 @@ that, `guarantee.class` is one of:
 | `persist` | A state that holds for at least `ticks` ticks is delivered; shorter states may be missed or coalesced | `ticks` |
 
 - `each` on a `persist` kind lists the causes that are delivered individually (for `block.change`, the causes the
-  spike finds backed by a reliable Endstone event).
+  measurement found backed by a reliable Endstone event: `player-break` and `player-place`).
 - `record` points at the validation document and anchor that measured the guarantee. A registry test requires the
   anchor to exist and, for `persist`, `ticks` to be a positive integer. **A kind with `ticks: null` fails the test**,
-  so `block.change` cannot be listed until step 1 has measured it; the JSON above is the shape, not a listing.
+  so a kind cannot be listed before it has been measured; the JSON above is the shape, not a listing.
 - The docs and `api.luau` print the guarantee from the registry ("a change that lasts at least 4 ticks is delivered;
   player breaking and placing are delivered individually"), so it is stated once.
 
 ### E3. `block.change`: Endstone events where measured, a batched poll for the rest
 
-- **Event-backed causes.** For each cause the spike finds covered, the plugin listens at monitor priority and, one
+- **Event-backed causes.** For each of those causes the plugin listens at monitor priority and, one
   tick later, reads the position on the server thread and reports only if the block actually changed. Cancelled or
   rewritten actions are therefore never reported, and the payload is what the world holds, not what an event
   proposed.
 - **Polled positions.** The plugin reads every watched position once every 4 ticks, a quarter of them on each tick,
-  and compares it with the last value it saw; a difference is reported with cause `poll`. The period comes from step 1
+  and compares it with the last value it saw; a difference is reported with cause `poll`. The period was measured
   and is fixed, not an operator setting, so `guarantee.ticks` (4) stays true
   ([record](EVENT_MEASUREMENTS.md#block-changes)).
 - **Unloaded chunks** are skipped by the poll. When the chunk is loaded again a difference is reported late, with
-  cause `poll`; the spike confirms that reading an unloaded position is detectable rather than a default block.
-- **Bounds**: a watch or trigger filter is a BOT-027 area (S7) of at most `maxBlocks` (512) cells; the server watches
-  at most `[events] max-watched-blocks` positions in total (default 2048 from step 1's cost measurement, at most
+  cause `poll`. Reading an unloaded position returns air rather than failing, so the source checks which chunks are
+  loaded and keeps the baseline of the others ([record](EVENT_MEASUREMENTS.md#block-changes)).
+- **Bounds**: a watch or trigger filter is an area (S7) of at most `maxBlocks` (512) cells; the server watches
+  at most `[events] max-watched-blocks` positions in total (default 2048 from the cost measurement, at most
   16384 so the interest set fits one link frame), and one controller's watches and triggers at most `[limits]
   max-watched-blocks-per-controller` of them (default 1024, `0` for no separate share; S15).
   A watch that would exceed either fails at creation with the limit named.
@@ -163,13 +144,13 @@ w:close()                          -- optional; a watch ends with its run
   capability against the run's declaration, before returning; any failure is an error naming the field or capability.
 - **Buffering starts at `watch()`**, not at `wait()`, so nothing is lost between waits. Each watch keeps at most 64
   occurrences, dropping the oldest; `r.missed` counts drops since the previous successful wait.
-- `w:wait{timeout}` follows interface guide D2: same `timeout` rules and default as the BOT-016 waits, `ok=true` with
+- `w:wait{timeout}` follows interface guide D2: same `timeout` rules and default as the job waits, `ok=true` with
   `data` = the payload plus `kind`, `ok=false, code="timeout"` at the timeout. After a gap the next wait returns once
   `ok=false` with the temporary-failure code and reason `source restarted`, then continues; a script that cannot
   tolerate a gap re-reads with `block()`.
 - **The wait is pushed, not polled**: the runner host sends one wait request and endbotd answers when an occurrence
   is buffered or the timeout passes. A wait uses no operation budget and counts as one IPC event; it rechecks
-  authority on return, as today's waits do.
+  authority on return, as the job waits do.
 - **Limits**: 16 watches per run; `[limits] max-watches-per-controller` (default 32) across the controller's runs and
   triggers' runs; the controller's `max-watched-blocks-per-controller` and the server-wide `max-watched-blocks`. A watch is owned by the run's principal and ends with the run,
   which already ends on revoke.
@@ -177,9 +158,9 @@ w:close()                          -- optional; a watch ends with its run
 
 ### E6. Triggers are stored bindings in endbotd
 
-`state/triggers.json` (`schemaVersion: 1`, atomic writes), registered with the BOT-020 step 4 migration marker and the
-doctor `stores` check. Older versions ignore the unknown file, so a rollback keeps the triggers on disk and simply
-does not run them; the release notes state it.
+`state/triggers.json` (`schemaVersion: 1`, atomic writes), registered with the store migration marker and the
+doctor `stores` check ([ENDBOTD.md P7](ENDBOTD.md#p7-stores-live-in-state-and-both-update-directions-carry-them)). Versions before 0.7.0 ignore the unknown file, so a rollback keeps the triggers on disk and simply
+does not run them.
 
 ```text
 trigger = { name, owner (identity id), visibility (private|shared),
@@ -200,7 +181,7 @@ trigger = { name, owner (identity id), visibility (private|shared),
 ### E7. Approval, authority and pausing
 
 - **Arming approves.** Creating or enabling a trigger shows the script's declaration (as the run form does,
-  PERMISSIONS 2b) and records `approved`. Only someone who may run the script may arm it; `[limits]
+  [PERMISSIONS.md](PERMISSIONS.md#two-layers-the-person-and-the-script)) and records `approved`. Only someone who may run the script may arm it; `[limits]
   max-triggers-per-controller` (default 8, `0` disables triggers on the server) bounds armed triggers per owner.
 - **A started run** has the owner's authority intersected with `approved.declaration`, the `trigger` channel and the
   online-independent layer, like any run. It counts toward the owner's concurrent-run limit; at the limit the start
@@ -254,27 +235,24 @@ trigger = { name, owner (identity id), visibility (private|shared),
 ### E10. Commands, forms and the web
 
 - **Commands**: `/botscript trigger add <script> <kind> [field=value ...] [-- <args>]`, `list`, `show`, `enable`,
-  `disable`, `remove`, `set <name> <policy>=<value>`, names per the [interface guide](INTERFACE_GUIDE.md) and
-  confirmed there in step 5c. `enable` is the approval.
-- **Forms**: the script menu gains Triggers: a list, and an add form generated from the kind's `filters` and the
+  `disable`, `remove`, `set <name> <policy>=<value>`, names per the [interface guide](INTERFACE_GUIDE.md#d3-command-roots).
+  `enable` is the approval.
+- **Forms**: the script menu has Triggers: a list, and an add form generated from the kind's `filters` and the
   script's params, the same generator the run form uses. Forms mirror the commands and add no meaning.
-- **Web**: BOT-022 adds to the web protocol (WEB P2) `trigger.list|get|create|update|enable|disable|remove` and
-  `event.kinds` (the registry `events` object), bumping `web-protocol`; `subscribe trigger:<name>` pushes state and
-  stats, and `subscribe triggers` the same for every visible trigger, for the list (added in the 0.7.0 release pass). Each message calls the same endbotd trigger operation as the command, so authorization is identical
+- **Web**: the web protocol (WEB P2) carries `trigger.list|get|create|update|enable|disable|remove` and
+  `event.kinds` (the registry `events` object); `subscribe trigger:<name>` pushes state and
+  stats, and `subscribe triggers` the same for every visible trigger, for the list. Each message calls the same endbotd trigger operation as the command, so authorization is identical
   (principle 1). The UI lists the triggers the principal may see and edits their own, with the editor generated from
-  the registry like the WEB step 7 Bot control forms, and shows the declaration before enabling.
-- **Coordination with BOT-021**: WEB step 3a's protocol schema reserves the `trigger.*` and `event.*` namespaces;
-  WEB step 7's registry-driven form generator takes a field list, so step 7 here reuses it for filters. The web
-  never shows occurrences live in BOT-022.
+  the registry like the Bot control forms, and shows the declaration before enabling.
+- The web's registry-driven form generator takes a field list, so the trigger editor reuses it for filters. The web
+  never shows occurrences live.
 
 ## Settled points
-
-Decided 2026-10-29 JST, following the recommendations of the draft.
 
 - **S1. Human players' names are not in `block.change`**; only Bot names (`bot`) are given. A name next to a
   coordinate tells a watcher where that player is, which PERMISSIONS puts in "not normally visible".
 - **S2. Default limits** are those in E3, E5 and E8: 8 triggers and 32 watches per controller, 10 starts per minute,
-  a 20-tick cooldown and `skip`; `max-watched-blocks` (2048) and the fixed 4-tick poll come from step 1;
+  a 20-tick cooldown and `skip`; `max-watched-blocks` (2048) and the fixed 4-tick poll come from the block-change measurement;
   1024 watched blocks per controller (S15).
 - **S3. No trigger starts while BDS is stopped**; such starts are counted as skipped, and `server.started` fires when
   BDS comes back.
@@ -285,24 +263,20 @@ Decided 2026-10-29 JST, following the recommendations of the draft.
   the exact source would pause every trigger on every edit, including fixes to one's own script, and would require
   the store to keep old revisions runnable. S16 narrows this for someone else's script.
 
-Decided 2026-11-08 JST, before implementation started:
-
-- **S6. All of steps 1 to 7 ship in the next release** with BOT-021; step 8 is part of the combined human pass.
-- **S7. Area filters use the BOT-027 area value.** `block.change` takes one `area` filter (cell, box, sphere and
+- **S6. Events and the web ship together**, in 0.7.0, with one human pass for both.
+- **S7. Area filters use the area value of the commands.** `block.change` takes one `area` filter (cell, box, sphere and
   `except`, as `within`/`except` and Luau `area.*`), refused when its resolved cells exceed `maxBlocks` (512). A watch
   or trigger has no Bot to resolve against, so `~` and the Bot-centred sphere are refused with a message saying to
   build the area from a position (`area.box(...)` with a Bot's coordinates); the stored and reported area is always
   absolute. One cell replaces the former `x`/`y`/`z` filter.
-- **S8. The link becomes `PROTOCOL = 3`.** Areas (BOT-027) already moved it to 2, which this document predates.
-- **S9. Step 1 measures with Bots, not a human.** A Bot's break and place are real player actions on BDS and raise
-  the same events; the spike record says "measured with Bots", and human break and place are checked in the release
-  pass. Validation uses NetherNet Bots only (RakNet was removed in 0.5.0).
-- **S10. `player.chat` is an operator opt-in** (`[events] chat`, off by default; decided 2026-11-08 JST). On the
+- **S8. The link is `PROTOCOL = 3`.** Areas moved it to 2 and events to 3.
+- **S9. Block changes are measured with Bots, not a human.** A Bot's break and place are real player actions on BDS
+  and raise the same events; the [measurement](EVENT_MEASUREMENTS.md#block-changes) says so, and a human breaking and
+  placing was checked in the 0.7.0 release pass.
+- **S10. `player.chat` is an operator opt-in** (`[events] chat`, off by default). On the
   locked Endstone the chat event comes before a behavior pack's `chatSend` mute and BDS's chat filter run, so a
   message nobody saw could reach a script; operators who do not mute chat with a pack turn it on
   ([record](EVENT_MEASUREMENTS.md#presence-and-chat)).
-
-Approved by the operator 2026-11-08 JST after implementation (they changed the design during review):
 
 - **S11. `bot.online` and `bot.offline` are a sample, not a feed.** endbotd reads the runtime's Bot profiles once a
   second, so their guarantee is `persist` 40 ticks (a state that lasts two seconds is delivered), they are
@@ -315,9 +289,6 @@ Approved by the operator 2026-11-08 JST after implementation (they changed the d
 - **S13. A trigger pauses when its script's parameters change** (`arguments no longer valid`), even if the stored
   arguments would still be accepted; enabling it again re-approves and checks the arguments. Stored arguments are
   also checked when the trigger is armed.
-
-Approved by the operator 2026-11-10 JST after a design review of the implementation (S17 and S18 on 2026-11-11
-after a user-perspective review):
 
 - **S14. The start cap throttles, it does not disable.** Disabling at the cap made ordinary busy triggers (a farm
   area, public chat) stop until enabled by hand, so the cost of chain protection fell on normal traffic. Over the cap
@@ -337,76 +308,7 @@ after a user-perspective review):
   only logged, so a trigger simply stopped reacting; now the owner is told why, and a start refused at the run limit
   is told once. A clean end of a triggered run no longer reaches chat, where a busy trigger would fill it.
 
-## Steps
-
-Each step is split into PRs that keep main releasable. **Claude** marks protocol, threading, security boundaries and
-the measurement; **DeepSeek** marks pieces handed over with a precise spec and acceptance tests, reviewed by Claude.
-BOT-021 and BOT-022 ship together in one release; no release is cut between them.
-
-1. **Spike: block change coverage on the locked pair.** Can start now. A probe plugin logs every Endstone block,
-   piston, fluid, explosion, growth and decay event together with a per-tick read of a test area, while a scenario
-   exercises: human break and place, Bot break and place, piston push and retract, lever and redstone toggling a
-   door, water and lava flow, sand falling, TNT, fire, leaf decay, crop growth, and a block changed and restored
-   within 1, 2, 4 and 8 ticks. Also measured: poll cost per 1000 positions per pass, reads in unloaded chunks, and
-   whether `player.join`, `player.leave`, `player.chat` (public only; a `/tell` must raise nothing the plugin
-   forwards) and death messages have usable events. Recorded in `docs/EVENT_MEASUREMENTS.md` under `#block-changes`, the
-   section that sets `guarantee.ticks`, `each`, `block-poll-ticks` and `max-watched-blocks`. *Claude.* **Done
-   2026-11-08 JST** ([record](EVENT_MEASUREMENTS.md#block-changes)): poll every 4 ticks, `guarantee.ticks` 4, `each` player
-   break and place, `max-watched-blocks` 2048.
-2. **Registry.**
-   - **2a. The `events` schema** (E1, E2), the registry tests (required fields, `require` sets, `visibility` must be
-     `public`, `record` anchor exists, `persist` needs `ticks`), and `api.luau`/docs generation of kind and guarantee
-     text. No kind listed yet. Can land now. *DeepSeek.*
-3. **Delivery** (E3, E4). After BOT-020 3c; tests run through the step-2 link harness.
-   - **3a. Link `interest` and `events`, `PROTOCOL = 3`, and endbotd fan-out with gap tracking.** *Claude.*
-   - **3b. The plugin's `block.change` source**: listeners for the measured causes with the next-tick confirm, the
-     batched poll, baselines, unloaded-chunk handling, `dropped`; and the `block.change` registry entry with step 1's
-     numbers. *Claude* (server-thread work).
-4. **Watches** (E5): `watch()` and `w:wait` in `runner/api.luau` and the host, endbotd buffers, push-style waits,
-   capability check against `requires {}` (needs BOT-024 2a), limits. Docs: a Watches section in SCRIPTING.md.
-   *Claude.*
-5. **Triggers.** After BOT-020 4 (store registration) and BOT-024 3b and 4b (roles and ownership in the check).
-   - **5a. Trigger store and policy engine** (E6, E8): `state/triggers.json`, doctor `stores`, and the policy state
-     machine as a pure module with injected time, specified by the E8 table. *DeepSeek* for the engine and its table
-     tests; *Claude* reviews the store registration.
-   - **5b. Approval, authority and pausing** (E7): starting runs with owner ∩ approved declaration, the revision rule,
-     pauses, disable on revoke, notification; restart behavior (E9). SECURITY.md updated here. *Claude.*
-   - **5c. Commands and forms** (E10). *DeepSeek.*
-6. **The other first kinds.** Each adds one source adapter and one registry entry with its guarantee record.
-   - **6a. `player.join`, `player.leave`, `player.chat`** with `observe.presence` and `observe.chat`; public chat
-     only, from what step 1 found. *Claude* (the visibility boundary).
-   - **6b. `bot.online`, `bot.offline`, `bot.died`, `job.finished`, `server.started`.** *DeepSeek.*
-   - **6c. `schedule` (wall clock, endbotd timer) and `world.time` (day and night, from the plugin's poll).**
-     *DeepSeek.*
-7. **Web** (E10). After WEB steps 3a and 7.
-   - **7a. `trigger.*` and `event.kinds` messages and `subscribe trigger:`**, calling the step-5 operations. *DeepSeek*
-     against the WEB protocol schema; Claude reviews authorization.
-   - **7b. Trigger list and editor UI** from the registry, with the declaration shown before enabling. *DeepSeek.*
-8. **Validation**, inside the combined release pass (below). Recorded in a docs PR.
-
-### Validation in the release pass
-
-Live Bot-only NetherNet smoke on the locked pair (`scripts/raknet_spike.py`, which despite its name runs over
-NetherNet, gains an `--events` case set):
-
-- `block.change` for every cause step 1 listed as `each`, and a change held for `guarantee.ticks` delivered by the
-  poll; a change shorter than that is allowed to be missed but never reported twice.
-- Watch timeout, `missed` after overflowing the buffer, a filter over the box bound refused, the watch and
-  watched-block limits refused with the limit named.
-- Trigger skip, queue, cooldown, and a self-feeding chain throttled by the start cap with the owner notified once.
-- A shared script edited by its owner pauses another person's trigger (`script changed`); enabling re-approves.
-- Revoke disables the owner's triggers and ends their watches; regrant leaves them disabled.
-- Kill endbotd: triggers come back armed with their stats; restart BDS: watches see the gap, `server.started` fires
-  once, no trigger starts while BDS is down.
-- `player.chat` from public chat delivered; a `/tell` never delivered; a human's name never in `block.change`.
-- Update with triggers, roll back (the old version runs without them and ignores `state/triggers.json`), update again
-  (they are back).
-
-Human Windows Client check: the Triggers form and add form, the declaration shown before enabling, the disable
-notification in chat, and achievement history unaffected. With the web deployed: create, edit, enable and disable a
-trigger from a phone, and the same refusal as in game for someone else's trigger.
-
-## Not in BOT-022
+## Not included
 
 Cancelling or modifying events (Decision 2); other players' positions or inventories and direct messages; kinds beyond
 the first list in Decision 5 (`server.stopped`, `run.finished`, ... come on request with their own registry entry);

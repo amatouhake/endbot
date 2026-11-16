@@ -14,7 +14,7 @@ const EVENT_FIXTURE = {
     dimension: { type: 'dimension', default: 'overworld' } },
   require: [['cause'], ['box']],
   payload: { cause: 'string', bot: 'string?' },
-  guarantee: { class: 'persist', ticks: 4, each: ['player-break', 'player-place'], record: 'EVENTS.md#target' },
+  guarantee: { class: 'persist', ticks: 4, each: ['player-break', 'player-place'], record: 'EVENTS.md#overview' },
 };
 const GUARANTEE_FIXTURE = 'At most once, after the fact, in source order. A change that lasts at least 4 ticks is '
   + 'delivered; player-break and player-place are delivered individually.';
@@ -330,7 +330,7 @@ test('event guarantee text is the same sentence the Python operation reference s
   const row = events({ 'block.change': EVENT_FIXTURE }).split('\n')[2];
   assert.equal(row, '| `block.change` | cause: string or box: area (max 512 blocks) | cause: string, bot: string? | '
     + GUARANTEE_FIXTURE + ' |');
-  const each = { class: 'each', ticks: null, each: [], record: 'EVENTS.md#target' };
+  const each = { class: 'each', ticks: null, each: [], record: 'EVENTS.md#overview' };
   assert.equal(guaranteeText({ guarantee: each }),
     'At most once, after the fact, in source order. '
     + 'Every occurrence is delivered while the source is connected.');

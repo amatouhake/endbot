@@ -147,6 +147,7 @@ On the current pair:
 On the earlier pair (`1.26.52.3`), not repeated since:
 [mining](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md), including a human client watching continuous mining and a live revoke and
 regrant; [pickups, drops, swap and hold](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/INVENTORY_VALIDATION.md);
+[Groups](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/GROUPS.md#verification), by console probe and on a human client;
 [timed item use and equipment](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ITEM_USE_SYNC_VALIDATION.md), including a human client confirming the trident
 throw; and [dimension changes, radius and controller policy](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/BOT_BEHAVIOR_VALIDATION.md), Bots only.
 

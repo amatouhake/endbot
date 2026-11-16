@@ -6,17 +6,18 @@ Endbot is a practical Fake Player foundation for the official Minecraft Bedrock 
 [Endstone](https://github.com/EndstoneMC/endstone) as the extension platform. It preserves the normal Microsoft/Xbox
 authentication path for people while adding a narrow, server-owner-controlled ES384 trust path for accountless bots.
 
-Endbot is pre-alpha. It provides persistent multi-bot profiles, real NetherNet client sessions, lifecycle/reconnect,
-server-API teleport, rename, movement/actions, hotbar selection, block interaction, and item drop behind the validated
-`/bot` authorization surface. [Shared Groups](docs/GROUPS.md) are on main for 0.4.0; immediate group inputs use one
-runtime batch. They include menus, bounded operation summaries and per-controller
-operation history with full result inspection. The exercised menu/query flows have passed reported Windows client checks;
-see the Group guide for remaining manual validation gates.
-Controller-written Luau [scripts](docs/SCRIPTING.md) are on main for 0.4.0, off by default; start with the
-[tutorial](docs/SCRIPTING_TUTORIAL.md). A [web page](docs/WEB_DEPLOY.md) for controllers is on main; its runs on Cloudflare with real passkeys passed,
-including a custom domain and rollback; the trusted site passed against a test signer, not a production site
-([what was checked](docs/COMPATIBILITY.md#web)). Work tasks, Discord, blueprints
-and AI behavior are not implemented.
+Endbot is pre-alpha. Bots are persistent profiles with real NetherNet client sessions that reconnect by themselves.
+Players the operator has granted access drive them with `/bot`: movement and actions, teleport, mining, inventory and
+item use, each validated by BDS like a player's own input.
+
+- [Groups](docs/GROUPS.md) operate many Bots as one target.
+- [Scripts](docs/SCRIPTING_TUTORIAL.md) in Luau automate them; scripting is off by default.
+- [Events and triggers](docs/EVENTS.md) let scripts react to block changes, players, time and Bots.
+- A [web page](docs/WEB_DEPLOY.md) for controllers runs on a Cloudflare Worker that each operator deploys.
+
+What has been checked on real servers and clients, and what has not, is under
+[validation status](docs/COMPATIBILITY.md#validation-status). Work tasks, Discord, blueprints and AI behavior are not
+implemented.
 
 ## Quick start (server operators)
 
@@ -162,25 +163,17 @@ The acknowledgement names the check's boundary; it does not certify world histor
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Product direction](docs/DIRECTION.md)
-- [Interface guide](docs/INTERFACE_GUIDE.md)
-- [Permission model](docs/PERMISSIONS.md)
-- [endbotd design](docs/ENDBOTD.md)
-- [Installing from release artifacts](docs/INSTALL.md)
-- [Security model](docs/SECURITY.md)
-- [Achievement safety and the M0 manual test](docs/ACHIEVEMENTS.md)
-- [Compatibility and release gates](docs/COMPATIBILITY.md)
-- [Commands and operation](docs/COMMANDS.md)
-- [Deploying the web](docs/WEB_DEPLOY.md)
-- [Shared Groups](docs/GROUPS.md)
-- [Writing Bot scripts: a tutorial](docs/SCRIPTING_TUTORIAL.md)
-- [Luau scripting reference](docs/SCRIPTING.md)
-- [Optional UI resource pack (prototype)](docs/UI_PACK.md)
-- [Event guarantees: what was measured](docs/EVENT_MEASUREMENTS.md)
-- [Open work and known issues](https://github.com/amatouhake/endbot/issues/)
-- [Native Windows development and live smoke](docs/WINDOWS_DEV.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+The [documentation index](docs/README.md) lists every document by reader:
+
+- **Players** who control Bots: [commands](docs/COMMANDS.md), [Groups](docs/GROUPS.md), the
+  [scripting tutorial](docs/SCRIPTING_TUTORIAL.md) and [reference](docs/SCRIPTING.md).
+- **Operators** who run a server: [install](docs/INSTALL.md), [operations](docs/OPERATIONS.md),
+  [deploying the web](docs/WEB_DEPLOY.md), [security](docs/SECURITY.md) and
+  [compatibility](docs/COMPATIBILITY.md).
+- **Developers**: [architecture](docs/ARCHITECTURE.md), [product direction](docs/DIRECTION.md) and the design
+  documents.
+
+Open work and known issues are [GitHub issues](https://github.com/amatouhake/endbot/issues/). [Third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Contributing
 

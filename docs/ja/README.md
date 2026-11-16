@@ -11,7 +11,7 @@ Endbot は、Minecraft 統合版 (Bedrock) の公式サーバーに Bot を追�
 | 文書 | 内容 |
 | --- | --- |
 | [はじめての Endbot](GETTING_STARTED.md) | 5 分で最初の Bot を出し、いくつか試してみる |
-| [コマンド](../COMMANDS.md) (英語) | `/bot`、`/botgroup`、`/botscript`、`/botweb` のすべての操作、メニュー、返事の意味 |
+| [コマンド](COMMANDS.md) | `/bot`、`/botgroup`、`/botscript`、`/botweb` のすべての操作、メニュー、返事の意味 |
 | [グループ](../GROUPS.md) (英語) | 何体もの Bot を 1 つの対象として操作する |
 | [スクリプトのチュートリアル](../SCRIPTING_TUTORIAL.md) (英語) | 最初のスクリプトからイベントへの反応まで |
 | [スクリプトのリファレンス](../SCRIPTING.md) (英語) | 書き方、Luau API、監視、トリガー、実行の寿命 |

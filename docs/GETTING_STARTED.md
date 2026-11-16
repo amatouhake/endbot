@@ -6,10 +6,10 @@ minutes. It covers your first Bot and a few things worth trying. Every operation
 
 ## Before you start
 
-- **You need a grant.** The server's operator decides who may control Bots. Without a grant, every `/bot` command
-  replies that you lack permission. Ask the operator.
+- **You need a grant.** The server's operator decides who may control Bots. Without a grant, the game does not
+  recognize `/bot` as a command. Ask the operator.
 - **Join with your normal Xbox sign-in.** Nothing has to be installed. The
-  [UI resource pack](UI_PACK.md) is optional and only makes the menus larger.
+  [UI resource pack](UI_PACK.md) is optional: it makes the menus larger and gives scripts a multi-line editor.
 - **Your game language is used.** A client set to Japanese sees Japanese replies and menus. Commands stay the same
   in every language.
 
@@ -26,8 +26,9 @@ The same thing as a command:
 
 ## 2. Make it do something
 
-Type `/bot Alice` (or tap the Bot in the `/bot` list) to open its menu. The categories follow Minecraft's control
-settings: Movement, Look, Teleport, Gameplay, Inventory, and Bot for its connection.
+Type `/bot Alice` (or tap the Bot in the `/bot` list) to open its menu. The buttons follow Minecraft's control
+settings: **Movement...**, **Look...**, **Teleport...**, **Gameplay...**, **Inventory...**, and **Bot...** for its
+connection.
 
 Every button you tap is shown once in chat as the command it ran, in gray. The menu teaches the commands: when you
 know one, you can type it next time.
@@ -108,7 +109,7 @@ conditions. They can also start by themselves when something happens in the worl
 - **A reply means the request was accepted, not that it worked.** The game still decides collision, reach and what
   breaks. Check with `/bot Alice status`, which shows where the Bot is and what it is doing.
 - **`... failed: Bot is offline`**: bring it back with `/bot Alice spawn`.
-- **`you do not have Bot control permission`**: you have no grant; ask the operator.
+- **`/bot` is not recognized**: you have no grant yet; ask the operator.
 - **`Bot Alice is private to ...`**: the Bot belongs to another player, who has made it private. See
   [PERMISSIONS.md](PERMISSIONS.md).
 - **You forgot a command**: `/bot help` lists them, and `/bot help destroy` explains one operation.

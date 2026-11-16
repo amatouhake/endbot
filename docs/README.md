@@ -57,8 +57,9 @@ The component READMEs cover their own code: [runtime](../runtime/README.md), [ru
 - A statement that something was checked on a real server or client belongs in
   [COMPATIBILITY.md](COMPATIBILITY.md#validation-status), with what was not run beside it.
 - Design documents keep their decision numbers (P1, E4, S9, ...) because code comments cite them.
-- English is the source. Player documents may have a Japanese translation under [ja/](ja/README.md), and it is the
-  only place Japanese prose belongs. Each translation's first line names its source and the source's git blob
+- English is the source. Player documents may have a Japanese translation under [ja/](ja/README.md). Apart from the
+  one-line pointers to it and the glossary in [INTERFACE_GUIDE.md](INTERFACE_GUIDE.md#glossary), Japanese prose
+  belongs only there. Each translation's first line names its source and the source's git blob
   (`<!-- source: docs/COMMANDS.md <blob> -->`); `python scripts/check_translations.py` lists the translations whose
   source has changed since, with the English diff to carry over. Example replies in a translation are the game's own
   Japanese wording from `core/src/endbot_core/i18n.py`.

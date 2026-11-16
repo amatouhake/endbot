@@ -14,7 +14,8 @@ operation history with full result inspection. The exercised menu/query flows ha
 see the Group guide for remaining manual validation gates.
 Controller-written Luau [scripts](docs/SCRIPTING.md) are on main for 0.4.0, off by default; start with the
 [tutorial](docs/SCRIPTING_TUTORIAL.md). A [web page](docs/WEB_DEPLOY.md) for controllers is on main; its runs on Cloudflare with real passkeys passed,
-including a custom domain, rollback and the trusted site ([validation record](docs/WEB_VALIDATION.md)). Work tasks, Discord, blueprints
+including a custom domain and rollback; the trusted site passed against a test signer, not a production site
+([what was checked](docs/COMPATIBILITY.md#web)). Work tasks, Discord, blueprints
 and AI behavior are not implemented.
 
 ## Quick start (server operators)

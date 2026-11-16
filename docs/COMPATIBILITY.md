@@ -155,6 +155,35 @@ Runtime and Endstone issuer/audience must match exactly; update both sides toget
 Explicit custom values remain supported if both sides use the same values. Owner-key terminology and
 `owner-private.pem` / `owner-public.pem` are intentional: the key pair remains the server-owner-controlled trust root.
 
+## Validation status
+
+What people checked on the current baseline, and what they did not. A green build never stands in for these checks.
+Each area links to the dated record of its runs, kept at the commit that last held it.
+
+### Web
+
+Checked on 0.7.0 release candidates (rc.1 to rc.3, then rc.5 and rc.6) by the operator, on Cloudflare with real
+passkeys on a Windows PC and an Android phone ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/WEB_VALIDATION.md)):
+
+- deploy, redeploy and `rotate-key`; the token permissions in the guide; a Worker Endbot did not create is refused;
+- linking from `/botweb link` on the phone and the PC, a second passkey from a second code, cross-device QR sign-in;
+- the rate limits; revoking a grant with sessions open and during a script run;
+- status, history and script editing with BDS stopped;
+- a Worker with a wrong link key refused; network loss and a power cut of the server PC;
+- a protocol mismatch refused and named in the log; `endbot update`, `--rollback` and `--force` between 0.7.0
+  candidates, with passkeys and triggers kept;
+- a custom domain and the change back to `workers.dev`, each deleting passkeys and sessions as documented;
+- the trusted site in `link` and `sign-in` mode, two keys, a replayed and a foreign-browser assertion refused, an XUID
+  without a grant refused, and `endbot web revoke`. The site was a signer Worker made for the pass, not an operator's
+  production site.
+
+Not run:
+
+- a trigger made private disappearing from another viewer's open list, and the web refusing a change to another
+  player's trigger: both need a second Xbox account;
+- a rollback from 0.7.0 to 0.6.0. It needs `[events]`, `[web]` and the three new `[limits]` keys removed first,
+  because 0.6.0 refuses keys it does not know.
+
 ## Compatibility change gate
 
 A proposed Endstone/BDS update is not supported merely because it compiles. It must pass:

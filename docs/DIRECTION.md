@@ -337,7 +337,7 @@ passed, while the BDS live smoke on the candidate was not run. Both records are 
 [FINAL_CHECKLIST.md](../release/FINAL_CHECKLIST.md).
 
 0.7.0 was added on 2026-11-12 JST: the web (BOT-021, BOT-034) and events, watches and triggers (BOT-022), on the
-unchanged 0.5.0 pair, after one combined human pass on `0.7.0-rc.5` and `rc.6` ([web](WEB_VALIDATION.md#release-pass),
+unchanged 0.5.0 pair, after one combined human pass on `0.7.0-rc.5` and `rc.6` ([web](COMPATIBILITY.md#web),
 [events](EVENTS_VALIDATION.md#release-pass)).
 
 However checkpoints are bundled, a release includes their manual validation gates; bundling more makes one larger

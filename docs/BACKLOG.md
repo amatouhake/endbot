@@ -907,7 +907,7 @@ cannot load); see [Decision 1](DIRECTION.md#decision-1-endbot-is-a-distribution-
 
 Status: **Design agreed in [WEB.md](WEB.md); steps 1 to 9 are on `main`; the real validation ran on `workers.dev`
 (2026-11-07 JST) and the custom-domain, rollback, power-loss and trusted-site items in the release pass
-(2026-11-12 JST, [record](WEB_VALIDATION.md)); released in 0.7.0 together with BOT-022, see [delivery](DIRECTION.md#delivery)** (design agreed 2026-10-30 JST;
+(2026-11-12 JST, [summary](COMPATIBILITY.md#web)); released in 0.7.0 together with BOT-022, see [delivery](DIRECTION.md#delivery)** (design agreed 2026-10-30 JST;
 scope updated 2026-11-03 JST).
 
 Worker + one Durable Object per server, deployed through the Cloudflare API and paired by `endbot web deploy` (stack:

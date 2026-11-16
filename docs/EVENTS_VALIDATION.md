@@ -99,7 +99,7 @@ achievement history.
 The human checks of EVENTS.md step 8, run 2026-11-11 to 2026-11-12 JST in the combined BOT-021/BOT-022 release pass,
 on `0.7.0-rc.5` and then `0.7.0-rc.6` (`main` at #264), Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, Windows 11.
 One Xbox account played in the Windows client; the console stood in for a second owner where that was enough. The
-web side ran on a phone and a PC ([web record](WEB_VALIDATION.md#release-pass)). Probe scripts logged every
+web side ran on a phone and a PC ([web checks](COMPATIBILITY.md#web)). Probe scripts logged every
 occurrence they received; the logs stay out of the repository.
 
 | Check | Result |

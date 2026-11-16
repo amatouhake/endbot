@@ -1,4 +1,4 @@
-<!-- source: docs/README.md becb28ad978e31d2004f9f31a2d604d0549df3f3 -->
+<!-- source: docs/README.md 906a6731aff1eb9e082044ff6ffd6c37d5edec47 -->
 
 # Endbot プレイヤー向けガイド
 

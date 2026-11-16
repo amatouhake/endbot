@@ -187,6 +187,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--accept", metavar="FILE", help="record the source's current blob in FILE")
     parser.add_argument("--unwrap", metavar="FILE", nargs="+", help="join hard-wrapped paragraph lines in FILE")
     args = parser.parse_args(argv)
+    # Reports quote Japanese text; a cp932 or other legacy console must not crash on it.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
 
     if args.accept:
         return accept((Path.cwd() / args.accept).resolve())

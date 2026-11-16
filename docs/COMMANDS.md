@@ -47,7 +47,7 @@ The help pages cover:
 
 - page 1: lifecycle, status and teleport;
 - page 2: movement and actions;
-- page 3: inventory, world interaction and advanced lifecycle.
+- page 3: inventory, blocks and Bot settings.
 
 Each help line is its own chat message, so it reads well in Bedrock chat.
 

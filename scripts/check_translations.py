@@ -4,8 +4,8 @@
 Each translation starts with ``<!-- source: docs/NAME.md <blob> -->``: the English file it
 translates and that file's git blob when it was translated. This script
 
-- fails when a translation has no such line, names a missing source, or links to a
-  file that does not exist;
+- fails when a translation has no such line, names a missing source, links to a file
+  that does not exist, or links to an anchor another docs/ja page does not define;
 - reports a translation whose source has changed since (a warning, or a failure with
   ``--strict``), with the English diff to carry over when the old blob is in history;
 - with ``--accept docs/ja/NAME.md``, records the source's current blob after the
@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JA_DIR = ROOT / "docs" / "ja"
 HEADER = re.compile(r"^<!-- source: (?P<source>\S+) (?P<blob>[0-9a-f]{40}) -->$")
 LINK = re.compile(r"\]\((?P<target>[^)\s]+)\)")
+ANCHOR = re.compile(r'<a id="([^"]+)"></a>')
 
 
 @dataclass
@@ -61,16 +62,24 @@ def parse(path: Path) -> tuple[Translation | None, str | None]:
     return Translation(path, source, match["blob"]), None
 
 
+def anchors(path: Path) -> set[str]:
+    return set(ANCHOR.findall(path.read_text(encoding="utf-8")))
+
+
 def broken_links(path: Path) -> list[str]:
+    """Missing files anywhere, and missing anchors inside docs/ja (translations carry explicit ``<a id>``)."""
     failures = []
     text = path.read_text(encoding="utf-8")
     for match in LINK.finditer(text):
         target = match["target"]
-        if re.match(r"^[a-z]+:", target) or target.startswith("#"):
+        if re.match(r"^[a-z]+:", target):
             continue
-        file_part = target.split("#", 1)[0]
-        if not (path.parent / file_part).resolve().exists():
+        file_part, _, anchor = target.partition("#")
+        linked = (path.parent / file_part).resolve() if file_part else path.resolve()
+        if not linked.exists():
             failures.append(f"{rel(path)}: link to missing file {target}")
+        elif anchor and linked.parent == JA_DIR.resolve() and anchor not in anchors(linked):
+            failures.append(f"{rel(path)}: link to missing anchor {target}")
     return failures
 
 

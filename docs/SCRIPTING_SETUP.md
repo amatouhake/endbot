@@ -155,7 +155,7 @@ a filesystem or network sandbox (see [What the sandbox is and is not](#what-the-
 | Child processes | `JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1`, no breakaway: the runner cannot start descendants | No per-run prohibition (`RLIMIT_NPROC` is per user and deliberately unused). The trusted runner never spawns, and Luau has no spawning API |
 | Parent lifetime | `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: closing the job or BDS exiting kills the runner | `PR_SET_PDEATHSIG` with `SIGKILL`, and a check that the parent is still the expected process |
 | Cumulative CPU | Optional `JOB_OBJECT_LIMIT_PROCESS_TIME`, user CPU seconds, checked periodically by Windows | Optional `RLIMIT_CPU`, user and system CPU seconds: `SIGXCPU` at the cap, `SIGKILL` one second later |
-| Priority | Below normal for runs; a declaration check runs at normal priority, because a person is waiting | `nice(+10)` for runs; an already lower priority stays lower |
+| Priority | Below normal for runs; a declaration check runs at normal priority, because a person is waiting | `nice(+10)` for runs, none for a declaration check; an already lower priority stays lower |
 
 Notes:
 

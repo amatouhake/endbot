@@ -1,7 +1,7 @@
 # Shared Bot groups
 
-Groups are part of main and planned for 0.4.0. Use the plugin and runtime from the same version; an older runtime
-without the required UUID pinning/input-batch capabilities is rejected. No Endstone core change is involved.
+A Group is a named, ordered list of Bots that `/bot` can address as one target: `#miners` for all members,
+`#miners[2]` for one. Groups have an owner and are shared or private ([PERMISSIONS.md](PERMISSIONS.md#ownership)).
 
 Scale: member lookups read the runtime's light `profiles` list (name, identity and state only), and the control
 protocol bounds each request and response at 1 MiB. That fits a group input batch for several hundred members
@@ -102,7 +102,7 @@ Add/remove forms name the target group and use **Add**/**Remove** submit labels.
 with the group name in its title, explanation and confirmation button; the registered Bots remain. The action-form
 layout replaces the message-form layout whose title/content appeared blank in the user's client.
 
-## Implemented behavior
+## How Groups behave
 
 - Shared groups use the existing controller permission. `/botgroup` and `/bot` go through the same authorization,
   grant-revision check and ordered worker. Sequential operations recheck authority before requests/between members;
@@ -131,139 +131,29 @@ layout replaces the message-form layout whose title/content appeared blank in th
   typed-enum approach as `/bot`. Generic branches remain for the locked native parser (including indexed removal);
   dynamic group/Bot name suggestions are unavailable on this baseline. Native client filtering can still be weak.
 
-## Scope and follow-up choices
+## Rules and limits
 
 - Group names are case-insensitive, start with an ASCII letter/underscore, and contain at most 16 ASCII letters,
   digits or underscores. The stored spelling is retained for display.
 - Removing a member compacts later indexes; re-adding appends it. Offline and forgotten entries do not compact
-  automatically. Decide whether explicit reordering or stable numbered slots are needed after actual usage.
-- Group creator metadata, group rename and richer permissions are not implemented yet.
+  automatically. There is no explicit reordering.
+- A Group cannot be renamed.
 - Bulk teleport applies the existing single-Bot teleport independently. There is no automatic formation, collision-safe
-  scatter or frozen shared destination for a moving player. Prefer indexed commands while reviewing placement semantics.
-- Group forms, new result summaries and ordinary action replies follow the controller's language. Some earlier Group
-  management diagnostics remain English. Group diagnostics/forms need the usual Japanese-client review before release.
+  scatter or frozen shared destination for a moving player. Prefer indexed commands where placement matters.
+- Group forms, result summaries and ordinary action replies follow the controller's language. Some Group
+  management diagnostics remain English.
 
-## Verification
+## Known limits
 
-Unit tests cover persistence/write failure, rename, missing profiles, fixed membership during a batch, partial failure,
-revocation, shutdown and rejection of an older runtime. Runtime control tests check stale/reused-name rejection.
+- `/botgroup` shows generic `<action: string>` / `<arguments: message>` usage instead of useful suggestions. Commands
+  are accepted; completion is weak, as for `/bot` ([#283](https://github.com/amatouhake/endbot/issues/283)).
+- Bedrock's `string` target parameter rejects a leading `#`, so the commands take the whole target and tail as one
+  message and parse it themselves.
+- A whole-Group input reaches every member in one runtime turn, but each Bot has its own network and input ticks, so
+  members are not guaranteed to act on the same BDS tick.
+- Whether an operation works on an offline member depends on the operation: `stop` is accepted, an online-only input
+  such as `jump` fails for that member alone.
 
-The opt-in real-BDS probe uses a fresh ignored directory, normal Endstone acquisition and the unchanged locked pair:
-
-```text
-python scripts/raknet_spike.py --groups --output build/group-feature-live
-```
-
-Use a dedicated Python environment containing the locked patched Endstone plus this plugin/CLI, and the repository's
-pinned runtime dependencies. See [Windows development](WINDOWS_DEV.md) for the existing setup. Raw logs, keys, profiles
-and world files stay under the ignored output directory; never add them to Git.
-
-The first live probe established that Bedrock's `string`/Id target parameter rejects a leading `#`. The feature uses a
-first-position `message` overload to accept the full target and command tail through public Endstone declarations.
-Human-client smoke confirmed that execution works, while native completion remains weak as described below.
-
-On 2026-10-21 JST, the Windows RakNet console probe passed with locked Endstone `0.11.13+endbot.1` and BDS `1.26.52.3`
-(observed Windows build `51798905`). It exercised group creation/membership/deletion, whole-group stop, one-based indexed
-look, tailed timed movement, invalid-index diagnostics, offline-member partial failure and retention of Bot profiles
-after Group deletion. The broader existing probe also passed controller-policy and invalid-login controls and clean
-shutdown. Post-session world-history inspection found the required flags unchanged/false; no human Xbox login or
-achievement unlock was observed. This evidence covers console execution on that transport/platform, not client UI.
-
-Automated checks passed: 199 plugin tests, 134 runtime tests, 47 repository tests, 291 CLI tests (2 skipped), Python lint,
-runtime syntax checks and repository portability. The final capabilities/UUID-guard addition was covered by the eight
-control-server tests plus the final real-BDS probe.
-
-Human-client smoke (2026-10-21 JST, user report and three screenshots, source commit `048e0aa`): the user reported that
-all four requested checks behaved as expected: creation/addition/member listing, whole-group and indexed command
-input, ordinary/indexed single-Bot menus, and offline-member behavior. The screenshots show ordered Alice/Bob entries,
-indexed teleport, whole-group stop/jump requests, and Bob retaining index 2 while offline. An online-only jump rejected
-offline Bob individually while Alice's request succeeded. The retained offline Bob session accepted `stop`; offline
-failure is operation-specific, so the earlier manual instruction expecting every offline `stop` to fail was too broad.
-
-Two limitations were observed in that initial build:
-
-- `/botgroup` shows generic `<action: string>` / `<arguments: message>` usage instead of useful management-operation
-  suggestions. Command acceptance passed; completion usability did not. The locked baseline's generic-overload and
-  dynamic-name completion limits also apply ([#283](https://github.com/amatouhake/endbot/issues/283)).
-- `/bot #miners jump` starts the Bots visibly one after another. This matched the original sequential implementation;
-  it does not validate synchronized group actions. Ordered chat replies alone are not timing evidence; the user's
-  observation of the Bot actions establishes the visible skew. No timing measurement was taken.
-
-Follow-up implementation (2026-10-21 JST): immediate inputs now use the synchronous batch above and `/botgroup` has
-operation-specific enum hints like `/bot`. An older runtime without the `groupInputBatch` capability is rejected rather
-than silently reverting to staggered inputs. Runtime tests demonstrate that a queued microtask cannot interleave
-between members, an offline/replaced member does not prevent later members, invalid batch envelopes cause no effects,
-and response size does not grow with unnecessary full Bot status. Plugin tests cover one lookup/batch, UUIDs/order,
-localized ordinary reply rendering, pre-dispatch revocation/shutdown and preserved sequential cancellation semantics.
-The follow-up Windows RakNet console probe passed through real BDS with the same locked pair, including both-online
-group jump, timed movement and offline-member jump failure. The 204 plugin tests, 135 runtime tests, lint, syntax,
-portability and plugin-wheel build passed. Client-rendered completion and visible timing remain separate checks.
-
-The user subsequently confirmed that management completion was comparable to `/bot` and simultaneous group execution
-worked on the real client (source `8a8f875`). The next agreed syntax revision merged `members` into `list [#group]` and
-required `#` in every management group argument, while retaining operation-first management grammar. Tests cover scoped
-listing, unchanged persisted identities/order, bare/indexed whole-group rejection without mutation, and removal/addition.
-The syntax revision passed all 207 plugin tests, lint, portability and the wheel build. Real-BDS Group checks passed
-for prefixed create/add/delete, unscoped/scoped `list`, indexed removal/re-addition, help, and rejection of bare names
-and the retired `members` command. The first full probe subsequently failed the older timed-movement check (zero
-observed distance); a fresh-world rerun passed the full probe, including movement and clean shutdown. The syntax checks
-passed in both worlds.
-
-The user confirmed the six revised management forms (list all, list one group, create, add, remove and delete) worked
-on the real client with source `905c924`. Group-menu coverage and the chat/server-log presentation of group-targeted
-operations were raised as the next design topics; that smoke did not cover the subsequent menu implementation.
-
-Follow-up implementation added the menu/result behavior above. All 221 plugin tests passed, including 100 failed
-members producing only two acknowledgement/audit lines, controller-private result retrieval, pagination, lost-response
-classification, command/form result parity, management-form submit/cancel, stale membership/group/result rejection,
-and old-name reuse protection for member controls/addition choices. Python lint, portability and the plugin-wheel build
-passed. The updated real-BDS probe passed native menu/result declarations, bounded partial-failure logs and paged result retrieval, the
-broader existing checks, and clean shutdown. Native form rendering itself requires the human client.
-
-Human-client follow-up (source `616f3e6`): the user reported the group menus/results looked good overall. Two screenshots
-identified a deletion confirmation with blank title/content and membership forms with a default Run submit label. The
-user requested bare `/botgroup` as the menu shortcut, named deletion/add/remove forms, and result numbers selecting
-previous operations with all member rows displayed. Those changes are implemented on `feat/groups`; the earlier
-prototype commits remain in its history. The former `codex/group-prototype` branch is retained, without a merge or release.
-The revised implementation passes 224 plugin tests, including full 100-row inspection, operation-history selection,
-bounded retention, private ownership, eviction and UUID-pinned navigation while new operations arrive.
-Lint, repository portability and the plugin-wheel build passed. A fresh Windows RakNet real-BDS run with the unchanged
-locked pair passed native bare-command handling, latest/previous operation selection, all group smoke checks, the
-broader movement/controller/authentication checks and clean shutdown. This console run does not validate client form
-appearance or actual Xbox achievement unlocks.
-
-The user subsequently confirmed the game-client scope for source `f419241` passed, including revised forms/history.
-The next agreed revision keeps `/botgroup` management-first, adds direct group targets to `/bot`, and shares the Bot
-operation screen between single and group targets. It retains operation categories and adds the missing command-backed
-controls rather than flattening the hierarchy. Back navigation preserves the management/operation entry. Common
-despawn/profile confirmations now use the visible action-form presentation as group deletion does.
-The shared-screen revision passes 231 plugin tests, including direct selection, management/member/result return paths,
-mixed/empty groups, UUID-pinned teleport, group radius changes and stale menu rejection.
-Native construction of 132 screens in English/Japanese passed on the locked Endstone environment; this checks the
-form API payloads, not client appearance. Lint, portability and the plugin-wheel build passed. The fresh Windows
-RakNet BDS probe passed all group/history checks, the broader controller/movement/authentication checks and clean
-shutdown with the unchanged locked pair.
-
-At that revision, shared operation screens/return paths on the real client and live revocation remained manual gates.
-The user's screenshot of source `278fe78` showed an oversized native Group heading in the target list. The follow-up
-removes that heading and adds the requested reverse link from group operations to that specific group's management.
-Navigation refreshes the current membership but pins the group UUID, rejecting deletion/recreation under the same name.
-All 232 plugin tests, lint and repository portability checks passed for this follow-up.
-The user confirmed both client checks for source `794882b` passed (heading removal and the reverse management link),
-with no issues found in that scope. They then requested data-oriented query replies: status/hotbar/radius queries now
-print all member results immediately, without adding audit entries or changing operation history. The revision passes
-236 plugin tests covering whole/indexed query payloads, retained history, empty history, member failures, full long
-query data, 100-member output and preserved setter behavior. The user subsequently confirmed the latest query behavior
-worked on the game client with source `07f661e`.
-PR-readiness verification reran the current branch: all 47 repository tests, 236 plugin tests, 135 runtime tests and
-291 CLI tests (2 skipped) passed, alongside runtime syntax, Python lint and repository portability. Windows runtime
-startup/UDP-owner tests needed ordinary OS access outside the restricted test sandbox; they passed there. This is
-local verification, not a GitHub Actions result. Remote `main` still matched the branch base `99ba05e` at this check.
-Lint, portability and the plugin-wheel build passed. The fresh Windows RakNet BDS probe passed all three query
-payloads, absence of query audit entries and preserved latest/previous operation results, plus the existing group,
-controller/movement/authentication checks and clean shutdown on the unchanged locked pair.
-Group execution has a user-reported visual timing pass, without a same-tick measurement or guarantee.
-No Xbox achievement unlock was reported. These checks do not establish other transports/platforms or support for another
-Endstone/BDS pair.
-Live controller revocation during an in-flight group operation and actual Xbox achievement unlocks remain explicit
-manual/E2E gates for merge/release assessment; passing unit builds or world-history flags does not satisfy them.
+What was checked on a server and on a client is under [validation status](COMPATIBILITY.md#bot-operations)
+([record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/GROUPS.md#verification)); to run the Group probe see
+[WINDOWS_DEV.md](WINDOWS_DEV.md#live-scripting-and-group-probes).

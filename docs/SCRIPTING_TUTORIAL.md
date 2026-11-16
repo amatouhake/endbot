@@ -10,7 +10,7 @@ and it stops if you lose that permission.
 
 ## Before you start
 
-- The operator has turned scripting on (`[scripting] enabled = true`, see [install and enable](SCRIPTING.md#install-and-enable)).
+- The operator has turned scripting on (`[scripting] enabled = true`, see [scripting setup](SCRIPTING_SETUP.md#install-and-enable)).
 - You are a controller (you can use `/bot`).
 - A Bot exists. The examples use one called Alice: `/bot Alice spawn`.
 

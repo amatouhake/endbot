@@ -147,6 +147,7 @@ On the current pair:
 On the earlier pair (`1.26.52.3`), not repeated since:
 [mining](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md), including a human client watching continuous mining and a live revoke and
 regrant; [pickups, drops, swap and hold](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/INVENTORY_VALIDATION.md);
+[Groups](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/GROUPS.md#verification), by console probe and on a human client;
 [timed item use and equipment](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ITEM_USE_SYNC_VALIDATION.md), including a human client confirming the trident
 throw; and [dimension changes, radius and controller policy](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/BOT_BEHAVIOR_VALIDATION.md), Bots only.
 
@@ -159,6 +160,18 @@ Not run:
   ([#276](https://github.com/amatouhake/endbot/issues/276));
 - boats and horses, a revocation in the middle of a Group batch, the UI pack on a mobile client, and sustained
   multi-Bot load ([#277](https://github.com/amatouhake/endbot/issues/277)).
+
+### Scripting
+
+- Bots only ([record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/SCRIPTING.md#live-validation)): a Group row template placing Bots
+  within 0.35 blocks, a patrol stopped by name and by run id, console input surviving a run's cleanup, a runaway loop
+  ended by the execution budget, the operation rate limit throttling, a message flood ending the run, and mining at
+  spots. The two rate-limit cases ran on the current pair (2026-11-02), the others on the earlier pair (2026-10-23).
+- A human Windows client, for 0.4.0 on the earlier pair: templates, Copy and edit, revision history, rename, sharing,
+  book import and export, `runs` and `stop`, and a runaway loop interrupted.
+
+Not run: a second controller seeing only shared scripts ([#272](https://github.com/amatouhake/endbot/issues/272)); the OS confinement under real memory
+pressure, CPU exhaustion and parent death inside a running BDS on both platforms, beyond the unit and OS probes.
 
 ### Permissions and endbotd
 

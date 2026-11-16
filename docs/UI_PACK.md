@@ -1,12 +1,9 @@
 # Optional Endbot UI resource pack
 
-Status: **merged on `main` (#111, #197); checked on a 1.26.60.5 Windows client** (2026-11-03 JST) for the window,
-the buttons and the multi-line field, with the focus limitation recorded below; without the pack that field cannot be
-edited at all, and its input field also stops at about 100 characters. The pack is *Endbot UI*; its name, two-line
-description and icon are checked on the client at 0.3.0. The [mobile field](#manual-client-check) (check 9) and a
-fresh achievement unlock (check 10) remain unverified; both were waived on 2026-11-03 JST so the pack can ship beside
-the release candidate. The server feature that relies on it, `[scripting] ui-pack-editor`, stays off
-by default.
+An optional resource pack, *Endbot UI*, that players install on their own client. It makes the in-game menus larger
+and gives the script editor a multi-line field. Without it everything still works except whole-script editing in one
+field; the server feature that relies on it, `[scripting] ui-pack-editor`, is off by default. The field on a mobile
+client and a fresh achievement unlock with the pack active are not verified ([#277](https://github.com/amatouhake/endbot/issues/277)).
 
 ## Why
 
@@ -94,89 +91,52 @@ controller uses the pack.
 The [achievement gate](ACHIEVEMENTS.md) was observed with an empty pack stack and no global packs. This pack does not
 touch the server or the world. It is a resource-only pack: no behavior pack, scripts, experiments or Beta APIs.
 Resource packs are not known to disable achievements. Still, **a world achievement unlock with the pack active is a
-manual gate of its own** (AGENTS.md, check 10). That gate was waived for shipping on 2026-11-03 JST, not passed:
+manual gate of its own** (AGENTS.md, check 10). That gate has not been passed ([#277](https://github.com/amatouhake/endbot/issues/277)):
 until the unlock is observed, the pack is not claimed to be achievement-safe.
 
-## What was checked in the cloud (2026-10-25 JST)
+## How it works
 
-No Minecraft client or BDS could run there: `www.minecraft.net` is outside that environment's network policy. These
-checks were done:
+Read from the vanilla UI in [bedrock-samples](https://github.com/Mojang/bedrock-samples) (`ui/server_form.json`,
+`ui/ui_common.json`, `ui/ui_template_buttons.json`, `ui/settings_sections/settings_common.json`), the same in
+1.26.50.4 and `v1.26.60.5`:
 
-- **Vanilla UI read**: [bedrock-samples](https://github.com/Mojang/bedrock-samples) `main`, version **1.26.50.4**,
-  and repeated against tag **`v1.26.60.5`** on 2026-11-03 JST for the client the manual check targets (same four
-  files: `ui/server_form.json`, `ui/ui_common.json`, `ui/ui_template_buttons.json`,
-  `ui/settings_sections/settings_common.json`). Findings, unchanged in both versions:
-  - `server_form.custom_input` sets **`$max_text_edit_length: 100`** and inherits `common.text_edit_box`, which has
-    no `enabled_newline`. That explains the dropped line breaks. It may also mean the client keeps only 100
-    characters of a typed or pasted input (see check 6).
-  - `common.multiline_text_edit_box` and `common.scrollable_multiline_text_edit_box` set `enabled_newline: true` and
-    leave out the `button.menu_ok` mapping, so Enter inserts a line break instead of leaving the field. The book
-    editor uses the same mechanism.
-  - Server forms are built by one factory (`main_screen_content`) whose `long_form` and `custom_form` ids pick the
-    form type. The pack redirects those two ids.
-- **Pack validation**: `scripts/build_ui_pack.py --check --vanilla <bedrock-samples>/resource_pack` confirmed that
-  all 23 vanilla elements the pack inherits from or names exist in 1.26.50.4 and in `v1.26.60.5`, that the pack's
-  own references resolve, and that the manifest is a single resources module. `tests/test_ui_pack.py` runs the
-  offline part in CI,
-  including that the pack's marker equals the plugin's.
-- **Server path read**: locked Endstone `v0.11.13` (`3491c609`) passes a modal form reply from BDS's `Json::Value`
-  to the plugin with `asString()` and `nlohmann::json::dump()` (`src/endstone/core/json.h`,
-  `EndstonePlayer::onFormResponse`). Neither changes string content, and the plugin decodes it with `json.loads`.
-  The Endbot patches do not touch forms. BDS's own handling of `ModalFormResponsePacket` is closed source and
-  unverified.
-- **Plugin**: unit tests cover the marker on labels, the refusal of a reply without line breaks, unchanged replies,
-  trailing blank lines and CRLF, and the setting in the plugin and the CLI.
+- `server_form.custom_input` sets **`$max_text_edit_length: 100`** and inherits `common.text_edit_box`, which has
+  no `enabled_newline`. That is why a vanilla form input drops line breaks and stops at about 100 characters.
+- `common.multiline_text_edit_box` and `common.scrollable_multiline_text_edit_box` set `enabled_newline: true` and
+  leave out the `button.menu_ok` mapping, so Enter inserts a line break instead of leaving the field. The book
+  editor uses the same mechanism.
+- Server forms are built by one factory (`main_screen_content`) whose `long_form` and `custom_form` ids pick the
+  form type. The pack redirects those two ids.
+- The pack's field, `endbot_multiline_control`, inherits `common.scrollable_multiline_text_edit_box`, sets `size` 150
+  and `max_length` from `$max_text_edit_length` (32768), and inherits the content binding (`#custom_input_text` on
+  `custom_form`) from vanilla `server_form.custom_input`. It reads `#custom_input_enabled` from the `custom_form`
+  collection and binds `#focus_identifier` from `#custom_text`, the pattern vanilla uses for its own multi-line
+  inputs. The collection has no dedicated id, so the focus id is the label: two marked inputs on one form need
+  distinct labels.
+- On the server side nothing changes. Endstone passes a modal form reply to the plugin without changing string
+  content, and the plugin decodes it with `json.loads`. BDS's own handling of the reply packet is closed source.
 
-## Client check (2026-11-03 JST, Windows 1.26.60.5)
+## Behaviour on the client
 
-On the locked pair (Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, protocol 2225), pack active as a global resource,
-default GUI scale, 1080p:
+Seen on a Windows client 1.26.60.5 with the pack active as a global resource, default GUI scale, 1080p
+([record](https://github.com/amatouhake/endbot/blob/cad9d962b49dedabb60d6dd37641c67d2e31df84/docs/UI_PACK.md#client-check-2026-11-03-jst-windows-126605)):
 
-- The pack imports and activates with no content-log error. With the pack active the achievements screen shows no
-  notice that achievements are disabled; a real unlock could not be observed because the operator's account has
-  already unlocked the simple ones (check 10, partial).
 - `/bot` and `/botscript` open in the larger window; buttons are compact and no label is clipped.
-- A marked input shows the tall field. Typing, backspace and Enter work, and saving keeps the line breaks: a 12-line
-  script with Japanese text, `§` codes, a tab and trailing spaces round-trips unchanged.
-- **The field takes focus only when its frame is clicked.** The tall field is the scrolling variant
-  (`common.scrollable_multiline_text_edit_box`), and its inner scroll panel consumes pointer input, so a click inside
-  the text never reaches the edit box and no caret appears. Click the border once; then the whole field edits, scrolls
-  with the wheel and follows the caret. The non-scrolling variant takes focus from anywhere but cannot show a long
-  source, and a script is meant to be edited in one field rather than in pages, so the scrolling variant is kept.
-- The control recipe this settled on: `endbot_multiline_control` inherits `common.scrollable_multiline_text_edit_box`,
-  sets `size` 150 and `max_length` from `$max_text_edit_length` (32768), and inherits the content binding
-  (`#custom_input_text` on `custom_form`) from vanilla `server_form.custom_input`. It reads `#custom_input_enabled`
-  from the `custom_form` collection; vanilla's `option_text_edit_control` instead drops the enabled binding because
-  `$option_enabled_binding_name` is undefined there. It binds `#focus_identifier` from `#custom_text`, the pattern
-  vanilla uses for its own multi-line inputs (`npc_interact_screen.json`). The collection has no dedicated id, so
-  the focus id is the label: two marked inputs on one form need distinct labels.
+- A marked input shows the tall field. Typing, backspace and Enter work, and saving keeps the line breaks, Japanese
+  text, `§` codes, tabs and trailing spaces. Lines of 152 and 2603 characters and pastes of 156 and 2508 characters
+  were kept in full.
+- **The field takes focus only when its frame is clicked.** The scroll panel inside it consumes pointer input, so a
+  click in the text shows no caret. Click the border once; then the whole field edits, scrolls with the wheel and
+  follows the caret. The non-scrolling variant takes focus from anywhere but cannot show a long source, so the
+  scrolling one is kept.
+- **Without the pack the whole-script entry is unusable.** The field shows only the first lines of the script, typing
+  or deleting does nothing, and input stops at about 100 characters. The entry is therefore usable only by players
+  who install the pack, and `ui-pack-editor` is a switch for an operator whose players do.
+- In **Settings → Global Resources** the list shows *Endbot UI* with a two-line description and the abstract-E icon.
 
-- **Without the pack the whole-script entry is unusable, not merely refused.** With the pack deactivated the field
-  shows only the first lines of the script and typing or deleting does nothing, so the "line breaks were lost"
-  refusal (check 8) cannot be reached at all. The prefilled multi-line default is what a vanilla one-line box cannot
-  handle. The entry is therefore usable only by players who install the pack, and `ui-pack-editor` is a switch for an
-  operator whose players do.
+Not verified ([#277](https://github.com/amatouhake/endbot/issues/277)): the field on a mobile client, and a fresh achievement unlock with the pack active.
 
-- **Check 4 passed** on a copy of a stored script (the checked script was a file-backed one, which the menus do not
-  edit): three `log(...)` lines pasted into **Add a line below** were added below the edited line, indented like it
-  (the source had no indentation to match).
-- **Check 6:** with the pack, a 152-character and a 2603-character line round-trip unchanged, and pastes of 156 and
-  2508 characters keep every character. **Without the pack the client's field stops at about 100 characters** — an
-  input-field limit rather than a paste limit — so a longer line cannot be typed or pasted by hand, and saving that
-  field writes the cut text. That is vanilla `custom_input`'s `$max_text_edit_length: 100`; a long line needs the
-  pack, a script file, or the book.
-- **Check 9 was not run.** The operator's phone cannot join multiplayer at all (other servers included), so the
-  mobile field stays unverified.
-- Check 8 found the without-pack behaviour above instead of the refusal it expected.
-- **Identity passed at 0.3.0.** In **Settings → Global Resources** the list shows *Endbot UI*, the two-line
-  description fits without being clipped, and the 128x128 icon reads as the abstract E. The pack's effect is
-  unchanged (larger window, compact buttons, editable tall field) and the achievements screen still shows no notice.
-
-Waived (2026-11-03 JST): check 9 (mobile, not testable on the operator's device) and a fresh achievement unlock
-(check 10; the operator's account has the simple ones already). Both stay unverified; the waiver only lets the pack
-ship beside the release candidate.
-
-## Manual client check
+## Checking the pack after a change
 
 On the locked pair (Endstone `0.11.15+endbot.1` / BDS `1.26.60.6`, protocol 2225), a normally authenticated Windows
 client (1.26.60.5) at default GUI scale, 1080p, with the pack active as a global resource:
@@ -205,12 +165,10 @@ Record results in [#277](https://github.com/amatouhake/endbot/issues/277). If 3�
 fail because the client does not use the pack's input element, keep the window and button changes and leave
 `ui-pack-editor` off.
 
-## Maintenance
-
 The pack relies on unofficial JSON UI internals, which may change with a client update. Mojang is also moving
 screens to Ore UI; if server forms move, the pack stops applying and forms fall back to vanilla. Nothing breaks on the
 server side. After a client update, run `python scripts/build_ui_pack.py --check --vanilla <dir>` against that
 version's `bedrock-samples/resource_pack`, bump `header.version` and the module version in `ui-pack/manifest.json`
 when the pack changes (clients cache packs by version), and repeat checks 1–5. Repeat check 11 as well after any change
-to the name, the description or the icon: that is the one the identity change introduced, and the release list is the
-only place it shows. Checks 9 and 10 stay waived until they are run.
+to the name, the description or the icon: the resource list is the only place those show. `tests/test_ui_pack.py`
+runs the offline part of the validation in CI, including that the pack's marker equals the plugin's.

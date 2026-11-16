@@ -1,148 +1,12 @@
-# Luau scripting (MVP)
+# Luau scripting reference
 
-Scripting runs in the **Endbot plugin**, in one native child process per run. The Node Bedrock runtime is
-unchanged. Each script belongs to the controller who created it (see [ownership](#ownership-visibility-and-revisions));
-each run uses its invoker's authenticated identity and grant revision. Scripting is optional and **off by default**. No process starts merely because it is enabled.
+Scripts are Luau programs that drive Bots. Each script belongs to the controller who created it (see
+[ownership](#ownership-visibility-and-revisions)); each run uses its invoker's authority. This page is the reference
+for writing and running them.
 
-New to scripts? Start with the [tutorial](SCRIPTING_TUTORIAL.md); this page is the reference.
-
-## Install and enable
-
-Windows and Linux operator bundles include `app/<version>/runner/endbot-luau-runner[.exe]` and its
-**trusted `api.luau` sidecar**. No developer tools or downloads are needed to enable scripting.
-In the instance's `endbot.toml`, add or change:
-
-```toml
-[scripting]
-enabled = true
-```
-
-Restart with `endbot start`. The CLI writes the boolean and the running app version's absolute runner
-path to the generated plugin config on each start, so update/rollback selects that version's runner.
-Fresh setup writes `enabled = false`; omission also means false. Controller authorization still applies.
-Managed instances edit `endbot.toml`; their plugin config is overwritten on start. An optional
-`[scripting] runner = 'path'` overrides the bundled path. Relative runner paths resolve from the plugin
-data folder. With no bundled runner and no override, the plugin's existing default lookup is retained.
-
-For a manual plugin install, build from a standalone clone with `node runner/build.mjs --out build/runner-stage`
-(Node 24+, CMake, Ninja, `tar`, C++17 toolchain; MSVC developer shell on Windows, GCC on Ubuntu 22.04).
-Install `build/runner-stage/endbot-luau-runner[.exe]` and `api.luau` together, then set `[scripting] runner`
-and `enabled = true` directly in the plugin's `config.toml` and restart. Empty `runner` looks for
-`endstone_endbot/runner/endbot-luau-runner[.exe]` beside the plugin package. Missing executable/sidecar reports
-`scripting runner not built/installed`. See [runner build options](../runner/README.md), including local MinGW.
-
-Official Luau **0.743** remains pinned by commit/SHA-256 in `runner/luau.lock.json`, without source changes.
-The build verifies/restores pinned dependencies and copies the bootstrap beside the binary in
-`runner/.build/native/bin/`. `--out` (or `ENDBOT_RUNNER_OUT`) also stages the binary, bootstrap and MIT texts.
-Only the two pinned source URLs are fetched; checksum mismatches fail the build. Bundles carry
-`licenses/LUAU_LICENSE.txt` (from the verified archive) and `licenses/NLOHMANN_JSON_LICENSE.txt`, listed in
-`THIRD_PARTY_NOTICES.md`. Preserve these when distributing builds. Source inputs are pinned; compilers and byte-identical output are not.
-Dependencies and build artifacts remain ignored.
-
-Startup limits (integers from 1 to 2147483647, except the zero/boolean settings below):
-
-| Setting | Default | Meaning |
-| --- | ---: | --- |
-| `controller-runs` | 2 | Concurrent runs per controller |
-| `server-runs` | 8 | Concurrent runs server-wide |
-| `wall-seconds` | 0 | No total run deadline; positive values limit declarations, waits and IPC in wall seconds |
-| `slice-ms` | 100 | Cooperative VM deadline between yields |
-| `interrupt-budget` | 1000000 | Safepoint callbacks per VM slice between yields, not exact instructions |
-| `operations-per-second` | 20 | Sliding one-second host operation limit; an operation over it waits for a free slot |
-| `max-script-bytes` | 32768 | UTF-8 source limit on save/run, maximum 65536 (protocol bound) |
-| `max-scripts` | 64 | Stored-script creation limit |
-| `memory-bytes` | 33554432 | VM allocator bound, minimum 1 MiB; excludes compiler/process allocations |
-| `os-confinement` | true | Boolean; fail the run if OS confinement cannot be applied; explicit false opts out of OS confinement |
-| `process-memory-bytes` | 268435456 | 256 MiB process cap; 0 disables this cap; nonzero requires at least `memory-bytes + 67108864` (64 MiB native headroom) |
-| `cpu-seconds` | 60 | Cumulative CPU seconds per run, independently of wall time and VM slices; waits use none, so long-waiting macros are unaffected. It is what ends a run stuck inside one C library call (`string.rep`, `string.gsub`), which the per-slice budget cannot interrupt. 0 disables the cap |
-
-Managed instances also accept `os-confinement`, `process-memory-bytes`, `cpu-seconds`, `book-export`, `chat-logs`,
-`ui-pack-editor` and `replies` in
-`endbot.toml` under `[scripting]`; the CLI forwards overrides into the generated plugin config.
-Other limits in this table are plugin `config.toml` settings. Managed instances retain the default
-32 MiB VM bound, so a nonzero process cap must be at least 96 MiB there. For example:
-
-```toml
-[scripting]
-enabled = true
-os-confinement = true
-process-memory-bytes = 268435456
-cpu-seconds = 30
-```
-
-## OS resource confinement
-
-Each run, including declaration inspection, gets its own confinement object. OS setup failure rejects
-the run before supplied script execution, kills/reaps any started runner, releases handles and logs the error.
-Players receive a localized error. `os-confinement = false` is an explicit opt-out of all mechanisms
-in this table; it leaves VM, IPC, wall-time, authority and concurrency limits in force. Zero disables
-only the configured memory or CPU cap; it does not raise inherited OS limits.
-
-| Resource | Windows | Linux |
-| --- | --- | --- |
-| Process memory | Job Object `JOB_OBJECT_LIMIT_PROCESS_MEMORY` bounds committed bytes | Native runner sets `RLIMIT_AS` at startup to bound virtual address space; allocation may fail with `ENOMEM` |
-| Child processes | Job `JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1`, no breakaway flags; descendants cannot start after assignment | No per-run OS child-process prohibition. `RLIMIT_NPROC` is per UID and is deliberately unused. The trusted runner never spawns; Luau exposes no spawning API |
-| Parent lifetime | Non-inheritable job handle and `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`; closing the job or BDS process exit kills the runner | Native startup calls `prctl(PR_SET_PDEATHSIG, SIGKILL)`, then checks `getppid()` against the supplied parent PID before reading stdin. Also kills on creator-thread exit |
-| Cumulative CPU | Optional `JOB_OBJECT_LIMIT_PROCESS_TIME`, user CPU seconds, periodically checked by Windows | Optional `RLIMIT_CPU`, user + system CPU seconds; `SIGXCPU` at the soft cap, `SIGKILL` one second later if ignored |
-| Priority | `BELOW_NORMAL_PRIORITY_CLASS` at process creation | Native startup calls `nice(+10)` before reading stdin; already lower priorities stay lower |
-
-Windows configures the job first, starts the trusted executable with `Popen`, then immediately assigns
-the process handle before starting pipe readers or writing its load frame. Native loader/startup code
-can run before assignment; **this startup race is not eliminated**. The runner blocks on its first
-NDJSON frame, so no supplied script runs in that interval. If job creation/configuration/assignment
-fails (including incompatible enclosing jobs), the run fails closed without retrying unconfined.
-See Microsoft's [job limits](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information)
-and [assignment semantics](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject).
-
-Linux passes OS limits as runner command-line arguments; Python performs no child callback between
-fork and exec. The native runner applies confinement at the start of `main`, before reading any stdin,
-and preserves stricter inherited soft/hard limits. Native loader/startup code executes before these
-controls, but supplied script input is not read until they succeed. The flags are:
-
-```text
---max-address-space BYTES --max-cpu-seconds N --parent-pid PID --nice 10
-```
-
-Pass all four flags together, or omit all four for the standalone harness or `os-confinement = false`.
-Values must be unsigned decimal integers: memory 0 disables `RLIMIT_AS`, CPU 0 disables `RLIMIT_CPU`,
-PID must be positive, and the nice increment must be 10. Memory must be below 18446744073709551615
-and fit the native rlimit type; CPU and PID must be at most 2147483647.
-Unknown, missing, duplicate, partial or invalid arguments fail before reading stdin. Any argument or
-confinement failure emits one NDJSON `error` with `phase = "confinement"` and a message beginning
-`confinement failed:`, then exits nonzero. The plugin treats this as a localized startup failure and
-never retries unconfined. Windows validates these flags if supplied but ignores their effects; the
-plugin omits them and applies the Job Object instead. Real embedded Python/BDS validation remains pending.
-
-The parent-death signal assumes the normal, unprivileged runner executable: set-ID/file capabilities
-or credential changes can clear it. See [Linux resource limits](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
-and [parent-death signal semantics](https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html).
-
-Linux `SIGXCPU` and Windows nonzero exits with job user-time accounting at the cap report a CPU limit
-failure. Startup `ENOMEM` and explicit Windows no-memory/commitment-limit native statuses report allocation failure;
-they cannot prove which memory constraint was hit. Memory limits generally reject allocations rather
-than guaranteeing a special exit code. Linux `SIGKILL` (hard CPU cap, OOM killer, parent death or an
-external kill), `SIGSEGV`, native `bad_alloc`/abort and other ambiguous exits remain runner failures.
-Host stop/watchdog kills are never attributed to an OS cap. The memory floor is validation headroom,
-not a promise that every source or loader/library combination fits; validate on both target systems.
-
-These are resource and lifetime controls, **not a filesystem/network OS sandbox**. Luau's `io`, `os`,
-`require`, loaders, debug/environment access and script-managed coroutines are removed at VM level.
-The native executable still has its account's filesystem/network privileges. Restricted accounts,
-seccomp/namespaces/cgroups and Windows restricted tokens/AppContainer are not installed here.
-
-The protocol also bounds frames to 256 KiB and bounds nesting/string/object sizes. Highly escaped source may
-hit the frame bound earlier. Form/save declaration inspection has a deadline of at most five seconds and
-requires available concurrency capacity. Changes apply on restart. Disabling scripting or lowering storage
-limits retains stored source; oversized stored scripts cannot run until edited or the limit is raised.
-An operation over `operations-per-second` waits on the host until the window has room, then runs; the wait counts
-against `wall-seconds` and ends on `/botscript stop` like `wait`, and the run log notes the first such wait. IPC events
-(including logs and zero waits) are bounded by `4 * operations-per-second` in a sliding one-second window,
-independently of run lifetime; exceeding that bound still fails the run. Each run logs at most 2000 lines or 512 KiB; past that one
-notice is logged and further `log` output is dropped. Script text reaching the log or chat (logs and error
-messages) has color codes and control characters (CR, LF, ESC) replaced, so it cannot forge log lines or
-drive a terminal. Negative `wall-seconds` values are rejected.
-With zero, runs still end on completion, `/botscript stop`, authority revocation, or plugin/server shutdown.
-Per-slice interrupt/time, memory, operation rate and concurrency limits always apply.
+- New to scripts? Start with the [tutorial](SCRIPTING_TUTORIAL.md).
+- Scripting is **off by default**. Turning it on, its limits and the runner's confinement are the operator's side:
+  [SCRIPTING_SETUP.md](SCRIPTING_SETUP.md).
 
 ## Commands, authoring and parameters
 
@@ -755,7 +619,7 @@ runtime comes back.
 triggers off on the server. A trigger's area counts toward `max-watched-blocks-per-controller` like a watch. Every
 other run limit applies to triggered runs unchanged.
 
-## Lifetime, boundaries and unverified gates
+## Run lifetime and cleanup
 
 All operations enter the existing ordered command service with the invoker's authority and normal command
 audit. Every runtime request is authorized again; Group calls retain UUID pins and membership guards. Runs
@@ -774,58 +638,3 @@ ownership tracking. Cleanup stops attempting further channels after an unavailab
 queueing one timeout per member. Shutdown cleanup uses the existing bounded runtime control timeout.
 If an input's acknowledgement is lost, the plugin conservatively retains its pinned cleanup ownership because
 acceptance is unknown. A later input from another caller still replaces that ownership.
-
-Runner VM/IPC/time budgets isolate failures to a run. io/os/require, file loaders, debug/environment access and
-script-managed coroutines are removed. The executable/bootstrap are trusted installation assets. Native compiler/JSON
-allocations are outside VM memory accounting and covered by the optional process cap described above.
-OS resource confinement does not restrict native filesystem/network access; restricted accounts and further
-distribution hardening remain deployment work. The Node runtime and Endstone core are unchanged.
-Keep `online-mode=true`, `allow-cheats=false`, no experiments/Beta APIs/GameTest and normal Microsoft/Xbox authentication.
-
-Fast CI builds/tests the runner on Ubuntu; release-candidate jobs build/test both platform runners and bundle
-self-tests smoke-run a params-only script without BDS. These are required checks, not a record of a completed
-candidate run. **Caller must run Python suites and live
-plugin/BDS checks**: multiline paste limits/cancel behavior, generated controls, Japanese rendering, stale forms,
-logout/rejoin, revoke/regrant (including mid-operation), Group replacement, overlap cleanup, crashes, shutdown,
-and tick timing. Both platform bundles require real CI/consumer validation, including OS confinement setup,
-memory pressure, cumulative CPU termination and parent-death cleanup. Mocked and real-OS probes live in
-`plugin/endbot/tests/test_script_confine.py`; real probes run only on their matching OS and the native
-runner CPU probe skips when a matching build is unavailable. These new Python/OS probes have not been
-run in the implementation sandbox. Tests never establish world achievement
-history, actual Xbox achievement unlocks or another Endstone/BDS pair's support.
-
-## Live validation
-
-Live results below come from `build/scripting-live-3` and, after the run-lifetime/status/`waitMining` changes, `build/scripting-live-4` (all cases including Mine at spots) on 2026-10-23 JST (Windows RakNet, Endstone `0.11.13+endbot.1` / BDS `1.26.52.3`, reusable sandbox). The two rate-limit rows come from a rerun on 2026-11-02 JST (patched Endstone `0.11.15+endbot.1` / BDS
-`1.26.60.6`, NetherNet, `build/live-2026-11-02-bot031`). Earlier attempts found that Endstone's tomlkit config integers were rejected (fixed) and that the probe sampled positions too coarsely (fixed). In the pinned Python environment with the plugin
-installed and runtime dependencies present, build the native runner, then run from the repository root:
-
-```text
-node runner/build.mjs
-python scripts/raknet_spike.py --scripting --server-dir build/scripting-sandbox --output build/scripting-live-1
-```
-
-Use a new ignored output directory each time. `--server-dir` is the existing disposable sandbox mechanism;
-it resets the sandbox world. The probe enables `[scripting]` only in that generated instance config and uses
-the locally built `runner/.build/native/bin/endbot-luau-runner[.exe]` and matching `api.luau`. Missing/stale builds
-fail with the build command. No server settings are weakened. Omit `--scripting` to retain the default config.
-
-| Check | Evidence required | Result |
-| --- | --- | --- |
-| Group row template, spacing 3 | Two Bots placed by `botscript run line #script_probe "x y z" 3`; BDS SDK positions within 0.35 blocks of expected offsets; completion and input cleanup log | Passed |
-| Patrol stopped by name and run ID | Real move/wait loop runs listed; both Bots move, stop retires the run, fresh BDS samples stay within 0.15 blocks over 1.2 seconds | Passed |
-| Console overlap and subsequent input | Later console movement survives run cleanup; console movement after stop also advances by at least 0.5 blocks | Passed |
-| Runaway loop | `while true do end` terminates with `execution budget exceeded` and cleanup log | Passed |
-| Operation rate limit throttles | 80 read-only `status` calls with no `wait` at the default `operations-per-second = 20`; the throttle notice is logged once and the run completes with all 80 results (4.01 s, 20.0 operations/s) | Passed (2026-11-02) |
-| Message flood still bounded | 2000 `log` lines from one run; the 81st message inside a second ends the run with `Script operation rate limit reached` and input cleanup | Passed (2026-11-02) |
-| Mine at spots (new case) | Four SDK-placed dirt blocks at two spots become air in BDS; each spot logs `block count reached`; normal completion and cleanup | Passed |
-| Console list/runs | Stored names, active run ID/name and final empty runs output | Passed |
-| Disabled default | Unit coverage in `test_scripting.py`: every `/botscript` entry rejects under default `ScriptConfig`, without constructing a runner; no restart phase | Passed (plugin unittest suite) |
-
-The fixture installs only into the output's plugin copy, prepares a flat Survival arena using the SDK, and
-saves via the same guarded paste-form command path (including compilation/declaration inspection). Position
-evidence comes from BDS `player.location`, never runtime prediction. Console positions are absolute because
-console has no player origin; in-game callers can use `"~ ~ ~"`.
-`report.json` contains `scripting` results and source/binary hashes; `scripting-results.json` retains phase
-evidence even on failure, including sample sequences, observed/expected positions, tolerances and console output.
-These ignored raw artifacts are operator evidence. They do not establish achievement history or Xbox unlocks.

@@ -1,46 +1,8 @@
-# Endbot commands and operation
+# Endbot commands
 
-## Optional Luau scripts
-
-Scripting is off by default. Enable `[scripting] enabled = true` and install the pinned native runner;
-see [SCRIPTING.md](SCRIPTING.md) for installation, configurable limits, generated API and validation gates, and
-the [tutorial](SCRIPTING_TUTORIAL.md) to learn writing scripts.
-The plugin hosts scripts; the Node Bedrock runtime is unchanged. Scripts use the invoking controller's
-`endbot.command.control` authority, rechecked for every operation, and survive logout until stopped/revoked.
-
-```text
-/botscript list
-/botscript show <name> [page]
-/botscript run <name> [positional arguments...]
-/botscript runs
-/botscript stop <run-id|name>
-/botscript delete <name>
-/botscript help
-/botscript menu
-/botscript trigger add <script> <kind> [field=value ...] [name=<name>] [visibility=shared|private] [-- <arg> ...]
-/botscript trigger list
-/botscript trigger show <name>
-/botscript trigger enable <name>
-/botscript trigger disable <name>
-/botscript trigger remove <name>
-/botscript trigger set <name> <policy>=<value> ...
-/botscript trigger visibility <name> shared|private
-```
-
-Enabled `/bot menu` adds **Scripts...** (after **+ New Bot here**) for shared source, line-by-line and book editing,
-templates, parameter forms, the source on each script's screen, per-controller stopping and confirmed deletion. Typed `save` cannot
-author source. Positional run arguments follow the script's declaration order, then `name=value`; quote positions, for example
-`/botscript run row #miners "~ ~ ~" 2`. Runs never resume after restart. Disabling scripting retains source.
-
-**Triggers** bind an event kind and filter to a script and start it for each occurrence. The script declares
-`param.event("event")`; `trigger add` and `trigger enable` approve the script's declaration and parameters, so only
-someone who may run the script can arm it. `area=` takes the area values in one quoted token as `within` does
-(`"100 64 200"`, `"0 64 0 3 65 3"`, `"5 of 0 64 0"`), optionally with `except <values>`; `--` separates the
-script arguments. `trigger set` takes `concurrency`, `cooldown` (ticks), `startsPerMinute` and `queue`. The console
-addresses another owner's trigger as `<owner>/<name>` (display name or owner key). Limits:
-`[limits] max-triggers-per-controller` (default 8, `0` disables triggers) and `max-watched-blocks-per-controller`
-(default 1024). See
-[SCRIPTING.md](SCRIPTING.md#triggers) for pausing, disabling and the policy defaults.
+What a player with a controller grant can type and tap in game: `/bot`, `/botgroup`, `/botscript` and `/botweb`.
+Access is granted by the server's operator ([controller enrollment](OPERATIONS.md#3-controller-enrollment)); the
+roles and what each may do are in [PERMISSIONS.md](PERMISSIONS.md).
 
 ## Quick start
 
@@ -270,18 +232,6 @@ while `blocks` treats it as see-through ([targeting blocks](SCRIPTING.md#targeti
 
 See [validation status](COMPATIBILITY.md#bot-operations) for the real-server coverage. `attack` remains entity attack; use
 `destroy` for blocks. The name follows the game's "Attack/Destroy" control.
-
-## Managing access
-
-`endbot controllers add|remove|list` asks endbotd directly over its loopback endpoint and prints the result. The list
-includes effective permission and reason; `endbot doctor` inspects saved authorization and `endbot doctor --live` queries
-the running endbotd.
-
-Bot access can be changed without restarting BDS from the host CLI with `endbot controllers add <GamerTag>`,
-`endbot controllers remove <GamerTag>`, and `endbot controllers list`. These run as the server
-console, like the console-only `botcontrollers` commands, and persist grants/revocations across restart. They do not grant operator permissions.
-See [runtime authorization](OPERATIONS.md#runtime-grants-and-revocations) for offline enrollment, precedence and queued
-command behavior.
 
 ## Linking the web
 
@@ -772,57 +722,45 @@ remaining members are still queried. Indexed queries work the same way. Queries 
 change `result` history, so a state check after an action still leaves that action as the latest operation result.
 `hotbar <slot>` and `radius <value|default>` remain modifying operations with bounded summaries and saved history.
 
-## Live parser smoke (real BDS required)
+## Scripts and triggers
 
-Repository unit tests prove the Python parser and the declaration coverage model, but they cannot execute the
-closed-source BDS overload matcher. After any change to `COMMAND_USAGES`, run each of these on the pinned
-native BDS build and confirm it reaches the Python layer (a Bot response or an `Endbot:` usage message, never a
-Bedrock syntax error):
+Scripts are available where the operator has turned them on ([setup](SCRIPTING_SETUP.md)). Start with the
+[tutorial](SCRIPTING_TUTORIAL.md); [SCRIPTING.md](SCRIPTING.md) is the reference. A run uses its invoker's
+authority, rechecked for every operation, and survives logout until it is stopped or the grant is revoked.
 
 ```text
-/bot
-/bot ping
-/bot menu
-/bot help
-/bot help 2
-/bot help 3
-/bot help move
-/bot help teleport
-/bot help dance
-/bot Alice spawn
-/bot Alice status
-/bot Alice menu
-/bot Alice move forward
-/bot Alice tp me
-/bot Alice tp 100 64 -20 facing Steve
-/bot Alice look at 1 64 2
-/bot Alice attack interval 20
-/bot Alice use for 40
-/bot Alice use hold 30 interval 40 for 200
-/bot Alice jump interval 20 for 100
-/bot Alice move forward for 40
-/bot Alice destroy for 200
-/bot Alice destroy count 64
-/bot Alice interact 1 64 2 up
-/bot Alice hotbar 9
-/bot Alice inventory
-/bot #miners inventory
-/bot #miners[1] inventory
-/bot Alice radius
-/bot Alice radius 12
-/bot Alice radius default
-/bot Alice drop stack
-/bot Alice stop
-/bot Alice despawn
+/botscript list
+/botscript show <name> [page]
+/botscript run <name> [positional arguments...]
+/botscript runs
+/botscript stop <run-id|name>
+/botscript delete <name>
+/botscript help
+/botscript menu
+/botscript trigger add <script> <kind> [field=value ...] [name=<name>] [visibility=shared|private] [-- <arg> ...]
+/botscript trigger list
+/botscript trigger show <name>
+/botscript trigger enable <name>
+/botscript trigger disable <name>
+/botscript trigger remove <name>
+/botscript trigger set <name> <policy>=<value> ...
+/botscript trigger visibility <name> shared|private
 ```
 
-Native autocomplete on this baseline stays degraded by design: generic string/message overloads remain visible
-and dominate filtering, so operation and direction suggestions do not narrow cleanly. Confirm execution for
-every line above; record any completion change as evidence for the deferred redesign, not as a reason to remove
-a parseability overload.
+Enabled `/bot menu` adds **Scripts...** (after **+ New Bot here**) for shared source, line-by-line and book editing,
+templates, parameter forms, the source on each script's screen, per-controller stopping and confirmed deletion. Typed `save` cannot
+author source. Positional run arguments follow the script's declaration order, then `name=value`; quote positions, for example
+`/botscript run row #miners "~ ~ ~" 2`. Runs never resume after restart. Disabling scripting retains source.
 
-Block breaking/mining is not part of this remediation. A future implementation must use the server-authoritative
-`PlayerAuthInput` block-action/prediction sequence and BDS inventory/tool rules, not direct plugin block mutation.
+**Triggers** bind an event kind and filter to a script and start it for each occurrence. The script declares
+`param.event("event")`; `trigger add` and `trigger enable` approve the script's declaration and parameters, so only
+someone who may run the script can arm it. `area=` takes the area values in one quoted token as `within` does
+(`"100 64 200"`, `"0 64 0 3 65 3"`, `"5 of 0 64 0"`), optionally with `except <values>`; `--` separates the
+script arguments. `trigger set` takes `concurrency`, `cooldown` (ticks), `startsPerMinute` and `queue`. The console
+addresses another owner's trigger as `<owner>/<name>` (display name or owner key). Limits:
+`[limits] max-triggers-per-controller` (default 8, `0` disables triggers) and `max-watched-blocks-per-controller`
+(default 1024). See
+[SCRIPTING.md](SCRIPTING.md#triggers) for pausing, disabling and the policy defaults.
 
 ## Operational states
 
@@ -835,5 +773,4 @@ Block breaking/mining is not part of this remediation. A future implementation m
 One Bot's generation/reconnect timer and inputs are independent of every other Bot. An unexpected disconnect retains
 the profile UUID and retries with exponential backoff capped at 30 seconds, stopping after the configured attempt limit.
 Explicit reconnect and live rename wait for the old transport to close before replacement, so a new session cannot race
-the old one. A changed NetherNet server identity fails closed and is reported in status; an operator must deliberately
-remove the saved pin after verifying an intentional BDS identity rotation.
+the old one.

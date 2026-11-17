@@ -638,6 +638,17 @@ is written, and running the same command again finishes it. The `stores` doctor 
 What each update needs beyond `endbot update`. A BDS change means `endbot update` moves BDS with a [backup](#backups);
 back up `worlds/` first, because rolling back would put an older BDS in front of a world the newer one has saved.
 
+**0.7.1 to 0.7.2**
+
+- Moves to Endstone `0.11.16+endbot.1` and BDS `1.26.65.1`. The protocol stays `2225`, so Minecraft 26.60 and 26.65
+  clients both join. `endbot update` moves BDS with a [backup](#backups). Back up `worlds/` first, or pass
+  `--backup-worlds`.
+- `endbot.toml` and the stores need no change.
+- Rolling back to 0.7.1 switches the app, but 0.7.1 refuses to start on BDS 1.26.65.1 (a `bds-version` FAIL). Run
+  `endbot update --rollback` again to switch back to 0.7.2. Going back to BDS 1.26.60.6 means restoring the server
+  directory, `worlds/` included, from a backup you took before the update. A world that BDS 1.26.65 has saved may not
+  load on 1.26.60.
+
 **0.7.0 to 0.7.1**
 
 - Endstone `0.11.15+endbot.1`, BDS `1.26.60.6`, protocol `2225` stay; no BDS update and no `endbot.toml` change.

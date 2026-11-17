@@ -28,8 +28,8 @@ Endbot prepares a modified Endstone build from:
 
 - Project: Endstone
 - Upstream: <https://github.com/EndstoneMC/endstone>
-- Tag: `v0.11.15`
-- Commit: `b4aaa87d2c5305e7d340168f824ac2e2ea722e44`
+- Tag: `v0.11.16`
+- Commit: `23cb5758bdc070888cb89ecd1541ef25c4305b5c`
 - License: Apache License 2.0
 - Copyright: The Endstone Project contributors
 

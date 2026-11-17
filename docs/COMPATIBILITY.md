@@ -7,14 +7,14 @@ Two checks are always manual and never follow from a green build: the world's ac
 experiment history in `level.dat`) and an actual Xbox achievement unlock. Each package and each pair needs its own
 observation; the procedure is in [ACHIEVEMENTS.md](ACHIEVEMENTS.md).
 
-## Current baseline (0.5.0 to 0.7.1)
+## Current baseline
 
 | Pin in `endstone.lock` | Value |
 | --- | --- |
-| Endstone | `v0.11.15` at `b4aaa87d2c5305e7d340168f824ac2e2ea722e44` |
-| BDS | `1.26.60.6` (Linux build `52886190`, Windows build `52886189`) |
+| Endstone | `v0.11.16` at `23cb5758bdc070888cb89ecd1541ef25c4305b5c` |
+| BDS | `1.26.65.1` (Linux build `53624744`, Windows build `53624742`) |
 | Protocol | `2225` |
-| `support_status` | `"validated-baseline"`, since the gate below passed on 2026-10-30 |
+| `support_status` | `"validated-baseline"`, since the gate below passed on 2026-11-18 |
 
 ### Conan host profile
 
@@ -26,8 +26,69 @@ Endstone pins its direct Conan requirements, but some transitive ones are versio
   its host profile.
 - It is part of the pair: change it only with a compatibility pass, like `endstone.lock`.
 - The direct requirements' own recipe revisions are not pinned yet.
+- Endstone 0.11.16 left `conanfile.py` unchanged, so the profile stands as it was for 0.11.15.
 
-### Why 0.5.0 moved to this pair
+### Why Endbot moved to this pair
+
+- Endstone 0.11.16 adds BDS 1.26.65. The protocol stays `2225`, so Minecraft 26.60 and 26.65 clients both join.
+- The upstream fixes that touch Endbot: NetherNet servers no longer show in the LAN tab when `enable-lan-visibility`
+  is `false`; a cancelled item drop is put back after the whole inventory transaction; `ItemStack` equality compares
+  the data value; and plugin commands with an optional argument before a `message` argument work (Endbot's command
+  shapes already avoided that case).
+- The Endbot patch series applies unchanged. Upstream's only change in the files it touches removes `port.cpp` from
+  `runtime/CMakeLists.txt`.
+- The runtime keeps `bedrock-protocol` 3.61.0 and `minecraft-data` 3.119.0 with the 1.26.60 protocol data:
+  minecraft-data has no 1.26.65 data yet, and the protocol is the same. The plugin's block table follows that data
+  version, not the BDS version.
+
+### 0.11.16 / 1.26.65.1 compatibility gate — 2026-11-17 to 2026-11-18
+
+- **Lock and patches.** `scripts/prepare_endstone.py` resolved `v0.11.16` to the locked commit and applied the series
+  cleanly.
+- **Release-candidate build.** Run 44071799031 (a scratch branch that only set the version to `0.7.2-rc.1`) cold-built
+  and upstream-tested the patched Endstone on Linux and Windows. Both bundle consumer E2E jobs passed: a fresh setup
+  acquiring BDS `1.26.65.1` through Endstone (`version.txt` says `26.65`), a Bot joining through local-bot trust,
+  console, `doctor --live`, update and rollback.
+- **Windows live smoke** (`scripts/raknet_spike.py --mining --inventory --item-use --entity --groups --scripting`,
+  BDS build `53624742`) passed twice in a row:
+  - movement, mining, pickups and drops (including a cancelled drop), timed item use, feeding and riding, Groups, Luau
+    scripts, a second Bot, reconnect, and controller management;
+  - the wrong-key, wrong-issuer, wrong-audience and auth-disabled refusals;
+  - `level.dat` with no creative or experiment history.
+  - Earlier runs found two fixture checks that had gone stale (fixed with the move) and failed once in the cancelled
+    drop case. That case then passed in two pickup-only runs and both full runs. Upstream changed when a cancelled drop
+    is put back in this release, so a recurrence is worth reporting.
+- **Linux** (Ubuntu under WSL2): a fresh setup from the candidate's Linux bundle started BDS build `53624744`, a Bot
+  joined through local-bot trust, and `doctor --live` passed.
+- **Update.** A Windows instance on 0.7.0 with BDS `1.26.60.6`, a world, scripts and a trigger was updated to the
+  candidate. BDS moved to `1.26.65.1` with a backup, and the scripts, trigger and stores carried over.
+- **People, on Windows:** on that updated instance an Xbox-authenticated human joined beside a Bot, ran `/bot ping`
+  (pong), drove the Bot (`list`, `tp me`, `jump`), and unlocked the Xbox achievement **Sticky Situation** with no
+  achievements-disabled notice. The player was made an operator for the session and used `/give` for honey blocks:
+  `allow-cheats` stayed `false`, and upstream treats every command as not a cheat since 0.11.13. Like the 0.2.1 gate,
+  this is therefore not evidence of a cheat-free session. `level.dat` stayed clean, and the operator entry was removed
+  afterwards.
+- Replay, expiry and client-key negative controls are covered by the patch's verifier tests in the candidate's
+  upstream test run, not live.
+
+<a id="previous-baseline-021-to-040"></a>
+
+## Previous baselines
+
+A patched package never inherits an earlier package's human or Xbox observations, even on the same upstream pair.
+
+| Endbot | Endstone | BDS | Protocol | Human and Xbox observation |
+| --- | --- | --- | --- | --- |
+| 0.5.0 to 0.7.1 | `v0.11.15` (`b4aaa87d`), package `0.11.15+endbot.1` | `1.26.60.6` | 2225 | 2026-10-30: on an instance updated from 0.4.0, an Xbox-authenticated human unlocked **Body Guard** with no achievements-disabled notice ([gate](#0-11-15-1-26-60-6-0-5-0-to-0-7-1)) |
+| 0.2.1 to 0.4.0 | `v0.11.13` (`3491c609`), package `0.11.13+endbot.1` | `1.26.52.3` | 2193 | 2026-10-09: on a vanilla server adopted with `setup --existing`, an Xbox-authenticated human joined beside a Bot, ran `/bot ping` and unlocked **Rabbit Season**. Operator `/give` and `/effect` were used in the same session, so it is not evidence of a cheat-free session |
+| 0.1.0 to 0.2.0 | `v0.11.12` (`1c71186c`), package `0.11.12+endbot.1` | `1.26.51.1` | 2193 | 2026-09-27: on the exact 0.1.0 release files, the operator unlocked **Archer** after driving Bots with `/bot` |
+| before 0.1.0 | `v0.11.11`, package `0.11.11+endbot.1` | `1.26.51.1` | 2193 | M0 (2026-09-18): `/bot ping` and an unlock in one session, with ten external Bots tested. M2 (2026-09-19): an unlock after lifecycle, input and dimension-teleport operations |
+
+<a id="0-11-15-1-26-60-6-0-5-0-to-0-7-1"></a>
+
+### 0.11.15 / 1.26.60.6 (0.5.0 to 0.7.1)
+
+#### Why 0.5.0 moved to that pair
 
 - Minecraft 26.60 clients use protocol `2225` and cannot join the `1.26.52` pair, which is why 0.5.0 moves.
 - BDS 1.26.60 refuses players on RakNet ("NetherNet is the only supported transport type", checked on the Linux build
@@ -38,7 +99,7 @@ Endstone pins its direct Conan requirements, but some transitive ones are versio
   schema; the runtime unit suite passes against it.
 - Upstream 0.11.15 binds event cancellation per event class; the plugin uses none of that API.
 
-### 0.11.15 / 1.26.60.6 compatibility gate — 2026-10-30
+#### Compatibility gate — 2026-10-30
 
 - **Release-candidate builds.** Runs 41023533108 and 41024591616 cold-built and upstream-tested the patched Endstone
   on Linux and Windows.
@@ -63,7 +124,7 @@ Endstone pins its direct Conan requirements, but some transitive ones are versio
     achievements-disabled notice, and `level.dat` stayed clean
     ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/PERMISSIONS_VALIDATION.md#050-human-pass-with-one-account--2026-10-30-jst)).
 
-### Later releases on this pair
+#### Later releases on that pair
 
 | Release | Pair | Gate and achievement observation | Release pass |
 | --- | --- | --- | --- |
@@ -73,18 +134,6 @@ Endstone pins its direct Conan requirements, but some transitive ones are versio
 
 The Conan host profile above is new in 0.7.0. It pins what the 0.6.0 candidate had resolved, after conancenter
 published newer ranges that broke the Windows build, so the built Endstone is the same.
-
-<a id="previous-baseline-021-to-040"></a>
-
-## Previous baselines
-
-A patched package never inherits an earlier package's human or Xbox observations, even on the same upstream pair.
-
-| Endbot | Endstone | BDS | Protocol | Human and Xbox observation |
-| --- | --- | --- | --- | --- |
-| 0.2.1 to 0.4.0 | `v0.11.13` (`3491c609`), package `0.11.13+endbot.1` | `1.26.52.3` | 2193 | 2026-10-09: on a vanilla server adopted with `setup --existing`, an Xbox-authenticated human joined beside a Bot, ran `/bot ping` and unlocked **Rabbit Season**. Operator `/give` and `/effect` were used in the same session, so it is not evidence of a cheat-free session |
-| 0.1.0 to 0.2.0 | `v0.11.12` (`1c71186c`), package `0.11.12+endbot.1` | `1.26.51.1` | 2193 | 2026-09-27: on the exact 0.1.0 release files, the operator unlocked **Archer** after driving Bots with `/bot` |
-| before 0.1.0 | `v0.11.11`, package `0.11.11+endbot.1` | `1.26.51.1` | 2193 | M0 (2026-09-18): `/bot ping` and an unlock in one session, with ten external Bots tested. M2 (2026-09-19): an unlock after lifecycle, input and dimension-teleport operations |
 
 0.2.0 to 0.4.0 also offered an opt-in RakNet transport. BDS 1.26.60 refuses players on RakNet, so `endbot setup` and
 `endbot start` have not offered it since 0.5.0.
@@ -101,6 +150,9 @@ The gates, their negative controls and what each left open are in the records as
 
 What people checked on the current baseline, and what they did not. A green build never stands in for these checks.
 Each area links to the dated record of its runs, kept at the commit that last held it.
+
+Unless an entry names the 0.11.16 pair, it ran on the 0.11.15 / 1.26.60.6 pair. The 0.11.16 gate above re-ran the Bot
+smoke that covers Bot operations, Groups and scripts, but not every case below.
 
 ### Web
 
@@ -175,7 +227,7 @@ Not run:
 On the current pair:
 
 - The 2026-10-30 compatibility gate's Windows smoke covers movement, jump, chunk radius, reconnect, mining, pickups
-  and drops, timed item use, feeding and riding, Groups and Luau scripts (see [the gate](#current-baseline-050-to-071)).
+  and drops, timed item use, feeding and riding, Groups and Luau scripts (see [the gate](#0-11-15-1-26-60-6-0-5-0-to-0-7-1)).
 - 2026-11-02, Bots only
   ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md#look-observation-gate-2026-11-02-jst)):
   - `look` completing when BDS observes the rotation;

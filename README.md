@@ -59,16 +59,17 @@ The sections below describe the developer and source-build workflow.
 These settings preserve an achievement-compatible configuration and world state in the validated baseline. The recorded
 M0 gate and the later M2 Windows-client session each observed an actual Xbox achievement unlock from a normally
 authenticated Bedrock client against historical patched package `0.11.11+endbot.1`, and the `0.11.13+endbot.1` gate
-observed one in a session that used operator commands. The current `0.11.15+endbot.1` gate observed the Xbox
-achievement Body Guard on an instance updated from 0.4.0 (see `docs/COMPATIBILITY.md`). See [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and caveats.
+observed one in a session that used operator commands. The `0.11.15+endbot.1` gate observed the Xbox achievement
+Body Guard on an instance updated from 0.4.0. The current `0.11.16+endbot.1` gate observed Sticky Situation on an
+instance updated from 0.7.0, in a session that used operator `/give` (see `docs/COMPATIBILITY.md`). See [achievement validation](docs/ACHIEVEMENTS.md) for the exact scope and caveats.
 
 ## Compatibility
 
 | Component | Pinned baseline |
 | --- | --- |
-| Endstone | `v0.11.15` / `b4aaa87d2c5305e7d340168f824ac2e2ea722e44` |
-| Patched Endstone package | `0.11.15+endbot.1` |
-| BDS | `1.26.60.6` (Linux build `52886190`, Windows `52886189`) |
+| Endstone | `v0.11.16` / `23cb5758bdc070888cb89ecd1541ef25c4305b5c` |
+| Patched Endstone package | `0.11.16+endbot.1` |
+| BDS | `1.26.65.1` (Linux build `53624744`, Windows `53624742`) |
 | Bedrock protocol | `2225` |
 
 `endstone.lock` is authoritative. A green build alone does not establish support for another pair.
@@ -105,7 +106,7 @@ npm test --prefix runtime
 python3 scripts/check_portability.py
 ```
 
-The first command verifies `v0.11.15` resolves to the exact locked commit, keeps a bare upstream cache under `.cache/`,
+The first command verifies `v0.11.16` resolves to the exact locked commit, keeps a bare upstream cache under `.cache/`,
 clones a disposable tree to `build/endstone-patched`, applies the ordered patch series with `git am`, and tags that
 patched commit with the locked Endbot-local package version. It refuses to overwrite an existing output directory. To
 reuse a populated cache without network access, choose a new output and add `--offline`.
@@ -133,7 +134,7 @@ manylinux container invokes Endstone's `auditwheel` repair command, and only the
 Build the shared core and plugin wheels with `python -m build --wheel core` and
 `python -m build --wheel plugin/endbot`; install them together with the repaired patched
 Endstone wheel. The plugin requires the exact Endbot-local package version, so pip cannot satisfy it with the official
-unpatched `0.11.15` wheel, and it requires the matching `endbot-core` wheel from the same build. The plugin registers the `/bot` tree, including the original `/bot ping`, and uses
+unpatched `0.11.16` wheel, and it requires the matching `endbot-core` wheel from the same build. The plugin registers the `/bot` tree, including the original `/bot ping`, and uses
 `endbot.command.control`. The permission defaults to false and is granted to authenticated controllers through
 bootstrap enrollment or persistent console-managed policy. `endbot controllers add|remove|list` changes access while
 BDS runs; revocation overrides legacy UUID/XUID allowlists. It does not grant operator or vanilla command rights. See

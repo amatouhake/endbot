@@ -7,7 +7,7 @@ Two checks are always manual and never follow from a green build: the world's ac
 experiment history in `level.dat`) and an actual Xbox achievement unlock. Each package and each pair needs its own
 observation; the procedure is in [ACHIEVEMENTS.md](ACHIEVEMENTS.md).
 
-## Current baseline (0.5.0 to 0.7.0)
+## Current baseline (0.5.0 to 0.7.1)
 
 | Pin in `endstone.lock` | Value |
 | --- | --- |
@@ -69,6 +69,7 @@ Endstone pins its direct Conan requirements, but some transitive ones are versio
 | --- | --- | --- | --- |
 | 0.6.0 (2026-11-02 JST) | Unchanged: no `endstone.lock`, `patches/endstone/` or runtime dependency changed, so no new compatibility gate applies | The 2026-10-30 gate and achievement observation stand | Covered the new command surface on a client; see [bot operations](#bot-operations) |
 | 0.7.0 (2026-11-12 JST) | Unchanged: `endstone.lock`, `patches/endstone/` and the runtime dependencies are unchanged | The 2026-10-30 gate and achievement observation stand | Checked `level.dat` again and found no creative or experiment history ([events](#events-watches-and-triggers)) |
+| 0.7.1 (2026-11-17 JST) | Unchanged, as for 0.7.0 | The 2026-10-30 gate and achievement observation stand; no human client or Xbox check was re-run | Bots only, on the release files: the Linux confinement fix ([scripting](#scripting)) and a Windows update from 0.7.0 and rollback, with no creative or experiment history in `level.dat` on either platform |
 
 The Conan host profile above is new in 0.7.0. It pins what the 0.6.0 candidate had resolved, after conancenter
 published newer ranges that broke the Windows build, so the built Endstone is the same.
@@ -174,7 +175,7 @@ Not run:
 On the current pair:
 
 - The 2026-10-30 compatibility gate's Windows smoke covers movement, jump, chunk radius, reconnect, mining, pickups
-  and drops, timed item use, feeding and riding, Groups and Luau scripts (see [the gate](#current-baseline-050-to-070)).
+  and drops, timed item use, feeding and riding, Groups and Luau scripts (see [the gate](#current-baseline-050-to-071)).
 - 2026-11-02, Bots only
   ([record](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/MINING_VALIDATION.md#look-observation-gate-2026-11-02-jst)):
   - `look` completing when BDS observes the rotation;
@@ -250,6 +251,14 @@ Not run:
   surviving a run's cleanup, a runaway loop ended by the execution budget, the operation rate limit throttling, a
   message flood ending the run, and mining at spots.
   - The two rate-limit cases ran on the current pair (2026-11-02), the others on the earlier pair (2026-10-23).
+- **Linux with `os-confinement = true`, on the 0.7.1 release files (2026-11-17, Ubuntu under WSL2, Bots only,
+  [#299](https://github.com/amatouhake/endbot/issues/299)):**
+  - Declaration checks passed with a newly added script, through `/botscript reload` and `/botscript trigger add`
+    from the console. No `confinement failed` was logged. On 0.7.0 every such check failed.
+  - Runs started by hand and by a schedule trigger ran at nice 10.
+  - A disabled trigger was enabled again, and a script moved a Bot.
+  - Not run: saving from the web and opening the in-game run form, which go through the same check. The check's own
+    process was too short-lived to capture its `--nice 0` argument.
 - **A human Windows client, for 0.4.0 on the earlier pair:** templates, Copy and edit, revision history, rename,
   sharing, book import and export, `runs` and `stop`, and a runaway loop interrupted.
 - **A Windows client, 2026-10-25:** form fields drop pasted line breaks, and the multi-line authoring loop works

@@ -638,6 +638,15 @@ is written, and running the same command again finishes it. The `stores` doctor 
 What each update needs beyond `endbot update`. A BDS change means `endbot update` moves BDS with a [backup](#backups);
 back up `worlds/` first, because rolling back would put an older BDS in front of a world the newer one has saved.
 
+**0.7.0 to 0.7.1**
+
+- Endstone `0.11.15+endbot.1`, BDS `1.26.60.6`, protocol `2225` stay; no BDS update and no `endbot.toml` change.
+- On Linux, script declaration checks work again with `[scripting] os-confinement = true`. If you turned confinement
+  off to work around this on 0.7.0, turn it back on.
+- `endbot update` offers to redeploy the Worker, which brings the 0.7.1 web pages. Skipping it leaves the 0.7.0 pages
+  in place, which still work with 0.7.1.
+- A rollback to 0.7.0 needs nothing beyond `endbot update --rollback`.
+
 **0.6.0 to 0.7.0**
 
 - Endstone `0.11.15+endbot.1`, BDS `1.26.60.6`, protocol `2225` stay; no BDS update.

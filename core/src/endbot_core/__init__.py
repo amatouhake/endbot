@@ -1,3 +1,3 @@
 """Shared, Endstone-free Endbot logic used by the plugin and endbotd."""
 
-__version__ = "0.7.1"
+__version__ = "0.7.2rc1"

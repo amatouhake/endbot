@@ -13,7 +13,7 @@
     target: string;
     group?: boolean;
     botState?: string;
-    onchanged: (op: string, fields: Record<string, unknown>) => void;
+    onchanged: (op: string, fields: Record<string, unknown>, target: string) => void;
   } = $props();
 
   type Variant = { positional: [string, Spec][]; options: Record<string, Spec>; prefix: string[] };
@@ -191,14 +191,15 @@
 
   export async function send(op: string, params: Record<string, unknown> = {}): Promise<any> {
     busy = true;
-    const answer = await connection.request("op", { operation: { op, target, params } });
+    const aimed = target;  // the answer belongs to this target, even if the page has moved to another meanwhile
+    const answer = await connection.request("op", { operation: { op, target: aimed, params } });
     busy = false;
     const failed = answer.code !== "ok";
     // Replies already say which Bot they are about; only a reply with no words needs the label.
     const lines: string[] = answer.messages?.length ? answer.messages
-      : [`${target} ${opLabel(op)}: ${failed ? refusalText(answer.code) : t("opDone")}`];
+      : [`${aimed} ${opLabel(op)}: ${failed ? refusalText(answer.code) : t("opDone")}`];
     results = [...lines.map((text) => ({ text, failed })), ...results].slice(0, 40);
-    if (!failed) onchanged(op, params);
+    if (!failed) onchanged(op, params, aimed);
     return answer;
   }
 

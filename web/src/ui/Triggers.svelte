@@ -9,7 +9,7 @@
   } from "./fields";
   import FieldInput from "./FieldInput.svelte";
   import { formatDate, refusalText, t } from "./i18n";
-  import { href, navigate } from "./route.svelte";
+  import { href, leave, navigate } from "./route.svelte";
 
   let { connection, selected, active }: {
     connection: Connection;
@@ -283,7 +283,7 @@
     const created = answer.data.trigger;
     upsert(created);
     notice = answer.messages?.[0] ?? t("triggerCreated");
-    navigate("triggers", keyOf(created), true);
+    leave("triggers", NEW, keyOf(created));
   }
 
   async function disable(): Promise<void> {
@@ -342,7 +342,7 @@
       return;
     }
     triggers = triggers.filter((item) => item.owner !== target.owner || item.name !== target.name);
-    navigate("triggers", null, true);
+    leave("triggers", keyOf(target));
     await refresh();
     notice = t("triggerRemoved");
   }
@@ -418,7 +418,7 @@
         // Removed elsewhere (another page, the game): leave its page and drop it from the list.
         triggers = triggers.filter((item) => item.owner !== parts.owner || item.name !== parts.name);
         if (selected === wanted) {
-          navigate("triggers", null, true);
+          leave("triggers", wanted);
           notice = t("triggerRemoved");
         }
         return;

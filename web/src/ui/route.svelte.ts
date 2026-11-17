@@ -18,6 +18,13 @@ function decoded(text: string): string | null {
 
 export const route = $state(read());
 
+// A tab reopens on what was chosen there: App keeps this in step with the address while a section is in front.
+export const chosen = $state<Partial<Record<Section, string | null>>>({});
+
+export function forgetChosen(): void {
+  for (const section of SECTIONS) delete chosen[section];
+}
+
 export function href(section: Section, item: string | null = null): string {
   return item ? `/${section}/${encodeURIComponent(item)}` : `/${section}`;
 }
@@ -30,6 +37,19 @@ export function navigate(section: Section, item: string | null = null, replace =
   }
   route.section = section;
   route.item = item;
+}
+
+/**
+ * Move from `from` to `item` once a request has answered, but only where `from` is still what the section shows: the
+ * person may have chosen something else meanwhile, and that choice stands (#285). A section in the background just
+ * reopens on `item`.
+ */
+export function leave(section: Section, from: string | null, item: string | null = null, replace = true): void {
+  if (route.section === section) {
+    if (route.item === from) navigate(section, item, replace);
+  } else if ((chosen[section] ?? null) === from) {
+    chosen[section] = item;
+  }
 }
 
 addEventListener("popstate", () => {

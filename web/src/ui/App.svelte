@@ -7,7 +7,7 @@
   import Groups from "./Groups.svelte";
   import History from "./History.svelte";
   import { errorText, t } from "./i18n";
-  import { href, navigate, route, type Section } from "./route.svelte";
+  import { chosen, forgetChosen, href, navigate, route, type Section } from "./route.svelte";
   import Scripts from "./Scripts.svelte";
   import SignIn from "./SignIn.svelte";
   import Triggers from "./Triggers.svelte";
@@ -40,8 +40,7 @@
   let retry: ReturnType<typeof setTimeout> | undefined;
   let retryDelay = RETRY_FIRST_MS;
 
-  // A tab reopens on what was chosen there, and stays built, so a draft or a search survives looking elsewhere.
-  let chosen = $state<Record<string, string | null>>({});
+  // A tab reopens on what was chosen there (`chosen`), and stays built, so a draft or a search survives looking elsewhere.
   let visited = $state<Record<string, boolean>>({});
   $effect(() => {
     chosen[route.section] = route.item;
@@ -96,7 +95,7 @@
     log = [];
     notice = "";
     offline = false;
-    chosen = {};
+    forgetChosen();
     visited = {};
     navigate("bots", null, true);
   }

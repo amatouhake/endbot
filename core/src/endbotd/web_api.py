@@ -449,12 +449,11 @@ class WebApi:
                 entry.topics.discard(f"trigger:{parsed[0]}/{parsed[1]}")
         return {"type": "result", "code": "ok"}
 
-    def trigger_changed(self, trigger, removed: bool = False) -> None:
+    def trigger_changed(self, trigger, removed: bool = False, before=None) -> None:
         """Push a stored change to the pages subscribed to it, or to the list, that may still see it.
 
-        A removal says so. A trigger that stops being visible to a page (made private) sends that page nothing: a
-        removal would tell it the name of a trigger it may no longer see, so its list keeps the row until it asks
-        ``trigger.list`` again.
+        A removal says so. A trigger that stops being visible to a page (made private) reads as a removal there, but
+        only to a page that could see it ``before``: that page already knows the name, and any other hears nothing.
         """
         triggers = self._triggers
         if triggers is None:
@@ -462,9 +461,15 @@ class WebApi:
         topic = f"trigger:{trigger.owner}/{trigger.name}"
         for entry in self._live(lambda item: topic in item.topics or "triggers" in item.topics):
             principal = self._auth.principal(entry.token, entry.language, active=False)
-            if principal is None or not triggers.visible(trigger, principal):
+            if principal is None:
                 continue
-            data = ({"removed": True, "name": trigger.name, "owner": trigger.owner} if removed
+            if triggers.visible(trigger, principal):
+                hidden = False
+            elif before is not None and triggers.visible(before, principal):
+                hidden = True
+            else:
+                continue
+            data = ({"removed": True, "name": trigger.name, "owner": trigger.owner} if removed or hidden
                     else {"trigger": self._trigger_data(trigger, principal)})
             for wanted in (topic, "triggers"):
                 if wanted in entry.topics:

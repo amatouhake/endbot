@@ -7,7 +7,7 @@
   import { defaultValues, scriptFields, type Field } from "./fields";
   import FieldInput from "./FieldInput.svelte";
   import { formatDate, t } from "./i18n";
-  import { href, navigate } from "./route.svelte";
+  import { href, leave, navigate } from "./route.svelte";
 
   let { connection, log, runs, version, selected, active, onchanged }: {
     connection: Connection;
@@ -187,6 +187,7 @@
     }
     busy = true;
     clear();
+    const from = creating ? null : open.name;
     const answer = await connection.request("script.save", { name, source: draft, revision: open.revision });
     busy = false;
     if (answer.code === "ok") {
@@ -194,7 +195,7 @@
       draft = open.source;
       creating = false;
       notice = t("scriptSaved");
-      navigate("scripts", open.name, true);
+      leave("scripts", from, open.name);
       await refresh();
     } else if (answer.code === "conflict") {
       conflict = answer.current;
@@ -227,9 +228,12 @@
   }
 
   /** A script that now goes by another name, or is another revision: what was typed has gone with the action. */
-  async function reopen(script: string): Promise<void> {
-    await load(script);
-    navigate("scripts", script, true);
+  async function reopen(from: string, script: string): Promise<void> {
+    // Another script opened while the action ran: that one stays open (#285).
+    if (!creating && open?.name === from) {
+      await load(script);
+      leave("scripts", from, script);
+    }
     await refresh();
   }
 
@@ -237,23 +241,28 @@
     if (moreMenu) moreMenu.open = false;
     if (!(await leaveOk())) return;
     const next = await promptDialog(t("rename"), t("scriptNewName"), open.name, t("ok"));
-    if (next && next !== open.name) await action("script.rename", { new: next }, () => reopen(next));
+    const from = open.name;
+    if (next && next !== from) await action("script.rename", { new: next }, () => reopen(from, next));
   }
 
   async function copy(): Promise<void> {
     if (moreMenu) moreMenu.open = false;
     if (!(await leaveOk())) return;
     const next = await promptDialog(t("copy"), t("scriptCopyName"), `${open.name}_copy`, t("ok"));
-    if (next) await action("script.copy", { new: next }, () => reopen(next));
+    const from = open.name;
+    if (next) await action("script.copy", { new: next }, () => reopen(from, next));
   }
 
   async function remove(): Promise<void> {
     if (moreMenu) moreMenu.open = false;
     if (!(await confirmDialog(t("scriptDeleteConfirm", { name: open.name }), t("delete"), { danger: true }))) return;
+    const from = open.name;
     await action("script.delete", {}, async () => {
-      open = null;
-      draft = "";
-      navigate("scripts", null, true);
+      if (!creating && open?.name === from) {
+        open = null;
+        draft = "";
+        leave("scripts", from);
+      }
       await refresh();
     });
   }
@@ -262,12 +271,14 @@
     if (moreMenu) moreMenu.open = false;
     if (!(await leaveOk())) return;
     const visibility = open.visibility === "shared" ? "private" : "shared";
-    void action("script.visibility", { visibility }, () => reopen(open.name));
+    const from = open.name;
+    void action("script.visibility", { visibility }, () => reopen(from, from));
   }
 
   async function restore(index: number): Promise<void> {
     if (!(await leaveOk())) return;
-    void action("script.restore", { index }, () => reopen(open.name));
+    const from = open.name;
+    void action("script.restore", { index }, () => reopen(from, from));
   }
 
   async function prepareRun(): Promise<void> {

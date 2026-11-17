@@ -8,7 +8,7 @@ CPython with the patched Endstone, the Endbot plugin and CLI, a private Node.js,
 script runner.
 
 No release file contains the official Bedrock Dedicated Server (BDS). Endstone's normal acquisition path downloads the
-pinned BDS (`1.26.60.6`, protocol `2225`) during `endbot setup`.
+pinned BDS (`1.26.65.1`, protocol `2225`) during `endbot setup`.
 
 **Contents**
 

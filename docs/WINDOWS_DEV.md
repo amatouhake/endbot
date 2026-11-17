@@ -19,8 +19,8 @@ Native Windows hosting of the runtime and server was designed for but was not pa
 Current status after PR #4: native Windows hosting has additionally been live-smoked successfully (patched Endstone
 `0.11.11+endbot.2`, official Windows BDS `1.26.51.1` build `51061361`, protocol `2193`, Alice local Bot alongside a
 normal Microsoft/Xbox human client). Linux nevertheless remains the CI/release-artifact baseline, and the PR #4 smoke
-added no new Xbox-achievement observation for `+endbot.2`. The current package is `0.11.15+endbot.1` on upstream
-`v0.11.15` with BDS `1.26.60.6` (Windows build `52886189`); its compatibility state is recorded in
+added no new Xbox-achievement observation for `+endbot.2`. The current package is `0.11.16+endbot.1` on upstream
+`v0.11.16` with BDS `1.26.65.1` (Windows build `53624742`); its compatibility state is recorded in
 [`COMPATIBILITY.md`](COMPATIBILITY.md).
 
 ## Prerequisites
@@ -83,7 +83,7 @@ python scripts\prepare_endstone.py
 ```
 
 This creates `build\endstone-patched` exactly as on Linux (bare cache under `.cache\`, `git am` of the patch series,
-local tag `v0.11.15+endbot.1`). The script refuses to overwrite an existing output directory; to start over, run
+local tag `v0.11.16+endbot.1`). The script refuses to overwrite an existing output directory; to start over, run
 `Remove-Item -Recurse -Force build\endstone-patched` first (the tree also accumulates a project-local Conan cache
 under its ignored `.conan2\` entries, which `git -C build\endstone-patched clean -fdX` resets on its own). Then,
 from a Visual Studio x64 developer prompt with `.venv` active:
@@ -104,10 +104,10 @@ Verify the Endbot-local package contract before going further:
 python -c "import importlib.metadata as m, endstone; print(m.version('endstone'), endstone.__minecraft_version__)"
 ```
 
-Expected: `0.11.15+endbot.1 26.60` (Endstone reports the Minecraft version without the leading `1.`; its bootstrap
-prepends it, so this is BDS `1.26.60.x`). The prepared tree carries the local tag `v0.11.15+endbot.1` on the patched
+Expected: `0.11.16+endbot.1 26.65` (Endstone reports the Minecraft version without the leading `1.`; its bootstrap
+prepends it, so this is BDS `1.26.65.x`). The prepared tree carries the local tag `v0.11.16+endbot.1` on the patched
 commit (see `git -C build\endstone-patched tag --points-at HEAD`), which the build backend reads for the package
-version. Do not install the official `endstone==0.11.15` wheel into this
+version. Do not install the official `endstone==0.11.16` wheel into this
 environment; the plugin's exact pin exists to prevent running against an unpatched server.
 
 ## Install the plugin
@@ -339,4 +339,4 @@ This guide does not publish Windows release artifacts and does not change the pi
 `endstone.lock`: Linux remains the CI/release-artifact baseline even though native Windows hosting has been
 live-smoked successfully after PR #4 (see [`COMPATIBILITY.md`](COMPATIBILITY.md#compatibility-change-gate)), and the Windows build-ID distinction above is
 per-platform packaging, not a new baseline. The post-PR-#4 Windows smoke added no new Xbox-achievement observation
-for `+endbot.2`; the current `0.11.15+endbot.1` gate is recorded in `COMPATIBILITY.md`.
+for `+endbot.2`; the current `0.11.16+endbot.1` gate is recorded in `COMPATIBILITY.md`.

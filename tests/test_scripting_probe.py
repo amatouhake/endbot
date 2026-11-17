@@ -294,9 +294,9 @@ class FakeBds:
         if label.startswith("scripting fixture"):
             data = json.loads((self.output / "scripting-request.json").read_text(encoding="utf-8"))
             self.fixture_id = data["id"]
-            if data["action"] == "save" and "observe.chat" in data["source"]:
+            if data["action"] == "save" and "observe.nothing" in data["source"]:
                 # BOT-024 2a: a capability that does not exist yet is refused at the save's inspection.
-                self.emit("Script parameter declaration: Unknown capability in requires: observe.chat")
+                self.emit("Script parameter declaration: Unknown capability in requires: observe.nothing")
             elif data["action"] == "save":
                 self.saved[data["name"]] = data["source"]
                 self.emit(f"Script {data['name']} saved")

@@ -1,4 +1,4 @@
-"""The generated block table matches the locked BDS and the pinned minecraft-data (BOT-028, BOT-030)."""
+"""The generated block table matches the runtime's protocol data and the pinned minecraft-data (BOT-028, BOT-030)."""
 
 import json
 import sys
@@ -7,15 +7,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "plugin/endbot/src"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
+import generate_block_properties as generator
 from endstone_endbot import block_properties
 
 
 class BlockPropertiesTests(unittest.TestCase):
-    def test_the_table_names_the_locked_bds_and_the_pinned_minecraft_data(self):
+    def test_the_table_names_the_runtimes_protocol_data_and_the_pinned_minecraft_data(self):
         # Regenerate with scripts/generate_block_properties.py when either moves.
-        bds = json.loads((ROOT / "endstone.lock").read_text(encoding="utf-8"))["bds"]["version"]
-        self.assertEqual(block_properties.BEDROCK_DATA_VERSION, ".".join(bds.split(".")[:3]))
+        self.assertEqual(block_properties.BEDROCK_DATA_VERSION, generator.runtime_game_version())
         lock = json.loads((ROOT / "runtime/package-lock.json").read_text(encoding="utf-8"))
         self.assertEqual(block_properties.MINECRAFT_DATA_VERSION,
                          lock["packages"]["node_modules/minecraft-data"]["version"])

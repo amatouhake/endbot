@@ -78,9 +78,10 @@ inherit it, and each compatibility change needs the gate again.
 | 2026-09-27 (0.1.0) | `0.11.12+endbot.1` / `1.26.51.1` | **Archer**, on the exact release files, after driving Bots with `/bot` |
 | 2026-10-09 | `0.11.13+endbot.1` / `1.26.52.3` | **Rabbit Season**, in a session that also used operator `/give` and `/effect` |
 | 2026-10-30 | `0.11.15+endbot.1` / `1.26.60.6` | **Body Guard**, on an instance updated from 0.4.0 |
+| 2026-11-18 | `0.11.16+endbot.1` / `1.26.65.1` | **Sticky Situation**, on an instance updated from 0.7.0, in a session that also used operator `/give` |
 
 After each session `level.dat` still showed Survival and no creative or experiment history.
 
 - The full records, with the recording digests and what each gate did not exercise, are kept
   [as they stood at 0.7.0](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ACHIEVEMENTS.md).
-- The current pair's gate is in [COMPATIBILITY.md](COMPATIBILITY.md#current-baseline-050-to-071).
+- The current pair's gate is in [COMPATIBILITY.md](COMPATIBILITY.md#current-baseline).

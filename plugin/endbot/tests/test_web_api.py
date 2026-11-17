@@ -441,10 +441,12 @@ class TriggerWebApiTests(unittest.TestCase):
         self.assertEqual(len(self.bob_pushed), 1)
         self.ask(type="trigger.enable", name="guard")
         self.assertEqual(len(self.bob_pushed), 2)
+        # Made private, it reads as removed for Bob, who saw it a moment ago (#271); then he hears nothing more.
         self.ask(type="trigger.update", name="guard", visibility="private")
-        self.assertEqual(len(self.bob_pushed), 2)
+        self.assertEqual(self.bob_pushed[-1], {"type": "event", "topic": topic,
+                                               "data": {"removed": True, "name": "guard", "owner": f"xuid:{XUID}"}})
         self.ask(type="trigger.disable", name="guard")
-        self.assertEqual(len(self.bob_pushed), 2)
+        self.assertEqual(len(self.bob_pushed), 3)
         refused = self.ask_bob(type="subscribe", topic=topic)
         self.assertEqual((refused["code"], refused["messages"]),
                          ("invalid_argument", ["Trigger guard does not exist"]))
@@ -468,6 +470,25 @@ class TriggerWebApiTests(unittest.TestCase):
         count = len(self.pushed)
         self.ask(type="trigger.enable", name="guard")
         self.assertEqual(len(self.pushed), count)
+
+    def test_a_trigger_made_private_leaves_the_list_of_a_page_that_saw_it(self):
+        # #271: the row stayed in Bob's open list until a reload.
+        self.create(visibility="shared")
+        self.create(name="mine")
+        self.ask_bob(type="subscribe", topic="triggers")
+        self.ask(type="trigger.update", name="guard", visibility="private")
+        self.assertEqual([item["data"] for item in self.bob_pushed],
+                         [{"removed": True, "name": "guard", "owner": f"xuid:{XUID}"}])
+        # A trigger he never saw stays unheard of, whatever happens to it.
+        self.ask(type="trigger.update", name="mine", visibility="private")
+        self.ask(type="trigger.remove", name="mine")
+        self.assertEqual(len(self.bob_pushed), 1)
+        # The owner still sees it, as a change, not a removal.
+        self.assertEqual(self.pushed, [])
+        self.ask(type="subscribe", topic="triggers")
+        self.ask(type="trigger.update", name="guard", visibility="shared")
+        self.assertEqual(self.pushed[-1]["data"]["trigger"]["visibility"], "shared")
+        self.assertEqual(self.bob_pushed[-1]["data"]["trigger"]["name"], "guard")
 
     def test_a_page_on_both_topics_hears_each(self):
         self.create()

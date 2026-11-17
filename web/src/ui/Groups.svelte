@@ -2,7 +2,7 @@
   import type { Connection } from "./api";
   import { confirmDialog, createDialog } from "./dialogs.svelte";
   import { refusalText, t } from "./i18n";
-  import { href, navigate } from "./route.svelte";
+  import { href, leave, navigate } from "./route.svelte";
 
   const NAME = /^[A-Za-z_][A-Za-z0-9_]{0,15}$/;
 
@@ -50,15 +50,16 @@
     });
     if (!name) return;
     error = "";
+    const from = selected;
     // The new Group is in the status before its page opens, or the page says it no longer exists.
     await onchanged();
-    navigate("groups", bare(name));
+    leave("groups", from, bare(name), false);
   }
 
   async function remove(): Promise<void> {
     const name = selected!;
     if (!(await confirmDialog(t("groupDeleteConfirm", { name }), t("delete"), { danger: true }))) return;
-    if (await ask("group.delete", { name })) navigate("groups", null, true);
+    if (await ask("group.delete", { name })) leave("groups", name);
   }
 
   async function add(): Promise<void> {

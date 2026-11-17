@@ -548,10 +548,58 @@ test("Groups follow the Bots in the list and offer only what a Group can do", as
   await page.getByRole("link", { name: "Manage this Group" }).click();
   await page.getByRole("button", { name: "Delete Group" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-  // The delete answers before the page leaves the Group; a tab chosen earlier would be undone by that navigation.
   await expect(page.getByRole("heading", { name: "#crew" })).toBeHidden();
   await tab(page, "Bots");
   await expect(page.getByText("This Group no longer exists")).toBeVisible();
+});
+
+test("a tab chosen while a Group is being deleted stays chosen", async ({ page, context }) => {
+  // #285: the answer to the delete used to pull the page back to the Groups list.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let deleting: unknown = null;
+  // The page asks for the status once the delete has answered; its answer arriving means the page has acted on both.
+  let released = false;
+  let refresh: unknown = null;
+  let settled = false;
+  await page.routeWebSocket("**/ws", (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      const sent = typeof message === "string" ? JSON.parse(message) : null;
+      if (sent?.type === "group.delete") deleting = sent.id;
+      if (released && refresh === null && sent?.type === "query" && sent.what === "status") refresh = sent.id;
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      const answer = typeof message === "string" ? JSON.parse(message) : null;
+      if (deleting !== null && answer?.id === deleting) {
+        void held.then(() => socket.send(message));
+      } else {
+        socket.send(message);
+        if (refresh !== null && answer?.id === refresh) settled = true;
+      }
+    });
+  });
+  await start(page, context);
+  await tab(page, "Groups");
+  await page.locator(".list-tools").getByRole("button", { name: "New", exact: true }).locator("visible=true").click();
+  await page.getByRole("dialog").getByLabel("New Group name").fill("held");
+  await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("heading", { name: "#held" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete Group" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect.poll(() => deleting).not.toBeNull();
+  await tab(page, "Bots");
+  released = true;
+  release();
+  await expect.poll(() => settled).toBe(true);
+  await expect(page.locator(".list-scroll").locator("visible=true").getByText("#held")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/bots$/);
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Bots", exact: true }))
+    .toHaveAttribute("aria-current", "page");
+  // Back on Groups, the list is shown, not the deleted Group.
+  await tab(page, "Groups");
+  await expect(page).toHaveURL(/\/groups$/);
 });
 
 test("New is in one place on all three lists, and a refused name stays in its dialog", async ({ page, context }) => {

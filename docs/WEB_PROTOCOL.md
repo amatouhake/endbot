@@ -100,8 +100,8 @@ A `trigger:<owner>/<name>` subscription pushes `{type: "event", topic, data: {tr
 stats change of that trigger, to pages whose current principal may still see it; a revoked session gets nothing.
 A removed trigger is pushed once as `data: {removed: true, name, owner}`. The `triggers` subscription pushes the
 same `data` with `topic: "triggers"` for every trigger the page may see, created, changed or removed, so the list
-stays current; a trigger that becomes invisible to the page (made private) pushes it nothing, and the page keeps that
-row until it asks `trigger.list` again, because a removal would name a trigger it may no longer see. Notices are sent from their own thread,
+stays current. A trigger made private is pushed as that removal to a page that could see it until then, on either
+topic: the page already knows its name. A page that could not see it hears nothing. Notices are sent from their own thread,
 never from the one that starts runs, and a page that cannot keep up may miss some; `trigger.list` and `trigger.get`
 always answer the current state.
 

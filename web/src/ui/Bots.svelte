@@ -4,7 +4,7 @@
   import Controls from "./Controls.svelte";
   import { createDialog } from "./dialogs.svelte";
   import { opLabel, refusalText, stateLabel, t } from "./i18n";
-  import { href, navigate } from "./route.svelte";
+  import { href, leave, navigate } from "./route.svelte";
 
   const READ_EVERY_MS = 3000;
 
@@ -76,10 +76,10 @@
     navigate("bots", name);
   }
 
-  function after(op: string, fields: Record<string, unknown>): void {
+  function after(op: string, fields: Record<string, unknown>, target: string): void {
     onchanged();
-    if (op === "rename" && typeof fields.name === "string") navigate("bots", fields.name, true);
-    if (op === "forget") navigate("bots", null, true);
+    if (op === "rename" && typeof fields.name === "string") leave("bots", target, fields.name);
+    if (op === "forget") leave("bots", target);
     if (selected && isOnline) void read(selected);
   }
 

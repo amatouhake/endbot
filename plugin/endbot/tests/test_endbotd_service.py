@@ -116,13 +116,14 @@ class EndbotServiceTests(ServiceHarness):
         pushed = []
 
         class RecordingWebApi:
-            def trigger_changed(self, trigger, removed=False):
-                pushed.append((trigger, removed))
+            def trigger_changed(self, trigger, removed=False, before=None):
+                pushed.append((trigger, removed, before))
 
         self.service.web_api = RecordingWebApi()
         self.service.triggers.on_changed("changed")
         self.service.triggers.on_changed("gone", removed=True)
-        self.assertEqual(pushed, [("changed", False), ("gone", True)])
+        self.service.triggers.on_changed("private", before="shared")
+        self.assertEqual(pushed, [("changed", False, None), ("gone", True, None), ("private", False, "shared")])
 
     def test_only_granted_players_command_bots_and_grants_reach_the_attachment(self):
         link = self.link()

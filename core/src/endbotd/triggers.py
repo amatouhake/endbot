@@ -111,7 +111,8 @@ class TriggerEngine:
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
         # Called outside every lock after a state or stats change is stored (the web's trigger subscription).
-        self.on_changed: Callable[..., None] | None = None  # (trigger, *, removed: bool)
+        # ``before`` is the trigger as it was when the change may have hidden it from someone (made private).
+        self.on_changed: Callable[..., None] | None = None  # (trigger, *, removed: bool, before: Trigger | None)
 
     # -- lifecycle -------------------------------------------------------
 
@@ -152,13 +153,13 @@ class TriggerEngine:
         except (OSError, ValueError) as error:
             self._log("warning", f"trigger stats were not saved: {type(error).__name__}: {error}")
 
-    def _changed(self, trigger: Trigger | None, *, removed: bool = False) -> None:
+    def _changed(self, trigger: Trigger | None, *, removed: bool = False, before: Trigger | None = None) -> None:
         """Queue a notice of a stored change for the listener (the web); never waits for it."""
         if self.on_changed is None or trigger is None:
             return
         if self._notices.qsize() >= MAX_NOTICES:
             return  # a listener that cannot keep up loses notices, never the engine's time
-        self._notices.put((trigger, removed))
+        self._notices.put((trigger, removed, before))
         with self._lock:
             if self._notifier is None or not self._notifier.is_alive():
                 self._notifier = threading.Thread(target=self._notify_loop, name="endbotd-trigger-notices",
@@ -196,11 +197,14 @@ class TriggerEngine:
             item = self._notices.get()
             if item is None:
                 return
-            trigger, removed = item
+            trigger, removed, before = item
             callback = self.on_changed
             try:
                 if callback is not None:
-                    callback(trigger, removed=removed)
+                    if before is None:
+                        callback(trigger, removed=removed)
+                    else:
+                        callback(trigger, removed=removed, before=before)
             except Exception as error:  # noqa: BLE001 - a listener's failure is logged, not raised into the engine
                 self._log("warning", f"trigger change listener failed: {type(error).__name__}: {error}")
             finally:
@@ -641,8 +645,8 @@ class TriggerEngine:
         return trigger
 
     def set_visibility(self, principal: Principal, name: str, visibility: str, owner: str | None = None) -> Trigger:
-        trigger = self._own(owner, name, principal)
-        trigger = self.store.update(trigger.owner, name, visibility=visibility)
-        self._changed(trigger)
+        before = self._own(owner, name, principal)
+        trigger = self.store.update(before.owner, name, visibility=visibility)
+        self._changed(trigger, before=before)
         return trigger
 

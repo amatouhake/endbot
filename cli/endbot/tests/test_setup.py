@@ -83,7 +83,8 @@ class PlanTests(SetupTestCase):
 
     def test_existing_plan_versions(self) -> None:
         cases = {
-            "26.60": ("no BDS change", BDS_NONE),
+            "26.65": ("no BDS change", BDS_NONE),
+            "26.60": ("update BDS", BDS_UPDATE),
             "26.50": ("update BDS", BDS_UPDATE),
             "1.21.51": ("update BDS", BDS_UPDATE),
         }
@@ -97,7 +98,7 @@ class PlanTests(SetupTestCase):
                 self.assertEqual(plan_bds(server, self.lock).action, action)
 
     def test_existing_plan_equal_version_mentions_the_match(self) -> None:
-        server = build_bds_dir(self.root / "server", version="26.60")
+        server = build_bds_dir(self.root / "server", version="26.65")
         _code, out, _err = self.run_setup(**self.existing_args(server))
         self.assertIn("matching locked", out)
 
@@ -291,7 +292,7 @@ class ApplyTests(SetupTestCase):
         self.assertEqual((server / "server.properties").read_bytes(), before)
 
     def test_apply_existing_equal_version_skips_bds_and_backs_up(self) -> None:
-        server = build_bds_dir(self.root / "elsewhere", version="26.60", worlds=True)
+        server = build_bds_dir(self.root / "elsewhere", version="26.65", worlds=True)
         (server / "allowlist.json").write_text("[]\n", encoding="utf-8")
         (server / "plugins" / "endbot").mkdir(parents=True)
         (server / "plugins" / "endbot" / "groups.json").write_text("{}\n", encoding="utf-8")
@@ -324,7 +325,7 @@ class ApplyTests(SetupTestCase):
         code, _out, err = self.run_setup(**self.existing_args(server, apply=True, acquire_bds=acquire))
         self.assertEqual(code, 0, err)
         self.assertEqual(acquire.calls, [server])
-        self.assertEqual((server / "version.txt").read_text(encoding="utf-8"), "26.60")
+        self.assertEqual((server / "version.txt").read_text(encoding="utf-8"), "26.65")
 
     def test_apply_fails_when_the_acquisition_step_fails(self) -> None:
         from endbot_cli.bds import BdsError
@@ -470,7 +471,7 @@ class BdsPlanTests(SetupTestCase):
         self.assertIn("no server executable found", plan.lines[0])
 
     def test_equal_version_with_missing_executable_downloads(self) -> None:
-        server = build_bds_dir(self.root / "server", version="26.60", executable=False)
+        server = build_bds_dir(self.root / "server", version="26.65", executable=False)
         plan = plan_bds(server, self.lock)
         self.assertEqual(plan.action, BDS_DOWNLOAD)
         self.assertIn("executable is missing", plan.lines[0])

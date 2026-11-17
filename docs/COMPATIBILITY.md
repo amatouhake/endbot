@@ -71,6 +71,12 @@ Endstone pins its direct Conan requirements, but some transitive ones are versio
 - Replay, expiry and client-key negative controls are covered by the patch's verifier tests in the candidate's
   upstream test run, not live.
 
+### Releases on this pair
+
+| Release | Gate and achievement observation | Release pass |
+| --- | --- | --- |
+| 0.7.2 (2026-11-18 JST) | The gate above and its Sticky Situation observation, on `0.7.2-rc.1`; no human client or Xbox check was re-run on the release files | Bots only, on the release files (run 44122347061): a Windows update from a fresh 0.7.1 instance that moved BDS from `1.26.60.6` to `1.26.65.1` with a backup, then a Bot and a Luau script, and a Linux fresh setup under WSL2 with a Bot; `doctor --live` passed on both |
+
 <a id="previous-baseline-021-to-040"></a>
 
 ## Previous baselines

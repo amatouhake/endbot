@@ -222,12 +222,12 @@ contains:
 | --- | --- |
 | `endstone-0.11.15+endbot.1-*-manylinux_*.whl` | Patched Endstone for Linux x86_64 (CPython 3.12), repaired to a `manylinux_*` platform tag. Use it on Linux; it does not install on Windows. |
 | `endstone-0.11.15+endbot.1-*-win_amd64.whl` | Patched Endstone for Windows x64 (CPython 3.12), built by the workflow's Windows job from the same `endstone.lock` + `patches/endstone/` inputs as the Linux wheel. Use it on Windows; it does not install on Linux. |
-| `endstone_endbot-0.7.0-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.15+endbot.1`, so pip cannot substitute official unpatched `0.11.15`, and exactly the `endbot-core` wheel of the same release. |
-| `endbot_core-0.7.0-*.whl` | Shared, Endstone-free Endbot logic the plugin imports. Platform-independent; not on any package index. |
-| `endbot-0.7.0-*.whl` | The `endbot` operator CLI. |
-| `endbot-0.7.0-windows-x86_64.zip`, `endbot-0.7.0-linux-x86_64.tar.gz` | The operator platform bundles ([INSTALL.md](INSTALL.md)). |
-| `endbot-runtime-0.7.0.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
-| `endbot-config-0.7.0.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
+| `endstone_endbot-0.7.1-*.whl` | Endbot plugin. Requires exactly `endstone==0.11.15+endbot.1`, so pip cannot substitute official unpatched `0.11.15`, and exactly the `endbot-core` wheel of the same release. |
+| `endbot_core-0.7.1-*.whl` | Shared, Endstone-free Endbot logic the plugin imports. Platform-independent; not on any package index. |
+| `endbot-0.7.1-*.whl` | The `endbot` operator CLI. |
+| `endbot-0.7.1-windows-x86_64.zip`, `endbot-0.7.1-linux-x86_64.tar.gz` | The operator platform bundles ([INSTALL.md](INSTALL.md)). |
+| `endbot-runtime-0.7.1.tar.gz` | Runtime source bundle (`package.json`, `package-lock.json`, `README.md`, `endbot-runtime.example.json`, `scripts/`, `src/`). |
+| `endbot-config-0.7.1.tar.gz` | Example configuration (`config/`), `LICENSE`, `THIRD_PARTY_NOTICES.md`. |
 | `ENDSTONE_LICENSE` | Upstream Endstone license carried from the pinned checkout. |
 | `endbot-ui-<pack version>.mcpack` | Optional client-side UI resource pack ([UI_PACK.md](UI_PACK.md)). Its version is the pack's own. |
 | `compatibility-manifest.json` | Machine-readable binding of Endbot revision, Endstone tag/commit/package, BDS version/build/protocol, patch revision, and validation state (schema: `release/compatibility-manifest.schema.json`). |
@@ -255,13 +255,13 @@ platform; without a compiler toolchain the install then fails inside the depende
    wheel carries no LLVM runtime dependency:
    ```bash
    python3 -m venv .venv && . .venv/bin/activate
-   python -m pip install ./endstone-0.11.15+endbot.1-*.whl ./endstone_endbot-0.7.0-*.whl ./endbot_core-0.7.0-*.whl
+   python -m pip install ./endstone-0.11.15+endbot.1-*.whl ./endstone_endbot-0.7.1-*.whl ./endbot_core-0.7.1-*.whl
    python -c "import importlib.metadata as m; print(m.version('endstone'))"
    ```
    Expected: `0.11.15+endbot.1`. Never install official `endstone==0.11.15` into this environment.
 2. Unpack the runtime bundle outside the server folder and install its pinned dependencies:
    ```bash
-   mkdir -p /opt/endbot && tar -xzf endbot-runtime-0.7.0.tar.gz -C /opt/endbot
+   mkdir -p /opt/endbot && tar -xzf endbot-runtime-0.7.1.tar.gz -C /opt/endbot
    npm ci --prefix /opt/endbot
    cp /opt/endbot/endbot-runtime.example.json /opt/endbot/endbot-runtime.json
    node /opt/endbot/src/cli.js --config /opt/endbot/endbot-runtime.json
@@ -310,9 +310,9 @@ Each platform installs its own Endstone wheel from the candidate; the other arti
    inspects the wheel for its `win_amd64` tag, locked version and runtime DLL, and install-tests it with the plugin in
    a fresh venv. Building patched Endstone from source is a development path in [WINDOWS_DEV.md](WINDOWS_DEV.md).
 2. Install the plugin and core wheels into the same environment (`python -m pip install
-   .\endstone_endbot-0.7.0-*.whl .\endbot_core-0.7.0-*.whl`). Both are platform-independent, and the plugin still
+   .\endstone_endbot-0.7.1-*.whl .\endbot_core-0.7.1-*.whl`). Both are platform-independent, and the plugin still
    pins the exact patched Endstone version.
-3. Unpack `endbot-runtime-0.7.0.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for
+3. Unpack `endbot-runtime-0.7.1.tar.gz`, run `npm ci` (npm 12 needs `--allow-remote=root` on the command line for
    the pinned tarball dependency URL; see [WINDOWS_DEV.md](WINDOWS_DEV.md)), copy the example runtime configuration
    outside the unpacked tree, and start the runtime with Node 24+.
 4. Create the server folder with `endstone -s` (official Windows BDS `1.26.60.6` build `52886189`, protocol `2225`),

@@ -245,7 +245,9 @@ def exercise_entity(output: Path, console, control, wait, report, log):
     found = command("blocks diamond_ore within 12", "diamond_ore: ")
     search_seconds = round(time.monotonic() - start, 2)
     ore_line = next(line for line in found.splitlines() if "diamond_ore: " in line)
-    if "195" in ore_line or ore_line.count("m") < 1 or "," in ore_line.split("diamond_ore: ", 1)[1]:
+    # One spot, then its distance: "6 200 -4 (3.0m, in reach)". A comma before the bracket would be a second spot.
+    spots = ore_line.split("diamond_ore: ", 1)[1].split(" (", 1)[0]
+    if "195" in ore_line or ore_line.count("m") < 1 or "," in spots:
         raise RuntimeError(f"block search reported a hidden ore or extra blocks: {ore_line}")
     results["queries"] = {"blocks_line": ore_line[-120:], "radius_12_reply_seconds": search_seconds,
                           "server_thread": state().get("searches")}

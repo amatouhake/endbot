@@ -297,13 +297,13 @@ end
 ''')
         save("runaway", "params {}\nwhile true do end\n")
         # BOT-024 2a: the basic set may be declared and changes nothing; a capability that does not exist yet is an
-        # inspection error naming it, so the save is refused.
+        # inspection error naming it, so the save is refused (observe.chat became real in BOT-022).
         save("declares", 'requires { "act.bot", "wait" }\nparams {}\nwait(1)\nlog("declared")\n')
         offset = len(log())
         submit_fixture(output, wait, {"id": "save-observes", "action": "save", "name": "observes",
-                                      "source": 'requires { "observe.chat" }\nparams {}\n'})
+                                      "source": 'requires { "observe.nothing" }\nparams {}\n'})
         wait("unknown capability refused",
-             lambda: "Unknown capability in requires: observe.chat" in log()[offset:], 15)
+             lambda: "Unknown capability in requires: observe.nothing" in log()[offset:], 15)
         if "Script observes saved" in log()[offset:]:
             raise ConsumerError("a script declaring an unknown capability was saved")
         declared_run, declared_offset = start("declares", "")

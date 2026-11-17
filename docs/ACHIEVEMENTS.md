@@ -83,4 +83,4 @@ After each session `level.dat` still showed Survival and no creative or experime
 
 - The full records, with the recording digests and what each gate did not exercise, are kept
   [as they stood at 0.7.0](https://github.com/amatouhake/endbot/blob/a02eaf7c63dbeba08c5e6c7ca638a8f3eab70926/docs/ACHIEVEMENTS.md).
-- The current pair's gate is in [COMPATIBILITY.md](COMPATIBILITY.md#current-baseline-050-to-070).
+- The current pair's gate is in [COMPATIBILITY.md](COMPATIBILITY.md#current-baseline-050-to-071).
